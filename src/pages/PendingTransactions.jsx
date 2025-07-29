@@ -1,0 +1,386 @@
+import React, { useState } from 'react';
+import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react';
+import { dbHelpers } from '../db/database';
+
+const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) => {
+  const [isAddingTransaction, setIsAddingTransaction] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [newTransaction, setNewTransaction] = useState({
+    accountId: '',
+    amount: 0,
+    category: '',
+    description: ''
+  });
+
+  const validateForm = () => {
+    const newErrors = {};
+    if (!newTransaction.accountId) {
+      newErrors.accountId = 'Please select an account';
+    }
+    if (!newTransaction.amount || newTransaction.amount <= 0) {
+      newErrors.amount = 'Amount must be greater than 0';
+    }
+    if (!newTransaction.description.trim()) {
+      newErrors.description = 'Description is required';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleAddTransaction = async () => {
+    if (!validateForm()) return;
+    
+    setIsLoading(true);
+    try {
+      await dbHelpers.addPendingTransaction(newTransaction);
+      setNewTransaction({ accountId: '', amount: 0, category: '', description: '' });
+      setIsAddingTransaction(false);
+      setErrors({});
+      onDataChange();
+    } catch (error) {
+      console.error('Error adding transaction:', error);
+      setErrors({ general: 'Failed to add transaction. Please try again.' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCompleteTransaction = async (transactionId) => {
+    try {
+      await dbHelpers.completePendingTransaction(transactionId);
+      onDataChange();
+    } catch (error) {
+      console.error('Error completing transaction:', error);
+    }
+  };
+
+  const handleDeleteTransaction = async (transactionId) => {
+    if (!confirm('Are you sure you want to delete this transaction?')) return;
+    
+    try {
+      await dbHelpers.deletePendingTransaction(transactionId);
+      onDataChange();
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+    }
+  };
+
+  const handleUpdateTransaction = async (transactionId, updates) => {
+    try {
+      await dbHelpers.updatePendingTransaction(transactionId, updates);
+      onDataChange();
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+    }
+  };
+
+  const getAccountName = (accountId) => {
+    const account = accounts.find(a => a.id === accountId);
+    return account ? account.name : 'Unknown Account';
+  };
+
+  const calculateProjectedBalance = (accountId) => {
+    const account = accounts.find(a => a.id === accountId);
+    if (!account) return 0;
+    
+    const pendingForAccount = pendingTransactions
+      .filter(t => t.accountId === accountId)
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    return account.currentBalance - pendingForAccount;
+  };
+
+  const InlineEdit = ({ value, onSave, type = 'text', options = null }) => {
+    const [editValue, setEditValue] = useState(value);
+    const [isEditing, setIsEditing] = useState(false);
+
+    const handleSave = () => {
+      onSave(editValue);
+      setIsEditing(false);
+    };
+
+    const handleCancel = () => {
+      setEditValue(value);
+      setIsEditing(false);
+    };
+
+    if (isEditing) {
+      return (
+        <div className="flex items-center space-x-2">
+          {options ? (
+            <select
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              className="glass-input flex-1 glass-focus"
+              autoFocus
+              onBlur={handleSave}
+            >
+              {options.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type={type}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              className="glass-input flex-1 glass-focus"
+              autoFocus
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') handleSave();
+                if (e.key === 'Escape') handleCancel();
+              }}
+              onBlur={handleSave}
+            />
+          )}
+          <button onClick={handleSave} className="text-green-400 hover:text-green-300 transition-colors">
+            <Check size={16} />
+          </button>
+          <button onClick={handleCancel} className="text-red-400 hover:text-red-300 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center space-x-2">
+        <span className="text-primary">{value}</span>
+        <button 
+          onClick={() => setIsEditing(true)}
+          className="text-muted hover:text-white transition-colors"
+        >
+          <Edit3 size={14} />
+        </button>
+      </div>
+    );
+  };
+
+  const categoryOptions = [
+    { value: 'Credit Card Payment', label: 'Credit Card Payment' },
+    { value: 'Rent', label: 'Rent' },
+    { value: 'Utilities', label: 'Utilities' },
+    { value: 'Groceries', label: 'Groceries' },
+    { value: 'Transportation', label: 'Transportation' },
+    { value: 'Entertainment', label: 'Entertainment' },
+    { value: 'Healthcare', label: 'Healthcare' },
+    { value: 'Other', label: 'Other' }
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-primary text-shadow-lg">Pending Transactions</h1>
+          <p className="text-secondary">Track pending payments and their impact on balances</p>
+        </div>
+        <button
+          onClick={() => setIsAddingTransaction(true)}
+          className="glass-button flex items-center space-x-2"
+        >
+          <Plus size={20} />
+          <span>Add Transaction</span>
+        </button>
+      </div>
+
+      {/* Add Transaction Form */}
+      {isAddingTransaction && (
+        <div className="glass-panel">
+          <h3 className="text-lg font-semibold text-primary mb-4">Add Pending Transaction</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div>
+              <select
+                value={newTransaction.accountId}
+                onChange={(e) => setNewTransaction({ ...newTransaction, accountId: e.target.value })}
+                className={`glass-input w-full ${errors.accountId ? 'glass-error' : ''}`}
+              >
+                <option value="">Select Account</option>
+                {accounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+              {errors.accountId && <p className="text-red-400 text-sm mt-1">{errors.accountId}</p>}
+            </div>
+            <div>
+              <input
+                type="number"
+                placeholder="Amount"
+                value={newTransaction.amount}
+                onChange={(e) => setNewTransaction({ ...newTransaction, amount: parseFloat(e.target.value) || 0 })}
+                className={`glass-input w-full ${errors.amount ? 'glass-error' : ''}`}
+              />
+              {errors.amount && <p className="text-red-400 text-sm mt-1">{errors.amount}</p>}
+            </div>
+            <div>
+              <select
+                value={newTransaction.category}
+                onChange={(e) => setNewTransaction({ ...newTransaction, category: e.target.value })}
+                className="glass-input w-full"
+              >
+                <option value="">Select Category</option>
+                {categoryOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <input
+                type="text"
+                placeholder="Description"
+                value={newTransaction.description}
+                onChange={(e) => setNewTransaction({ ...newTransaction, description: e.target.value })}
+                className={`glass-input w-full ${errors.description ? 'glass-error' : ''}`}
+              />
+              {errors.description && <p className="text-red-400 text-sm mt-1">{errors.description}</p>}
+            </div>
+          </div>
+          {errors.general && (
+            <div className="bg-red-500/20 border border-red-400/50 rounded-lg p-3 mb-4">
+              <p className="text-red-200 text-sm">{errors.general}</p>
+            </div>
+          )}
+          <div className="flex space-x-3">
+            <button
+              onClick={handleAddTransaction}
+              disabled={isLoading}
+              className={`glass-button flex items-center space-x-2 ${isLoading ? 'glass-loading' : ''}`}
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Adding...</span>
+                </>
+              ) : (
+                <>
+                  <Plus size={16} />
+                  <span>Add Transaction</span>
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setIsAddingTransaction(false);
+                setErrors({});
+                setNewTransaction({ accountId: '', amount: 0, category: '', description: '' });
+              }}
+              className="glass-button bg-red-500/20 hover:bg-red-500/30"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Transactions Table */}
+      <div className="glass-panel">
+        {pendingTransactions.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">⏳</div>
+            <h3 className="text-xl font-semibold text-primary mb-2">No pending transactions</h3>
+            <p className="text-secondary max-w-md mx-auto mb-6">
+              Add your first pending transaction to start tracking upcoming payments and their impact on your balances.
+            </p>
+            <button
+              onClick={() => setIsAddingTransaction(true)}
+              className="glass-button flex items-center space-x-2 mx-auto"
+            >
+              <Clock size={20} />
+              <span>Add Your First Transaction</span>
+            </button>
+          </div>
+        ) : (
+          <table className="glass-table">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Amount</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Projected Balance</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendingTransactions.map((transaction) => {
+                const account = accounts.find(a => a.id === transaction.accountId);
+                const projectedBalance = calculateProjectedBalance(transaction.accountId);
+                
+                return (
+                  <tr key={transaction.id}>
+                    <td>
+                      <InlineEdit
+                        value={getAccountName(transaction.accountId)}
+                        onSave={(accountName) => {
+                          const newAccount = accounts.find(a => a.name === accountName);
+                          if (newAccount) {
+                            handleUpdateTransaction(transaction.id, { accountId: newAccount.id });
+                          }
+                        }}
+                        options={accounts.map(a => ({ value: a.name, label: a.name }))}
+                      />
+                    </td>
+                    <td>
+                      <InlineEdit
+                        value={transaction.amount}
+                        onSave={(amount) => handleUpdateTransaction(transaction.id, { amount: parseFloat(amount) || 0 })}
+                        type="number"
+                      />
+                    </td>
+                    <td>
+                      <InlineEdit
+                        value={transaction.category}
+                        onSave={(category) => handleUpdateTransaction(transaction.id, { category })}
+                        options={categoryOptions}
+                      />
+                    </td>
+                    <td>
+                      <InlineEdit
+                        value={transaction.description}
+                        onSave={(description) => handleUpdateTransaction(transaction.id, { description })}
+                      />
+                    </td>
+                    <td>
+                      <span className={`font-semibold ${
+                        projectedBalance < (account?.currentBalance || 0) ? 'text-yellow-400' : 'text-primary'
+                      }`}>
+                        ${projectedBalance.toFixed(2)}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleCompleteTransaction(transaction.id)}
+                          className="p-1 rounded text-green-400 hover:text-green-300 hover:bg-green-500/20 transition-all duration-200"
+                          title="Mark as Completed"
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTransaction(transaction.id)}
+                          className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all duration-200"
+                          title="Delete Transaction"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default PendingTransactions; 
