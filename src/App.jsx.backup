@@ -79,7 +79,7 @@ function App() {
   const renderPage = () => {
     switch (currentPage) {
       case 'accounts':
-        return <Accounts accounts={accounts} pendingTransactions={pendingTransactions} onDataChange={handleDataChange} />;
+        return <Accounts accounts={accounts} onDataChange={handleDataChange} />;
       case 'pending':
         return <PendingTransactions 
           pendingTransactions={pendingTransactions} 
@@ -87,11 +87,11 @@ function App() {
           onDataChange={handleDataChange} 
         />;
       case 'expenses':
-        return <FixedExpenses accounts={accounts} onDataChange={handleDataChange} />;
+        return <FixedExpenses onDataChange={handleDataChange} />;
       case 'settings':
         return <SettingsPage onDataChange={handleDataChange} />;
       default:
-        return <Accounts accounts={accounts} pendingTransactions={pendingTransactions} onDataChange={handleDataChange} />;
+        return <Accounts accounts={accounts} onDataChange={handleDataChange} />;
     }
   };
 
@@ -114,7 +114,8 @@ function App() {
         onPageChange={setCurrentPage}
         onToggleLock={toggleLock}
         isLocked={isLocked}
-        accounts={accounts}
+        defaultAccount={defaultAccount}
+        liquidBalance={liquidBalance}
         pendingTransactions={pendingTransactions}
       />
       <main className="flex-1 overflow-auto">
@@ -126,4 +127,4 @@ function App() {
   );
 }
 
-export default App;
+export default App; 

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react';
 import { dbHelpers } from '../db/database';
-import { useFinanceCalculations } from '../services/financeService';
 
 const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) => {
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
@@ -25,8 +24,6 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
     date: getTodayDate(), // Today's date in local timezone
     type: 'expense' // 'income' or 'expense'
   });
-
-  const { calculateProjectedBalance, getAccountName } = useFinanceCalculations(accounts, pendingTransactions);
 
   const validateForm = () => {
     const newErrors = {};
@@ -96,6 +93,28 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
     }
   };
 
+  const getAccountName = (accountId) => {
+    // Convert accountId to number for comparison
+    const numericAccountId = parseInt(accountId);
+    const account = accounts.find(a => a.id === numericAccountId);
+    return account ? account.name : `Unknown Account (${accountId})`;
+  };
+
+  const calculateProjectedBalance = (accountId) => {
+    // Convert accountId to number for comparison
+    const numericAccountId = parseInt(accountId);
+    const account = accounts.find(a => a.id === numericAccountId);
+    if (!account) return 0;
+    
+    const pendingForAccount = pendingTransactions
+      .filter(t => parseInt(t.accountId) === numericAccountId)
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    // For expenses (negative amounts), we subtract from balance
+    // For income (positive amounts), we add to balance
+    return account.currentBalance + pendingForAccount;
+  };
+
   const InlineEdit = ({ value, onSave, type = 'text', options = null }) => {
     const [editValue, setEditValue] = useState(value);
     const [isEditing, setIsEditing] = useState(false);
@@ -108,15 +127,6 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
     const handleCancel = () => {
       setEditValue(value);
       setIsEditing(false);
-    };
-
-    // Get display value for account selection
-    const getDisplayValue = () => {
-      if (options) {
-        const selectedOption = options.find(option => option.value == value);
-        return selectedOption ? selectedOption.label : value;
-      }
-      return type === 'number' ? `$${parseFloat(value).toFixed(2)}` : value;
     };
 
     if (isEditing) {
@@ -167,7 +177,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
         title="Click to edit"
       >
         <span className="text-primary group-hover:text-white transition-colors">
-          {getDisplayValue()}
+          {type === 'number' ? `$${parseFloat(value).toFixed(2)}` : value}
         </span>
         <Edit3 size={14} className="inline ml-2 text-muted group-hover:text-white transition-colors opacity-0 group-hover:opacity-100" />
       </div>
@@ -364,11 +374,9 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
                 return (
                   <tr key={transaction.id}>
                     <td>
-                      <InlineEdit
-                        value={transaction.accountId}
-                        onSave={(accountId) => handleUpdateTransaction(transaction.id, { accountId: parseInt(accountId) || 0 })}
-                        options={accounts.map(acc => ({ value: acc.id, label: acc.name }))}
-                      />
+                      <span className="text-primary">
+                        {account ? account.name : `Unknown Account (${transaction.accountId})`}
+                      </span>
                     </td>
                     <td>
                       <InlineEdit
@@ -433,4 +441,4 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
   );
 };
 
-export default PendingTransactions;
+export default PendingTransactions; 

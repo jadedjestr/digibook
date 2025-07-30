@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Download, Upload, Eye, Trash2, Lock, Shield, Database } from 'lucide-react';
 import { dbHelpers } from '../db/database';
 import Papa from 'papaparse';
+import PaycheckManager from '../components/PaycheckManager';
 
 const Settings = ({ onDataChange }) => {
   const [auditLogs, setAuditLogs] = useState([]);
@@ -160,6 +161,9 @@ const Settings = ({ onDataChange }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Paycheck Manager */}
+        <PaycheckManager onDataChange={onDataChange} />
+
         {/* Import/Export Section */}
         <div className="glass-panel">
           <div className="flex items-center space-x-2 mb-4">

@@ -7,7 +7,8 @@ export class DigibookDB extends Dexie {
     this.version(1).stores({
       accounts: '++id, name, type, currentBalance, isDefault',
       pendingTransactions: '++id, accountId, amount, category, description, createdAt',
-      fixedExpenses: '++id, name, amount, frequency, nextDue',
+      fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status',
+      paycheckSettings: '++id, lastPaycheckDate, frequency',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details'
     });
   }
@@ -23,6 +24,7 @@ export const dbHelpers = {
       await db.accounts.clear();
       await db.pendingTransactions.clear();
       await db.fixedExpenses.clear();
+      await db.paycheckSettings.clear();
       await db.auditLogs.clear();
       console.log('Database cleared successfully');
     } catch (error) {
@@ -40,6 +42,17 @@ export const dbHelpers = {
           await db.accounts.update(account.id, { isDefault: false });
         }
       }
+      
+      // Ensure paycheckSettings table exists and has at least one record
+      const paycheckSettingsCount = await db.paycheckSettings.count();
+      if (paycheckSettingsCount === 0) {
+        // Create a default paycheck settings record if none exists
+        await db.paycheckSettings.add({
+          lastPaycheckDate: '',
+          frequency: 'biweekly'
+        });
+      }
+      
       console.log('Database schema fixed');
     } catch (error) {
       console.error('Error fixing database schema:', error);
@@ -120,16 +133,20 @@ export const dbHelpers = {
 
   async setDefaultAccount(accountId) {
     try {
-      await db.transaction('rw', db.accounts, async () => {
-        // Clear all default flags - handle case where no accounts are marked as default
-        const defaultAccounts = await db.accounts.where('isDefault').equals(true).toArray();
-        if (defaultAccounts.length > 0) {
-          await db.accounts.where('isDefault').equals(true).modify({ isDefault: false });
+      // Get all accounts
+      const allAccounts = await db.accounts.toArray();
+      
+      // Clear all default flags by updating each account individually
+      for (const account of allAccounts) {
+        if (account.isDefault === true) {
+          await db.accounts.update(account.id, { isDefault: false });
         }
-        
-        // Set new default
-        await db.accounts.update(accountId, { isDefault: true });
-      });
+      }
+      
+      // Set new default
+      await db.accounts.update(accountId, { isDefault: true });
+      
+      console.log('Default account set successfully:', accountId);
     } catch (error) {
       console.error('Error setting default account:', error);
       throw new Error('Failed to set default account');
@@ -217,9 +234,13 @@ export const dbHelpers = {
     const account = await db.accounts.get(transaction.accountId);
     if (!account) throw new Error('Account not found');
     
+    // For expenses (negative amounts), we subtract the absolute value
+    // For income (positive amounts), we add the amount
+    const balanceChange = transaction.amount;
+    
     await db.transaction('rw', db.accounts, db.pendingTransactions, async () => {
       await db.accounts.update(transaction.accountId, {
-        currentBalance: account.currentBalance - transaction.amount
+        currentBalance: account.currentBalance + balanceChange
       });
       await db.pendingTransactions.delete(id);
     });
@@ -227,7 +248,7 @@ export const dbHelpers = {
     await this.addAuditLog('COMPLETE', 'pendingTransaction', id, {
       accountId: transaction.accountId,
       amount: transaction.amount,
-      newBalance: account.currentBalance - transaction.amount
+      newBalance: account.currentBalance + balanceChange
     });
   },
 
@@ -259,6 +280,23 @@ export const dbHelpers = {
     await this.addAuditLog('DELETE', 'fixedExpense', id, {});
   },
 
+  // Paycheck settings helpers
+  async getPaycheckSettings() {
+    const settings = await db.paycheckSettings.toArray();
+    return settings.length > 0 ? settings[0] : null;
+  },
+
+  async updatePaycheckSettings(settings) {
+    const existing = await this.getPaycheckSettings();
+    if (existing) {
+      await db.paycheckSettings.update(existing.id, settings);
+    } else {
+      await db.paycheckSettings.add(settings);
+    }
+    
+    await this.addAuditLog('UPDATE', 'paycheckSettings', existing?.id || 'new', settings);
+  },
+
   // Audit log helpers
   async addAuditLog(actionType, entityType, entityId, details) {
     await db.auditLogs.add({
@@ -283,23 +321,26 @@ export const dbHelpers = {
     const accounts = await this.getAccounts();
     const pendingTransactions = await this.getPendingTransactions();
     const fixedExpenses = await this.getFixedExpenses();
+    const paycheckSettings = await this.getPaycheckSettings();
     const auditLogs = await this.getAuditLogs();
     
     return {
       accounts,
       pendingTransactions,
       fixedExpenses,
+      paycheckSettings,
       auditLogs,
       exportedAt: new Date().toISOString()
     };
   },
 
   async importData(data) {
-    await db.transaction('rw', db.accounts, db.pendingTransactions, db.fixedExpenses, db.auditLogs, async () => {
+    await db.transaction('rw', db.accounts, db.pendingTransactions, db.fixedExpenses, db.paycheckSettings, db.auditLogs, async () => {
       // Clear existing data
       await db.accounts.clear();
       await db.pendingTransactions.clear();
       await db.fixedExpenses.clear();
+      await db.paycheckSettings.clear();
       await db.auditLogs.clear();
       
       // Import new data
@@ -311,6 +352,9 @@ export const dbHelpers = {
       }
       if (data.fixedExpenses) {
         await db.fixedExpenses.bulkAdd(data.fixedExpenses);
+      }
+      if (data.paycheckSettings) {
+        await db.paycheckSettings.bulkAdd(data.paycheckSettings);
       }
       if (data.auditLogs) {
         await db.auditLogs.bulkAdd(data.auditLogs);

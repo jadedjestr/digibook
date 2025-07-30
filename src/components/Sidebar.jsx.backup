@@ -1,6 +1,5 @@
 import React from 'react';
 import { Lock, Unlock } from 'lucide-react';
-import { useFinanceCalculations } from '../services/financeService';
 
 const Sidebar = ({ 
   navigation, 
@@ -8,18 +7,22 @@ const Sidebar = ({
   onPageChange, 
   onToggleLock, 
   isLocked,
-  accounts,
+  defaultAccount,
+  liquidBalance,
   pendingTransactions
 }) => {
-  const { 
-    getDefaultAccount, 
-    getDefaultAccountProjectedBalance, 
-    calculateLiquidBalance 
-  } = useFinanceCalculations(accounts, pendingTransactions);
+  // Calculate projected balance for default account
+  const getProjectedBalance = () => {
+    if (!defaultAccount) return 0;
+    
+    const pendingForAccount = pendingTransactions
+      .filter(t => t.accountId === defaultAccount.id)
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    return defaultAccount.currentBalance - pendingForAccount;
+  };
 
-  const defaultAccount = getDefaultAccount;
-  const projectedBalance = getDefaultAccountProjectedBalance;
-  const liquidBalance = calculateLiquidBalance;
+  const projectedBalance = getProjectedBalance();
 
   return (
     <div className="glass-sidebar">
@@ -95,14 +98,14 @@ const Sidebar = ({
       <div className="p-4 border-t border-white/20">
         <button
           onClick={onToggleLock}
-          className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 glass-focus text-secondary hover:bg-white/10 hover:text-white"
+          className="w-full glass-button flex items-center justify-center space-x-2"
         >
           {isLocked ? <Unlock size={20} /> : <Lock size={20} />}
-          <span className="font-medium">{isLocked ? 'Unlock' : 'Lock'}</span>
+          <span>{isLocked ? 'Unlock' : 'Lock'}</span>
         </button>
       </div>
     </div>
   );
 };
 
-export default Sidebar;
+export default Sidebar; 
