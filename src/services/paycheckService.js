@@ -14,8 +14,12 @@ export class PaycheckService {
       };
     }
 
-    const lastPayDate = new Date(this.settings.lastPaycheckDate);
+    // Parse the date string and ensure it's treated as local time
+    const [year, month, day] = this.settings.lastPaycheckDate.split('-').map(Number);
+    const lastPayDate = new Date(year, month - 1, day); // month is 0-indexed
+    
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day for consistent comparison
     
     // Calculate next paycheck (14 days from last paycheck)
     const nextPayDate = new Date(lastPayDate);
@@ -39,9 +43,17 @@ export class PaycheckService {
     const daysUntilNextPay = Math.ceil((nextPayDate - today) / (1000 * 60 * 60 * 24));
     const daysUntilFollowingPay = Math.ceil((followingPayDate - today) / (1000 * 60 * 60 * 24));
     
+    // Format dates consistently in local time
+    const formatDate = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
     return {
-      nextPayDate: nextPayDate.toISOString().split('T')[0],
-      followingPayDate: followingPayDate.toISOString().split('T')[0],
+      nextPayDate: formatDate(nextPayDate),
+      followingPayDate: formatDate(followingPayDate),
       daysUntilNextPay,
       daysUntilFollowingPay
     };
@@ -51,8 +63,19 @@ export class PaycheckService {
   calculateExpenseStatus(expense, paycheckDates) {
     const { dueDate, amount, paidAmount } = expense;
     const { nextPayDate, followingPayDate } = paycheckDates;
+    
+    // Parse dates consistently in local time
+    const parseDate = (dateString) => {
+      const [year, month, day] = dateString.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    };
+    
     const today = new Date();
-    const due = new Date(dueDate);
+    today.setHours(0, 0, 0, 0); // Reset time to start of day for consistent comparison
+    
+    const due = parseDate(dueDate);
+    const nextPay = parseDate(nextPayDate);
+    const followingPay = parseDate(followingPayDate);
     
     // If fully paid
     if (paidAmount >= amount) {
@@ -70,17 +93,17 @@ export class PaycheckService {
     }
     
     // If due this week (before next paycheck)
-    if (due <= new Date(nextPayDate) && paidAmount === 0) {
+    if (due <= nextPay && paidAmount === 0) {
       return 'Pay This Week';
     }
     
     // If due with next check (between next paycheck and following paycheck)
-    if (due > new Date(nextPayDate) && due <= new Date(followingPayDate) && paidAmount === 0) {
+    if (due > nextPay && due <= followingPay && paidAmount === 0) {
       return 'Pay with Next Check';
     }
     
     // If due with following check (after following paycheck)
-    if (due > new Date(followingPayDate) && paidAmount === 0) {
+    if (due > followingPay && paidAmount === 0) {
       return 'Pay with Following Check';
     }
     

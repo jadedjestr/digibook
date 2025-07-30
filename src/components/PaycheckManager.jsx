@@ -52,16 +52,27 @@ const PaycheckManager = ({ onDataChange }) => {
   const calculateNextPayDates = () => {
     if (!paycheckSettings.lastPaycheckDate) return null;
 
-    const lastPayDate = new Date(paycheckSettings.lastPaycheckDate);
+    // Parse the date string and ensure it's treated as local time
+    const [year, month, day] = paycheckSettings.lastPaycheckDate.split('-').map(Number);
+    const lastPayDate = new Date(year, month - 1, day); // month is 0-indexed
+    
     const nextPayDate = new Date(lastPayDate);
     nextPayDate.setDate(nextPayDate.getDate() + 14);
     
     const followingPayDate = new Date(lastPayDate);
     followingPayDate.setDate(followingPayDate.getDate() + 28);
 
+    // Format dates consistently in local time
+    const formatDate = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     return {
-      nextPayDate: nextPayDate.toISOString().split('T')[0],
-      followingPayDate: followingPayDate.toISOString().split('T')[0]
+      nextPayDate: formatDate(nextPayDate),
+      followingPayDate: formatDate(followingPayDate)
     };
   };
 
