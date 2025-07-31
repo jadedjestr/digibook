@@ -12,6 +12,7 @@ const AccountSelector = ({
 }) => {
   const [editValue, setEditValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
   const handleSave = () => {
     onSave(editValue);
@@ -27,6 +28,18 @@ const AccountSelector = ({
   const handleToggleDropdown = (event) => {
     console.log('handleToggleDropdown called, isOpen:', isOpen);
     console.log('accounts:', accounts);
+    
+    if (!isOpen) {
+      // Calculate position relative to the button
+      const button = event.currentTarget;
+      const rect = button.getBoundingClientRect();
+      console.log('Button rect:', rect);
+      setDropdownPosition({
+        top: rect.bottom + 8,
+        left: rect.left,
+        width: rect.width
+      });
+    }
     setIsOpen(!isOpen);
     console.log('Setting isOpen to:', !isOpen);
   };
@@ -78,8 +91,11 @@ const AccountSelector = ({
         </button>
         
         {isOpen && (
-          <div className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200" style={{
-            minHeight: '100px'
+          <div className="fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200" style={{
+            top: dropdownPosition.top,
+            left: dropdownPosition.left,
+            width: dropdownPosition.width || '400px',
+            maxWidth: '90vw'
           }}>
             {console.log('Rendering dropdown with accounts:', accounts)}
             <div className="p-2 text-white text-sm border-b border-white/20">
