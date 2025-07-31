@@ -188,7 +188,7 @@ const FixedExpensesTable = ({
       {/* Add Expense Form */}
       {isAddingExpense && (
         <div className="glass-panel">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <input
               type="text"
               placeholder="Expense name"
@@ -216,21 +216,22 @@ const FixedExpensesTable = ({
               onSave={(accountId) => setNewExpense({ ...newExpense, accountId })}
               accounts={accounts}
               isEditing={true}
+              showSaveCancel={false}
             />
-            <div className="flex space-x-2">
-              <button
-                onClick={handleAddExpense}
-                className="glass-button flex-1"
-              >
-                Add
-              </button>
-              <button
-                onClick={() => setIsAddingExpense(false)}
-                className="glass-button bg-red-500/20 text-red-300 hover:bg-red-500/30"
-              >
-                Cancel
-              </button>
-            </div>
+          </div>
+          <div className="flex space-x-2 mt-4">
+            <button
+              onClick={handleAddExpense}
+              className="glass-button flex-1"
+            >
+              Add
+            </button>
+            <button
+              onClick={() => setIsAddingExpense(false)}
+              className="glass-button bg-red-500/20 text-red-300 hover:bg-red-500/30"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

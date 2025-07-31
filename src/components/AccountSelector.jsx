@@ -7,7 +7,8 @@ const AccountSelector = ({
   accounts, 
   isEditing = false, 
   onEdit = null,
-  onCancel = null 
+  onCancel = null,
+  showSaveCancel = true
 }) => {
   const [editValue, setEditValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
@@ -55,20 +56,22 @@ const AccountSelector = ({
           </div>
         )}
         
-        <div className="flex space-x-2 mt-2">
-          <button
-            onClick={handleSave}
-            className="px-2 py-1 text-xs bg-green-500/20 text-green-300 rounded hover:bg-green-500/30 transition-colors"
-          >
-            Save
-          </button>
-          <button
-            onClick={handleCancel}
-            className="px-2 py-1 text-xs bg-gray-500/20 text-gray-300 rounded hover:bg-gray-500/30 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
+        {showSaveCancel && (
+          <div className="flex space-x-2 mt-2">
+            <button
+              onClick={handleSave}
+              className="px-2 py-1 text-xs bg-green-500/20 text-green-300 rounded hover:bg-green-500/30 transition-colors"
+            >
+              Save
+            </button>
+            <button
+              onClick={handleCancel}
+              className="px-2 py-1 text-xs bg-gray-500/20 text-gray-300 rounded hover:bg-gray-500/30 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
     );
   }
