@@ -12,7 +12,6 @@ const AccountSelector = ({
 }) => {
   const [editValue, setEditValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
 
   const handleSave = () => {
     onSave(editValue);
@@ -28,37 +27,6 @@ const AccountSelector = ({
   const handleToggleDropdown = (event) => {
     console.log('handleToggleDropdown called, isOpen:', isOpen);
     console.log('accounts:', accounts);
-    
-    if (!isOpen) {
-      // Calculate position relative to the button
-      const button = event.currentTarget;
-      const rect = button.getBoundingClientRect();
-      console.log('Button rect:', rect);
-      
-      // Check if there's enough space below, otherwise position above
-      const viewportHeight = window.innerHeight;
-      const dropdownHeight = Math.min(accounts.length * 60, 384); // Approximate height
-      const spaceBelow = viewportHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      
-      let top, left;
-      if (spaceBelow >= dropdownHeight || spaceBelow > spaceAbove) {
-        // Position below
-        top = rect.bottom + 8;
-        left = rect.left;
-      } else {
-        // Position above
-        top = rect.top - dropdownHeight - 8;
-        left = rect.left;
-      }
-      
-      setDropdownPosition({
-        top,
-        left,
-        width: rect.width
-      });
-      console.log('Dropdown position:', { top, left, width: rect.width });
-    }
     setIsOpen(!isOpen);
     console.log('Setting isOpen to:', !isOpen);
   };
@@ -110,11 +78,7 @@ const AccountSelector = ({
         </button>
         
         {isOpen && (
-          <div className="fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200" style={{
-            top: dropdownPosition.top,
-            left: dropdownPosition.left,
-            width: dropdownPosition.width || '400px',
-            maxWidth: '90vw',
+          <div className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200" style={{
             minHeight: '100px'
           }}>
             {console.log('Rendering dropdown with accounts:', accounts)}
