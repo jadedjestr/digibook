@@ -42,7 +42,17 @@ const PaycheckManager = ({ onDataChange }) => {
       console.log('Saving paycheck settings:', paycheckSettings);
       await dbHelpers.updatePaycheckSettings(paycheckSettings);
       console.log('Paycheck settings saved successfully');
-      onDataChange();
+      
+      // Add a small delay to ensure database is updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      try {
+        onDataChange();
+      } catch (dataChangeError) {
+        console.error('Error in onDataChange:', dataChangeError);
+        // Don't fail the save if onDataChange fails
+      }
+      
       alert('Paycheck settings saved successfully!');
     } catch (error) {
       console.error('Error saving paycheck settings:', error);
