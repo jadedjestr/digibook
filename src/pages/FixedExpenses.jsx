@@ -28,6 +28,10 @@ const FixedExpenses = ({ accounts: accountsProp, onDataChange }) => {
         dbHelpers.getPaycheckSettings()
       ]);
       
+      console.log('FixedExpenses - accountsProp:', accountsProp);
+      console.log('FixedExpenses - expensesData:', expensesData);
+      console.log('FixedExpenses - paycheckSettingsData:', paycheckSettingsData);
+      
       setExpenses(expensesData);
       setAccounts(accountsProp || []);
       setPaycheckSettings(paycheckSettingsData);

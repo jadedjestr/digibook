@@ -11,6 +11,7 @@ const FixedExpensesTable = ({
   paycheckSettings, 
   onDataChange 
 }) => {
+  console.log('FixedExpensesTable received accounts:', accounts);
   const [isAddingExpense, setIsAddingExpense] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingField, setEditingField] = useState(null);
