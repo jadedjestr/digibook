@@ -26,10 +26,14 @@ const AccountSelector = ({
   };
 
   const handleToggleDropdown = (event) => {
+    console.log('handleToggleDropdown called, isOpen:', isOpen);
+    console.log('accounts:', accounts);
+    
     if (!isOpen) {
       // Calculate position relative to the button
       const button = event.currentTarget;
       const rect = button.getBoundingClientRect();
+      console.log('Button rect:', rect);
       setDropdownPosition({
         top: rect.bottom + 8,
         left: rect.left,
@@ -37,6 +41,7 @@ const AccountSelector = ({
       });
     }
     setIsOpen(!isOpen);
+    console.log('Setting isOpen to:', !isOpen);
   };
 
   const selectedAccount = accounts.find(account => account.id === editValue);
@@ -92,6 +97,7 @@ const AccountSelector = ({
             width: dropdownPosition.width || '400px',
             maxWidth: '90vw'
           }}>
+            {console.log('Rendering dropdown with accounts:', accounts)}
             {accounts.map((account) => (
               <button
                 key={account.id}
