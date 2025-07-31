@@ -12,6 +12,7 @@ const AccountSelector = ({
 }) => {
   const [editValue, setEditValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
 
   const handleSave = () => {
     onSave(editValue);
@@ -22,6 +23,20 @@ const AccountSelector = ({
     setEditValue(value);
     setIsOpen(false);
     if (onCancel) onCancel();
+  };
+
+  const handleToggleDropdown = (event) => {
+    if (!isOpen) {
+      // Calculate position relative to the button
+      const button = event.currentTarget;
+      const rect = button.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8,
+        left: rect.left,
+        width: rect.width
+      });
+    }
+    setIsOpen(!isOpen);
   };
 
   const selectedAccount = accounts.find(account => account.id === editValue);
@@ -55,7 +70,7 @@ const AccountSelector = ({
     return (
       <div className="relative">
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={handleToggleDropdown}
           className="w-full flex items-center justify-between px-4 py-3 text-sm bg-white/10 rounded-lg border border-white/20 hover:bg-white/20 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
         >
           <div className="flex items-center space-x-3">
@@ -71,17 +86,12 @@ const AccountSelector = ({
         </button>
         
         {isOpen && (
-          <>
-            {/* Backdrop */}
-            <div className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
-            {/* Dropdown */}
-            <div className="fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200" style={{
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: '400px',
-              maxWidth: '90vw'
-            }}>
+          <div className="fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200" style={{
+            top: dropdownPosition.top,
+            left: dropdownPosition.left,
+            width: dropdownPosition.width || '400px',
+            maxWidth: '90vw'
+          }}>
             {accounts.map((account) => (
               <button
                 key={account.id}
@@ -106,7 +116,6 @@ const AccountSelector = ({
               </button>
             ))}
             </div>
-          </>
         )}
         
         {showSaveCancel && (
