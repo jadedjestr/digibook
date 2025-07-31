@@ -4,7 +4,7 @@ export class DigibookDB extends Dexie {
   constructor() {
     super('DigibookDB');
     
-    this.version(1).stores({
+    this.version(2).stores({
       accounts: '++id, name, type, currentBalance, isDefault',
       pendingTransactions: '++id, accountId, amount, category, description, createdAt',
       fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status',
@@ -282,19 +282,37 @@ export const dbHelpers = {
 
   // Paycheck settings helpers
   async getPaycheckSettings() {
-    const settings = await db.paycheckSettings.toArray();
-    return settings.length > 0 ? settings[0] : null;
+    try {
+      console.log('Getting paycheck settings...');
+      const settings = await db.paycheckSettings.toArray();
+      console.log('Found settings:', settings);
+      return settings.length > 0 ? settings[0] : null;
+    } catch (error) {
+      console.error('Error getting paycheck settings:', error);
+      return null;
+    }
   },
 
   async updatePaycheckSettings(settings) {
-    const existing = await this.getPaycheckSettings();
-    if (existing) {
-      await db.paycheckSettings.update(existing.id, settings);
-    } else {
-      await db.paycheckSettings.add(settings);
+    try {
+      console.log('updatePaycheckSettings called with:', settings);
+      const existing = await this.getPaycheckSettings();
+      console.log('Existing settings:', existing);
+      
+      if (existing) {
+        console.log('Updating existing settings with ID:', existing.id);
+        await db.paycheckSettings.update(existing.id, settings);
+      } else {
+        console.log('Adding new settings');
+        await db.paycheckSettings.add(settings);
+      }
+      
+      await this.addAuditLog('UPDATE', 'paycheckSettings', existing?.id || 'new', settings);
+      console.log('Paycheck settings updated successfully');
+    } catch (error) {
+      console.error('Error in updatePaycheckSettings:', error);
+      throw error;
     }
-    
-    await this.addAuditLog('UPDATE', 'paycheckSettings', existing?.id || 'new', settings);
   },
 
   // Audit log helpers

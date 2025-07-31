@@ -39,11 +39,14 @@ const PaycheckManager = ({ onDataChange }) => {
 
     setIsSaving(true);
     try {
+      console.log('Saving paycheck settings:', paycheckSettings);
       await dbHelpers.updatePaycheckSettings(paycheckSettings);
+      console.log('Paycheck settings saved successfully');
       onDataChange();
       alert('Paycheck settings saved successfully!');
     } catch (error) {
       console.error('Error saving paycheck settings:', error);
+      console.error('Error details:', error.message, error.stack);
       alert('Failed to save paycheck settings. Please try again.');
     } finally {
       setIsSaving(false);
