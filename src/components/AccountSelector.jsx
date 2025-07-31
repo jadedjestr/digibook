@@ -26,6 +26,10 @@ const AccountSelector = ({
 
   const selectedAccount = accounts.find(account => account.id === editValue);
 
+  // Debug: Log accounts for troubleshooting
+  console.log('AccountSelector - accounts:', accounts);
+  console.log('AccountSelector - selectedAccount:', selectedAccount);
+
   // Get account icon based on type
   const getAccountIcon = (accountType) => {
     switch (accountType?.toLowerCase()) {
@@ -67,7 +71,7 @@ const AccountSelector = ({
         </button>
         
         {isOpen && (
-          <div className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-48 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200">
+          <div className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200">
             {accounts.map((account) => (
               <button
                 key={account.id}
