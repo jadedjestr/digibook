@@ -39,7 +39,7 @@ const AccountSelector = ({
         </button>
         
         {isOpen && (
-          <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-slate-800 border border-white/20 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+          <div className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-slate-900 border border-white/30 rounded-lg shadow-xl max-h-40 overflow-y-auto backdrop-blur-sm">
             {accounts.map((account) => (
               <button
                 key={account.id}
@@ -47,7 +47,7 @@ const AccountSelector = ({
                   setEditValue(account.id);
                   handleSave();
                 }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-white/10 transition-colors"
+                className="w-full text-left px-3 py-2 text-sm text-white hover:bg-white/20 transition-colors first:rounded-t-lg last:rounded-b-lg"
               >
                 {account.name}
               </button>
