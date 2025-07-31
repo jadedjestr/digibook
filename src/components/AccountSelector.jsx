@@ -71,7 +71,17 @@ const AccountSelector = ({
         </button>
         
         {isOpen && (
-          <div className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200">
+          <>
+            {/* Backdrop */}
+            <div className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
+            {/* Dropdown */}
+            <div className="fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200" style={{
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '400px',
+              maxWidth: '90vw'
+            }}>
             {accounts.map((account) => (
               <button
                 key={account.id}
@@ -95,7 +105,8 @@ const AccountSelector = ({
                 </div>
               </button>
             ))}
-          </div>
+            </div>
+          </>
         )}
         
         {showSaveCancel && (
