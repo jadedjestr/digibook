@@ -1,15 +1,11 @@
 import React from 'react';
 import { Calendar, Clock } from 'lucide-react';
+import { DateUtils } from '../utils/dateUtils';
 
 const PayDateCountdownCard = ({ nextPayDate, followingPayDate, daysUntilNextPay, daysUntilFollowingPay }) => {
   const formatDate = (dateString) => {
     if (!dateString) return 'Not set';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    });
+    return DateUtils.formatShortDate(dateString);
   };
 
   return (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock } from 'lucide-react';
 import { dbHelpers } from '../db/database';
+import { DateUtils } from '../utils/dateUtils';
 
 const PaycheckManager = ({ onDataChange }) => {
   const [paycheckSettings, setPaycheckSettings] = useState({
@@ -148,23 +149,13 @@ const PaycheckManager = ({ onDataChange }) => {
               <div>
                 <div className="text-sm text-secondary">Next Paycheck</div>
                 <div className="text-white font-medium">
-                  {new Date(nextPayDates.nextPayDate).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}
+                  {DateUtils.formatDisplayDate(nextPayDates.nextPayDate)}
                 </div>
               </div>
               <div>
                 <div className="text-sm text-secondary">Following Paycheck</div>
                 <div className="text-white font-medium">
-                  {new Date(nextPayDates.followingPayDate).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}
+                  {DateUtils.formatDisplayDate(nextPayDates.followingPayDate)}
                 </div>
               </div>
             </div>

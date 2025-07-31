@@ -1,3 +1,5 @@
+import { DateUtils } from '../utils/dateUtils';
+
 export class PaycheckService {
   constructor(paycheckSettings) {
     this.settings = paycheckSettings;
@@ -43,17 +45,9 @@ export class PaycheckService {
     const daysUntilNextPay = Math.ceil((nextPayDate - today) / (1000 * 60 * 60 * 24));
     const daysUntilFollowingPay = Math.ceil((followingPayDate - today) / (1000 * 60 * 60 * 24));
     
-    // Format dates consistently in local time
-    const formatDate = (date) => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-    
     return {
-      nextPayDate: formatDate(nextPayDate),
-      followingPayDate: formatDate(followingPayDate),
+      nextPayDate: DateUtils.formatDate(nextPayDate),
+      followingPayDate: DateUtils.formatDate(followingPayDate),
       daysUntilNextPay,
       daysUntilFollowingPay
     };
@@ -64,18 +58,12 @@ export class PaycheckService {
     const { dueDate, amount, paidAmount } = expense;
     const { nextPayDate, followingPayDate } = paycheckDates;
     
-    // Parse dates consistently in local time
-    const parseDate = (dateString) => {
-      const [year, month, day] = dateString.split('-').map(Number);
-      return new Date(year, month - 1, day);
-    };
-    
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Reset time to start of day for consistent comparison
     
-    const due = parseDate(dueDate);
-    const nextPay = parseDate(nextPayDate);
-    const followingPay = parseDate(followingPayDate);
+    const due = DateUtils.parseDate(dueDate);
+    const nextPay = DateUtils.parseDate(nextPayDate);
+    const followingPay = DateUtils.parseDate(followingPayDate);
     
     // If fully paid
     if (paidAmount >= amount) {
