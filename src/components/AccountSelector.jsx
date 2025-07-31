@@ -12,7 +12,6 @@ const AccountSelector = ({
 }) => {
   const [editValue, setEditValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
   const handleSave = () => {
     onSave(editValue);
@@ -26,20 +25,12 @@ const AccountSelector = ({
   };
 
   const handleToggleDropdown = (event) => {
-    if (!isOpen) {
-      // Calculate position relative to the button
-      const button = event.currentTarget;
-      const rect = button.getBoundingClientRect();
-      setDropdownPosition({
-        top: rect.bottom + 8,
-        left: rect.left,
-        width: rect.width
-      });
-    }
     setIsOpen(!isOpen);
   };
 
   const selectedAccount = accounts.find(account => account.id === editValue);
+
+
 
   // Get account icon based on type
   const getAccountIcon = (accountType) => {
@@ -82,12 +73,10 @@ const AccountSelector = ({
         </button>
         
         {isOpen && (
-          <div className="fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200" style={{
-            top: dropdownPosition.top,
-            left: dropdownPosition.left,
-            width: dropdownPosition.width || '400px',
-            maxWidth: '90vw'
-          }}>
+          <div className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200">
+            <div className="p-2 text-white text-sm border-b border-white/20">
+              DEBUG: Dropdown is rendering with {accounts.length} accounts
+            </div>
 
             {accounts.map((account) => (
               <button
