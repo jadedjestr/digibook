@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Trash2, Check, Edit3, X } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import AccountSelector from './AccountSelector';
+import AddExpensePanel from './AddExpensePanel';
 import { dbHelpers } from '../db/database';
 import { PaycheckService } from '../services/paycheckService';
 
@@ -9,50 +10,17 @@ const FixedExpensesTable = ({
   expenses, 
   accounts, 
   paycheckSettings, 
-  onDataChange 
+  onDataChange,
+  isPanelOpen,
+  setIsPanelOpen
 }) => {
-  const [isAddingExpense, setIsAddingExpense] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingField, setEditingField] = useState(null);
-  const [newExpense, setNewExpense] = useState({
-    name: '',
-    dueDate: '',
-    amount: 0,
-    accountId: '',
-    paidAmount: 0
-  });
 
   const paycheckService = new PaycheckService(paycheckSettings);
   const paycheckDates = paycheckService.calculatePaycheckDates();
 
-  const validateExpense = (expense) => {
-    const errors = {};
-    if (!expense.name.trim()) errors.name = 'Name is required';
-    if (!expense.dueDate) errors.dueDate = 'Due date is required';
-    if (expense.amount <= 0) errors.amount = 'Amount must be greater than 0';
-    if (!expense.accountId) errors.accountId = 'Account is required';
-    if (expense.paidAmount < 0) errors.paidAmount = 'Paid amount cannot be negative';
-    if (expense.paidAmount > expense.amount) errors.paidAmount = 'Paid amount cannot exceed total amount';
-    return errors;
-  };
 
-  const handleAddExpense = async () => {
-    const errors = validateExpense(newExpense);
-    if (Object.keys(errors).length > 0) {
-      alert('Please fix the following errors:\n' + Object.values(errors).join('\n'));
-      return;
-    }
-
-    try {
-      await dbHelpers.addFixedExpense(newExpense);
-      setNewExpense({ name: '', dueDate: '', amount: 0, accountId: '', paidAmount: 0 });
-      setIsAddingExpense(false);
-      onDataChange();
-    } catch (error) {
-      console.error('Error adding expense:', error);
-      alert('Failed to add expense. Please try again.');
-    }
-  };
 
   const handleUpdateExpense = async (id, updates) => {
     try {
@@ -176,64 +144,13 @@ const FixedExpensesTable = ({
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold text-white">Fixed Expenses</h2>
         <button
-          onClick={() => setIsAddingExpense(true)}
+          onClick={() => setIsPanelOpen(true)}
           className="glass-button flex items-center space-x-2"
         >
           <Plus size={16} />
           <span>Add Expense</span>
         </button>
       </div>
-
-      {/* Add Expense Form */}
-      {isAddingExpense && (
-        <div className="glass-panel">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <input
-              type="text"
-              placeholder="Expense name"
-              value={newExpense.name}
-              onChange={(e) => setNewExpense({ ...newExpense, name: e.target.value })}
-              className="glass-input"
-            />
-            <input
-              type="date"
-              value={newExpense.dueDate}
-              onChange={(e) => setNewExpense({ ...newExpense, dueDate: e.target.value })}
-              className="glass-input"
-            />
-            <input
-              type="number"
-              placeholder="Amount"
-              value={newExpense.amount}
-              onChange={(e) => setNewExpense({ ...newExpense, amount: parseFloat(e.target.value) || 0 })}
-              className="glass-input"
-              step="0.01"
-              min="0"
-            />
-            <AccountSelector
-              value={newExpense.accountId}
-              onSave={(accountId) => setNewExpense({ ...newExpense, accountId })}
-              accounts={accounts}
-              isEditing={true}
-              showSaveCancel={false}
-            />
-          </div>
-          <div className="flex space-x-2 mt-4">
-            <button
-              onClick={handleAddExpense}
-              className="glass-button flex-1"
-            >
-              Add
-            </button>
-            <button
-              onClick={() => setIsAddingExpense(false)}
-              className="glass-button bg-red-500/20 text-red-300 hover:bg-red-500/30"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Expenses Table */}
       <div className="glass-panel overflow-x-auto">
@@ -329,6 +246,14 @@ const FixedExpensesTable = ({
           </div>
         )}
       </div>
+
+      {/* Add Expense Panel */}
+      <AddExpensePanel
+        isOpen={isPanelOpen}
+        onClose={() => setIsPanelOpen(false)}
+        accounts={accounts}
+        onDataChange={onDataChange}
+      />
     </div>
   );
 };

@@ -6,7 +6,7 @@ import PayDateCountdownCard from '../components/PayDateCountdownCard';
 import FixedExpensesTable from '../components/FixedExpensesTable';
 import StartCycleButton from '../components/StartCycleButton';
 
-const FixedExpenses = ({ accounts: accountsProp, onDataChange }) => {
+const FixedExpenses = ({ accounts: accountsProp, onDataChange, isPanelOpen, setIsPanelOpen }) => {
   const [expenses, setExpenses] = useState([]);
   const [accounts, setAccounts] = useState(accountsProp || []);
   const [paycheckSettings, setPaycheckSettings] = useState(null);
@@ -183,6 +183,8 @@ const FixedExpenses = ({ accounts: accountsProp, onDataChange }) => {
         accounts={accounts}
         paycheckSettings={paycheckSettings}
         onDataChange={handleDataChange}
+        isPanelOpen={isPanelOpen}
+        setIsPanelOpen={setIsPanelOpen}
       />
 
       {/* Start New Cycle Button */}

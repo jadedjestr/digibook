@@ -18,6 +18,7 @@ function App() {
   const [pendingTransactions, setPendingTransactions] = useState([]);
   const [defaultAccount, setDefaultAccount] = useState(null);
   const [liquidBalance, setLiquidBalance] = useState(0);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   // Load data on mount
   useEffect(() => {
@@ -87,7 +88,12 @@ function App() {
           onDataChange={handleDataChange} 
         />;
       case 'expenses':
-        return <FixedExpenses accounts={accounts} onDataChange={handleDataChange} />;
+        return <FixedExpenses 
+          accounts={accounts} 
+          onDataChange={handleDataChange}
+          isPanelOpen={isPanelOpen}
+          setIsPanelOpen={setIsPanelOpen}
+        />;
       case 'settings':
         return <SettingsPage onDataChange={handleDataChange} />;
       default:
@@ -117,7 +123,7 @@ function App() {
         accounts={accounts}
         pendingTransactions={pendingTransactions}
       />
-      <main className="flex-1 overflow-auto">
+      <main className={`flex-1 overflow-auto transition-transform duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${isPanelOpen ? 'panel-open' : ''}`}>
         <div className="p-6">
           {renderPage()}
         </div>

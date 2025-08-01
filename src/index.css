@@ -370,4 +370,16 @@
       transform: translateY(0) scale(1);
     }
   }
+
+  /* Sliding Panel Styles */
+  .panel-open {
+    transform: translateX(-200px);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @media (max-width: 768px) {
+    .panel-open {
+      transform: translateX(-100px);
+    }
+  }
 } 
