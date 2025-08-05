@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { logger } from "../utils/logger";;
 import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react'
 import { dbHelpers } from '../db/database'
@@ -8,6 +8,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [categories, setCategories] = useState([]);
 
   // Helper function to get today's date in local timezone
   const getTodayDate = () => {
@@ -28,6 +29,20 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
   });
 
   const { calculateProjectedBalance, getAccountName } = useFinanceCalculations(accounts, pendingTransactions);
+
+  // Load categories
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const categoriesData = await dbHelpers.getCategories();
+        setCategories(categoriesData);
+      } catch (error) {
+        logger.error('Error loading categories:', error);
+      }
+    };
+    
+    loadCategories();
+  }, []);
 
   const validateForm = () => {
     const newErrors = {};
@@ -176,16 +191,10 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
     );
   };
 
-  const categoryOptions = [
-    { value: 'Credit Card Payment', label: 'Credit Card Payment' },
-    { value: 'Rent', label: 'Rent' },
-    { value: 'Utilities', label: 'Utilities' },
-    { value: 'Groceries', label: 'Groceries' },
-    { value: 'Transportation', label: 'Transportation' },
-    { value: 'Entertainment', label: 'Entertainment' },
-    { value: 'Healthcare', label: 'Healthcare' },
-    { value: 'Other', label: 'Other' }
-  ];
+  const categoryOptions = categories.map(category => ({
+    value: category.name,
+    label: `${category.icon} ${category.name}`
+  }));
 
   return (
     <div className="space-y-6">

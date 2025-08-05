@@ -212,6 +212,7 @@ const FixedExpensesTable = ({
               <th>Due Date</th>
               <th>Amount</th>
               <th>Account</th>
+              <th>Category</th>
               <th>Paid Amount</th>
               <th>Status</th>
               <th>Actions</th>
@@ -252,6 +253,13 @@ const FixedExpensesTable = ({
                       value={expense.accountId}
                       onSave={(accountId) => handleUpdateExpense(expense.id, { accountId })}
                       accounts={accounts}
+                    />
+                  </td>
+                  <td>
+                    <InlineEdit
+                      value={expense.category || 'Uncategorized'}
+                      expense={expense}
+                      fieldName="category"
                     />
                   </td>
                   <td>

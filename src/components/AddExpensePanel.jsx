@@ -13,10 +13,12 @@ const AddExpensePanel = ({
     name: '',
     dueDate: '',
     amount: '',
-    accountId: ''
+    accountId: '',
+    category: ''
   });
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
+  const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
   
@@ -29,6 +31,20 @@ const AddExpensePanel = ({
       setTimeout(() => firstInputRef.current.focus(), 100);
     }
   }, [isOpen]);
+
+  // Load categories
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const categoriesData = await dbHelpers.getCategories();
+        setCategories(categoriesData);
+      } catch (error) {
+        logger.error('Error loading categories:', error);
+      }
+    };
+    
+    loadCategories();
+  }, []);
 
   // Focus trap for modal
   useEffect(() => {
@@ -87,7 +103,7 @@ const AddExpensePanel = ({
   }, [isOpen]);
 
   const handleClose = () => {
-    setFormData({ name: '', dueDate: '', amount: '', accountId: '' });
+    setFormData({ name: '', dueDate: '', amount: '', accountId: '', category: '' });
     setSelectedAccount(null);
     setErrors({});
     setIsDropdownOpen(false);
@@ -107,18 +123,25 @@ const AddExpensePanel = ({
     if (!formData.dueDate) newErrors.dueDate = 'Due date is required';
     if (!formData.amount || parseFloat(formData.amount) <= 0) newErrors.amount = 'Amount must be greater than 0';
     if (!formData.accountId) newErrors.accountId = 'Account is required';
+    if (!formData.category) newErrors.category = 'Category is required';
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSave = async () => {
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSaving(true);
     try {
       const expenseData = {
-        name: expense.name,
-        dueDate: expense.dueDate,
-        amount: parseFloat(expense.amount),
-        accountId: parseInt(expense.accountId),
+        name: formData.name,
+        dueDate: formData.dueDate,
+        amount: parseFloat(formData.amount),
+        accountId: parseInt(formData.accountId),
+        category: formData.category,
         paidAmount: 0,
         status: 'pending'
       };
@@ -305,6 +328,28 @@ const AddExpensePanel = ({
             </div>
             {errors.accountId && (
               <p className="mt-1 text-sm text-red-400">{errors.accountId}</p>
+            )}
+          </div>
+
+          {/* Category Selector */}
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Category
+            </label>
+            <select
+              value={formData.category}
+              onChange={(e) => handleInputChange('category', e.target.value)}
+              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white"
+            >
+              <option value="">Select category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.name}>
+                  {category.icon} {category.name}
+                </option>
+              ))}
+            </select>
+            {errors.category && (
+              <p className="mt-1 text-sm text-red-400">{errors.category}</p>
             )}
           </div>
         </div>

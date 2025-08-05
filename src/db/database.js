@@ -5,10 +5,11 @@ export class DigibookDB extends Dexie {
   constructor() {
     super('DigibookDB');
     
-    this.version(2).stores({
+    this.version(3).stores({
       accounts: '++id, name, type, currentBalance, isDefault',
       pendingTransactions: '++id, accountId, amount, category, description, createdAt',
-      fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status',
+      fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status, category',
+      categories: '++id, name, color, icon, isDefault',
       paycheckSettings: '++id, lastPaycheckDate, frequency',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details'
     });
@@ -25,6 +26,7 @@ export const dbHelpers = {
       await db.accounts.clear();
       await db.pendingTransactions.clear();
       await db.fixedExpenses.clear();
+      await db.categories.clear();
       await db.paycheckSettings.clear();
       await db.auditLogs.clear();
       logger.success("Database cleared successfully");
@@ -53,6 +55,9 @@ export const dbHelpers = {
           frequency: 'biweekly'
         });
       }
+
+      // Initialize default categories
+      await this.initializeDefaultCategories();
       
       logger.success("Database schema fixed");
     } catch (error) {
@@ -419,12 +424,87 @@ export const dbHelpers = {
     }
   },
 
+  // Category helpers
+  async getCategories() {
+    try {
+      const categories = await db.categories.toArray();
+      return categories;
+    } catch (error) {
+      logger.error('Error getting categories:', error);
+      return [];
+    }
+  },
+
+  async addCategory(category) {
+    try {
+      const id = await db.categories.add({
+        ...category,
+        createdAt: new Date().toISOString()
+      });
+      
+      await this.addAuditLog('CREATE', 'category', id, category);
+      
+      logger.success('Category added successfully: ' + id);
+      return id;
+    } catch (error) {
+      logger.error('Error adding category:', error);
+      throw new Error('Failed to add category');
+    }
+  },
+
+  async updateCategory(id, updates) {
+    try {
+      await db.categories.update(id, updates);
+      await this.addAuditLog('UPDATE', 'category', id, updates);
+      logger.success('Category updated successfully: ' + id);
+    } catch (error) {
+      logger.error('Error updating category:', error);
+      throw new Error('Failed to update category');
+    }
+  },
+
+  async deleteCategory(id) {
+    try {
+      await db.categories.delete(id);
+      await this.addAuditLog('DELETE', 'category', id, {});
+      logger.success('Category deleted successfully: ' + id);
+    } catch (error) {
+      logger.error('Error deleting category:', error);
+      throw new Error('Failed to delete category');
+    }
+  },
+
+  async initializeDefaultCategories() {
+    try {
+      const categoriesCount = await db.categories.count();
+      if (categoriesCount === 0) {
+        const defaultCategories = [
+          { name: 'Housing', color: '#3B82F6', icon: '🏠', isDefault: true },
+          { name: 'Utilities', color: '#10B981', icon: '⚡', isDefault: true },
+          { name: 'Insurance', color: '#F59E0B', icon: '🛡️', isDefault: true },
+          { name: 'Transportation', color: '#8B5CF6', icon: '🚗', isDefault: true },
+          { name: 'Subscriptions', color: '#EC4899', icon: '📱', isDefault: true },
+          { name: 'Debt', color: '#EF4444', icon: '💳', isDefault: true },
+          { name: 'Healthcare', color: '#06B6D4', icon: '🏥', isDefault: true },
+          { name: 'Education', color: '#84CC16', icon: '🎓', isDefault: true },
+          { name: 'Other', color: '#6B7280', icon: '📦', isDefault: true }
+        ];
+        
+        await db.categories.bulkAdd(defaultCategories);
+        logger.success('Default categories initialized');
+      }
+    } catch (error) {
+      logger.error('Error initializing default categories:', error);
+    }
+  },
+
   // Export/Import helpers
   async exportData() {
     try {
       const accounts = await this.getAccounts();
       const pendingTransactions = await this.getPendingTransactions();
       const fixedExpenses = await this.getFixedExpenses();
+      const categories = await this.getCategories();
       const paycheckSettings = await this.getPaycheckSettings();
       const auditLogs = await this.getAuditLogs();
       
@@ -432,6 +512,7 @@ export const dbHelpers = {
         accounts,
         pendingTransactions,
         fixedExpenses,
+        categories,
         paycheckSettings,
         auditLogs,
         exportedAt: new Date().toISOString()
@@ -447,11 +528,12 @@ export const dbHelpers = {
 
   async importData(data) {
     try {
-      await db.transaction('rw', db.accounts, db.pendingTransactions, db.fixedExpenses, db.paycheckSettings, db.auditLogs, async () => {
+      await db.transaction('rw', db.accounts, db.pendingTransactions, db.fixedExpenses, db.categories, db.paycheckSettings, db.auditLogs, async () => {
         // Clear existing data
         await db.accounts.clear();
         await db.pendingTransactions.clear();
         await db.fixedExpenses.clear();
+        await db.categories.clear();
         await db.paycheckSettings.clear();
         await db.auditLogs.clear();
         
@@ -464,6 +546,9 @@ export const dbHelpers = {
         }
         if (data.fixedExpenses) {
           await db.fixedExpenses.bulkAdd(data.fixedExpenses);
+        }
+        if (data.categories) {
+          await db.categories.bulkAdd(data.categories);
         }
         if (data.paycheckSettings) {
           await db.paycheckSettings.bulkAdd(data.paycheckSettings);

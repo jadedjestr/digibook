@@ -4,6 +4,7 @@ import { Download, Upload, Eye, Trash2, Lock, Shield, Database } from 'lucide-re
 import { dbHelpers } from '../db/database'
 import Papa from 'papaparse'
 import PaycheckManager from '../components/PaycheckManager'
+import CategoryManager from '../components/CategoryManager'
 
 const Settings = ({ onDataChange }) => {
   const [auditLogs, setAuditLogs] = useState([]);
@@ -266,6 +267,15 @@ const Settings = ({ onDataChange }) => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Category Management Section */}
+        <div className="glass-panel">
+          <div className="flex items-center space-x-2 mb-4">
+            <Database size={20} className="text-primary" />
+            <h3 className="text-lg font-semibold text-primary">Category Management</h3>
+          </div>
+          <CategoryManager onDataChange={onDataChange} />
         </div>
 
         {/* Audit Logs Section */}
