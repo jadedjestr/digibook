@@ -83,7 +83,11 @@ const CategoryManager = ({ onDataChange }) => {
       logger.success('Category deleted successfully');
     } catch (error) {
       logger.error('Error deleting category:', error);
-      alert('Failed to delete category. Please try again.');
+      if (error.message.includes('Cannot delete default categories')) {
+        alert('Default categories cannot be deleted. You can rename them instead.');
+      } else {
+        alert('Failed to delete category. Please try again.');
+      }
     }
   };
 
@@ -280,18 +284,18 @@ const CategoryManager = ({ onDataChange }) => {
             </div>
 
             {/* Hover Actions */}
-            {!category.isDefault && (
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm rounded-lg opacity-0 hover:opacity-100 transition-opacity duration-200 flex items-center justify-center space-x-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEditClick(category);
-                  }}
-                  className="p-2 hover:bg-white/20 rounded-full text-blue-400 hover:text-blue-300 transition-colors"
-                  title="Edit category"
-                >
-                  <Edit3 size={14} />
-                </button>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm rounded-lg opacity-0 hover:opacity-100 transition-opacity duration-200 flex items-center justify-center space-x-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditClick(category);
+                }}
+                className="p-2 hover:bg-white/20 rounded-full text-blue-400 hover:text-blue-300 transition-colors"
+                title="Edit category"
+              >
+                <Edit3 size={14} />
+              </button>
+              {!category.isDefault && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -302,8 +306,8 @@ const CategoryManager = ({ onDataChange }) => {
                 >
                   <Trash2 size={14} />
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         ))}
       </div>

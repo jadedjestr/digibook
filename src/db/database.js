@@ -466,6 +466,12 @@ export const dbHelpers = {
 
   async deleteCategory(id) {
     try {
+      // Check if category is default before deleting
+      const category = await db.categories.get(id);
+      if (category && category.isDefault) {
+        throw new Error('Cannot delete default categories');
+      }
+      
       await db.categories.delete(id);
       await this.addAuditLog('DELETE', 'category', id, {});
       logger.success('Category deleted successfully: ' + id);
