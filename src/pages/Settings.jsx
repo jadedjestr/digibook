@@ -14,16 +14,28 @@ const Settings = ({ onDataChange }) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const initializeSettings = async () => {
       try {
         logger.debug('Settings page initializing...');
+        console.log('Settings: Starting initialization...');
+        
+        // Test basic functionality first
+        console.log('Settings: Testing basic state...');
+        
+        // Test database connection
+        console.log('Settings: Testing database connection...');
         await loadAuditLogs();
+        
+        console.log('Settings: Initialization successful');
         setIsLoading(false);
         logger.debug('Settings page loaded successfully');
       } catch (error) {
+        console.error('Settings: Error during initialization:', error);
         logger.error('Error initializing Settings page:', error);
+        setError(error.message);
         setIsLoading(false);
       }
     };
@@ -181,10 +193,28 @@ const Settings = ({ onDataChange }) => {
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-8">
+          <h2 className="text-xl font-semibold text-red-400 mb-4">Settings Error</h2>
+          <p className="text-white/70 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="glass-button"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  try {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-primary text-shadow-lg">Settings</h1>
           <p className="text-secondary">Manage your data and preferences</p>
@@ -408,6 +438,24 @@ const Settings = ({ onDataChange }) => {
       </div>
     </div>
   );
+  } catch (error) {
+    console.error('Settings: Rendering error:', error);
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-8">
+          <h2 className="text-xl font-semibold text-red-400 mb-4">Rendering Error</h2>
+          <p className="text-white/70 mb-4">An error occurred while rendering the Settings page.</p>
+          <p className="text-white/50 text-sm mb-4">{error.message}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="glass-button"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
 };
 
 export default Settings; 
