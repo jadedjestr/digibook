@@ -7,6 +7,11 @@ const CategoryManager = ({ onDataChange }) => {
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
+  const [editingCategory, setEditingCategory] = useState({
+    name: '',
+    color: '#3B82F6',
+    icon: '📦'
+  });
   const [newCategory, setNewCategory] = useState({
     name: '',
     color: '#3B82F6',
@@ -56,6 +61,7 @@ const CategoryManager = ({ onDataChange }) => {
     try {
       await dbHelpers.updateCategory(id, updates);
       setEditingId(null);
+      setEditingCategory({ name: '', color: '#3B82F6', icon: '📦' });
       await loadCategories();
       onDataChange();
       logger.success('Category updated successfully');
@@ -79,6 +85,15 @@ const CategoryManager = ({ onDataChange }) => {
       logger.error('Error deleting category:', error);
       alert('Failed to delete category. Please try again.');
     }
+  };
+
+  const handleEditClick = (category) => {
+    setEditingId(category.id);
+    setEditingCategory({
+      name: category.name,
+      color: category.color,
+      icon: category.icon
+    });
   };
 
   const colorOptions = [
@@ -172,6 +187,71 @@ const CategoryManager = ({ onDataChange }) => {
         </div>
       )}
 
+      {/* Edit Category Form */}
+      {editingId && (
+        <div className="glass-panel border border-white/20">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-primary font-medium">Edit Category</h4>
+            <button
+              onClick={() => {
+                setEditingId(null);
+                setEditingCategory({ name: '', color: '#3B82F6', icon: '📦' });
+              }}
+              className="p-1 hover:bg-white/10 rounded"
+            >
+              <X size={16} className="text-white" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Name</label>
+              <input
+                type="text"
+                value={editingCategory.name}
+                onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                className="glass-input w-full"
+                placeholder="Category name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Icon</label>
+              <select
+                value={editingCategory.icon}
+                onChange={(e) => setEditingCategory({ ...editingCategory, icon: e.target.value })}
+                className="glass-input w-full"
+              >
+                {iconOptions.map(icon => (
+                  <option key={icon} value={icon}>{icon}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Color</label>
+              <select
+                value={editingCategory.color}
+                onChange={(e) => setEditingCategory({ ...editingCategory, color: e.target.value })}
+                className="glass-input w-full"
+              >
+                {colorOptions.map(color => (
+                  <option key={color} value={color} style={{ backgroundColor: color }}>
+                    {color}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => handleUpdateCategory(editingId, editingCategory)}
+                className="glass-button flex items-center space-x-2 w-full"
+              >
+                <Save size={16} />
+                <span>Update Category</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Compact Visual Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {categories.map((category) => (
@@ -197,9 +277,6 @@ const CategoryManager = ({ onDataChange }) => {
               <h4 className="text-primary font-medium text-sm truncate w-full">
                 {category.name}
               </h4>
-              {category.isDefault && (
-                <span className="text-xs text-secondary mt-1">Default</span>
-              )}
             </div>
 
             {/* Hover Actions */}
@@ -208,7 +285,7 @@ const CategoryManager = ({ onDataChange }) => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setEditingId(category.id);
+                    handleEditClick(category);
                   }}
                   className="p-2 hover:bg-white/20 rounded-full text-blue-400 hover:text-blue-300 transition-colors"
                   title="Edit category"
@@ -232,7 +309,7 @@ const CategoryManager = ({ onDataChange }) => {
       </div>
 
       {/* Add Category Button */}
-      {!isAdding && (
+      {!isAdding && !editingId && (
         <button
           onClick={() => setIsAdding(true)}
           className="glass-button flex items-center justify-center space-x-2 w-full py-3"
