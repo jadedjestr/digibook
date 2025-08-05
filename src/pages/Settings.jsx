@@ -13,9 +13,22 @@ const Settings = ({ onDataChange }) => {
   const [importType, setImportType] = useState('json');
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadAuditLogs();
+    const initializeSettings = async () => {
+      try {
+        logger.debug('Settings page initializing...');
+        await loadAuditLogs();
+        setIsLoading(false);
+        logger.debug('Settings page loaded successfully');
+      } catch (error) {
+        logger.error('Error initializing Settings page:', error);
+        setIsLoading(false);
+      }
+    };
+    
+    initializeSettings();
   }, []);
 
   const loadAuditLogs = async () => {
@@ -157,6 +170,17 @@ const Settings = ({ onDataChange }) => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-8">
+          <div className="glass-loading"></div>
+          <p className="text-white/70 mt-4">Loading Settings...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -169,7 +193,13 @@ const Settings = ({ onDataChange }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Paycheck Manager */}
-        <PaycheckManager onDataChange={onDataChange} />
+        {/* <PaycheckManager onDataChange={onDataChange} /> */}
+        <div className="glass-panel">
+          <div className="flex items-center space-x-2 mb-4">
+            <h3 className="text-lg font-semibold text-primary">Paycheck Manager</h3>
+          </div>
+          <p className="text-secondary">Paycheck manager temporarily disabled for debugging</p>
+        </div>
 
         {/* Import/Export Section */}
         <div className="glass-panel">
