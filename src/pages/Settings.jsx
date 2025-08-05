@@ -275,7 +275,9 @@ const Settings = ({ onDataChange }) => {
             <Database size={20} className="text-primary" />
             <h3 className="text-lg font-semibold text-primary">Category Management</h3>
           </div>
-          <CategoryManager onDataChange={onDataChange} />
+          <div className="category-manager-wrapper">
+            <CategoryManager onDataChange={onDataChange} />
+          </div>
         </div>
 
         {/* Audit Logs Section */}

@@ -24,6 +24,8 @@ const CategoryManager = ({ onDataChange }) => {
       setCategories(categoriesData);
     } catch (error) {
       logger.error('Error loading categories:', error);
+      // Set empty array instead of failing completely
+      setCategories([]);
     } finally {
       setIsLoading(false);
     }
@@ -89,6 +91,15 @@ const CategoryManager = ({ onDataChange }) => {
       <div className="text-center py-8">
         <div className="glass-loading"></div>
         <p className="text-white/70 mt-4">Loading categories...</p>
+      </div>
+    );
+  }
+
+  // Error state - show a simple message instead of crashing
+  if (categories === null) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-white/70">Unable to load categories. Please refresh the page.</p>
       </div>
     );
   }
