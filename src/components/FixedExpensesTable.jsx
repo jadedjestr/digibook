@@ -18,9 +18,24 @@ const FixedExpensesTable = ({
 }) => {
   const [editingId, setEditingId] = useState(null);
   const [editingField, setEditingField] = useState(null);
+  const [categories, setCategories] = useState([]);
 
   const paycheckService = new PaycheckService(paycheckSettings);
   const paycheckDates = paycheckService.calculatePaycheckDates();
+
+  // Load categories
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const categoriesData = await dbHelpers.getCategories();
+        setCategories(categoriesData);
+      } catch (error) {
+        logger.error('Error loading categories:', error);
+      }
+    };
+    
+    loadCategories();
+  }, []);
 
 
 
@@ -256,11 +271,18 @@ const FixedExpensesTable = ({
                     />
                   </td>
                   <td>
-                    <InlineEdit
-                      value={expense.category || 'Uncategorized'}
-                      expense={expense}
-                      fieldName="category"
-                    />
+                    <select
+                      value={expense.category || ''}
+                      onChange={(e) => handleUpdateExpense(expense.id, { category: e.target.value })}
+                      className="w-full px-3 py-2 glass-input rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white text-sm"
+                    >
+                      <option value="">Uncategorized</option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.name}>
+                          {category.icon} {category.name}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td>
                     <InlineEdit
