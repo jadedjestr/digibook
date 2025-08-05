@@ -439,6 +439,7 @@ export const dbHelpers = {
     try {
       const id = await db.categories.add({
         ...category,
+        isDefault: category.isDefault || false, // Ensure isDefault is explicitly set
         createdAt: new Date().toISOString()
       });
       

@@ -34,7 +34,13 @@ const CategoryManager = ({ onDataChange }) => {
     if (!newCategory.name.trim()) return;
 
     try {
-      await dbHelpers.addCategory(newCategory);
+      // Ensure user-created categories are not marked as default
+      const categoryData = {
+        ...newCategory,
+        isDefault: false
+      };
+      
+      await dbHelpers.addCategory(categoryData);
       setNewCategory({ name: '', color: '#3B82F6', icon: '📦' });
       setIsAdding(false);
       await loadCategories();
