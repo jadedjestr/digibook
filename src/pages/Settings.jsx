@@ -53,29 +53,7 @@ const Settings = ({ onDataChange }) => {
   };
 
   const handleExportCSV = async () => {
-
-  const handleExportJSON = async () => {
     setIsExporting(true);
-    try {
-      const data = await dbHelpers.exportData();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'digibook_backup_' + new Date().toISOString().split('T')[0] + '.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      logger.success('Data exported successfully');
-    } catch (error) {
-      logger.error('Error exporting JSON:', error);
-      alert('Error exporting data');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
     try {
       const data = await dbHelpers.exportData();
       
@@ -100,6 +78,28 @@ const Settings = ({ onDataChange }) => {
       logger.success('CSV data exported successfully');
     } catch (error) {
       logger.error('Error exporting CSV:', error);
+      alert('Error exporting data');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportJSON = async () => {
+    setIsExporting(true);
+    try {
+      const data = await dbHelpers.exportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'digibook_backup_' + new Date().toISOString().split('T')[0] + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      logger.success('Data exported successfully');
+    } catch (error) {
+      logger.error('Error exporting JSON:', error);
       alert('Error exporting data');
     } finally {
       setIsExporting(false);
