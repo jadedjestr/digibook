@@ -24,7 +24,6 @@ const CategoryManager = ({ onDataChange }) => {
       setCategories(categoriesData);
     } catch (error) {
       logger.error('Error loading categories:', error);
-      // Set empty array instead of failing completely
       setCategories([]);
     } finally {
       setIsLoading(false);
@@ -95,7 +94,6 @@ const CategoryManager = ({ onDataChange }) => {
     );
   }
 
-  // Error state - show a simple message instead of crashing
   if (categories === null) {
     return (
       <div className="text-center py-8">
@@ -168,44 +166,61 @@ const CategoryManager = ({ onDataChange }) => {
         </div>
       )}
 
-      {/* Categories List */}
-      <div className="space-y-3">
+      {/* Compact Visual Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {categories.map((category) => (
-          <div key={category.id} className="flex items-center justify-between p-4 glass-panel border border-white/10">
-            <div className="flex items-center space-x-3">
+          <div 
+            key={category.id} 
+            className="glass-card group relative cursor-pointer transition-all duration-200 hover:scale-105"
+            style={{ 
+              borderLeft: `4px solid ${category.color}`,
+              minHeight: '80px'
+            }}
+          >
+            {/* Category Content */}
+            <div className="flex flex-col items-center justify-center text-center p-2">
               <div 
-                className="w-8 h-8 rounded-full flex items-center justify-center text-lg"
-                style={{ backgroundColor: category.color + '20', color: category.color }}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-lg mb-2"
+                style={{ 
+                  backgroundColor: category.color + '20', 
+                  color: category.color 
+                }}
               >
                 {category.icon}
               </div>
-              <div>
-                <h4 className="text-primary font-medium">{category.name}</h4>
-                <p className="text-secondary text-sm">
-                  {category.isDefault ? 'Default Category' : 'Custom Category'}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              {!category.isDefault && (
-                <>
-                  <button
-                    onClick={() => setEditingId(category.id)}
-                    className="p-2 hover:bg-white/10 rounded text-blue-400 hover:text-blue-300"
-                    title="Edit category"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteCategory(category.id)}
-                    className="p-2 hover:bg-white/10 rounded text-red-400 hover:text-red-300"
-                    title="Delete category"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </>
+              <h4 className="text-primary font-medium text-sm truncate w-full">
+                {category.name}
+              </h4>
+              {category.isDefault && (
+                <span className="text-xs text-secondary mt-1">Default</span>
               )}
             </div>
+
+            {/* Hover Actions */}
+            {!category.isDefault && (
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center space-x-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingId(category.id);
+                  }}
+                  className="p-2 hover:bg-white/20 rounded-full text-blue-400 hover:text-blue-300 transition-colors"
+                  title="Edit category"
+                >
+                  <Edit3 size={14} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteCategory(category.id);
+                  }}
+                  className="p-2 hover:bg-white/20 rounded-full text-red-400 hover:text-red-300 transition-colors"
+                  title="Delete category"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -214,7 +229,7 @@ const CategoryManager = ({ onDataChange }) => {
       {!isAdding && (
         <button
           onClick={() => setIsAdding(true)}
-          className="glass-button flex items-center space-x-2 w-full"
+          className="glass-button flex items-center justify-center space-x-2 w-full py-3"
         >
           <Plus size={16} />
           <span>Add New Category</span>
