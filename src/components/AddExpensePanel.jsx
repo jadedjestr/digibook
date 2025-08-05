@@ -16,7 +16,7 @@ const AddExpensePanel = ({
     accountId: '',
     category: ''
   });
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
@@ -102,11 +102,23 @@ const AddExpensePanel = ({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen]);
 
+  // Click outside handler for dropdowns
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (isAccountDropdownOpen && !e.target.closest('.account-dropdown')) {
+        setIsAccountDropdownOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isAccountDropdownOpen]);
+
   const handleClose = () => {
     setFormData({ name: '', dueDate: '', amount: '', accountId: '', category: '' });
     setSelectedAccount(null);
     setErrors({});
-    setIsDropdownOpen(false);
+    setIsAccountDropdownOpen(false);
     onClose();
   };
 
@@ -180,7 +192,7 @@ const AddExpensePanel = ({
   const handleAccountSelect = (account) => {
     setSelectedAccount(account);
     setFormData(prev => ({ ...prev, accountId: account.id }));
-    setIsDropdownOpen(false);
+    setIsAccountDropdownOpen(false);
   };
 
   return (
@@ -280,10 +292,10 @@ const AddExpensePanel = ({
             <label className="block text-sm font-medium text-white mb-2">
               Account
             </label>
-            <div className="relative">
+            <div className="relative account-dropdown">
               <button
                 type="button"
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
                 className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-left"
               >
                 <div className="flex items-center justify-between">
@@ -295,14 +307,14 @@ const AddExpensePanel = ({
                   </div>
                   <ChevronDown 
                     size={16} 
-                    className={`text-white/50 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} 
+                    className={`text-white/50 transition-transform duration-200 ${isAccountDropdownOpen ? 'rotate-180' : ''}`} 
                   />
                 </div>
               </button>
 
               {/* Dropdown */}
-              {isDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 z-[1001] mt-2 liquid-glass border border-white/20 rounded-2xl shadow-2xl max-h-64 overflow-y-auto">
+              {isAccountDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 z-[1002] mt-2 liquid-glass border border-white/20 rounded-2xl shadow-2xl max-h-64 overflow-y-auto">
                   {accounts.map((account) => (
                     <button
                       key={account.id}
