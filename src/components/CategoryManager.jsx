@@ -171,7 +171,7 @@ const CategoryManager = ({ onDataChange }) => {
         {categories.map((category) => (
           <div 
             key={category.id} 
-            className="glass-card group relative cursor-pointer transition-all duration-200 hover:scale-105"
+            className="glass-card relative cursor-pointer transition-all duration-200 hover:scale-105"
             style={{ 
               borderLeft: `4px solid ${category.color}`,
               minHeight: '80px'
@@ -198,7 +198,7 @@ const CategoryManager = ({ onDataChange }) => {
 
             {/* Hover Actions */}
             {!category.isDefault && (
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center space-x-2">
+              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm rounded-lg opacity-0 hover:opacity-100 transition-opacity duration-200 flex items-center justify-center space-x-2">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
