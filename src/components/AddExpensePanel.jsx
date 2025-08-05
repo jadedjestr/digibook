@@ -16,7 +16,6 @@ const AddExpensePanel = ({
     accountId: '',
     category: ''
   });
-  const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
@@ -102,23 +101,12 @@ const AddExpensePanel = ({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen]);
 
-  // Click outside handler for dropdowns
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (isAccountDropdownOpen && !e.target.closest('.account-dropdown')) {
-        setIsAccountDropdownOpen(false);
-      }
-    };
-    
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isAccountDropdownOpen]);
+
 
   const handleClose = () => {
     setFormData({ name: '', dueDate: '', amount: '', accountId: '', category: '' });
     setSelectedAccount(null);
     setErrors({});
-    setIsAccountDropdownOpen(false);
     onClose();
   };
 
@@ -192,7 +180,6 @@ const AddExpensePanel = ({
   const handleAccountSelect = (account) => {
     setSelectedAccount(account);
     setFormData(prev => ({ ...prev, accountId: account.id }));
-    setIsAccountDropdownOpen(false);
   };
 
   return (
@@ -292,52 +279,23 @@ const AddExpensePanel = ({
             <label className="block text-sm font-medium text-white mb-2">
               Account
             </label>
-            <div className="relative account-dropdown">
-              <button
-                type="button"
-                onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
-                className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-left"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    {selectedAccount && getAccountIcon(selectedAccount.type)}
-                    <span className={selectedAccount ? 'text-white' : 'text-white/50'}>
-                      {selectedAccount ? selectedAccount.name : 'Select account'}
-                    </span>
-                  </div>
-                  <ChevronDown 
-                    size={16} 
-                    className={`text-white/50 transition-transform duration-200 ${isAccountDropdownOpen ? 'rotate-180' : ''}`} 
-                  />
-                </div>
-              </button>
-
-              {/* Dropdown */}
-              {isAccountDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 z-[1002] mt-2 liquid-glass border border-white/20 rounded-2xl shadow-2xl max-h-64 overflow-y-auto">
-                  {accounts.map((account) => (
-                    <button
-                      key={account.id}
-                      onClick={() => handleAccountSelect(account)}
-                      className="w-full flex items-center justify-between px-5 py-4 text-white hover:bg-white/10 transition-all duration-150 first:rounded-t-2xl last:rounded-b-2xl border-b border-white/10 last:border-b-0"
-                    >
-                      <div className="flex items-center space-x-3">
-                        {getAccountIcon(account.type)}
-                        <div className="text-left">
-                          <div className="font-medium">{account.name}</div>
-                          <div className="text-xs text-white/60 capitalize">{account.type}</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-medium text-green-400">
-                          {formatBalance(account.currentBalance)}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <select
+              value={formData.accountId}
+              onChange={(e) => {
+                const accountId = parseInt(e.target.value) || '';
+                const account = accounts.find(acc => acc.id === accountId);
+                setSelectedAccount(account);
+                handleInputChange('accountId', accountId);
+              }}
+              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white"
+            >
+              <option value="">Select account</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name} - {formatBalance(account.currentBalance)}
+                </option>
+              ))}
+            </select>
             {errors.accountId && (
               <p className="mt-1 text-sm text-red-400">{errors.accountId}</p>
             )}
