@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, Check, Edit3, X } from 'lucide-react';
-import StatusBadge from './StatusBadge';
-import AccountSelector from './AccountSelector';
-import AddExpensePanel from './AddExpensePanel';
-import { dbHelpers } from '../db/database';
-import { PaycheckService } from '../services/paycheckService';
+import React, { useState, useRef, useEffect } from 'react'
+import { logger } from "../utils/logger";;
+import { Plus, Trash2, Check, Edit3, X } from 'lucide-react'
+import StatusBadge from './StatusBadge'
+import AccountSelector from './AccountSelector'
+import AddExpensePanel from './AddExpensePanel'
+import { dbHelpers } from '../db/database'
+import { PaycheckService } from '../services/paycheckService'
+import { DateUtils } from '../utils/dateUtils'
 
 const FixedExpensesTable = ({ 
   expenses, 
@@ -24,12 +26,13 @@ const FixedExpensesTable = ({
 
   const handleUpdateExpense = async (id, updates) => {
     try {
+      logger.debug(`Updating expense with ID: ${id}`, updates);
       await dbHelpers.updateFixedExpense(id, updates);
       setEditingId(null);
       setEditingField(null);
       onDataChange();
     } catch (error) {
-      console.error('Error updating expense:', error);
+      logger.error("Error updating expense:", error);
       alert('Failed to update expense. Please try again.');
     }
   };
@@ -41,7 +44,7 @@ const FixedExpensesTable = ({
       await dbHelpers.deleteFixedExpense(id);
       onDataChange();
     } catch (error) {
-      console.error('Error deleting expense:', error);
+      logger.error("Error deleting expense:", error);
       alert('Failed to delete expense. Please try again.');
     }
   };
@@ -62,7 +65,7 @@ const FixedExpensesTable = ({
       
       onDataChange();
     } catch (error) {
-      console.error('Error marking as paid:', error);
+      logger.error("Error marking as paid:", error);
       alert('Failed to mark as paid. Please try again.');
     }
   };
@@ -70,8 +73,15 @@ const FixedExpensesTable = ({
   const InlineEdit = ({ value, onSave, type = 'text', expense = null, fieldName = null }) => {
     const [editValue, setEditValue] = useState(value);
     const [isEditing, setIsEditing] = useState(false);
+    const inputRef = useRef(null);
+
+    // Update editValue when value prop changes
+    useEffect(() => {
+      setEditValue(value);
+    }, [value]);
 
     const handleSave = () => {
+      logger.debug(`Saving value: ${editValue} for field: ${fieldName}`);
       if (expense && fieldName) {
         handleUpdateExpense(expense.id, { [fieldName]: editValue });
       } else {
@@ -85,42 +95,73 @@ const FixedExpensesTable = ({
       setIsEditing(false);
     };
 
+    const handleKeyDown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSave();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      }
+    };
+
+    // Focus input when editing starts
+    useEffect(() => {
+      if (isEditing && inputRef.current) {
+        inputRef.current.focus();
+        if (type === 'text') {
+          inputRef.current.select();
+        }
+      }
+    }, [isEditing, type]);
+
     if (isEditing) {
       return (
         <div className="flex items-center space-x-2">
           {type === 'number' ? (
             <input
+              ref={inputRef}
               type="number"
               value={editValue}
               onChange={(e) => setEditValue(parseFloat(e.target.value) || 0)}
+              onKeyDown={handleKeyDown}
               className="glass-input text-sm w-20"
               step="0.01"
               min="0"
             />
           ) : type === 'date' ? (
             <input
+              ref={inputRef}
               type="date"
               value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
+              onChange={(e) => {
+                logger.debug("Date input changed:", e.target.value);
+                setEditValue(e.target.value);
+              }}
+              onKeyDown={handleKeyDown}
               className="glass-input text-sm w-32"
             />
           ) : (
             <input
+              ref={inputRef}
               type="text"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="glass-input text-sm w-full"
             />
           )}
           <button
             onClick={handleSave}
             className="p-1 text-green-300 hover:text-green-200"
+            title="Save (Enter)"
           >
             <Check size={14} />
           </button>
           <button
             onClick={handleCancel}
             className="p-1 text-red-300 hover:text-red-200"
+            title="Cancel (Esc)"
           >
             <X size={14} />
           </button>
@@ -128,12 +169,22 @@ const FixedExpensesTable = ({
       );
     }
 
+    const formatDisplayValue = (val, type) => {
+      if (type === 'number') {
+        return `$${parseFloat(val).toFixed(2)}`;
+      } else if (type === 'date') {
+        if (!val) return '';
+        return DateUtils.formatDisplayDate(val);
+      }
+      return val;
+    };
+
     return (
       <div 
         className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors"
         onClick={() => setIsEditing(true)}
       >
-        {type === 'number' ? `$${parseFloat(value).toFixed(2)}` : value}
+        {formatDisplayValue(value, type)}
       </div>
     );
   };

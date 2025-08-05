@@ -1,3 +1,4 @@
+import { logger } from "./utils/logger";
 import React, { useState, useEffect } from 'react';
 import { Wallet, Clock, Calendar, Settings, Lock, Unlock } from 'lucide-react';
 import Sidebar from './components/Sidebar';
@@ -49,7 +50,7 @@ function App() {
       setPendingTransactions(transactionsData);
       setDefaultAccount(defaultAccountData);
     } catch (error) {
-      console.error('Error loading data:', error);
+      logger.error('Error loading data:', error);
       // Set empty arrays if there's an error
       setAccounts([]);
       setPendingTransactions([]);
@@ -123,7 +124,7 @@ function App() {
         accounts={accounts}
         pendingTransactions={pendingTransactions}
       />
-      <main className={`flex-1 overflow-auto transition-transform duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${isPanelOpen ? 'panel-open' : ''}`}>
+      <main className="flex-1 overflow-auto">
         <div className="p-6">
           {renderPage()}
         </div>

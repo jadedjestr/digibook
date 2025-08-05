@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, CreditCard, PiggyBank, Building2 } from 'lucide-react';
 
 const AccountSelector = ({ 
@@ -12,6 +13,8 @@ const AccountSelector = ({
 }) => {
   const [editValue, setEditValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const buttonRef = useRef(null);
 
   const handleSave = () => {
     onSave(editValue);
@@ -25,6 +28,14 @@ const AccountSelector = ({
   };
 
   const handleToggleDropdown = (event) => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX,
+        width: rect.width
+      });
+    }
     setIsOpen(!isOpen);
   };
 
@@ -74,9 +85,6 @@ const AccountSelector = ({
         
         {isOpen && (
           <div className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200">
-            <div className="p-2 text-white text-sm border-b border-white/20">
-              DEBUG: Dropdown is rendering with {accounts.length} accounts
-            </div>
 
             {accounts.map((account) => (
               <button
@@ -125,16 +133,61 @@ const AccountSelector = ({
   }
 
   return (
-    <div 
-      className="cursor-pointer hover:bg-white/10 px-4 py-3 rounded-lg transition-all duration-200"
-      onClick={() => onEdit && onEdit()}
-    >
-      <div className="flex items-center space-x-3">
-        {selectedAccount && getAccountIcon(selectedAccount.type)}
-        <span className={selectedAccount ? 'text-white font-medium' : 'text-gray-400'}>
-          {selectedAccount ? selectedAccount.name : 'Select account'}
-        </span>
+    <div className="relative">
+      <div 
+        ref={buttonRef}
+        className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors"
+        onClick={handleToggleDropdown}
+      >
+        <div className="flex items-center space-x-2">
+          {selectedAccount && getAccountIcon(selectedAccount.type)}
+          <span className={selectedAccount ? 'text-white' : 'text-gray-400'}>
+            {selectedAccount ? selectedAccount.name : 'Select account'}
+          </span>
+          <ChevronDown 
+            size={14} 
+            className={`text-secondary transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
+          />
+        </div>
       </div>
+      
+      {isOpen && createPortal(
+        <div 
+          className="fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-64 overflow-y-auto backdrop-blur-md"
+          style={{
+            top: dropdownPosition.top,
+            left: dropdownPosition.left,
+            width: Math.max(dropdownPosition.width, 300),
+            minWidth: '300px',
+            maxWidth: '400px'
+          }}
+        >
+          {accounts.map((account) => (
+            <button
+              key={account.id}
+              onClick={() => {
+                setEditValue(account.id);
+                handleSave();
+              }}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm text-white hover:bg-white/20 transition-all duration-150 first:rounded-t-lg last:rounded-b-lg border-b border-white/10 last:border-b-0"
+            >
+              <div className="flex items-center space-x-3">
+                {getAccountIcon(account.type)}
+                <div className="text-left">
+                  <div className="font-medium">{account.name}</div>
+                  <div className="text-xs text-gray-400 capitalize">{account.type}</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-medium text-green-400">
+                  {formatBalance(account.currentBalance)}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

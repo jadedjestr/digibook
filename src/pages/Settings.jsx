@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Download, Upload, Eye, Trash2, Lock, Shield, Database } from 'lucide-react';
-import { dbHelpers } from '../db/database';
-import Papa from 'papaparse';
-import PaycheckManager from '../components/PaycheckManager';
+import React, { useState, useEffect } from 'react'
+import { logger } from "../utils/logger";
+import { Download, Upload, Eye, Trash2, Lock, Shield, Database } from 'lucide-react'
+import { dbHelpers } from '../db/database'
+import Papa from 'papaparse'
+import PaycheckManager from '../components/PaycheckManager'
 
 const Settings = ({ onDataChange }) => {
   const [auditLogs, setAuditLogs] = useState([]);
@@ -21,9 +22,11 @@ const Settings = ({ onDataChange }) => {
       const logs = await dbHelpers.getAuditLogs();
       setAuditLogs(logs);
     } catch (error) {
-      console.error('Error loading audit logs:', error);
+      logger.error("Error loading audit logs:", error);
     }
   };
+
+  const handleExportCSV = async () => {
 
   const handleExportJSON = async () => {
     setIsExporting(true);
@@ -33,21 +36,20 @@ const Settings = ({ onDataChange }) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `digibook_backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = 'digibook_backup_' + new Date().toISOString().split('T')[0] + '.json';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      logger.success('Data exported successfully');
     } catch (error) {
-      console.error('Error exporting JSON:', error);
+      logger.error('Error exporting JSON:', error);
       alert('Error exporting data');
     } finally {
       setIsExporting(false);
     }
   };
 
-  const handleExportCSV = async () => {
-    setIsExporting(true);
     try {
       const data = await dbHelpers.exportData();
       
@@ -61,15 +63,17 @@ const Settings = ({ onDataChange }) => {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `${tableName}_${new Date().toISOString().split('T')[0]}.csv`;
+          a.download = tableName + '_' + new Date().toISOString().split('T')[0] + '.csv';
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
         }
       });
+      
+      logger.success('CSV data exported successfully');
     } catch (error) {
-      console.error('Error exporting CSV:', error);
+      logger.error('Error exporting CSV:', error);
       alert('Error exporting data');
     } finally {
       setIsExporting(false);
@@ -102,12 +106,13 @@ const Settings = ({ onDataChange }) => {
 
       if (confirm('This will overwrite all existing data. Are you sure?')) {
         await dbHelpers.importData(data);
+        logger.success('Data imported successfully');
         onDataChange();
         setImportFile(null);
         alert('Data imported successfully');
       }
     } catch (error) {
-      console.error('Error importing data:', error);
+      logger.error('Error importing data:', error);
       alert('Error importing data. Please check the file format.');
     } finally {
       setIsImporting(false);
@@ -118,10 +123,11 @@ const Settings = ({ onDataChange }) => {
     if (confirm('Are you sure you want to clear all audit logs?')) {
       try {
         await dbHelpers.clearAuditLogs();
+        logger.success('Audit logs cleared successfully');
         loadAuditLogs();
         alert('Audit logs cleared');
       } catch (error) {
-        console.error('Error clearing audit logs:', error);
+        logger.error('Error clearing audit logs:', error);
         alert('Error clearing audit logs');
       }
     }

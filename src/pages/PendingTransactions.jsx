@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react';
-import { dbHelpers } from '../db/database';
-import { useFinanceCalculations } from '../services/financeService';
+import React, { useState } from 'react'
+import { logger } from "../utils/logger";;
+import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react'
+import { dbHelpers } from '../db/database'
+import { useFinanceCalculations } from '../services/financeService'
 
 const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) => {
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
@@ -55,12 +56,13 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
       };
       
       await dbHelpers.addPendingTransaction(transactionToAdd);
+      logger.success('Transaction added successfully');
       setNewTransaction({ accountId: '', amount: 0, category: '', description: '', date: getTodayDate(), type: 'expense' });
       setIsAddingTransaction(false);
       setErrors({});
       onDataChange();
     } catch (error) {
-      console.error('Error adding transaction:', error);
+      logger.error('Error adding transaction:', error);
       setErrors({ general: 'Failed to add transaction. Please try again.' });
     } finally {
       setIsLoading(false);
@@ -72,7 +74,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
       await dbHelpers.completePendingTransaction(transactionId);
       onDataChange();
     } catch (error) {
-      console.error('Error completing transaction:', error);
+      logger.error("Error completing transaction:", error);
     }
   };
 
@@ -83,7 +85,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
       await dbHelpers.deletePendingTransaction(transactionId);
       onDataChange();
     } catch (error) {
-      console.error('Error deleting transaction:', error);
+      logger.error("Error deleting transaction:", error);
     }
   };
 
@@ -92,7 +94,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
       await dbHelpers.updatePendingTransaction(transactionId, updates);
       onDataChange();
     } catch (error) {
-      console.error('Error updating transaction:', error);
+      logger.error("Error updating transaction:", error);
     }
   };
 

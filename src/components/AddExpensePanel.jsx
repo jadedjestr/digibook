@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, CreditCard, PiggyBank, Building2, ChevronDown } from 'lucide-react';
-import { dbHelpers } from '../db/database';
+import React, { useState, useEffect, useRef } from 'react'
+import { logger } from "../utils/logger";;
+import { X, CreditCard, PiggyBank, Building2, ChevronDown } from 'lucide-react'
+import { dbHelpers } from '../db/database'
 
 const AddExpensePanel = ({ 
   isOpen, 
@@ -27,6 +28,39 @@ const AddExpensePanel = ({
     if (isOpen && firstInputRef.current) {
       setTimeout(() => firstInputRef.current.focus(), 100);
     }
+  }, [isOpen]);
+
+  // Focus trap for modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleTabKey = (e) => {
+      if (e.key === 'Tab') {
+        const focusableElements = panelRef.current?.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        
+        if (!focusableElements?.length) return;
+        
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement.focus();
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleTabKey);
+    return () => document.removeEventListener('keydown', handleTabKey);
   }, [isOpen]);
 
   // Prevent body scroll when panel is open
@@ -79,23 +113,22 @@ const AddExpensePanel = ({
   };
 
   const handleSave = async () => {
-    if (!validateForm()) return;
-
-    setIsSaving(true);
     try {
       const expenseData = {
-        name: formData.name.trim(),
-        dueDate: formData.dueDate,
-        amount: parseFloat(formData.amount),
-        accountId: formData.accountId,
-        paidAmount: 0
+        name: expense.name,
+        dueDate: expense.dueDate,
+        amount: parseFloat(expense.amount),
+        accountId: parseInt(expense.accountId),
+        paidAmount: 0,
+        status: 'pending'
       };
-
+      
       await dbHelpers.addFixedExpense(expenseData);
+      logger.success('Expense added successfully');
       onDataChange();
-      handleClose();
+      onClose();
     } catch (error) {
-      console.error('Error adding expense:', error);
+      logger.error('Error adding expense:', error);
       alert('Failed to add expense. Please try again.');
     } finally {
       setIsSaving(false);
@@ -127,21 +160,31 @@ const AddExpensePanel = ({
     setIsDropdownOpen(false);
   };
 
-  if (!isOpen) return null;
-
   return (
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-[9998]"
+        className="fixed inset-0 bg-black/20 backdrop-blur-[2px] transition-opacity duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
+        style={{
+          zIndex: 9999,
+          opacity: isOpen ? 1 : 0,
+          pointerEvents: isOpen ? 'auto' : 'none',
+          visibility: isOpen ? 'visible' : 'hidden'
+        }}
         onClick={handleClose}
       />
       
       {/* Panel */}
       <div 
         ref={panelRef}
-        className="fixed top-0 right-0 h-full w-[480px] bg-slate-800/95 backdrop-blur-[20px] border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] z-[9999] transform transition-transform duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
-        style={{ transform: isOpen ? 'translateX(0)' : 'translateX(100%)' }}
+        className="fixed top-0 right-0 h-full w-[450px] liquid-glass border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden"
+        style={{ 
+          transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+          boxSizing: 'border-box',
+          right: '0px',
+          zIndex: 10000,
+          visibility: isOpen ? 'visible' : 'hidden'
+        }}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-8 border-b border-white/10">
@@ -166,7 +209,7 @@ const AddExpensePanel = ({
               type="text"
               value={formData.name}
               onChange={(e) => handleInputChange('name', e.target.value)}
-              className="w-full px-5 py-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50"
+              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50"
               placeholder="Enter expense name"
             />
             {errors.name && (
@@ -183,7 +226,7 @@ const AddExpensePanel = ({
               type="date"
               value={formData.dueDate}
               onChange={(e) => handleInputChange('dueDate', e.target.value)}
-              className="w-full px-5 py-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white"
+              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white"
             />
             {errors.dueDate && (
               <p className="mt-1 text-sm text-red-400">{errors.dueDate}</p>
@@ -201,7 +244,7 @@ const AddExpensePanel = ({
               min="0"
               value={formData.amount}
               onChange={(e) => handleInputChange('amount', e.target.value)}
-              className="w-full px-5 py-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50"
+              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50"
               placeholder="0.00"
             />
             {errors.amount && (
@@ -218,7 +261,7 @@ const AddExpensePanel = ({
               <button
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full px-5 py-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-left"
+                className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-left"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
@@ -236,7 +279,7 @@ const AddExpensePanel = ({
 
               {/* Dropdown */}
               {isDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 z-[1001] mt-2 bg-slate-800/95 backdrop-blur-[16px] border border-white/20 rounded-2xl shadow-2xl max-h-64 overflow-y-auto">
+                <div className="absolute top-full left-0 right-0 z-[1001] mt-2 liquid-glass border border-white/20 rounded-2xl shadow-2xl max-h-64 overflow-y-auto">
                   {accounts.map((account) => (
                     <button
                       key={account.id}
@@ -271,13 +314,13 @@ const AddExpensePanel = ({
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="w-full px-6 py-4 bg-blue-500/20 text-blue-300 rounded-xl hover:bg-blue-500/30 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-6 py-4 glass-button bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSaving ? 'Saving...' : 'Save Expense'}
           </button>
           <button
             onClick={handleClose}
-            className="w-full px-6 py-4 bg-white/10 text-white/70 rounded-xl hover:bg-white/20 transition-colors font-medium"
+            className="w-full px-6 py-4 glass-button bg-white/10 text-white/70 hover:bg-white/20"
           >
             Cancel
           </button>

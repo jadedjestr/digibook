@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Star, Trash2, Edit3, Check, X, Wallet } from 'lucide-react';
 import { dbHelpers } from '../db/database';
-import { useFinanceCalculations } from '../services/financeService';
 
-const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
+const Accounts = ({ accounts, onDataChange }) => {
+  const [pendingTransactions, setPendingTransactions] = useState([]);
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -14,7 +14,28 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
     currentBalance: 0
   });
 
-  const { calculateProjectedBalance } = useFinanceCalculations(accounts, pendingTransactions);
+  useEffect(() => {
+    loadPendingTransactions();
+  }, []);
+
+  const loadPendingTransactions = async () => {
+    try {
+      const transactions = await dbHelpers.getPendingTransactions();
+      setPendingTransactions(transactions);
+    } catch (error) {
+      console.error('Error loading pending transactions:', error);
+    }
+  };
+
+  const calculateProjectedBalance = (account) => {
+    const pendingForAccount = pendingTransactions
+      .filter(t => t.accountId === account.id)
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    // For expenses (negative amounts), we add the pending amount to get the projected balance
+    // For income (positive amounts), we also add the pending amount
+    return account.currentBalance + pendingForAccount;
+  };
 
   const validateForm = () => {
     const newErrors = {};
@@ -270,7 +291,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
             </thead>
             <tbody>
               {accounts.map((account) => {
-                const projectedBalance = calculateProjectedBalance(account.id);
+                const projectedBalance = calculateProjectedBalance(account);
                 const isEditing = editingId === account.id;
                 
                 console.log('Account data:', account);
@@ -340,4 +361,4 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
   );
 };
 
-export default Accounts;
+export default Accounts; 

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { dbHelpers } from '../db/database';
-import { PaycheckService } from '../services/paycheckService';
-import PaySummaryCard from '../components/PaySummaryCard';
-import PayDateCountdownCard from '../components/PayDateCountdownCard';
-import FixedExpensesTable from '../components/FixedExpensesTable';
-import StartCycleButton from '../components/StartCycleButton';
+import React, { useState, useEffect } from 'react'
+import { logger } from "../utils/logger";
+import { dbHelpers } from '../db/database'
+import { PaycheckService } from '../services/paycheckService'
+import PaySummaryCard from '../components/PaySummaryCard'
+import PayDateCountdownCard from '../components/PayDateCountdownCard'
+import FixedExpensesTable from '../components/FixedExpensesTable'
+import StartCycleButton from '../components/StartCycleButton'
 
 const FixedExpenses = ({ accounts: accountsProp, onDataChange, isPanelOpen, setIsPanelOpen }) => {
   const [expenses, setExpenses] = useState([]);
@@ -28,15 +29,15 @@ const FixedExpenses = ({ accounts: accountsProp, onDataChange, isPanelOpen, setI
         dbHelpers.getPaycheckSettings()
       ]);
       
-      console.log('FixedExpenses - accountsProp:', accountsProp);
-      console.log('FixedExpenses - expensesData:', expensesData);
-      console.log('FixedExpenses - paycheckSettingsData:', paycheckSettingsData);
+      logger.component("FixedExpenses", "accountsProp", accountsProp);
+      logger.component("FixedExpenses", "expensesData", expensesData);
+      logger.component("FixedExpenses", "paycheckSettingsData", paycheckSettingsData);
       
       setExpenses(expensesData);
       setAccounts(accountsProp || []);
       setPaycheckSettings(paycheckSettingsData);
     } catch (error) {
-      console.error('Error loading fixed expenses data:', error);
+      logger.error("Error loading fixed expenses data:", error);
     } finally {
       setIsLoading(false);
     }
@@ -70,17 +71,16 @@ const FixedExpenses = ({ accounts: accountsProp, onDataChange, isPanelOpen, setI
         year: 'numeric' 
       });
       await dbHelpers.addAuditLog('RESET', 'fixedExpenses', 'all', {
-        message: `Reset Fixed Expenses for ${currentMonth}`
+        message: 'Reset Fixed Expenses for ' + currentMonth
       });
       
+      logger.success('New cycle started successfully');
       handleDataChange();
     } catch (error) {
-      console.error('Error starting new cycle:', error);
+      logger.error('Error starting new cycle:', error);
       alert('Failed to start new cycle. Please try again.');
     }
   };
-
-  // Check if we should prompt for monthly reset
   useEffect(() => {
     if (paycheckSettings && expenses.length > 0) {
       const shouldReset = paycheckService.shouldPromptReset(expenses, paycheckDates);

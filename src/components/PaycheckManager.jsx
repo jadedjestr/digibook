@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, Clock } from 'lucide-react';
-import { dbHelpers } from '../db/database';
-import { DateUtils } from '../utils/dateUtils';
+import React, { useState, useEffect } from 'react'
+import { logger } from "../utils/logger";
+import { Calendar, Clock } from 'lucide-react'
+import { dbHelpers } from '../db/database'
+import { DateUtils } from '../utils/dateUtils'
 
 const PaycheckManager = ({ onDataChange }) => {
   const [paycheckSettings, setPaycheckSettings] = useState({
@@ -25,46 +26,29 @@ const PaycheckManager = ({ onDataChange }) => {
         });
       }
     } catch (error) {
-      console.error('Error loading paycheck settings:', error);
+      logger.error("Error loading paycheck settings:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleSave = async () => {
-    if (!paycheckSettings.lastPaycheckDate) {
-      alert('Please enter your last paycheck date.');
-      return;
-    }
-
-    setIsSaving(true);
     try {
-      console.log('Saving paycheck settings:', paycheckSettings);
+      logger.debug('Saving paycheck settings:', paycheckSettings);
       await dbHelpers.updatePaycheckSettings(paycheckSettings);
-      console.log('Paycheck settings saved successfully');
-      
-      // Add a small delay to ensure database is updated
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      try {
-        onDataChange();
-      } catch (dataChangeError) {
-        console.error('Error in onDataChange:', dataChangeError);
-        // Don't fail the save if onDataChange fails
-      }
-      
-      alert('Paycheck settings saved successfully!');
+      logger.success('Paycheck settings saved successfully');
+      onDataChange();
     } catch (error) {
-      console.error('Error saving paycheck settings:', error);
-      console.error('Error details:', error.message, error.stack);
+      logger.error('Error saving paycheck settings:', error);
+      logger.error('Error details:', error.message, error.stack);
       alert('Failed to save paycheck settings. Please try again.');
-    } finally {
-      setIsSaving(false);
     }
   };
 
   const calculateNextPayDates = () => {
-    if (!paycheckSettings.lastPaycheckDate) return null;
+    if (!paycheckSettings.lastPaycheckDate) {
+      return null;
+    }
 
     // Parse the date string and ensure it's treated as local time
     const [year, month, day] = paycheckSettings.lastPaycheckDate.split('-').map(Number);

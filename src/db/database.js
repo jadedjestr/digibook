@@ -1,3 +1,4 @@
+import { logger } from "../utils/logger";
 import Dexie from 'dexie';
 
 export class DigibookDB extends Dexie {
@@ -26,9 +27,9 @@ export const dbHelpers = {
       await db.fixedExpenses.clear();
       await db.paycheckSettings.clear();
       await db.auditLogs.clear();
-      console.log('Database cleared successfully');
+      logger.success("Database cleared successfully");
     } catch (error) {
-      console.error('Error clearing database:', error);
+      logger.error("Error clearing database:", error);
     }
   },
 
@@ -53,9 +54,9 @@ export const dbHelpers = {
         });
       }
       
-      console.log('Database schema fixed');
+      logger.success("Database schema fixed");
     } catch (error) {
-      console.error('Error fixing database schema:', error);
+      logger.error("Error fixing database schema:", error);
     }
   },
 
@@ -93,10 +94,10 @@ export const dbHelpers = {
       if (!hasDefault) {
         const firstAccount = accounts[0];
         await db.accounts.update(firstAccount.id, { isDefault: true });
-        console.log('Set first account as default:', firstAccount.name);
+        logger.success(`Set first account as default: ${firstAccount.name}`);
       }
     } catch (error) {
-      console.error('Error ensuring default account:', error);
+      logger.error("Error ensuring default account:", error);
     }
   },
 
@@ -126,7 +127,7 @@ export const dbHelpers = {
       return null;
     } catch (error) {
       // If any error occurs, return null
-      console.warn('Error getting default account:', error);
+      logger.warn("Error getting default account:", error);
       return null;
     }
   },
@@ -146,237 +147,336 @@ export const dbHelpers = {
       // Set new default
       await db.accounts.update(accountId, { isDefault: true });
       
-      console.log('Default account set successfully:', accountId);
+      logger.success(`Default account set successfully: ${accountId}`);
     } catch (error) {
-      console.error('Error setting default account:', error);
+      logger.error("Error setting default account:", error);
       throw new Error('Failed to set default account');
     }
   },
 
   async addAccount(account) {
-    // Check if this is the first account
-    const accountCount = await db.accounts.count();
-    const isFirstAccount = accountCount === 0;
-    
-    const id = await db.accounts.add({
-      ...account,
-      isDefault: isFirstAccount, // Set first account as default
-      createdAt: new Date().toISOString()
-    });
-    
-    // Log the action
-    await this.addAuditLog('CREATE', 'account', id, {
-      name: account.name,
-      type: account.type,
-      balance: account.currentBalance,
-      isDefault: isFirstAccount
-    });
-    
-    return id;
+    try {
+      // Check if this is the first account
+      const accountCount = await db.accounts.count();
+      const isFirstAccount = accountCount === 0;
+      
+      const id = await db.accounts.add({
+        ...account,
+        isDefault: isFirstAccount, // Set first account as default
+        createdAt: new Date().toISOString()
+      });
+      
+      // Log the action
+      await this.addAuditLog('CREATE', 'account', id, {
+        name: account.name,
+        type: account.type,
+        balance: account.currentBalance,
+        isDefault: isFirstAccount
+      });
+      
+      logger.success('Account added successfully: ' + id);
+      return id;
+    } catch (error) {
+      logger.error('Error adding account:', error);
+      throw new Error('Failed to add account');
+    }
   },
 
   async updateAccount(id, updates) {
-    await db.accounts.update(id, updates);
-    
-    await this.addAuditLog('UPDATE', 'account', id, updates);
+    try {
+      await db.accounts.update(id, updates);
+      await this.addAuditLog('UPDATE', 'account', id, updates);
+      logger.success('Account updated successfully: ' + id);
+    } catch (error) {
+      logger.error('Error updating account:', error);
+      throw new Error('Failed to update account');
+    }
   },
 
   async deleteAccount(id) {
-    // Check if account has pending transactions
-    const pendingCount = await db.pendingTransactions.where('accountId').equals(id).count();
-    if (pendingCount > 0) {
-      throw new Error('Cannot delete account with pending transactions');
+    try {
+      // Check if account has pending transactions
+      const pendingCount = await db.pendingTransactions.where('accountId').equals(id).count();
+      if (pendingCount > 0) {
+        throw new Error('Cannot delete account with pending transactions');
+      }
+      
+      await db.accounts.delete(id);
+      await this.addAuditLog('DELETE', 'account', id, {});
+      logger.success('Account deleted successfully: ' + id);
+    } catch (error) {
+      logger.error('Error deleting account:', error);
+      throw error; // Re-throw to let caller handle
     }
-    
-    await db.accounts.delete(id);
-    
-    await this.addAuditLog('DELETE', 'account', id, {});
   },
 
   // Pending transaction helpers
   async getPendingTransactions() {
-    return await db.pendingTransactions.toArray();
+    try {
+      const transactions = await db.pendingTransactions.toArray();
+      return transactions;
+    } catch (error) {
+      logger.error('Error getting pending transactions:', error);
+      return [];
+    }
   },
 
   async addPendingTransaction(transaction) {
-    const id = await db.pendingTransactions.add({
-      ...transaction,
-      createdAt: new Date().toISOString()
-    });
-    
-    await this.addAuditLog('CREATE', 'pendingTransaction', id, {
-      accountId: transaction.accountId,
-      amount: transaction.amount,
-      category: transaction.category,
-      description: transaction.description
-    });
-    
-    return id;
+    try {
+      const id = await db.pendingTransactions.add({
+        ...transaction,
+        createdAt: new Date().toISOString()
+      });
+      
+      await this.addAuditLog('CREATE', 'pendingTransaction', id, {
+        accountId: transaction.accountId,
+        amount: transaction.amount,
+        category: transaction.category,
+        description: transaction.description
+      });
+      
+      logger.success('Pending transaction added successfully: ' + id);
+      return id;
+    } catch (error) {
+      logger.error('Error adding pending transaction:', error);
+      throw new Error('Failed to add pending transaction');
+    }
   },
 
   async updatePendingTransaction(id, updates) {
-    await db.pendingTransactions.update(id, updates);
-    
-    await this.addAuditLog('UPDATE', 'pendingTransaction', id, updates);
+    try {
+      await db.pendingTransactions.update(id, updates);
+      await this.addAuditLog('UPDATE', 'pendingTransaction', id, updates);
+      logger.success('Pending transaction updated successfully: ' + id);
+    } catch (error) {
+      logger.error('Error updating pending transaction:', error);
+      throw new Error('Failed to update pending transaction');
+    }
   },
 
   async deletePendingTransaction(id) {
-    await db.pendingTransactions.delete(id);
-    
-    await this.addAuditLog('DELETE', 'pendingTransaction', id, {});
+    try {
+      await db.pendingTransactions.delete(id);
+      await this.addAuditLog('DELETE', 'pendingTransaction', id, {});
+      logger.success('Pending transaction deleted successfully: ' + id);
+    } catch (error) {
+      logger.error('Error deleting pending transaction:', error);
+      throw new Error('Failed to delete pending transaction');
+    }
   },
 
   async completePendingTransaction(id) {
-    const transaction = await db.pendingTransactions.get(id);
-    if (!transaction) throw new Error('Transaction not found');
-    
-    // Update account balance
-    const account = await db.accounts.get(transaction.accountId);
-    if (!account) throw new Error('Account not found');
-    
-    // For expenses (negative amounts), we subtract the absolute value
-    // For income (positive amounts), we add the amount
-    const balanceChange = transaction.amount;
-    
-    await db.transaction('rw', db.accounts, db.pendingTransactions, async () => {
-      await db.accounts.update(transaction.accountId, {
-        currentBalance: account.currentBalance + balanceChange
+    try {
+      const transaction = await db.pendingTransactions.get(id);
+      if (!transaction) throw new Error('Transaction not found');
+      
+      // Update account balance
+      const account = await db.accounts.get(transaction.accountId);
+      if (!account) throw new Error('Account not found');
+      
+      // For expenses (negative amounts), we subtract the absolute value
+      // For income (positive amounts), we add the amount
+      const balanceChange = transaction.amount;
+      
+      await db.transaction('rw', db.accounts, db.pendingTransactions, async () => {
+        await db.accounts.update(transaction.accountId, {
+          currentBalance: account.currentBalance + balanceChange
+        });
+        await db.pendingTransactions.delete(id);
       });
-      await db.pendingTransactions.delete(id);
-    });
-    
-    await this.addAuditLog('COMPLETE', 'pendingTransaction', id, {
-      accountId: transaction.accountId,
-      amount: transaction.amount,
-      newBalance: account.currentBalance + balanceChange
-    });
+      
+      await this.addAuditLog('COMPLETE', 'pendingTransaction', id, {
+        accountId: transaction.accountId,
+        amount: transaction.amount,
+        newBalance: account.currentBalance + balanceChange
+      });
+      
+      logger.success('Pending transaction completed successfully: ' + id);
+    } catch (error) {
+      logger.error('Error completing pending transaction:', error);
+      throw new Error('Failed to complete pending transaction');
+    }
   },
 
   // Fixed expenses helpers
   async getFixedExpenses() {
-    return await db.fixedExpenses.toArray();
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+      return expenses;
+    } catch (error) {
+      logger.error('Error getting fixed expenses:', error);
+      return [];
+    }
   },
 
   async addFixedExpense(expense) {
-    const id = await db.fixedExpenses.add({
-      ...expense,
-      createdAt: new Date().toISOString()
-    });
-    
-    await this.addAuditLog('CREATE', 'fixedExpense', id, expense);
-    
-    return id;
+    try {
+      const id = await db.fixedExpenses.add({
+        ...expense,
+        createdAt: new Date().toISOString()
+      });
+      
+      await this.addAuditLog('CREATE', 'fixedExpense', id, expense);
+      
+      logger.success('Fixed expense added successfully: ' + id);
+      return id;
+    } catch (error) {
+      logger.error('Error adding fixed expense:', error);
+      throw new Error('Failed to add fixed expense');
+    }
   },
 
   async updateFixedExpense(id, updates) {
-    await db.fixedExpenses.update(id, updates);
-    
-    await this.addAuditLog('UPDATE', 'fixedExpense', id, updates);
+    try {
+      await db.fixedExpenses.update(id, updates);
+      await this.addAuditLog('UPDATE', 'fixedExpense', id, updates);
+      logger.success('Fixed expense updated successfully: ' + id);
+    } catch (error) {
+      logger.error('Error updating fixed expense:', error);
+      throw new Error('Failed to update fixed expense');
+    }
   },
 
   async deleteFixedExpense(id) {
-    await db.fixedExpenses.delete(id);
-    
-    await this.addAuditLog('DELETE', 'fixedExpense', id, {});
+    try {
+      await db.fixedExpenses.delete(id);
+      await this.addAuditLog('DELETE', 'fixedExpense', id, {});
+      logger.success('Fixed expense deleted successfully: ' + id);
+    } catch (error) {
+      logger.error('Error deleting fixed expense:', error);
+      throw new Error('Failed to delete fixed expense');
+    }
   },
 
   // Paycheck settings helpers
   async getPaycheckSettings() {
     try {
-      console.log('Getting paycheck settings...');
+      logger.debug("Getting paycheck settings...");
       const settings = await db.paycheckSettings.toArray();
-      console.log('Found settings:', settings);
+      logger.debug("Found settings:", settings);
       return settings.length > 0 ? settings[0] : null;
     } catch (error) {
-      console.error('Error getting paycheck settings:', error);
+      logger.error("Error getting paycheck settings:", error);
       return null;
     }
   },
 
   async updatePaycheckSettings(settings) {
     try {
-      console.log('updatePaycheckSettings called with:', settings);
+      logger.debug("updatePaycheckSettings called with:", settings);
       const existing = await this.getPaycheckSettings();
-      console.log('Existing settings:', existing);
+      logger.debug("Existing settings:", existing);
       
       if (existing) {
-        console.log('Updating existing settings with ID:', existing.id);
+        logger.debug(`Updating existing settings with ID: ${existing.id}`);
         await db.paycheckSettings.update(existing.id, settings);
       } else {
-        console.log('Adding new settings');
+        logger.debug("Adding new settings");
         await db.paycheckSettings.add(settings);
       }
       
       await this.addAuditLog('UPDATE', 'paycheckSettings', existing?.id || 'new', settings);
-      console.log('Paycheck settings updated successfully');
+      logger.success("Paycheck settings updated successfully");
     } catch (error) {
-      console.error('Error in updatePaycheckSettings:', error);
+      logger.error("Error in updatePaycheckSettings:", error);
       throw error;
     }
   },
 
   // Audit log helpers
   async addAuditLog(actionType, entityType, entityId, details) {
-    await db.auditLogs.add({
-      timestamp: new Date().toISOString(),
-      actionType,
-      entityType,
-      entityId,
-      details: JSON.stringify(details)
-    });
+    try {
+      await db.auditLogs.add({
+        timestamp: new Date().toISOString(),
+        actionType,
+        entityType,
+        entityId,
+        details: JSON.stringify(details)
+      });
+    } catch (error) {
+      logger.error('Error adding audit log:', error);
+      // Don't throw here - audit logs shouldn't break the main functionality
+    }
   },
 
   async getAuditLogs() {
-    return await db.auditLogs.orderBy('timestamp').reverse().toArray();
+    try {
+      const logs = await db.auditLogs.orderBy('timestamp').reverse().toArray();
+      return logs;
+    } catch (error) {
+      logger.error('Error getting audit logs:', error);
+      return [];
+    }
   },
 
   async clearAuditLogs() {
-    await db.auditLogs.clear();
+    try {
+      await db.auditLogs.clear();
+      logger.success('Audit logs cleared successfully');
+    } catch (error) {
+      logger.error('Error clearing audit logs:', error);
+      throw new Error('Failed to clear audit logs');
+    }
   },
 
   // Export/Import helpers
   async exportData() {
-    const accounts = await this.getAccounts();
-    const pendingTransactions = await this.getPendingTransactions();
-    const fixedExpenses = await this.getFixedExpenses();
-    const paycheckSettings = await this.getPaycheckSettings();
-    const auditLogs = await this.getAuditLogs();
-    
-    return {
-      accounts,
-      pendingTransactions,
-      fixedExpenses,
-      paycheckSettings,
-      auditLogs,
-      exportedAt: new Date().toISOString()
-    };
+    try {
+      const accounts = await this.getAccounts();
+      const pendingTransactions = await this.getPendingTransactions();
+      const fixedExpenses = await this.getFixedExpenses();
+      const paycheckSettings = await this.getPaycheckSettings();
+      const auditLogs = await this.getAuditLogs();
+      
+      const exportData = {
+        accounts,
+        pendingTransactions,
+        fixedExpenses,
+        paycheckSettings,
+        auditLogs,
+        exportedAt: new Date().toISOString()
+      };
+      
+      logger.success('Data exported successfully');
+      return exportData;
+    } catch (error) {
+      logger.error('Error exporting data:', error);
+      throw new Error('Failed to export data');
+    }
   },
 
   async importData(data) {
-    await db.transaction('rw', db.accounts, db.pendingTransactions, db.fixedExpenses, db.paycheckSettings, db.auditLogs, async () => {
-      // Clear existing data
-      await db.accounts.clear();
-      await db.pendingTransactions.clear();
-      await db.fixedExpenses.clear();
-      await db.paycheckSettings.clear();
-      await db.auditLogs.clear();
+    try {
+      await db.transaction('rw', db.accounts, db.pendingTransactions, db.fixedExpenses, db.paycheckSettings, db.auditLogs, async () => {
+        // Clear existing data
+        await db.accounts.clear();
+        await db.pendingTransactions.clear();
+        await db.fixedExpenses.clear();
+        await db.paycheckSettings.clear();
+        await db.auditLogs.clear();
+        
+        // Import new data
+        if (data.accounts) {
+          await db.accounts.bulkAdd(data.accounts);
+        }
+        if (data.pendingTransactions) {
+          await db.pendingTransactions.bulkAdd(data.pendingTransactions);
+        }
+        if (data.fixedExpenses) {
+          await db.fixedExpenses.bulkAdd(data.fixedExpenses);
+        }
+        if (data.paycheckSettings) {
+          await db.paycheckSettings.bulkAdd(data.paycheckSettings);
+        }
+        if (data.auditLogs) {
+          await db.auditLogs.bulkAdd(data.auditLogs);
+        }
+      });
       
-      // Import new data
-      if (data.accounts) {
-        await db.accounts.bulkAdd(data.accounts);
-      }
-      if (data.pendingTransactions) {
-        await db.pendingTransactions.bulkAdd(data.pendingTransactions);
-      }
-      if (data.fixedExpenses) {
-        await db.fixedExpenses.bulkAdd(data.fixedExpenses);
-      }
-      if (data.paycheckSettings) {
-        await db.paycheckSettings.bulkAdd(data.paycheckSettings);
-      }
-      if (data.auditLogs) {
-        await db.auditLogs.bulkAdd(data.auditLogs);
-      }
-    });
+      logger.success('Data imported successfully');
+    } catch (error) {
+      logger.error('Error importing data:', error);
+      throw new Error('Failed to import data');
+    }
   }
 }; 
