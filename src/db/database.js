@@ -9,7 +9,7 @@ export class DigibookDB extends Dexie {
       accounts: '++id, name, type, currentBalance, isDefault',
       pendingTransactions: '++id, accountId, amount, category, description, createdAt',
       fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status, category',
-      categories: '++id, name, color, icon, isDefault',
+      categories: '++id, name, color, icon, isDefault, &name', // &name creates unique constraint
       paycheckSettings: '++id, lastPaycheckDate, frequency',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details'
     });
@@ -56,7 +56,13 @@ export const dbHelpers = {
         });
       }
 
-      // Initialize default categories
+      // Clean up any duplicate categories first
+      const duplicatesRemoved = await this.cleanupDuplicateCategories();
+      if (duplicatesRemoved > 0) {
+        logger.info(`Removed ${duplicatesRemoved} duplicate categories during schema fix`);
+      }
+
+      // Initialize default categories (will only add missing ones)
       await this.initializeDefaultCategories();
       
       logger.success("Database schema fixed");
@@ -524,25 +530,70 @@ export const dbHelpers = {
 
   async initializeDefaultCategories() {
     try {
-      const categoriesCount = await db.categories.count();
-      if (categoriesCount === 0) {
-        const defaultCategories = [
-          { name: 'Housing', color: '#3B82F6', icon: '🏠', isDefault: true },
-          { name: 'Utilities', color: '#10B981', icon: '⚡', isDefault: true },
-          { name: 'Insurance', color: '#F59E0B', icon: '🛡️', isDefault: true },
-          { name: 'Transportation', color: '#8B5CF6', icon: '🚗', isDefault: true },
-          { name: 'Subscriptions', color: '#EC4899', icon: '📱', isDefault: true },
-          { name: 'Debt', color: '#EF4444', icon: '💳', isDefault: true },
-          { name: 'Healthcare', color: '#06B6D4', icon: '🏥', isDefault: true },
-          { name: 'Education', color: '#84CC16', icon: '🎓', isDefault: true },
-          { name: 'Other', color: '#6B7280', icon: '📦', isDefault: true }
-        ];
-        
-        await db.categories.bulkAdd(defaultCategories);
-        logger.success('Default categories initialized');
+      // Get existing categories to check for duplicates
+      const existingCategories = await db.categories.toArray();
+      const existingCategoryNames = existingCategories.map(cat => cat.name.toLowerCase());
+      
+      const defaultCategories = [
+        { name: 'Housing', color: '#3B82F6', icon: '🏠', isDefault: true },
+        { name: 'Utilities', color: '#10B981', icon: '⚡', isDefault: true },
+        { name: 'Insurance', color: '#F59E0B', icon: '🛡️', isDefault: true },
+        { name: 'Transportation', color: '#8B5CF6', icon: '🚗', isDefault: true },
+        { name: 'Subscriptions', color: '#EC4899', icon: '📱', isDefault: true },
+        { name: 'Debt', color: '#EF4444', icon: '💳', isDefault: true },
+        { name: 'Healthcare', color: '#06B6D4', icon: '🏥', isDefault: true },
+        { name: 'Education', color: '#84CC16', icon: '🎓', isDefault: true },
+        { name: 'Other', color: '#6B7280', icon: '📦', isDefault: true }
+      ];
+      
+      // Only add categories that don't already exist
+      const categoriesToAdd = defaultCategories.filter(category => 
+        !existingCategoryNames.includes(category.name.toLowerCase())
+      );
+      
+      if (categoriesToAdd.length > 0) {
+        await db.categories.bulkAdd(categoriesToAdd);
+        logger.success(`Added ${categoriesToAdd.length} default categories`);
+      } else {
+        logger.info('All default categories already exist');
       }
     } catch (error) {
       logger.error('Error initializing default categories:', error);
+    }
+  },
+
+  async cleanupDuplicateCategories() {
+    try {
+      const categories = await db.categories.toArray();
+      const seenNames = new Set();
+      const duplicates = [];
+      
+      // Find duplicates (keep the first occurrence, mark others for deletion)
+      for (const category of categories) {
+        const nameLower = category.name.toLowerCase();
+        if (seenNames.has(nameLower)) {
+          duplicates.push(category.id);
+        } else {
+          seenNames.add(nameLower);
+        }
+      }
+      
+      if (duplicates.length > 0) {
+        // Delete duplicate categories
+        for (const duplicateId of duplicates) {
+          await db.categories.delete(duplicateId);
+        }
+        
+        logger.success(`Cleaned up ${duplicates.length} duplicate categories`);
+        await this.addAuditLog('CLEANUP', 'category', null, { 
+          duplicatesRemoved: duplicates.length 
+        });
+      }
+      
+      return duplicates.length;
+    } catch (error) {
+      logger.error('Error cleaning up duplicate categories:', error);
+      throw new Error('Failed to cleanup duplicate categories');
     }
   },
 
