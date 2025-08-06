@@ -375,4 +375,22 @@
   .overlay-panel {
     z-index: 1000;
   }
+
+  /* Privacy hidden styling */
+  .privacy-hidden {
+    background: linear-gradient(90deg, #555 0%, #777 50%, #555 100%);
+    background-size: 200% 100%;
+    animation: privacy-shimmer 20s ease-in-out infinite;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: monospace;
+    letter-spacing: 2px;
+    color: #777;
+  }
+
+  @keyframes privacy-shimmer {
+    0% { background-position: -200% 0; }
+    50% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
 } 

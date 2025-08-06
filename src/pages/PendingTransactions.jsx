@@ -3,6 +3,7 @@ import { logger } from "../utils/logger";;
 import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react'
 import { dbHelpers } from '../db/database'
 import { useFinanceCalculations } from '../services/financeService'
+import PrivacyWrapper from '../components/PrivacyWrapper'
 
 const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) => {
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
@@ -133,7 +134,11 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
         const selectedOption = options.find(option => option.value == value);
         return selectedOption ? selectedOption.label : value;
       }
-      return type === 'number' ? `$${parseFloat(value).toFixed(2)}` : value;
+      return type === 'number' ? (
+        <PrivacyWrapper>
+          ${parseFloat(value).toFixed(2)}
+        </PrivacyWrapper>
+      ) : value;
     };
 
     if (isEditing) {
@@ -412,7 +417,9 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
                       <span className={`font-semibold ${
                         projectedBalance < (account?.currentBalance || 0) ? 'text-yellow-400' : 'text-primary'
                       }`}>
-                        ${projectedBalance.toFixed(2)}
+                        <PrivacyWrapper>
+                          ${projectedBalance.toFixed(2)}
+                        </PrivacyWrapper>
                       </span>
                     </td>
                     <td>

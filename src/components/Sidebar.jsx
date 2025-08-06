@@ -1,6 +1,8 @@
 import React from 'react';
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock, Eye, EyeOff } from 'lucide-react';
 import { useFinanceCalculations } from '../services/financeService';
+import PrivacyWrapper from './PrivacyWrapper';
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 const Sidebar = ({ 
   navigation, 
@@ -16,6 +18,7 @@ const Sidebar = ({
     getDefaultAccountProjectedBalance, 
     calculateLiquidBalance 
   } = useFinanceCalculations(accounts, pendingTransactions);
+  const { isHidden, toggleHidden } = usePrivacy();
 
   const defaultAccount = getDefaultAccount;
   const projectedBalance = getDefaultAccountProjectedBalance;
@@ -31,11 +34,11 @@ const Sidebar = ({
 
       {/* Summary Cards */}
       <div className="p-4 space-y-4">
-        {/* Default Account Projected Balance */}
+        {/* Liquid Cash */}
         {defaultAccount && (
           <div className="glass-card">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-secondary">Default Account</span>
+              <span className="text-sm font-medium text-secondary">Liquid Cash</span>
               {defaultAccount.isDefault && (
                 <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full backdrop-blur-sm">
                   Default
@@ -45,7 +48,9 @@ const Sidebar = ({
             <div className={`balance-display ${
               projectedBalance < defaultAccount.currentBalance ? 'warning' : ''
             }`}>
-              ${projectedBalance.toFixed(2)}
+              <PrivacyWrapper>
+                ${projectedBalance.toFixed(2)}
+              </PrivacyWrapper>
             </div>
             <div className="text-xs text-muted mt-1">
               {defaultAccount.name} • Projected
@@ -57,7 +62,9 @@ const Sidebar = ({
         <div className="glass-card">
           <div className="text-sm font-medium text-secondary mb-3">Liquid Balance</div>
           <div className="balance-display">
-            ${liquidBalance.toFixed(2)}
+            <PrivacyWrapper>
+              ${liquidBalance.toFixed(2)}
+            </PrivacyWrapper>
           </div>
           <div className="text-xs text-muted mt-1">
             Across all accounts
@@ -91,8 +98,15 @@ const Sidebar = ({
         </ul>
       </nav>
 
-      {/* Lock Button */}
-      <div className="p-4 border-t border-white/20">
+      {/* Privacy and Lock Buttons */}
+      <div className="p-4 border-t border-white/20 space-y-2">
+        <button
+          onClick={toggleHidden}
+          className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 glass-focus text-secondary hover:bg-white/10 hover:text-white"
+        >
+          {isHidden ? <EyeOff size={20} /> : <Eye size={20} />}
+          <span className="font-medium">{isHidden ? 'Show Values' : 'Hide Values'}</span>
+        </button>
         <button
           onClick={onToggleLock}
           className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 glass-focus text-secondary hover:bg-white/10 hover:text-white"

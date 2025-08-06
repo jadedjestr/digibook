@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Star, Trash2, Edit3, Check, X, Wallet } from 'lucide-react';
 import { dbHelpers } from '../db/database';
+import PrivacyWrapper from '../components/PrivacyWrapper';
 
 const Accounts = ({ accounts, onDataChange }) => {
   const [pendingTransactions, setPendingTransactions] = useState([]);
@@ -164,7 +165,11 @@ const Accounts = ({ accounts, onDataChange }) => {
         title="Click to edit"
       >
         <span className="text-primary group-hover:text-white transition-colors">
-          {type === 'number' ? `$${parseFloat(value).toFixed(2)}` : value}
+          {type === 'number' ? (
+            <PrivacyWrapper>
+              ${parseFloat(value).toFixed(2)}
+            </PrivacyWrapper>
+          ) : value}
         </span>
         <Edit3 size={14} className="inline ml-2 text-muted group-hover:text-white transition-colors opacity-0 group-hover:opacity-100" />
       </div>
@@ -325,7 +330,9 @@ const Accounts = ({ accounts, onDataChange }) => {
                       <span className={`font-semibold ${
                         projectedBalance < account.currentBalance ? 'text-yellow-400' : 'text-primary'
                       }`}>
-                        ${projectedBalance.toFixed(2)}
+                        <PrivacyWrapper>
+                          ${projectedBalance.toFixed(2)}
+                        </PrivacyWrapper>
                       </span>
                     </td>
                     <td>

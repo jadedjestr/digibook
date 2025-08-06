@@ -7,6 +7,7 @@ import AddExpensePanel from './AddExpensePanel'
 import { dbHelpers } from '../db/database'
 import { PaycheckService } from '../services/paycheckService'
 import { DateUtils } from '../utils/dateUtils'
+import PrivacyWrapper from './PrivacyWrapper'
 
 const FixedExpensesTable = ({ 
   expenses, 
@@ -194,7 +195,11 @@ const FixedExpensesTable = ({
 
     const formatDisplayValue = (val, type) => {
       if (type === 'number') {
-        return `$${parseFloat(val).toFixed(2)}`;
+        return (
+          <PrivacyWrapper>
+            ${parseFloat(val).toFixed(2)}
+          </PrivacyWrapper>
+        );
       } else if (type === 'date') {
         if (!val) return '';
         return DateUtils.formatDisplayDate(val);

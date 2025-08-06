@@ -8,6 +8,7 @@ import FixedExpenses from './pages/FixedExpenses';
 import SettingsPage from './pages/Settings';
 import PINLock from './components/PINLock';
 import { dbHelpers } from './db/database';
+import { PrivacyProvider } from './contexts/PrivacyContext';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('accounts');
@@ -115,22 +116,24 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <Sidebar
-        navigation={navigation}
-        currentPage={currentPage}
-        onPageChange={setCurrentPage}
-        onToggleLock={toggleLock}
-        isLocked={isLocked}
-        accounts={accounts}
-        pendingTransactions={pendingTransactions}
-      />
-      <main className="flex-1 overflow-auto">
-        <div className="p-6">
-          {renderPage()}
-        </div>
-      </main>
-    </div>
+    <PrivacyProvider>
+      <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <Sidebar
+          navigation={navigation}
+          currentPage={currentPage}
+          onPageChange={setCurrentPage}
+          onToggleLock={toggleLock}
+          isLocked={isLocked}
+          accounts={accounts}
+          pendingTransactions={pendingTransactions}
+        />
+        <main className="flex-1 overflow-auto">
+          <div className="p-6">
+            {renderPage()}
+          </div>
+        </main>
+      </div>
+    </PrivacyProvider>
   );
 }
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import PrivacyWrapper from './PrivacyWrapper';
 
 const ProjectedBalanceCard = ({ projectedBalance, payThisWeekTotal, defaultAccountName }) => {
   const balanceAfterExpenses = projectedBalance - payThisWeekTotal;
@@ -21,7 +22,9 @@ const ProjectedBalanceCard = ({ projectedBalance, payThisWeekTotal, defaultAccou
           <div className={`text-2xl font-bold mb-1 ${
             isPositive ? 'text-green-300' : 'text-red-300'
           }`}>
-            ${balanceAfterExpenses.toFixed(2)}
+            <PrivacyWrapper>
+              ${balanceAfterExpenses.toFixed(2)}
+            </PrivacyWrapper>
           </div>
           <div className="text-xs text-secondary">Projected Balance</div>
         </div>
