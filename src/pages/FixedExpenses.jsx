@@ -4,10 +4,11 @@ import { dbHelpers } from '../db/database'
 import { PaycheckService } from '../services/paycheckService'
 import PaySummaryCard from '../components/PaySummaryCard'
 import PayDateCountdownCard from '../components/PayDateCountdownCard'
+import ProjectedBalanceCard from '../components/ProjectedBalanceCard'
 import FixedExpensesTable from '../components/FixedExpensesTable'
 import StartCycleButton from '../components/StartCycleButton'
 
-const FixedExpenses = ({ accounts: accountsProp, onDataChange, isPanelOpen, setIsPanelOpen }) => {
+const FixedExpenses = ({ accounts: accountsProp, pendingTransactions = [], onDataChange, isPanelOpen, setIsPanelOpen }) => {
   const [expenses, setExpenses] = useState([]);
   const [accounts, setAccounts] = useState(accountsProp || []);
   const [paycheckSettings, setPaycheckSettings] = useState(null);
@@ -51,6 +52,25 @@ const FixedExpenses = ({ accounts: accountsProp, onDataChange, isPanelOpen, setI
   const paycheckService = new PaycheckService(paycheckSettings);
   const paycheckDates = paycheckService.calculatePaycheckDates();
   const summaryTotals = paycheckService.calculateSummaryTotals(expenses, paycheckDates);
+  
+  // Calculate overdue expenses total
+  const overdueExpenses = expenses.filter(expense => {
+    const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
+    return status === 'Overdue';
+  });
+  
+  const overdueTotal = overdueExpenses.reduce((total, expense) => {
+    return total + (expense.amount - expense.paidAmount);
+  }, 0);
+  
+  // Calculate projected balance for default account
+  const defaultAccount = accounts.find(account => account.isDefault === true);
+  const projectedBalance = defaultAccount ? (() => {
+    const pendingForAccount = pendingTransactions
+      .filter(t => parseInt(t.accountId) === defaultAccount.id)
+      .reduce((sum, t) => sum + t.amount, 0);
+    return defaultAccount.currentBalance + pendingForAccount;
+  })() : 0;
   
 
 
@@ -165,16 +185,22 @@ const FixedExpenses = ({ accounts: accountsProp, onDataChange, isPanelOpen, setI
 
       {/* Summary Cards */}
       {paycheckSettings && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <PaySummaryCard
             payThisWeekTotal={summaryTotals.payThisWeek}
             payNextCheckTotal={summaryTotals.payNextCheck}
+            overdueTotal={overdueTotal}
           />
           <PayDateCountdownCard
             nextPayDate={paycheckDates.nextPayDate}
             followingPayDate={paycheckDates.followingPayDate}
             daysUntilNextPay={paycheckDates.daysUntilNextPay}
             daysUntilFollowingPay={paycheckDates.daysUntilFollowingPay}
+          />
+          <ProjectedBalanceCard
+            projectedBalance={projectedBalance}
+            payThisWeekTotal={summaryTotals.payThisWeek}
+            defaultAccountName={defaultAccount?.name || 'Default Account'}
           />
         </div>
       )}

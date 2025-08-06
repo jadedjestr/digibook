@@ -98,7 +98,9 @@ const FixedExpensesTable = ({
     const handleSave = () => {
       logger.debug(`Saving value: ${editValue} for field: ${fieldName}`);
       if (expense && fieldName) {
-        handleUpdateExpense(expense.id, { [fieldName]: editValue });
+        // Parse number values properly for decimal amounts
+        const valueToSave = type === 'number' ? parseFloat(editValue) || 0 : editValue;
+        handleUpdateExpense(expense.id, { [fieldName]: valueToSave });
       } else {
         onSave(editValue);
       }
@@ -138,7 +140,13 @@ const FixedExpensesTable = ({
               ref={inputRef}
               type="number"
               value={editValue}
-              onChange={(e) => setEditValue(parseFloat(e.target.value) || 0)}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Allow empty string and valid numbers, including incomplete decimals
+                if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                  setEditValue(value);
+                }
+              }}
               onKeyDown={handleKeyDown}
               className="glass-input text-sm w-20"
               step="0.01"

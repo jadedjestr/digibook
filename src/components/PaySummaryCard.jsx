@@ -1,7 +1,7 @@
 import React from 'react';
 import { DollarSign } from 'lucide-react';
 
-const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal }) => {
+const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal, overdueTotal = 0 }) => {
   return (
     <div className="glass-card">
       <div className="flex items-center justify-between mb-4">
@@ -9,19 +9,26 @@ const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal }) => {
         <DollarSign size={16} className="text-secondary" />
       </div>
       
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-3">
         <div className="text-center">
-          <div className="text-2xl font-bold text-orange-300 mb-1">
+          <div className="text-xl font-bold text-orange-300 mb-1">
             ${payThisWeekTotal.toFixed(2)}
           </div>
           <div className="text-xs text-secondary">Pay This Week</div>
         </div>
         
         <div className="text-center">
-          <div className="text-2xl font-bold text-blue-300 mb-1">
+          <div className="text-xl font-bold text-blue-300 mb-1">
             ${payNextCheckTotal.toFixed(2)}
           </div>
           <div className="text-xs text-secondary">Pay with Next Check</div>
+        </div>
+        
+        <div className="text-center">
+          <div className="text-xl font-bold text-red-300 mb-1">
+            ${overdueTotal.toFixed(2)}
+          </div>
+          <div className="text-xs text-secondary">Overdue</div>
         </div>
       </div>
     </div>

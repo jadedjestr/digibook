@@ -90,6 +90,15 @@ const AddExpensePanel = ({
     };
   }, [isOpen]);
 
+  // Reset form when panel opens
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({ name: '', dueDate: '', amount: '', accountId: '', category: '' });
+      setSelectedAccount(null);
+      setErrors({});
+    }
+  }, [isOpen]);
+
   // Escape key handler
   useEffect(() => {
     const handleEscape = (e) => {
@@ -104,14 +113,20 @@ const AddExpensePanel = ({
 
 
   const handleClose = () => {
-    setFormData({ name: '', dueDate: '', amount: '', accountId: '', category: '' });
-    setSelectedAccount(null);
-    setErrors({});
     onClose();
   };
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    console.log('handleInputChange:', { field, value, currentFormData: formData });
+    
+    // Simplified handling for amount field
+    if (field === 'amount') {
+      console.log('Amount field update:', { original: value });
+      setFormData(prev => ({ ...prev, [field]: value }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
+    
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -121,7 +136,22 @@ const AddExpensePanel = ({
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (!formData.dueDate) newErrors.dueDate = 'Due date is required';
-    if (!formData.amount || parseFloat(formData.amount) <= 0) newErrors.amount = 'Amount must be greater than 0';
+    
+    // Improved amount validation for decimals
+    const amountStr = formData.amount.toString().replace(/[$,]/g, ''); // Remove $ and commas
+    const amountValue = parseFloat(amountStr);
+    
+    console.log('Amount validation:', {
+      original: formData.amount,
+      cleaned: amountStr,
+      parsed: amountValue,
+      isValid: !isNaN(amountValue) && amountValue > 0
+    });
+    
+    if (!formData.amount || isNaN(amountValue) || amountValue <= 0) {
+      newErrors.amount = 'Amount must be greater than 0';
+    }
+    
     if (!formData.accountId) newErrors.accountId = 'Account is required';
     if (!formData.category) newErrors.category = 'Category is required';
     
@@ -130,6 +160,7 @@ const AddExpensePanel = ({
   };
 
   const handleSave = async () => {
+    console.log('handleSave - formData:', formData);
     if (!validateForm()) {
       return;
     }
@@ -139,7 +170,7 @@ const AddExpensePanel = ({
       const expenseData = {
         name: formData.name,
         dueDate: formData.dueDate,
-        amount: parseFloat(formData.amount),
+        amount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
         accountId: parseInt(formData.accountId),
         category: formData.category,
         paidAmount: 0,

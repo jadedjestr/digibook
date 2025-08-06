@@ -91,6 +91,7 @@ function App() {
       case 'expenses':
         return <FixedExpenses 
           accounts={accounts} 
+          pendingTransactions={pendingTransactions}
           onDataChange={handleDataChange}
           isPanelOpen={isPanelOpen}
           setIsPanelOpen={setIsPanelOpen}
