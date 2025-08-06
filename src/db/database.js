@@ -466,18 +466,59 @@ export const dbHelpers = {
 
   async deleteCategory(id) {
     try {
-      // Check if category is default before deleting
+      // Get the category being deleted for audit logging
       const category = await db.categories.get(id);
-      if (category && category.isDefault) {
-        throw new Error('Cannot delete default categories');
-      }
       
+      // Find all affected items
+      const affectedFixedExpenses = await db.fixedExpenses.where('category').equals(category.name).toArray();
+      const affectedPendingTransactions = await db.pendingTransactions.where('category').equals(category.name).toArray();
+      
+      // Delete the category
       await db.categories.delete(id);
-      await this.addAuditLog('DELETE', 'category', id, {});
+      await this.addAuditLog('DELETE', 'category', id, { 
+        categoryName: category.name,
+        affectedFixedExpenses: affectedFixedExpenses.length,
+        affectedPendingTransactions: affectedPendingTransactions.length
+      });
+      
       logger.success('Category deleted successfully: ' + id);
+      return {
+        affectedFixedExpenses,
+        affectedPendingTransactions
+      };
     } catch (error) {
       logger.error('Error deleting category:', error);
       throw new Error('Failed to delete category');
+    }
+  },
+
+  async reassignCategoryItems(oldCategoryName, newCategoryName, affectedItems) {
+    try {
+      const updates = [];
+      
+      // Update fixed expenses
+      for (const expense of affectedItems.fixedExpenses) {
+        await db.fixedExpenses.update(expense.id, { category: newCategoryName });
+        updates.push({ type: 'fixedExpense', id: expense.id, oldCategory: oldCategoryName, newCategory: newCategoryName });
+      }
+      
+      // Update pending transactions
+      for (const transaction of affectedItems.pendingTransactions) {
+        await db.pendingTransactions.update(transaction.id, { category: newCategoryName });
+        updates.push({ type: 'pendingTransaction', id: transaction.id, oldCategory: oldCategoryName, newCategory: newCategoryName });
+      }
+      
+      // Log the reassignment
+      await this.addAuditLog('REASSIGN', 'category', null, {
+        oldCategory: oldCategoryName,
+        newCategory: newCategoryName,
+        updates: updates
+      });
+      
+      logger.success(`Reassigned ${updates.length} items from "${oldCategoryName}" to "${newCategoryName}"`);
+    } catch (error) {
+      logger.error('Error reassigning category items:', error);
+      throw new Error('Failed to reassign category items');
     }
   },
 

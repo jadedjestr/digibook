@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { logger } from "../utils/logger";
 import { Plus, Edit3, Trash2, Save, X } from 'lucide-react';
 import { dbHelpers } from '../db/database';
+import CategoryDeletionModal from './CategoryDeletionModal';
 
 const CategoryManager = ({ onDataChange }) => {
   const [categories, setCategories] = useState([]);
@@ -18,6 +19,11 @@ const CategoryManager = ({ onDataChange }) => {
     icon: '📦'
   });
   const [isAdding, setIsAdding] = useState(false);
+  const [deletionModal, setDeletionModal] = useState({
+    isOpen: false,
+    category: null,
+    affectedItems: { fixedExpenses: [], pendingTransactions: [] }
+  });
 
   useEffect(() => {
     loadCategories();
@@ -71,23 +77,39 @@ const CategoryManager = ({ onDataChange }) => {
     }
   };
 
-  const handleDeleteCategory = async (id) => {
-    if (!confirm('Are you sure you want to delete this category? This will affect all expenses using this category.')) {
-      return;
-    }
-
+  const handleDeleteCategory = async (category) => {
     try {
-      await dbHelpers.deleteCategory(id);
-      await loadCategories();
-      onDataChange();
-      logger.success('Category deleted successfully');
-    } catch (error) {
-      logger.error('Error deleting category:', error);
-      if (error.message.includes('Cannot delete default categories')) {
-        alert('Default categories cannot be deleted. You can rename them instead.');
+      // Get affected items before deletion
+      const affectedFixedExpenses = await dbHelpers.getFixedExpenses();
+      const affectedPendingTransactions = await dbHelpers.getPendingTransactions();
+      
+      const filteredFixedExpenses = affectedFixedExpenses.filter(expense => expense.category === category.name);
+      const filteredPendingTransactions = affectedPendingTransactions.filter(transaction => transaction.category === category.name);
+      
+      const totalAffected = filteredFixedExpenses.length + filteredPendingTransactions.length;
+      
+      if (totalAffected === 0) {
+        // No affected items, delete directly
+        if (confirm(`Are you sure you want to delete "${category.name}"?`)) {
+          await dbHelpers.deleteCategory(category.id);
+          await loadCategories();
+          onDataChange();
+          logger.success('Category deleted successfully');
+        }
       } else {
-        alert('Failed to delete category. Please try again.');
+        // Show deletion modal with affected items
+        setDeletionModal({
+          isOpen: true,
+          category: category,
+          affectedItems: {
+            fixedExpenses: filteredFixedExpenses,
+            pendingTransactions: filteredPendingTransactions
+          }
+        });
       }
+    } catch (error) {
+      logger.error('Error preparing category deletion:', error);
+      alert('Failed to prepare category deletion. Please try again.');
     }
   };
 
@@ -295,18 +317,16 @@ const CategoryManager = ({ onDataChange }) => {
               >
                 <Edit3 size={14} />
               </button>
-              {!category.isDefault && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteCategory(category.id);
-                  }}
-                  className="p-2 hover:bg-white/20 rounded-full text-red-400 hover:text-red-300 transition-colors"
-                  title="Delete category"
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteCategory(category);
+                }}
+                className="p-2 hover:bg-white/20 rounded-full text-red-400 hover:text-red-300 transition-colors"
+                title="Delete category"
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           </div>
         ))}
@@ -328,6 +348,18 @@ const CategoryManager = ({ onDataChange }) => {
           <p>No categories found. Add your first category to get started.</p>
         </div>
       )}
+
+      {/* Category Deletion Modal */}
+      <CategoryDeletionModal
+        isOpen={deletionModal.isOpen}
+        onClose={() => setDeletionModal({ isOpen: false, category: null, affectedItems: { fixedExpenses: [], pendingTransactions: [] } })}
+        categoryToDelete={deletionModal.category}
+        affectedItems={deletionModal.affectedItems}
+        onCategoryDeleted={() => {
+          loadCategories();
+          onDataChange();
+        }}
+      />
     </div>
   );
 };
