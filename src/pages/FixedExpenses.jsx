@@ -51,6 +51,8 @@ const FixedExpenses = ({ accounts: accountsProp, onDataChange, isPanelOpen, setI
   const paycheckService = new PaycheckService(paycheckSettings);
   const paycheckDates = paycheckService.calculatePaycheckDates();
   const summaryTotals = paycheckService.calculateSummaryTotals(expenses, paycheckDates);
+  
+
 
   const handleStartNewCycle = async () => {
     if (!confirm('Are you sure you want to start a new cycle? This will reset all paid amounts to 0.')) {
