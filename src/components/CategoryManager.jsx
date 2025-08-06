@@ -123,8 +123,45 @@ const CategoryManager = ({ onDataChange }) => {
   };
 
   const colorOptions = [
-    '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', 
-    '#EF4444', '#06B6D4', '#84CC16', '#6B7280', '#F97316'
+    // Blues
+    { name: 'Ocean Blue', hex: '#3B82F6', swatch: '🔵' },
+    { name: 'Sky Blue', hex: '#0EA5E9', swatch: '🔵' },
+    { name: 'Navy Blue', hex: '#1E40AF', swatch: '🔵' },
+    { name: 'Light Blue', hex: '#38BDF8', swatch: '🔵' },
+    
+    // Greens
+    { name: 'Emerald Green', hex: '#10B981', swatch: '🟢' },
+    { name: 'Forest Green', hex: '#059669', swatch: '🟢' },
+    { name: 'Lime Green', hex: '#84CC16', swatch: '🟢' },
+    { name: 'Mint Green', hex: '#34D399', swatch: '🟢' },
+    
+    // Purples
+    { name: 'Royal Purple', hex: '#8B5CF6', swatch: '🟣' },
+    { name: 'Lavender', hex: '#A78BFA', swatch: '🟣' },
+    { name: 'Deep Purple', hex: '#7C3AED', swatch: '🟣' },
+    
+    // Reds & Pinks
+    { name: 'Coral Red', hex: '#EF4444', swatch: '🔴' },
+    { name: 'Rose Pink', hex: '#EC4899', swatch: '🩷' },
+    { name: 'Hot Pink', hex: '#F472B6', swatch: '🩷' },
+    { name: 'Cherry Red', hex: '#DC2626', swatch: '🔴' },
+    
+    // Oranges & Yellows
+    { name: 'Sunset Orange', hex: '#F59E0B', swatch: '🟠' },
+    { name: 'Golden Yellow', hex: '#FCD34D', swatch: '🟡' },
+    { name: 'Amber', hex: '#F97316', swatch: '🟠' },
+    { name: 'Warm Orange', hex: '#FB923C', swatch: '🟠' },
+    
+    // Teals & Cyans
+    { name: 'Ocean Teal', hex: '#06B6D4', swatch: '🔷' },
+    { name: 'Turquoise', hex: '#14B8A6', swatch: '🔷' },
+    { name: 'Light Cyan', hex: '#22D3EE', swatch: '🔷' },
+    
+    // Grays & Neutrals
+    { name: 'Slate Gray', hex: '#6B7280', swatch: '⚫' },
+    { name: 'Charcoal', hex: '#374151', swatch: '⚫' },
+    { name: 'Light Gray', hex: '#9CA3AF', swatch: '⚫' },
+    { name: 'Warm Gray', hex: '#78716C', swatch: '⚫' }
   ];
 
   const iconOptions = [
@@ -251,8 +288,8 @@ const CategoryManager = ({ onDataChange }) => {
                 className="glass-input w-full"
               >
                 {colorOptions.map(color => (
-                  <option key={color} value={color} style={{ backgroundColor: color }}>
-                    {color}
+                  <option key={color.hex} value={color.hex} style={{ backgroundColor: color.hex }}>
+                    {color.swatch} {color.name}
                   </option>
                 ))}
               </select>
@@ -316,8 +353,8 @@ const CategoryManager = ({ onDataChange }) => {
                 className="glass-input w-full"
               >
                 {colorOptions.map(color => (
-                  <option key={color} value={color} style={{ backgroundColor: color }}>
-                    {color}
+                  <option key={color.hex} value={color.hex} style={{ backgroundColor: color.hex }}>
+                    {color.swatch} {color.name}
                   </option>
                 ))}
               </select>
