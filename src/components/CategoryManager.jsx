@@ -123,45 +123,59 @@ const CategoryManager = ({ onDataChange }) => {
   };
 
   const colorOptions = [
-    // Blues
+    // Blues - Different shades and hues
     { name: 'Ocean Blue', hex: '#3B82F6', swatch: '🔵' },
     { name: 'Sky Blue', hex: '#0EA5E9', swatch: '🔵' },
     { name: 'Navy Blue', hex: '#1E40AF', swatch: '🔵' },
-    { name: 'Light Blue', hex: '#38BDF8', swatch: '🔵' },
+    { name: 'Steel Blue', hex: '#475569', swatch: '🔵' },
+    { name: 'Cornflower Blue', hex: '#6366F1', swatch: '🔵' },
+    { name: 'Indigo Blue', hex: '#4F46E5', swatch: '🔵' },
     
-    // Greens
+    // Greens - Different shades and hues
     { name: 'Emerald Green', hex: '#10B981', swatch: '🟢' },
     { name: 'Forest Green', hex: '#059669', swatch: '🟢' },
-    { name: 'Lime Green', hex: '#84CC16', swatch: '🟢' },
+    { name: 'Sage Green', hex: '#84CC16', swatch: '🟢' },
+    { name: 'Olive Green', hex: '#65A30D', swatch: '🟢' },
     { name: 'Mint Green', hex: '#34D399', swatch: '🟢' },
+    { name: 'Teal Green', hex: '#14B8A6', swatch: '🟢' },
     
-    // Purples
+    // Purples - Different shades and hues
     { name: 'Royal Purple', hex: '#8B5CF6', swatch: '🟣' },
     { name: 'Lavender', hex: '#A78BFA', swatch: '🟣' },
     { name: 'Deep Purple', hex: '#7C3AED', swatch: '🟣' },
+    { name: 'Plum Purple', hex: '#C084FC', swatch: '🟣' },
+    { name: 'Violet', hex: '#9333EA', swatch: '🟣' },
     
-    // Reds & Pinks
+    // Reds & Pinks - Different shades and hues
     { name: 'Coral Red', hex: '#EF4444', swatch: '🔴' },
     { name: 'Rose Pink', hex: '#EC4899', swatch: '🩷' },
     { name: 'Hot Pink', hex: '#F472B6', swatch: '🩷' },
     { name: 'Cherry Red', hex: '#DC2626', swatch: '🔴' },
+    { name: 'Salmon Pink', hex: '#FB7185', swatch: '🩷' },
+    { name: 'Burgundy', hex: '#BE123C', swatch: '🔴' },
     
-    // Oranges & Yellows
+    // Oranges & Yellows - Different shades and hues
     { name: 'Sunset Orange', hex: '#F59E0B', swatch: '🟠' },
     { name: 'Golden Yellow', hex: '#FCD34D', swatch: '🟡' },
     { name: 'Amber', hex: '#F97316', swatch: '🟠' },
     { name: 'Warm Orange', hex: '#FB923C', swatch: '🟠' },
+    { name: 'Honey Yellow', hex: '#FBBF24', swatch: '🟡' },
+    { name: 'Rust Orange', hex: '#EA580C', swatch: '🟠' },
     
-    // Teals & Cyans
+    // Teals & Cyans - Different shades and hues
     { name: 'Ocean Teal', hex: '#06B6D4', swatch: '🔷' },
     { name: 'Turquoise', hex: '#14B8A6', swatch: '🔷' },
     { name: 'Light Cyan', hex: '#22D3EE', swatch: '🔷' },
+    { name: 'Seafoam', hex: '#5EEAD4', swatch: '🔷' },
+    { name: 'Aqua Blue', hex: '#0891B2', swatch: '🔷' },
     
-    // Grays & Neutrals
+    // Grays & Neutrals - Different shades and hues
     { name: 'Slate Gray', hex: '#6B7280', swatch: '⚫' },
     { name: 'Charcoal', hex: '#374151', swatch: '⚫' },
     { name: 'Light Gray', hex: '#9CA3AF', swatch: '⚫' },
-    { name: 'Warm Gray', hex: '#78716C', swatch: '⚫' }
+    { name: 'Warm Gray', hex: '#78716C', swatch: '⚫' },
+    { name: 'Cool Gray', hex: '#4B5563', swatch: '⚫' },
+    { name: 'Silver', hex: '#D1D5DB', swatch: '⚫' }
   ];
 
   const iconOptions = [
