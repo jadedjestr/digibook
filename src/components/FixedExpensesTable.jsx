@@ -1,6 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { logger } from "../utils/logger";;
-import { Plus, Trash2, Check, Edit3, X } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { logger } from "../utils/logger";
+import { Plus, Home, Zap, Shield, Car, Smartphone, CreditCard, Stethoscope, GraduationCap, Package } from 'lucide-react'
+import { 
+  DndContext, 
+  closestCenter, 
+  PointerSensor, 
+  useSensor, 
+  useSensors,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
+  useDroppable
+} from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import DuplicateExpenseModal from './DuplicateExpenseModal'
 import StatusBadge from './StatusBadge'
 import AccountSelector from './AccountSelector'
 import AddExpensePanel from './AddExpensePanel'
@@ -9,17 +21,43 @@ import { PaycheckService } from '../services/paycheckService'
 import { DateUtils } from '../utils/dateUtils'
 import PrivacyWrapper from './PrivacyWrapper'
 
+import DraggableExpenseRow from './DraggableExpenseRow';
+import CategoryDropZone from './CategoryDropZone';
+
 const FixedExpensesTable = ({ 
   expenses, 
   accounts, 
+  creditCards = [], 
   paycheckSettings, 
   onDataChange,
   isPanelOpen,
   setIsPanelOpen
 }) => {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement required before drag starts
+      },
+    })
+  );
   const [editingId, setEditingId] = useState(null);
   const [editingField, setEditingField] = useState(null);
   const [categories, setCategories] = useState([]);
+  const [newExpenseId, setNewExpenseId] = useState(null);
+  const [duplicatingExpense, setDuplicatingExpense] = useState(null);
+  const [activeId, setActiveId] = useState(null);
+  const [sortBy, setSortBy] = useState('dueDate'); // 'dueDate' or 'name'
+  const [dropAnimation, setDropAnimation] = useState({
+    duration: 250,
+    easing: 'ease-in-out',
+    sideEffects: defaultDropAnimationSideEffects({
+      styles: {
+        active: {
+          opacity: '0.5',
+        },
+      },
+    }),
+  });
 
   const paycheckService = new PaycheckService(paycheckSettings);
   const paycheckDates = paycheckService.calculatePaycheckDates();
@@ -36,13 +74,107 @@ const FixedExpensesTable = ({
     };
     
     loadCategories();
-  }, []);
+  }, [onDataChange]); // Refresh when categories are modified
 
+  // Sorting helpers
+  const sortByDueDate = (a, b) => {
+    if (!a.dueDate && !b.dueDate) return 0;
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return new Date(a.dueDate) - new Date(b.dueDate);
+  };
 
+  const sortByName = (a, b) => {
+    return a.name.localeCompare(b.name);
+  };
+
+  const sortExpenses = (expenses) => {
+    return [...expenses].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
+  };
+
+  // Group expenses by category and sort within each category
+  const groupedExpenses = expenses.reduce((groups, expense) => {
+    const category = expense.category || 'Uncategorized';
+    if (!groups[category]) {
+      groups[category] = [];
+    }
+    groups[category].push(expense);
+    groups[category] = sortExpenses(groups[category]); // Sort using current sort method
+    return groups;
+  }, {});
+
+  // Get category icon
+  const getCategoryIcon = (categoryName) => {
+    switch (categoryName) {
+      case 'Housing':
+        return <Home size={20} className="text-blue-300" />;
+      case 'Utilities':
+        return <Zap size={20} className="text-green-300" />;
+      case 'Insurance':
+        return <Shield size={20} className="text-yellow-300" />;
+      case 'Transportation':
+        return <Car size={20} className="text-purple-300" />;
+      case 'Subscriptions':
+        return <Smartphone size={20} className="text-pink-300" />;
+      case 'Debt':
+        return <CreditCard size={20} className="text-red-300" />;
+      case 'Healthcare':
+        return <Stethoscope size={20} className="text-cyan-300" />;
+      case 'Education':
+        return <GraduationCap size={20} className="text-lime-300" />;
+      default:
+        return <Package size={20} className="text-gray-300" />;
+    }
+  };
+
+  // Get category display name
+  const getCategoryDisplayName = (categoryName) => {
+    return categoryName === 'Uncategorized' ? 'Uncategorized Expenses' : `${categoryName} Expenses`;
+  };
+
+  // Calculate total for a category
+  const getCategoryTotal = (categoryExpenses) => {
+    return categoryExpenses.reduce((total, expense) => {
+      const remaining = expense.amount - (expense.paidAmount || 0);
+      return total + (remaining > 0 ? remaining : 0); // Don't count negative remainders
+    }, 0);
+  };
 
   const handleUpdateExpense = async (id, updates) => {
     try {
       logger.debug(`Updating expense with ID: ${id}`, updates);
+      
+      // Get the current expense to check for account changes
+      const currentExpense = expenses.find(e => e.id === id);
+      if (!currentExpense) {
+        logger.error("Could not find expense to update");
+        return;
+      }
+      
+      // Handle account switching between credit cards and regular accounts
+      if (updates.accountId && updates.accountId !== currentExpense.accountId) {
+        const oldAccountId = currentExpense.accountId;
+        const newAccountId = updates.accountId;
+        
+        // Check if moving from credit card to regular account
+        const oldCreditCard = creditCards.find(card => card.id === oldAccountId);
+        const newCreditCard = creditCards.find(card => card.id === newAccountId);
+        
+        if (oldCreditCard && !newCreditCard) {
+          // Moving from credit card to regular account
+          // Decrease credit card balance (remove debt)
+          const newBalance = Math.max(0, oldCreditCard.balance - currentExpense.amount);
+          await dbHelpers.updateCreditCard(oldAccountId, { balance: newBalance });
+          logger.info(`Credit card balance decreased: ${oldCreditCard.balance} -> ${newBalance}`);
+        } else if (!oldCreditCard && newCreditCard) {
+          // Moving from regular account to credit card
+          // Increase credit card balance (add debt)
+          const newBalance = newCreditCard.balance + currentExpense.amount;
+          await dbHelpers.updateCreditCard(newAccountId, { balance: newBalance });
+          logger.info(`Credit card balance increased: ${newCreditCard.balance} -> ${newBalance}`);
+        }
+      }
+      
       await dbHelpers.updateFixedExpense(id, updates);
       setEditingId(null);
       setEditingField(null);
@@ -51,6 +183,46 @@ const FixedExpensesTable = ({
       logger.error("Error updating expense:", error);
       alert('Failed to update expense. Please try again.');
     }
+  };
+
+  const handleDragStart = (event) => {
+    const { active } = event;
+    setActiveId(active.id);
+  };
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    setActiveId(null);
+    
+    if (!active || !over) return;
+
+    try {
+      const draggedExpense = expenses.find(e => e.id === active.id);
+      if (!draggedExpense) {
+        logger.error("Could not find dragged expense");
+        return;
+      }
+
+      // Extract category from the dropzone ID (format: dropzone-categoryName)
+      const targetCategory = over.data?.current?.category;
+      if (!targetCategory) {
+        logger.error("Invalid drop target");
+        return;
+      }
+
+      if (draggedExpense.category !== targetCategory) {
+        logger.debug(`Moving expense from ${draggedExpense.category} to ${targetCategory}`);
+        await handleUpdateExpense(draggedExpense.id, { category: targetCategory });
+        logger.success(`Moved expense to ${targetCategory} category`);
+      }
+    } catch (error) {
+      logger.error("Error moving expense:", error);
+      alert('Failed to move expense. Please try again.');
+    }
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
   };
 
   const handleDeleteExpense = async (id) => {
@@ -65,18 +237,42 @@ const FixedExpensesTable = ({
     }
   };
 
+  const handleDuplicate = async (duplicates) => {
+    try {
+      // Add each duplicate expense
+      for (const duplicate of duplicates) {
+        await dbHelpers.addFixedExpense(duplicate);
+      }
+      onDataChange();
+    } catch (error) {
+      logger.error("Error duplicating expenses:", error);
+      throw new Error('Failed to duplicate expenses. Please try again.');
+    }
+  };
+
   const handleMarkAsPaid = async (expense) => {
     try {
       await dbHelpers.updateFixedExpense(expense.id, { 
         paidAmount: expense.amount 
       });
       
-      // Deduct from account balance
-      const account = accounts.find(acc => acc.id === expense.accountId);
-      if (account) {
-        await dbHelpers.updateAccount(expense.accountId, {
-          currentBalance: account.currentBalance - expense.amount
+      // Check if this is a credit card account
+      const creditCard = creditCards.find(card => card.id === expense.accountId);
+      if (creditCard) {
+        // For credit cards, decrease the balance (reduce debt) when marked as paid
+        const newBalance = Math.max(0, creditCard.balance - expense.amount);
+        await dbHelpers.updateCreditCard(expense.accountId, {
+          balance: newBalance
         });
+        logger.info(`Credit card balance updated: ${creditCard.balance} -> ${newBalance}`);
+      } else {
+        // Deduct from regular account balance
+        const account = accounts.find(acc => acc.id === expense.accountId);
+        if (account) {
+          await dbHelpers.updateAccount(expense.accountId, {
+            currentBalance: account.currentBalance - expense.amount
+          });
+        }
       }
       
       onDataChange();
@@ -85,6 +281,16 @@ const FixedExpensesTable = ({
       alert('Failed to mark as paid. Please try again.');
     }
   };
+
+  // Animation for new expenses
+  useEffect(() => {
+    if (newExpenseId) {
+      const timer = setTimeout(() => {
+        setNewExpenseId(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [newExpenseId]);
 
   const InlineEdit = ({ value, onSave, type = 'text', expense = null, fieldName = null }) => {
     const [editValue, setEditValue] = useState(value);
@@ -221,7 +427,31 @@ const FixedExpensesTable = ({
     <div className="space-y-4">
       {/* Add Expense Button */}
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold text-white">Fixed Expenses</h2>
+        <div className="flex items-center space-x-4">
+          <h2 className="text-xl font-semibold text-white">Fixed Expenses</h2>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setSortBy('dueDate')}
+              className={`text-sm px-3 py-1 rounded ${
+                sortBy === 'dueDate' 
+                  ? 'bg-blue-500/20 text-blue-300' 
+                  : 'hover:bg-white/10'
+              }`}
+            >
+              Sort by Due Date
+            </button>
+            <button
+              onClick={() => setSortBy('name')}
+              className={`text-sm px-3 py-1 rounded ${
+                sortBy === 'name' 
+                  ? 'bg-blue-500/20 text-blue-300' 
+                  : 'hover:bg-white/10'
+              }`}
+            >
+              Sort by Name
+            </button>
+          </div>
+        </div>
         <button
           onClick={() => setIsPanelOpen(true)}
           className="glass-button flex items-center space-x-2"
@@ -231,122 +461,124 @@ const FixedExpensesTable = ({
         </button>
       </div>
 
-      {/* Expenses Table */}
-      <div className="glass-panel overflow-x-auto">
-        <table className="w-full glass-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Due Date</th>
-              <th>Amount</th>
-              <th>Account</th>
-              <th>Category</th>
-              <th>Paid Amount</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expenses.map((expense) => {
-              const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
-              const account = accounts.find(acc => acc.id === expense.accountId);
-              
-              return (
-                <tr key={expense.id}>
-                  <td>
-                    <InlineEdit
-                      value={expense.name}
-                      expense={expense}
-                      fieldName="name"
-                    />
-                  </td>
-                  <td>
-                    <InlineEdit
-                      value={expense.dueDate}
-                      expense={expense}
-                      fieldName="dueDate"
-                      type="date"
-                    />
-                  </td>
-                  <td>
-                    <InlineEdit
-                      value={expense.amount}
-                      expense={expense}
-                      fieldName="amount"
-                      type="number"
-                    />
-                  </td>
-                  <td>
-                    <AccountSelector
-                      value={expense.accountId}
-                      onSave={(accountId) => handleUpdateExpense(expense.id, { accountId })}
-                      accounts={accounts}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      value={expense.category || ''}
-                      onChange={(e) => handleUpdateExpense(expense.id, { category: e.target.value })}
-                      className="w-full px-3 py-2 glass-input rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white text-sm"
-                    >
-                      <option value="">Uncategorized</option>
-                      {categories.map((category) => (
-                        <option key={category.id} value={category.name}>
-                          {category.icon} {category.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <InlineEdit
-                      value={expense.paidAmount}
-                      expense={expense}
-                      fieldName="paidAmount"
-                      type="number"
-                    />
-                  </td>
-                  <td>
-                    <StatusBadge status={status} />
-                  </td>
-                  <td>
-                    <div className="flex space-x-2">
-                      {status !== 'Paid' && (
-                        <button
-                          onClick={() => handleMarkAsPaid(expense)}
-                          className="p-1 text-green-300 hover:text-green-200"
-                          title="Mark as paid"
-                        >
-                          <Check size={16} />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleDeleteExpense(expense.id)}
-                        className="p-1 text-red-300 hover:text-red-200"
-                        title="Delete expense"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        
-        {expenses.length === 0 && (
+      {/* Grouped Expenses Display */}
+      {expenses.length === 0 ? (
+        <div className="glass-panel">
           <div className="text-center py-8 text-secondary">
             No fixed expenses yet. Add your first expense to get started.
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="space-y-6">
+            {Object.entries(groupedExpenses).map(([categoryName, categoryExpenses]) => {
+              const categoryTotal = getCategoryTotal(categoryExpenses);
+              
+              return (
+                <div key={categoryName} className="glass-panel">
+                  {/* Category Header */}
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
+                    <div className="flex items-center space-x-3">
+                      {getCategoryIcon(categoryName)}
+                      <h3 className="text-lg font-semibold text-primary">
+                        {getCategoryDisplayName(categoryName)}
+                      </h3>
+                      <span className="text-sm text-secondary">
+                        {categoryExpenses.length} expense{categoryExpenses.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm text-secondary">Total Remaining</div>
+                      <div className="text-lg font-bold text-primary">
+                        <PrivacyWrapper>
+                          ${categoryTotal.toFixed(2)}
+                        </PrivacyWrapper>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Expenses Table for this category */}
+                  <table className="glass-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Due Date</th>
+                        <th>Amount</th>
+                        <th>Account</th>
+                        <th>Paid Amount</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <SortableContext
+                        items={categoryExpenses.map(e => e.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {categoryExpenses.map((expense) => {
+                          const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
+                          const account = accounts.find(acc => acc.id === expense.accountId);
+                          const isNewExpense = newExpenseId === expense.id;
+                          
+                          return (
+                            <DraggableExpenseRow
+                              key={expense.id}
+                              expense={expense}
+                              status={status}
+                              account={account}
+                              isNewExpense={isNewExpense}
+                              onMarkAsPaid={handleMarkAsPaid}
+                              onDuplicate={setDuplicatingExpense}
+                              onDelete={handleDeleteExpense}
+                              onUpdateExpense={handleUpdateExpense}
+                              accounts={accounts}
+                              creditCards={creditCards}
+                            />
+                          );
+                        })}
+                      </SortableContext>
+                    </tbody>
+                  </table>
+
+                  <CategoryDropZone 
+                    categoryName={categoryName}
+                    getCategoryDisplayName={getCategoryDisplayName}
+                    activeId={activeId}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </DndContext>
+      )}
+
+      {/* Duplicate Modal */}
+      {duplicatingExpense && (
+        <DuplicateExpenseModal
+          expense={duplicatingExpense}
+          onClose={() => setDuplicatingExpense(null)}
+          onDuplicate={handleDuplicate}
+        />
+      )}
 
       {/* Add Expense Panel */}
       <AddExpensePanel
         isOpen={isPanelOpen}
         onClose={() => setIsPanelOpen(false)}
         accounts={accounts}
-        onDataChange={onDataChange}
+        creditCards={creditCards}
+        onDataChange={(newExpenseId) => {
+          onDataChange();
+          if (newExpenseId) {
+            setNewExpenseId(newExpenseId);
+          }
+        }}
       />
     </div>
   );

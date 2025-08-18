@@ -1,5 +1,8 @@
 import { DateUtils } from '../utils/dateUtils';
 
+// Number of days between paychecks
+const BIWEEKLY_INTERVAL = 14;
+
 export class PaycheckService {
   constructor(paycheckSettings) {
     this.settings = paycheckSettings;
@@ -16,30 +19,32 @@ export class PaycheckService {
       };
     }
 
-    // Parse the date string and ensure it's treated as local time
-    const [year, month, day] = this.settings.lastPaycheckDate.split('-').map(Number);
-    const lastPayDate = new Date(year, month - 1, day); // month is 0-indexed
+    // Parse dates using DateUtils for consistency
+    const lastPayDate = DateUtils.parseDate(this.settings.lastPaycheckDate);
+    if (!lastPayDate) {
+      return {
+        nextPayDate: null,
+        followingPayDate: null,
+        daysUntilNextPay: null,
+        daysUntilFollowingPay: null
+      };
+    }
     
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Reset time to start of day for consistent comparison
     
     // Calculate next paycheck (14 days from last paycheck)
     const nextPayDate = new Date(lastPayDate);
-    nextPayDate.setDate(nextPayDate.getDate() + 14);
+    nextPayDate.setDate(nextPayDate.getDate() + BIWEEKLY_INTERVAL);
     
     // If next paycheck is in the past, keep adding 14 days until it's in the future
     while (nextPayDate <= today) {
-      nextPayDate.setDate(nextPayDate.getDate() + 14);
+      nextPayDate.setDate(nextPayDate.getDate() + BIWEEKLY_INTERVAL);
     }
     
-    // Calculate following paycheck (28 days from last paycheck)
-    const followingPayDate = new Date(lastPayDate);
-    followingPayDate.setDate(followingPayDate.getDate() + 28);
-    
-    // If following paycheck is in the past, keep adding 14 days until it's in the future
-    while (followingPayDate <= today) {
-      followingPayDate.setDate(followingPayDate.getDate() + 14);
-    }
+    // Calculate following paycheck (always 14 days after next pay date)
+    const followingPayDate = new Date(nextPayDate);
+    followingPayDate.setDate(followingPayDate.getDate() + 14);
     
     // Calculate days until each paycheck
     const daysUntilNextPay = Math.ceil((nextPayDate - today) / (1000 * 60 * 60 * 24));

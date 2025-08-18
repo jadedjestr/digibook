@@ -43,7 +43,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
     };
     
     loadCategories();
-  }, []);
+  }, [onDataChange]); // Refresh when categories are modified
 
   const validateForm = () => {
     const newErrors = {};

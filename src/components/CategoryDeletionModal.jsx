@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertTriangle, CheckCircle } from 'lucide-react';
 import { logger } from "../utils/logger";
+import { notify } from "../utils/notifications.jsx";
 import { dbHelpers } from '../db/database';
 
 const CategoryDeletionModal = ({ 
@@ -59,9 +60,10 @@ const CategoryDeletionModal = ({
       onCategoryDeleted();
       onClose();
       logger.success('Category deleted and items reassigned successfully');
+      notify.success('Category deleted and items reassigned successfully');
     } catch (error) {
       logger.error('Error during bulk reassignment:', error);
-      alert('Failed to reassign items. Please try again.');
+      notify.error('Failed to reassign items. Please try again.', error);
     } finally {
       setIsProcessing(false);
     }
@@ -71,7 +73,7 @@ const CategoryDeletionModal = ({
     // Check if all items have been assigned
     const allAssigned = Object.values(individualAssignments).every(assignment => assignment !== '');
     if (!allAssigned) {
-      alert('Please assign all items to a category before proceeding.');
+      notify.warning('Please assign all items to a category before proceeding.');
       return;
     }
 
@@ -99,9 +101,10 @@ const CategoryDeletionModal = ({
       onCategoryDeleted();
       onClose();
       logger.success('Category deleted and items individually reassigned successfully');
+      notify.success('Category deleted and items individually reassigned successfully');
     } catch (error) {
       logger.error('Error during individual reassignment:', error);
-      alert('Failed to reassign items. Please try again.');
+      notify.error('Failed to reassign items. Please try again.', error);
     } finally {
       setIsProcessing(false);
     }

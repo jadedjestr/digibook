@@ -6,6 +6,7 @@ const AccountSelector = ({
   value, 
   onSave, 
   accounts, 
+  creditCards = [], 
   isEditing = false, 
   onEdit = null,
   onCancel = null,
@@ -39,7 +40,18 @@ const AccountSelector = ({
     setIsOpen(!isOpen);
   };
 
-  const selectedAccount = accounts.find(account => account.id === editValue);
+  // Combine regular accounts and credit cards
+  const allAccounts = [
+    ...accounts.map(acc => ({ ...acc, type: 'account' })),
+    ...creditCards.map(card => ({ 
+      ...card, 
+      type: 'creditCard',
+      currentBalance: card.balance, // Map balance to currentBalance for consistency
+      name: `${card.name} (Credit Card)`
+    }))
+  ];
+  
+  const selectedAccount = allAccounts.find(account => account.id === editValue);
 
 
 
@@ -50,6 +62,8 @@ const AccountSelector = ({
         return <CreditCard size={16} className="text-blue-400" />;
       case 'savings':
         return <PiggyBank size={16} className="text-green-400" />;
+      case 'creditcard':
+        return <CreditCard size={16} className="text-red-400" />;
       default:
         return <Building2 size={16} className="text-purple-400" />;
     }
@@ -86,9 +100,9 @@ const AccountSelector = ({
         {isOpen && (
           <div className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200">
 
-            {accounts.map((account) => (
+            {allAccounts.map((account) => (
               <button
-                key={account.id}
+                key={`${account.type}-${account.id}`}
                 onClick={() => {
                   setEditValue(account.id);
                   handleSave();

@@ -7,12 +7,15 @@ import PayDateCountdownCard from '../components/PayDateCountdownCard'
 import ProjectedBalanceCard from '../components/ProjectedBalanceCard'
 import FixedExpensesTable from '../components/FixedExpensesTable'
 import StartCycleButton from '../components/StartCycleButton'
+import CategoryExpenseSummary from '../components/CategoryExpenseSummary'
 
-const FixedExpenses = ({ accounts: accountsProp, pendingTransactions = [], onDataChange, isPanelOpen, setIsPanelOpen }) => {
+const FixedExpenses = ({ accounts: accountsProp, creditCards: creditCardsProp = [], pendingTransactions = [], onDataChange, isPanelOpen, setIsPanelOpen }) => {
   const [expenses, setExpenses] = useState([]);
   const [accounts, setAccounts] = useState(accountsProp || []);
+  const [creditCards, setCreditCards] = useState(creditCardsProp || []);
   const [paycheckSettings, setPaycheckSettings] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [categories, setCategories] = useState([]);
   const [showResetPrompt, setShowResetPrompt] = useState(false);
 
   useEffect(() => {
@@ -21,13 +24,15 @@ const FixedExpenses = ({ accounts: accountsProp, pendingTransactions = [], onDat
 
   useEffect(() => {
     setAccounts(accountsProp || []);
-  }, [accountsProp]);
+    setCreditCards(creditCardsProp || []);
+  }, [accountsProp, creditCardsProp]);
 
   const loadData = async () => {
     try {
-      const [expensesData, paycheckSettingsData] = await Promise.all([
+      const [expensesData, paycheckSettingsData, categoriesData] = await Promise.all([
         dbHelpers.getFixedExpenses(),
-        dbHelpers.getPaycheckSettings()
+        dbHelpers.getPaycheckSettings(),
+        dbHelpers.getCategories()
       ]);
       
       logger.component("FixedExpenses", "accountsProp", accountsProp);
@@ -37,6 +42,7 @@ const FixedExpenses = ({ accounts: accountsProp, pendingTransactions = [], onDat
       setExpenses(expensesData);
       setAccounts(accountsProp || []);
       setPaycheckSettings(paycheckSettingsData);
+      setCategories(categoriesData);
     } catch (error) {
       logger.error("Error loading fixed expenses data:", error);
     } finally {
@@ -44,9 +50,22 @@ const FixedExpenses = ({ accounts: accountsProp, pendingTransactions = [], onDat
     }
   };
 
-  const handleDataChange = () => {
-    loadData();
-    onDataChange();
+  const handleDataChange = async () => {
+    try {
+      // Only reload what's needed instead of everything
+      const [expensesData, categoriesData] = await Promise.all([
+        dbHelpers.getFixedExpenses(),
+        dbHelpers.getCategories()
+      ]);
+      
+      setExpenses(expensesData);
+      setCategories(categoriesData);
+      
+      // Notify parent
+      onDataChange();
+    } catch (error) {
+      logger.error("Error updating expense data:", error);
+    }
   };
 
   const paycheckService = new PaycheckService(paycheckSettings);
@@ -205,10 +224,17 @@ const FixedExpenses = ({ accounts: accountsProp, pendingTransactions = [], onDat
         </div>
       )}
 
+      {/* Category Summary */}
+      <CategoryExpenseSummary
+        expenses={expenses}
+        categories={categories}
+      />
+
       {/* Fixed Expenses Table */}
       <FixedExpensesTable
         expenses={expenses}
         accounts={accounts}
+        creditCards={creditCards}
         paycheckSettings={paycheckSettings}
         onDataChange={handleDataChange}
         isPanelOpen={isPanelOpen}

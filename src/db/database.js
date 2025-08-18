@@ -4,12 +4,117 @@ import Dexie from 'dexie';
 export class DigibookDB extends Dexie {
   constructor() {
     super('DigibookDB');
-    
+
+    // Define all table schemas without indexes first
+    const stores = {
+      accounts: '++id',
+      pendingTransactions: '++id',
+      fixedExpenses: '++id',
+      categories: '++id',
+      creditCards: '++id',
+      paycheckSettings: '++id',
+      auditLogs: '++id'
+    };
+
+    // Initial setup
+    this.version(1).stores(stores);
+
+    // Add basic indexes
+    this.version(2).stores({
+      ...stores,
+      accounts: '++id, name, type, currentBalance',
+      pendingTransactions: '++id, accountId, amount, description',
+      fixedExpenses: '++id, name, dueDate, amount'
+    });
+
+    // Add category support
     this.version(3).stores({
+      ...stores,
+      accounts: '++id, name, type, currentBalance',
+      pendingTransactions: '++id, accountId, amount, category, description',
+      fixedExpenses: '++id, name, dueDate, amount, category',
+      categories: '++id, name, color, icon',
+      auditLogs: '++id, timestamp, actionType, entityType, entityId'
+    });
+
+    // Add extended fields
+    this.version(4).stores({
+      ...stores,
       accounts: '++id, name, type, currentBalance, isDefault',
       pendingTransactions: '++id, accountId, amount, category, description, createdAt',
       fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status, category',
-      categories: '++id, name, color, icon, isDefault, &name', // &name creates unique constraint
+      categories: '++id, name, color, icon, isDefault',
+      paycheckSettings: '++id, lastPaycheckDate, frequency',
+      auditLogs: '++id, timestamp, actionType, entityType, entityId, details'
+    });
+
+    // Add unique constraint to categories
+    this.version(5).stores({
+      ...stores,
+      accounts: '++id, name, type, currentBalance, isDefault',
+      pendingTransactions: '++id, accountId, amount, category, description, createdAt',
+      fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status, category',
+      categories: '++id, *name, color, icon, isDefault', // legacy: attempted uniqueness with * (multiEntry)
+      paycheckSettings: '++id, lastPaycheckDate, frequency',
+      auditLogs: '++id, timestamp, actionType, entityType, entityId, details'
+    }).upgrade(async tx => {
+      // Get all categories
+      const categories = await tx.categories.toArray();
+      
+      // Create a map to track unique names
+      const uniqueCategories = new Map();
+      
+      // Keep only the first occurrence of each category name
+      categories.forEach(category => {
+        const nameLower = category.name.toLowerCase();
+        if (!uniqueCategories.has(nameLower)) {
+          uniqueCategories.set(nameLower, category);
+        }
+      });
+      
+      // Clear the table
+      await tx.categories.clear();
+      
+      // Add back unique categories
+      await tx.categories.bulkAdd([...uniqueCategories.values()]);
+    });
+
+    // Enforce case-insensitive unique category names using nameLower field
+    this.version(6).stores({
+      ...stores,
+      accounts: '++id, name, type, currentBalance, isDefault',
+      pendingTransactions: '++id, accountId, amount, category, description, createdAt',
+      fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status, category',
+      // Unique on nameLower to guarantee case-insensitive uniqueness
+      categories: '++id, &nameLower, name, color, icon, isDefault',
+      paycheckSettings: '++id, lastPaycheckDate, frequency',
+      auditLogs: '++id, timestamp, actionType, entityType, entityId, details'
+    }).upgrade(async tx => {
+      // Read existing categories
+      const existing = await tx.categories.toArray();
+      const keptByLower = new Map();
+      for (const cat of existing) {
+        const nameLower = (cat.name || '').toLowerCase();
+        if (!keptByLower.has(nameLower)) {
+          keptByLower.set(nameLower, { ...cat, nameLower });
+        }
+      }
+      // Clear and re-add with nameLower populated
+      await tx.categories.clear();
+      const toAdd = [...keptByLower.values()];
+      if (toAdd.length > 0) {
+        await tx.categories.bulkAdd(toAdd);
+      }
+    });
+
+    // Add credit cards table
+    this.version(7).stores({
+      ...stores,
+      accounts: '++id, name, type, currentBalance, isDefault',
+      pendingTransactions: '++id, accountId, amount, category, description, createdAt',
+      fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status, category',
+      categories: '++id, &nameLower, name, color, icon, isDefault',
+      creditCards: '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
       paycheckSettings: '++id, lastPaycheckDate, frequency',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details'
     });
@@ -20,6 +125,23 @@ export const db = new DigibookDB();
 
 // Database helper functions
 export const dbHelpers = {
+  async deleteDatabase() {
+    try {
+      // Delete the database completely
+      await db.delete();
+      
+      // Create a new instance with fresh schema
+      const newDb = new DigibookDB();
+      
+      // Replace the old instance
+      Object.assign(db, newDb);
+      
+      logger.success('Database deleted and recreated successfully');
+    } catch (error) {
+      logger.error('Error deleting database:', error);
+      throw new Error('Failed to delete database');
+    }
+  },
   // Clear database (for development/testing)
   async clearDatabase() {
     try {
@@ -27,11 +149,55 @@ export const dbHelpers = {
       await db.pendingTransactions.clear();
       await db.fixedExpenses.clear();
       await db.categories.clear();
+      await db.creditCards.clear();
       await db.paycheckSettings.clear();
       await db.auditLogs.clear();
       logger.success("Database cleared successfully");
     } catch (error) {
       logger.error("Error clearing database:", error);
+    }
+  },
+
+  // Delete and recreate database in case of schema issues
+  async resetDatabase() {
+    try {
+      // Import the dataManager here to avoid circular dependencies
+      const { dataManager } = await import('../services/dataManager');
+      
+      try {
+        // Create backup using BackupManager
+        await dataManager.backupManager.createBackup('schema_reset');
+      } catch (error) {
+        logger.warn('Could not create backup before reset:', error);
+      }
+
+      // Delete the database
+      await db.delete();
+      
+      // Create a new instance
+      const newDb = new DigibookDB();
+      Object.assign(db, newDb);
+
+      // Try to restore from latest backup
+      try {
+        const backup = await dataManager.backupManager.getLatestBackup();
+        if (backup) {
+          await dataManager.backupManager.restoreBackup(backup.key);
+          logger.success('Data restored after schema reset');
+        } else {
+          // Initialize with defaults since no backup exists
+          await this.initializeDefaultCategories();
+        }
+      } catch (error) {
+        logger.error('Could not restore data after reset:', error);
+        // Initialize with defaults since restore failed
+        await this.initializeDefaultCategories();
+      }
+
+      logger.success('Database reset and reinitialized successfully');
+    } catch (error) {
+      logger.error('Error resetting database:', error);
+      throw new Error('Failed to reset database');
     }
   },
 
@@ -443,8 +609,11 @@ export const dbHelpers = {
 
   async addCategory(category) {
     try {
+      const trimmedName = (category.name || '').trim();
       const id = await db.categories.add({
         ...category,
+        name: trimmedName,
+        nameLower: trimmedName.toLowerCase(),
         isDefault: category.isDefault || false, // Ensure isDefault is explicitly set
         createdAt: new Date().toISOString()
       });
@@ -461,8 +630,14 @@ export const dbHelpers = {
 
   async updateCategory(id, updates) {
     try {
-      await db.categories.update(id, updates);
-      await this.addAuditLog('UPDATE', 'category', id, updates);
+      let payload = { ...updates };
+      if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
+        const trimmedName = (updates.name || '').trim();
+        payload.name = trimmedName;
+        payload.nameLower = trimmedName.toLowerCase();
+      }
+      await db.categories.update(id, payload);
+      await this.addAuditLog('UPDATE', 'category', id, payload);
       logger.success('Category updated successfully: ' + id);
     } catch (error) {
       logger.error('Error updating category:', error);
@@ -552,7 +727,11 @@ export const dbHelpers = {
       );
       
       if (categoriesToAdd.length > 0) {
-        await db.categories.bulkAdd(categoriesToAdd);
+        const withLower = categoriesToAdd.map(c => ({
+          ...c,
+          nameLower: c.name.toLowerCase()
+        }));
+        await db.categories.bulkAdd(withLower);
         logger.success(`Added ${categoriesToAdd.length} default categories`);
       } else {
         logger.info('All default categories already exist');
@@ -604,6 +783,7 @@ export const dbHelpers = {
       const pendingTransactions = await this.getPendingTransactions();
       const fixedExpenses = await this.getFixedExpenses();
       const categories = await this.getCategories();
+      const creditCards = await this.getCreditCards();
       const paycheckSettings = await this.getPaycheckSettings();
       const auditLogs = await this.getAuditLogs();
       
@@ -612,6 +792,7 @@ export const dbHelpers = {
         pendingTransactions,
         fixedExpenses,
         categories,
+        creditCards,
         paycheckSettings,
         auditLogs,
         exportedAt: new Date().toISOString()
@@ -627,40 +808,266 @@ export const dbHelpers = {
 
   async importData(data) {
     try {
-      await db.transaction('rw', db.accounts, db.pendingTransactions, db.fixedExpenses, db.categories, db.paycheckSettings, db.auditLogs, async () => {
-        // Clear existing data
-        await db.accounts.clear();
-        await db.pendingTransactions.clear();
-        await db.fixedExpenses.clear();
-        await db.categories.clear();
-        await db.paycheckSettings.clear();
-        await db.auditLogs.clear();
-        
-        // Import new data
-        if (data.accounts) {
-          await db.accounts.bulkAdd(data.accounts);
+      // Validate import data structure
+      const validationResult = this.validateImportData(data);
+      if (!validationResult.isValid) {
+        throw new Error(`Import validation failed: ${validationResult.errors.join(', ')}`);
+      }
+      
+      // Clear existing data
+      await this.clearDatabase();
+      
+      // Import new data
+      if (data.accounts && Array.isArray(data.accounts)) {
+        await db.accounts.bulkAdd(data.accounts);
+      }
+      if (data.pendingTransactions && Array.isArray(data.pendingTransactions)) {
+        await db.pendingTransactions.bulkAdd(data.pendingTransactions);
+      }
+      if (data.fixedExpenses && Array.isArray(data.fixedExpenses)) {
+        await db.fixedExpenses.bulkAdd(data.fixedExpenses);
+      }
+      if (data.categories && Array.isArray(data.categories)) {
+        const categories = data.categories.map(c => ({
+          ...c,
+          name: (c.name || '').trim(),
+          nameLower: (c.name || '').trim().toLowerCase()
+        }));
+        await db.categories.bulkAdd(categories);
+      }
+      if (data.paycheckSettings) {
+        // Handle both array and single object cases
+        const settings = Array.isArray(data.paycheckSettings) ? data.paycheckSettings[0] : data.paycheckSettings;
+        if (settings) {
+          await db.paycheckSettings.add(settings);
         }
-        if (data.pendingTransactions) {
-          await db.pendingTransactions.bulkAdd(data.pendingTransactions);
-        }
-        if (data.fixedExpenses) {
-          await db.fixedExpenses.bulkAdd(data.fixedExpenses);
-        }
-        if (data.categories) {
-          await db.categories.bulkAdd(data.categories);
-        }
-        if (data.paycheckSettings) {
-          await db.paycheckSettings.bulkAdd(data.paycheckSettings);
-        }
-        if (data.auditLogs) {
-          await db.auditLogs.bulkAdd(data.auditLogs);
-        }
-      });
+      }
+      if (data.creditCards && Array.isArray(data.creditCards)) {
+        await db.creditCards.bulkAdd(data.creditCards);
+      }
+      if (data.auditLogs && Array.isArray(data.auditLogs)) {
+        await db.auditLogs.bulkAdd(data.auditLogs);
+      }
+      
+      // Initialize default categories if needed
+      await this.initializeDefaultCategories();
       
       logger.success('Data imported successfully');
     } catch (error) {
       logger.error('Error importing data:', error);
-      throw new Error('Failed to import data');
+      throw new Error(`Failed to import data: ${error.message}`);
     }
+  },
+
+  validateImportData(data) {
+    const errors = [];
+    
+    // Check if data is an object
+    if (!data || typeof data !== 'object') {
+      errors.push('Invalid data format');
+      return { isValid: false, errors };
+    }
+
+    // Validate accounts if present
+    if (data.accounts) {
+      if (!Array.isArray(data.accounts)) {
+        errors.push('Accounts must be an array');
+      } else {
+        data.accounts.forEach((account, index) => {
+          if (!account.name || typeof account.name !== 'string') {
+            errors.push(`Account ${index + 1}: Missing or invalid name`);
+          }
+          if (typeof account.currentBalance !== 'number') {
+            errors.push(`Account ${index + 1}: Invalid balance`);
+          }
+          if (!account.type || !['checking', 'savings'].includes(account.type)) {
+            errors.push(`Account ${index + 1}: Invalid account type`);
+          }
+        });
+      }
+    }
+
+    // Validate pending transactions if present
+    if (data.pendingTransactions) {
+      if (!Array.isArray(data.pendingTransactions)) {
+        errors.push('Pending transactions must be an array');
+      } else {
+        data.pendingTransactions.forEach((transaction, index) => {
+          if (!transaction.accountId || typeof transaction.accountId !== 'number') {
+            errors.push(`Transaction ${index + 1}: Missing or invalid account ID`);
+          }
+          if (typeof transaction.amount !== 'number') {
+            errors.push(`Transaction ${index + 1}: Invalid amount`);
+          }
+          if (!transaction.description || typeof transaction.description !== 'string') {
+            errors.push(`Transaction ${index + 1}: Missing or invalid description`);
+          }
+        });
+      }
+    }
+
+    // Validate fixed expenses if present
+    if (data.fixedExpenses) {
+      if (!Array.isArray(data.fixedExpenses)) {
+        errors.push('Fixed expenses must be an array');
+      } else {
+        data.fixedExpenses.forEach((expense, index) => {
+          if (!expense.name || typeof expense.name !== 'string') {
+            errors.push(`Expense ${index + 1}: Missing or invalid name`);
+          }
+          if (typeof expense.amount !== 'number') {
+            errors.push(`Expense ${index + 1}: Invalid amount`);
+          }
+          if (!expense.dueDate || isNaN(new Date(expense.dueDate).getTime())) {
+            errors.push(`Expense ${index + 1}: Invalid due date`);
+          }
+        });
+      }
+    }
+
+    // Validate categories if present
+    if (data.categories) {
+      if (!Array.isArray(data.categories)) {
+        errors.push('Categories must be an array');
+      } else {
+        data.categories.forEach((category, index) => {
+          if (!category.name || typeof category.name !== 'string') {
+            errors.push(`Category ${index + 1}: Missing or invalid name`);
+          }
+          if (!category.color || typeof category.color !== 'string') {
+            errors.push(`Category ${index + 1}: Missing or invalid color`);
+          }
+        });
+      }
+    }
+
+    // Validate credit cards if present
+    if (data.creditCards) {
+      if (!Array.isArray(data.creditCards)) {
+        errors.push('Credit cards must be an array');
+      } else {
+        data.creditCards.forEach((card, index) => {
+          if (!card.name || typeof card.name !== 'string') {
+            errors.push(`Credit card ${index + 1}: Missing or invalid name`);
+          }
+          if (typeof card.balance !== 'number' || card.balance < 0) {
+            errors.push(`Credit card ${index + 1}: Invalid balance`);
+          }
+          if (typeof card.creditLimit !== 'number' || card.creditLimit <= 0) {
+            errors.push(`Credit card ${index + 1}: Invalid credit limit`);
+          }
+          if (typeof card.interestRate !== 'number' || card.interestRate < 0) {
+            errors.push(`Credit card ${index + 1}: Invalid interest rate`);
+          }
+          if (!card.dueDate || isNaN(new Date(card.dueDate).getTime())) {
+            errors.push(`Credit card ${index + 1}: Invalid due date`);
+          }
+          if (typeof card.minimumPayment !== 'number' || card.minimumPayment < 0) {
+            errors.push(`Credit card ${index + 1}: Invalid minimum payment`);
+          }
+        });
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  },
+
+  // Credit Card Management
+  async getCreditCards() {
+    try {
+      const creditCards = await db.creditCards.toArray();
+      return creditCards.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+      logger.error('Error getting credit cards:', error);
+      throw new Error('Failed to get credit cards');
+    }
+  },
+
+  async addCreditCard(creditCard) {
+    try {
+      const id = await db.creditCards.add({
+        ...creditCard,
+        balance: parseFloat(creditCard.balance) || 0,
+        creditLimit: parseFloat(creditCard.creditLimit) || 0,
+        interestRate: parseFloat(creditCard.interestRate) || 0,
+        minimumPayment: parseFloat(creditCard.minimumPayment) || 0,
+        createdAt: new Date().toISOString()
+      });
+      logger.success('Credit card added successfully');
+      return id;
+    } catch (error) {
+      logger.error('Error adding credit card:', error);
+      throw new Error('Failed to add credit card');
+    }
+  },
+
+  async updateCreditCard(id, updates) {
+    try {
+      const payload = { ...updates };
+      if (updates.balance !== undefined) payload.balance = parseFloat(updates.balance) || 0;
+      if (updates.creditLimit !== undefined) payload.creditLimit = parseFloat(updates.creditLimit) || 0;
+      if (updates.interestRate !== undefined) payload.interestRate = parseFloat(updates.interestRate) || 0;
+      if (updates.minimumPayment !== undefined) payload.minimumPayment = parseFloat(updates.minimumPayment) || 0;
+      
+      await db.creditCards.update(id, payload);
+      logger.success('Credit card updated successfully');
+    } catch (error) {
+      logger.error('Error updating credit card:', error);
+      throw new Error('Failed to update credit card');
+    }
+  },
+
+  async deleteCreditCard(id) {
+    try {
+      await db.creditCards.delete(id);
+      logger.success('Credit card deleted successfully');
+    } catch (error) {
+      logger.error('Error deleting credit card:', error);
+      throw new Error('Failed to delete credit card');
+    }
+  },
+
+  async addCreditCardPayment(creditCardId, payment) {
+    try {
+      const creditCard = await db.creditCards.get(creditCardId);
+      if (!creditCard) {
+        throw new Error('Credit card not found');
+      }
+      
+      const newBalance = creditCard.balance - parseFloat(payment.amount);
+      await db.creditCards.update(creditCardId, { balance: Math.max(0, newBalance) });
+      
+      // Add payment to audit log
+      await db.auditLogs.add({
+        timestamp: new Date().toISOString(),
+        actionType: 'payment',
+        entityType: 'creditCard',
+        entityId: creditCardId,
+        details: {
+          amount: payment.amount,
+          previousBalance: creditCard.balance,
+          newBalance: Math.max(0, newBalance),
+          paymentDate: payment.date || new Date().toISOString()
+        }
+      });
+      
+      logger.success('Credit card payment recorded successfully');
+    } catch (error) {
+      logger.error('Error recording credit card payment:', error);
+      throw new Error('Failed to record payment');
+    }
+  },
+
+  // This method is deprecated. Use dataManager.backupManager.restoreBackup() instead.
+  async restoreFromBackup() {
+    const { dataManager } = await import('../services/dataManager');
+    const backup = await dataManager.backupManager.getLatestBackup();
+    if (!backup) {
+      throw new Error('No backup found');
+    }
+    await dataManager.backupManager.restoreBackup(backup.key);
   }
 }; 

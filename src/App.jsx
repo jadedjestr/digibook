@@ -1,11 +1,14 @@
 import { logger } from "./utils/logger";
 import React, { useState, useEffect } from 'react';
-import { Wallet, Clock, Calendar, Settings, Lock, Unlock } from 'lucide-react';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { Wallet, Clock, Calendar, Settings, Lock, Unlock, CreditCard } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Accounts from './pages/Accounts';
 import PendingTransactions from './pages/PendingTransactions';
 import FixedExpenses from './pages/FixedExpenses';
 import SettingsPage from './pages/Settings';
+import CreditCards from './pages/CreditCards';
 import PINLock from './components/PINLock';
 import { dbHelpers } from './db/database';
 import { PrivacyProvider } from './contexts/PrivacyContext';
@@ -17,9 +20,9 @@ function App() {
     return localStorage.getItem('digibook_pin') || '';
   });
   const [accounts, setAccounts] = useState([]);
+  const [creditCards, setCreditCards] = useState([]);
   const [pendingTransactions, setPendingTransactions] = useState([]);
   const [defaultAccount, setDefaultAccount] = useState(null);
-  const [liquidBalance, setLiquidBalance] = useState(0);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   // Load data on mount
@@ -27,19 +30,14 @@ function App() {
     loadData();
   }, []);
 
-  // Calculate liquid balance whenever accounts change
-  useEffect(() => {
-    const total = accounts.reduce((sum, account) => sum + account.currentBalance, 0);
-    setLiquidBalance(total);
-  }, [accounts]);
-
   const loadData = async () => {
     try {
       // Fix database schema first
       await dbHelpers.fixDatabaseSchema();
       
-      const [accountsData, transactionsData, defaultAccountData] = await Promise.all([
+      const [accountsData, creditCardsData, transactionsData, defaultAccountData] = await Promise.all([
         dbHelpers.getAccounts(),
+        dbHelpers.getCreditCards(),
         dbHelpers.getPendingTransactions(),
         dbHelpers.getDefaultAccount()
       ]);
@@ -48,12 +46,14 @@ function App() {
       await dbHelpers.ensureDefaultAccount();
       
       setAccounts(accountsData);
+      setCreditCards(creditCardsData);
       setPendingTransactions(transactionsData);
       setDefaultAccount(defaultAccountData);
     } catch (error) {
       logger.error('Error loading data:', error);
       // Set empty arrays if there's an error
       setAccounts([]);
+      setCreditCards([]);
       setPendingTransactions([]);
       setDefaultAccount(null);
     }
@@ -76,6 +76,7 @@ function App() {
     { id: 'accounts', name: 'Accounts', icon: Wallet },
     { id: 'pending', name: 'Pending Transactions', icon: Clock },
     { id: 'expenses', name: 'Fixed Expenses', icon: Calendar },
+    { id: 'creditCards', name: 'Credit Cards', icon: CreditCard },
     { id: 'settings', name: 'Settings', icon: Settings },
   ];
 
@@ -92,11 +93,14 @@ function App() {
       case 'expenses':
         return <FixedExpenses 
           accounts={accounts} 
+          creditCards={creditCards}
           pendingTransactions={pendingTransactions}
           onDataChange={handleDataChange}
           isPanelOpen={isPanelOpen}
           setIsPanelOpen={setIsPanelOpen}
         />;
+      case 'creditCards':
+        return <CreditCards onDataChange={handleDataChange} />;
       case 'settings':
         return <SettingsPage onDataChange={handleDataChange} />;
       default:
@@ -118,6 +122,18 @@ function App() {
   return (
     <PrivacyProvider>
       <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme="dark"
+        />
         <Sidebar
           navigation={navigation}
           currentPage={currentPage}

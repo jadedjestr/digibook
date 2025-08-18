@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { logger } from "../utils/logger";
 import { Download, Upload, Eye, Trash2, Lock, Shield, Database } from 'lucide-react'
-import { dbHelpers } from '../db/database'
-import Papa from 'papaparse'
+import { dataManager } from '../services/dataManager'
 import PaycheckManager from '../components/PaycheckManager'
 import CategoryManager from '../components/CategoryManager'
 
@@ -13,6 +12,7 @@ const Settings = ({ onDataChange }) => {
   const [importType, setImportType] = useState('json');
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -25,9 +25,21 @@ const Settings = ({ onDataChange }) => {
         // Test basic functionality first
         console.log('Settings: Testing basic state...');
         
-        // Test database connection
+        // Test database connection with schema fix
         console.log('Settings: Testing database connection...');
-        await loadAuditLogs();
+        try {
+          await loadAuditLogs();
+        } catch (dbError) {
+          if (dbError.message.includes('ConstraintError') || 
+              dbError.message.includes('DatabaseClosedError') ||
+              dbError.message.includes('already exists')) {
+            console.log('Settings: Database schema issue detected, attempting reset...');
+            await dbHelpers.deleteDatabase();
+            await loadAuditLogs();
+          } else {
+            throw dbError;
+          }
+        }
         
         console.log('Settings: Initialization successful');
         setIsLoading(false);
@@ -45,7 +57,7 @@ const Settings = ({ onDataChange }) => {
 
   const loadAuditLogs = async () => {
     try {
-      const logs = await dbHelpers.getAuditLogs();
+      const logs = await dataManager.getAuditLogs();
       setAuditLogs(logs);
     } catch (error) {
       logger.error("Error loading audit logs:", error);
@@ -55,44 +67,38 @@ const Settings = ({ onDataChange }) => {
   const handleExportCSV = async () => {
     setIsExporting(true);
     try {
-      const data = await dbHelpers.exportData();
+      const files = await dataManager.exportData('csv', setImportProgress);
       
-      // Export each table as separate CSV
-      const tables = ['accounts', 'pendingTransactions', 'fixedExpenses', 'auditLogs'];
-      
-      tables.forEach(tableName => {
-        if (data[tableName] && data[tableName].length > 0) {
-          const csv = Papa.unparse(data[tableName]);
-          const blob = new Blob([csv], { type: 'text/csv' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = tableName + '_' + new Date().toISOString().split('T')[0] + '.csv';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }
+      // Download each file
+      files.forEach(({ blob, filename }) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       });
       
       logger.success('CSV data exported successfully');
     } catch (error) {
       logger.error('Error exporting CSV:', error);
-      alert('Error exporting data');
+      alert('Error exporting data: ' + error.message);
     } finally {
       setIsExporting(false);
+      setImportProgress('');
     }
   };
 
   const handleExportJSON = async () => {
     setIsExporting(true);
     try {
-      const data = await dbHelpers.exportData();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const { blob, filename } = await dataManager.exportData('json', setImportProgress);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'digibook_backup_' + new Date().toISOString().split('T')[0] + '.json';
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -100,9 +106,10 @@ const Settings = ({ onDataChange }) => {
       logger.success('Data exported successfully');
     } catch (error) {
       logger.error('Error exporting JSON:', error);
-      alert('Error exporting data');
+      alert('Error exporting data: ' + error.message);
     } finally {
       setIsExporting(false);
+      setImportProgress('');
     }
   };
 
@@ -110,6 +117,7 @@ const Settings = ({ onDataChange }) => {
     const file = event.target.files[0];
     if (file) {
       setImportFile(file);
+      setImportProgress('');
     }
   };
 
@@ -118,28 +126,15 @@ const Settings = ({ onDataChange }) => {
 
     setIsImporting(true);
     try {
-      let data;
-      
-      if (importType === 'json') {
-        const text = await importFile.text();
-        data = JSON.parse(text);
-      } else {
-        // CSV import - for now, we'll handle accounts only
-        const text = await importFile.text();
-        const result = Papa.parse(text, { header: true });
-        data = { accounts: result.data };
-      }
-
-      if (confirm('This will overwrite all existing data. Are you sure?')) {
-        await dbHelpers.importData(data);
-        logger.success('Data imported successfully');
+      if (confirm('This will overwrite all existing data. A backup will be created automatically. Are you sure?')) {
+        await dataManager.importData(importFile, setImportProgress);
         onDataChange();
         setImportFile(null);
         alert('Data imported successfully');
       }
     } catch (error) {
       logger.error('Error importing data:', error);
-      alert('Error importing data. Please check the file format.');
+      alert('Import failed: ' + error.message);
     } finally {
       setIsImporting(false);
     }
@@ -148,13 +143,53 @@ const Settings = ({ onDataChange }) => {
   const handleClearAuditLogs = async () => {
     if (confirm('Are you sure you want to clear all audit logs?')) {
       try {
-        await dbHelpers.clearAuditLogs();
-        logger.success('Audit logs cleared successfully');
+        await dataManager.clearAuditLogs();
         loadAuditLogs();
         alert('Audit logs cleared');
       } catch (error) {
         logger.error('Error clearing audit logs:', error);
-        alert('Error clearing audit logs');
+        alert('Error clearing audit logs: ' + error.message);
+      }
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (confirm('This will clear all data from all tables. A backup will be created automatically. Are you sure?')) {
+      try {
+        setImportProgress('Creating backup...');
+        await dataManager.clearAllData();
+        setImportProgress('All data cleared successfully!');
+        onDataChange();
+        setTimeout(() => setImportProgress(''), 3000);
+        alert('All data cleared successfully. Default categories have been restored.');
+      } catch (error) {
+        logger.error('Error clearing all data:', error);
+        alert('Failed to clear data: ' + error.message);
+        setImportProgress('');
+      }
+    }
+  };
+
+  const handleRestoreFromBackup = async () => {
+    if (confirm('This will restore your data from the last backup. Are you sure?')) {
+      try {
+        setImportProgress('Finding latest backup...');
+        const backup = await dataManager.backupManager.getLatestBackup();
+        if (!backup) {
+          throw new Error('No backup found');
+        }
+        
+        setImportProgress('Restoring backup...');
+        await dataManager.backupManager.restoreBackup(backup.key);
+        
+        setImportProgress('Backup restored successfully!');
+        onDataChange();
+        setTimeout(() => setImportProgress(''), 3000);
+        alert('Data restored from backup successfully');
+      } catch (error) {
+        logger.error('Error restoring from backup:', error);
+        alert('Failed to restore backup: ' + error.message);
+        setImportProgress('');
       }
     }
   };
@@ -295,29 +330,70 @@ const Settings = ({ onDataChange }) => {
                   />
                 </div>
                 {importFile && (
-                  <div className="flex items-center space-x-3">
-                    <span className="text-secondary text-sm">
-                      Selected: {importFile.name}
-                    </span>
-                    <button
-                      onClick={handleImport}
-                      disabled={isImporting}
-                      className={`glass-button flex items-center space-x-2 ${isImporting ? 'glass-loading' : ''}`}
-                    >
-                      {isImporting ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          <span>Importing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Upload size={16} />
-                          <span>Import</span>
-                        </>
-                      )}
-                    </button>
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-secondary text-sm">
+                        Selected: {importFile.name}
+                      </span>
+                      <button
+                        onClick={handleImport}
+                        disabled={isImporting}
+                        className={`glass-button flex items-center space-x-2 ${isImporting ? 'glass-loading' : ''}`}
+                      >
+                        {isImporting ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                            <span>Importing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={16} />
+                            <span>Import</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    {importProgress && (
+                      <div className="text-sm text-blue-300 bg-blue-500/20 rounded-lg px-3 py-2">
+                        {importProgress}
+                      </div>
+                    )}
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Clear Data Section */}
+            <div>
+              <h4 className="text-primary font-medium mb-3">Clear Data</h4>
+              <div className="space-y-3">
+                <p className="text-secondary text-sm">
+                  Clear all data from all tables. A backup will be created automatically.
+                </p>
+                <button
+                  onClick={handleClearAllData}
+                  className="glass-button bg-red-500/20 hover:bg-red-500/30 text-red-300 flex items-center space-x-2"
+                >
+                  <Trash2 size={16} />
+                  <span>Clear All Data</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Backup Recovery Section */}
+            <div>
+              <h4 className="text-primary font-medium mb-3">Backup Recovery</h4>
+              <div className="space-y-3">
+                <p className="text-secondary text-sm">
+                  If an import failed or you need to restore from a backup created before import.
+                </p>
+                <button
+                  onClick={handleRestoreFromBackup}
+                  className="glass-button bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300"
+                >
+                  <Shield size={16} />
+                  <span>Restore from Backup</span>
+                </button>
               </div>
             </div>
           </div>

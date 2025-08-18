@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Star, Trash2, Edit3, Check, X, Wallet } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Star, Trash2, Edit3, Check, X, Wallet, CreditCard, PiggyBank } from 'lucide-react';
 import { dbHelpers } from '../db/database';
 import PrivacyWrapper from '../components/PrivacyWrapper';
+import { useFinanceCalculations } from '../services/financeService';
 
-const Accounts = ({ accounts, onDataChange }) => {
-  const [pendingTransactions, setPendingTransactions] = useState([]);
+const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -15,18 +15,10 @@ const Accounts = ({ accounts, onDataChange }) => {
     currentBalance: 0
   });
 
-  useEffect(() => {
-    loadPendingTransactions();
-  }, []);
+  const { calculateLiquidBalance } = useFinanceCalculations(accounts, pendingTransactions);
+  const liquidBalance = calculateLiquidBalance;
 
-  const loadPendingTransactions = async () => {
-    try {
-      const transactions = await dbHelpers.getPendingTransactions();
-      setPendingTransactions(transactions);
-    } catch (error) {
-      console.error('Error loading pending transactions:', error);
-    }
-  };
+
 
   const calculateProjectedBalance = (account) => {
     const pendingForAccount = pendingTransactions
@@ -36,6 +28,40 @@ const Accounts = ({ accounts, onDataChange }) => {
     // For expenses (negative amounts), we add the pending amount to get the projected balance
     // For income (positive amounts), we also add the pending amount
     return account.currentBalance + pendingForAccount;
+  };
+
+  // Group accounts by type
+  const groupedAccounts = accounts.reduce((groups, account) => {
+    const type = account.type;
+    if (!groups[type]) {
+      groups[type] = [];
+    }
+    groups[type].push(account);
+    return groups;
+  }, {});
+
+  // Get account type icon
+  const getAccountTypeIcon = (type) => {
+    switch (type) {
+      case 'checking':
+        return <CreditCard size={20} className="text-blue-300" />;
+      case 'savings':
+        return <PiggyBank size={20} className="text-green-300" />;
+      default:
+        return <Wallet size={20} className="text-secondary" />;
+    }
+  };
+
+  // Get account type display name
+  const getAccountTypeDisplayName = (type) => {
+    switch (type) {
+      case 'checking':
+        return 'Checking Accounts';
+      case 'savings':
+        return 'Savings Accounts';
+      default:
+        return `${type.charAt(0).toUpperCase() + type.slice(1)} Accounts`;
+    }
   };
 
   const validateForm = () => {
@@ -193,6 +219,19 @@ const Accounts = ({ accounts, onDataChange }) => {
         </button>
       </div>
 
+      {/* Liquid Balance Card */}
+      <div className="glass-card">
+        <div className="text-sm font-medium text-secondary mb-3">Liquid Balance</div>
+        <div className="balance-display">
+          <PrivacyWrapper>
+            ${liquidBalance.toFixed(2)}
+          </PrivacyWrapper>
+        </div>
+        <div className="text-xs text-muted mt-1">
+          Across all accounts
+        </div>
+      </div>
+
       {/* Add Account Form */}
       {isAddingAccount && (
         <div className="glass-panel">
@@ -266,9 +305,9 @@ const Accounts = ({ accounts, onDataChange }) => {
         </div>
       )}
 
-      {/* Accounts Table */}
-      <div className="glass-panel">
-        {accounts.length === 0 ? (
+      {/* Grouped Accounts Display */}
+      {accounts.length === 0 ? (
+        <div className="glass-panel">
           <div className="empty-state">
             <div className="empty-state-icon">🏦</div>
             <h3 className="text-xl font-semibold text-primary mb-2">Ready to track your finances?</h3>
@@ -283,87 +322,94 @@ const Accounts = ({ accounts, onDataChange }) => {
               <span>Add Your First Account</span>
             </button>
           </div>
-        ) : (
-          <table className="glass-table">
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th>Type</th>
-                <th>Current Balance</th>
-                <th>Projected Balance</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((account) => {
-                const projectedBalance = calculateProjectedBalance(account);
-                const isEditing = editingId === account.id;
-                
-                console.log('Account data:', account);
-                
-                return (
-                  <tr key={account.id}>
-                    <td>
-                      <InlineEdit
-                        value={account.name}
-                        onSave={(name) => handleUpdateAccount(account.id, { name })}
-                      />
-                    </td>
-                    <td>
-                      <InlineEdit
-                        value={account.type}
-                        onSave={(type) => handleUpdateAccount(account.id, { type })}
-                        options={[
-                          { value: 'checking', label: 'Checking' },
-                          { value: 'savings', label: 'Savings' },
-                        ]}
-                      />
-                    </td>
-                    <td>
-                      <InlineEdit
-                        value={account.currentBalance}
-                        onSave={(currentBalance) => handleUpdateAccount(account.id, { currentBalance: parseFloat(currentBalance) || 0 })}
-                        type="number"
-                      />
-                    </td>
-                    <td>
-                      <span className={`font-semibold ${
-                        projectedBalance < account.currentBalance ? 'text-yellow-400' : 'text-primary'
-                      }`}>
-                        <PrivacyWrapper>
-                          ${projectedBalance.toFixed(2)}
-                        </PrivacyWrapper>
-                      </span>
-                    </td>
-                    <td>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => handleSetDefault(account.id)}
-                          className={`p-1 rounded transition-all duration-200 ${
-                            account.isDefault 
-                              ? 'text-yellow-400 bg-yellow-500/20' 
-                              : 'text-muted hover:text-white hover:bg-white/10'
-                          }`}
-                          title={account.isDefault ? 'Default Account' : 'Set as Default'}
-                        >
-                          <Star size={16} fill={account.isDefault ? 'currentColor' : 'none'} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteAccount(account.id)}
-                          className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all duration-200"
-                          title="Delete Account"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {Object.entries(groupedAccounts).map(([type, typeAccounts]) => (
+            <div key={type} className="glass-panel">
+              {/* Account Type Header */}
+              <div className="flex items-center space-x-3 mb-4 pb-3 border-b border-white/10">
+                {getAccountTypeIcon(type)}
+                <h3 className="text-lg font-semibold text-primary">
+                  {getAccountTypeDisplayName(type)}
+                </h3>
+                <span className="text-sm text-secondary">
+                  {typeAccounts.length} account{typeAccounts.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* Accounts Table for this type */}
+              <table className="glass-table">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th>Current Balance</th>
+                    <th>Projected Balance</th>
+                    <th>Actions</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {typeAccounts.map((account) => {
+                    const projectedBalance = calculateProjectedBalance(account);
+                    const isEditing = editingId === account.id;
+                    
+                    console.log('Account data:', account);
+                    
+                    return (
+                      <tr key={account.id}>
+                        <td>
+                          <InlineEdit
+                            value={account.name}
+                            onSave={(name) => handleUpdateAccount(account.id, { name })}
+                          />
+                        </td>
+                        <td>
+                          <InlineEdit
+                            value={account.currentBalance}
+                            onSave={(currentBalance) => handleUpdateAccount(account.id, { currentBalance: parseFloat(currentBalance) || 0 })}
+                            type="number"
+                          />
+                        </td>
+                        <td>
+                          <span className={`font-semibold ${
+                            projectedBalance < account.currentBalance ? 'text-yellow-400' : 'text-primary'
+                          }`}>
+                            <PrivacyWrapper>
+                              ${projectedBalance.toFixed(2)}
+                            </PrivacyWrapper>
+                          </span>
+                        </td>
+                        <td>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleSetDefault(account.id)}
+                              className={`p-1 rounded transition-all duration-200 ${
+                                account.isDefault 
+                                  ? 'text-yellow-400 bg-yellow-500/20' 
+                                  : 'text-muted hover:text-white hover:bg-white/10'
+                              }`}
+                              title={account.isDefault ? 'Default Account' : 'Set as Default'}
+                            >
+                              <Star size={16} fill={account.isDefault ? 'currentColor' : 'none'} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAccount(account.id)}
+                              className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all duration-200"
+                              title="Delete Account"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

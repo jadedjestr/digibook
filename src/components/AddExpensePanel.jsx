@@ -7,6 +7,7 @@ const AddExpensePanel = ({
   isOpen, 
   onClose, 
   accounts, 
+  creditCards = [], 
   onDataChange 
 }) => {
   const [formData, setFormData] = useState({
@@ -20,6 +21,17 @@ const AddExpensePanel = ({
   const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+
+  // Combine regular accounts and credit cards for account selector
+  const allAccounts = [
+    ...accounts.map(acc => ({ ...acc, type: 'account' })),
+    ...creditCards.map(card => ({ 
+      ...card, 
+      type: 'creditCard',
+      currentBalance: card.balance, // Map balance to currentBalance for consistency
+      name: `${card.name} (Credit Card)`
+    }))
+  ];
   
   const panelRef = useRef(null);
   const firstInputRef = useRef(null);
@@ -177,9 +189,18 @@ const AddExpensePanel = ({
         status: 'pending'
       };
       
-      await dbHelpers.addFixedExpense(expenseData);
+      const newExpenseId = await dbHelpers.addFixedExpense(expenseData);
+      
+      // If this expense is assigned to a credit card, update the credit card balance
+      const selectedAccount = allAccounts.find(acc => acc.id === parseInt(formData.accountId));
+      if (selectedAccount && selectedAccount.type === 'creditCard') {
+        const newBalance = selectedAccount.balance + expenseData.amount;
+        await dbHelpers.updateCreditCard(selectedAccount.id, { balance: newBalance });
+        logger.success('Credit card balance updated');
+      }
+      
       logger.success('Expense added successfully');
-      onDataChange();
+      onDataChange(newExpenseId);
       onClose();
     } catch (error) {
       logger.error('Error adding expense:', error);
@@ -314,15 +335,15 @@ const AddExpensePanel = ({
               value={formData.accountId}
               onChange={(e) => {
                 const accountId = parseInt(e.target.value) || '';
-                const account = accounts.find(acc => acc.id === accountId);
+                const account = allAccounts.find(acc => acc.id === accountId);
                 setSelectedAccount(account);
                 handleInputChange('accountId', accountId);
               }}
               className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white"
             >
               <option value="">Select account</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
+              {allAccounts.map((account) => (
+                <option key={`${account.type}-${account.id}`} value={account.id}>
                   {account.name} - {formatBalance(account.currentBalance)}
                 </option>
               ))}

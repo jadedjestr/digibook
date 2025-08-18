@@ -15,14 +15,12 @@ const Sidebar = ({
 }) => {
   const { 
     getDefaultAccount, 
-    getDefaultAccountProjectedBalance, 
-    calculateLiquidBalance 
+    getDefaultAccountProjectedBalance
   } = useFinanceCalculations(accounts, pendingTransactions);
   const { isHidden, toggleHidden } = usePrivacy();
 
   const defaultAccount = getDefaultAccount;
   const projectedBalance = getDefaultAccountProjectedBalance;
-  const liquidBalance = calculateLiquidBalance;
 
   return (
     <div className="glass-sidebar">
@@ -58,18 +56,7 @@ const Sidebar = ({
           </div>
         )}
 
-        {/* Liquid Balance */}
-        <div className="glass-card">
-          <div className="text-sm font-medium text-secondary mb-3">Liquid Balance</div>
-          <div className="balance-display">
-            <PrivacyWrapper>
-              ${liquidBalance.toFixed(2)}
-            </PrivacyWrapper>
-          </div>
-          <div className="text-xs text-muted mt-1">
-            Across all accounts
-          </div>
-        </div>
+
       </div>
 
       {/* Navigation */}
