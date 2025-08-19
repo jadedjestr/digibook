@@ -391,12 +391,13 @@ const FixedExpensesTable = ({
     }
   }, [autoCollapseEnabled, expenses, collapsedCategories, setCollapsedCategories, manualOverrides]);
 
-  // Apply auto-collapse when expenses or auto-collapse setting changes
+  // 🔧 SEPARATE AUTO-COLLAPSE TRIGGER - Only when data actually changes
   useEffect(() => {
-    if (initState === INIT_STATES.READY) {
+    if (initState === INIT_STATES.READY && autoCollapseEnabled && expenses && expenses.length > 0) {
+      console.log('🔄 Auto-collapse triggered by data change...');
       applyAutoCollapseLogic();
     }
-  }, [applyAutoCollapseLogic, initState]);
+  }, [expenses, autoCollapseEnabled, initState]); // Only trigger on actual data changes, not UI state changes
 
   const toggleCategoryCollapse = (categoryName) => {
     const newSet = new Set(collapsedCategories);
