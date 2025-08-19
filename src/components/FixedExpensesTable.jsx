@@ -156,6 +156,8 @@ const FixedExpensesTable = ({
 
   // Group expenses by category and sort within each category
   const groupedExpenses = useMemo(() => {
+    if (!sortBy) return {};
+    
     return expenses.reduce((groups, expense) => {
       const category = expense.category || 'Uncategorized';
       if (!groups[category]) {
