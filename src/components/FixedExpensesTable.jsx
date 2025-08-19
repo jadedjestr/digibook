@@ -341,10 +341,58 @@ const FixedExpensesTable = ({
     ).length;
     
     const totalCount = categoryExpenses.length;
-    const allPaid = paidCount === totalCount;
+    const allPaid = paidCount === totalCount && totalCount > 0;
     
     return { allPaid, paidCount, totalCount };
   };
+
+  // 🔧 AUTO-COLLAPSE LOGIC
+  const applyAutoCollapseLogic = useCallback(() => {
+    if (!autoCollapseEnabled || !expenses || expenses.length === 0) {
+      return; // No auto-collapse if disabled or no expenses
+    }
+
+    console.log('🔄 Applying auto-collapse logic...');
+    
+    // Group expenses by category
+    const expensesByCategory = {};
+    expenses.forEach(expense => {
+      if (!expensesByCategory[expense.category]) {
+        expensesByCategory[expense.category] = [];
+      }
+      expensesByCategory[expense.category].push(expense);
+    });
+
+    // Check each category for auto-collapse
+    const newCollapsedCategories = new Set(collapsedCategories);
+    let autoCollapsedCount = 0;
+
+    Object.entries(expensesByCategory).forEach(([categoryName, categoryExpenses]) => {
+      const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
+      
+      if (allPaid) {
+        // Category is fully paid - should be auto-collapsed
+        if (!newCollapsedCategories.has(categoryName)) {
+          newCollapsedCategories.add(categoryName);
+          autoCollapsedCount++;
+          console.log(`📦 Auto-collapsed category: ${categoryName}`);
+        }
+      }
+    });
+
+    // Only update if we actually auto-collapsed something
+    if (autoCollapsedCount > 0) {
+      console.log(`📦 Auto-collapsed ${autoCollapsedCount} categories`);
+      setCollapsedCategories(newCollapsedCategories);
+    }
+  }, [autoCollapseEnabled, expenses, collapsedCategories, setCollapsedCategories]);
+
+  // Apply auto-collapse when expenses or auto-collapse setting changes
+  useEffect(() => {
+    if (initState === INIT_STATES.READY) {
+      applyAutoCollapseLogic();
+    }
+  }, [applyAutoCollapseLogic, initState]);
 
   const toggleCategoryCollapse = (categoryName) => {
     const newSet = new Set(collapsedCategories);
@@ -605,6 +653,54 @@ const FixedExpensesTable = ({
             >
               Sort by Name
             </button>
+            <div className="h-4 w-px bg-white/20"></div>
+            <button
+              onClick={() => setAutoCollapseEnabled(!autoCollapseEnabled)}
+              className={`text-sm px-3 py-1 rounded flex items-center space-x-1 ${
+                autoCollapseEnabled 
+                  ? 'bg-green-500/20 text-green-300' 
+                  : 'hover:bg-white/10'
+              }`}
+              title={autoCollapseEnabled ? 'Auto-collapse enabled' : 'Auto-collapse disabled'}
+            >
+              <span>Auto-collapse</span>
+              {autoCollapseEnabled && <Check size={12} />}
+            </button>
+            <button
+              onClick={() => {
+                // Collapse all fully paid categories
+                const newCollapsedCategories = new Set(collapsedCategories);
+                let collapsedCount = 0;
+                
+                Object.entries(groupedExpenses).forEach(([categoryName, categoryExpenses]) => {
+                  const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
+                  if (allPaid && !newCollapsedCategories.has(categoryName)) {
+                    newCollapsedCategories.add(categoryName);
+                    collapsedCount++;
+                  }
+                });
+                
+                if (collapsedCount > 0) {
+                  setCollapsedCategories(newCollapsedCategories);
+                  console.log(`📦 Manually collapsed ${collapsedCount} paid categories`);
+                }
+              }}
+              className="text-sm px-3 py-1 rounded hover:bg-white/10"
+              title="Collapse all fully paid categories"
+            >
+              Collapse All Paid
+            </button>
+            <button
+              onClick={() => {
+                // Expand all categories
+                setCollapsedCategories(new Set());
+                console.log('📂 Expanded all categories');
+              }}
+              className="text-sm px-3 py-1 rounded hover:bg-white/10"
+              title="Expand all categories"
+            >
+              Expand All
+            </button>
           </div>
         </div>
         <button
@@ -668,6 +764,12 @@ const FixedExpensesTable = ({
                         }`}>
                           {allPaid ? 'All paid' : `${paidCount}/${totalCount} paid`}
                         </span>
+                        {/* Auto-collapse indicator */}
+                        {collapsedCategories.has(categoryName) && allPaid && autoCollapseEnabled && (
+                          <span className="ml-2 px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300">
+                            Auto-collapsed
+                          </span>
+                        )}
                       </span>
                     </div>
                     <div className="text-right">
