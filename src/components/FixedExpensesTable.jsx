@@ -58,6 +58,7 @@ const FixedExpensesTable = ({
   const { value: sortBy, setValue: setSortBy, isLoaded: sortLoaded } = useSortPreference();
   const { value: autoCollapseEnabled, setValue: setAutoCollapseEnabled, isLoaded: autoCollapseLoaded } = useAutoCollapsePreference();
   const { value: showOnlyUnpaid, setValue: setShowOnlyUnpaid, isLoaded: showOnlyUnpaidLoaded } = useShowOnlyUnpaidPreference();
+  const { value: manualOverrides, setValue: setManualOverrides, isLoaded: manualOverridesLoaded } = usePersistedState('manualOverrides', new Set(), 'fixedExpenses');
 
   const [dropAnimation, setDropAnimation] = useState({
     duration: 250,
@@ -99,7 +100,7 @@ const FixedExpensesTable = ({
         // Step 2: Wait for persisted preferences to load
         console.log('⚙️ Waiting for preferences to load...');
         const checkPreferencesLoaded = () => {
-          return collapsedLoaded && sortLoaded && autoCollapseLoaded && showOnlyUnpaidLoaded;
+          return collapsedLoaded && sortLoaded && autoCollapseLoaded && showOnlyUnpaidLoaded && manualOverridesLoaded;
         };
         
         // Wait for preferences with timeout
@@ -127,7 +128,7 @@ const FixedExpensesTable = ({
     };
 
     initializeComponent();
-  }, [onDataChange, collapsedLoaded, sortLoaded, autoCollapseLoaded, showOnlyUnpaidLoaded]); // Wait for preferences
+  }, [onDataChange, collapsedLoaded, sortLoaded, autoCollapseLoaded, showOnlyUnpaidLoaded, manualOverridesLoaded]); // Wait for preferences
 
   // Sorting helpers - MUST be defined BEFORE useMemo that uses them
   const sortByDueDate = (a, b) => {
@@ -346,7 +347,7 @@ const FixedExpensesTable = ({
     return { allPaid, paidCount, totalCount };
   };
 
-  // 🔧 AUTO-COLLAPSE LOGIC
+  // 🔧 AUTO-COLLAPSE LOGIC with Manual Override Support
   const applyAutoCollapseLogic = useCallback(() => {
     if (!autoCollapseEnabled || !expenses || expenses.length === 0) {
       return; // No auto-collapse if disabled or no expenses
@@ -372,10 +373,13 @@ const FixedExpensesTable = ({
       
       if (allPaid) {
         // Category is fully paid - should be auto-collapsed
-        if (!newCollapsedCategories.has(categoryName)) {
+        // BUT only if user hasn't manually overridden it
+        if (!newCollapsedCategories.has(categoryName) && !manualOverrides.has(categoryName)) {
           newCollapsedCategories.add(categoryName);
           autoCollapsedCount++;
           console.log(`📦 Auto-collapsed category: ${categoryName}`);
+        } else if (manualOverrides.has(categoryName)) {
+          console.log(`🚫 Skipping auto-collapse for ${categoryName} (manual override)`);
         }
       }
     });
@@ -385,7 +389,7 @@ const FixedExpensesTable = ({
       console.log(`📦 Auto-collapsed ${autoCollapsedCount} categories`);
       setCollapsedCategories(newCollapsedCategories);
     }
-  }, [autoCollapseEnabled, expenses, collapsedCategories, setCollapsedCategories]);
+  }, [autoCollapseEnabled, expenses, collapsedCategories, setCollapsedCategories, manualOverrides]);
 
   // Apply auto-collapse when expenses or auto-collapse setting changes
   useEffect(() => {
@@ -396,14 +400,27 @@ const FixedExpensesTable = ({
 
   const toggleCategoryCollapse = (categoryName) => {
     const newSet = new Set(collapsedCategories);
+    const newManualOverrides = new Set(manualOverrides);
+    
     if (newSet.has(categoryName)) {
+      // Expanding the category
       newSet.delete(categoryName);
+      // If this was auto-collapsed, add to manual overrides
+      const { allPaid } = getCategoryPaymentStatus(groupedExpenses[categoryName] || []);
+      if (allPaid && autoCollapseEnabled) {
+        newManualOverrides.add(categoryName);
+        console.log(`👤 Manual override added for ${categoryName}`);
+      }
     } else {
+      // Collapsing the category
       newSet.add(categoryName);
+      // Remove from manual overrides since user is now collapsing it
+      newManualOverrides.delete(categoryName);
     }
     
-    // Persistence is handled automatically by the hook
+    // Update both states
     setCollapsedCategories(newSet);
+    setManualOverrides(newManualOverrides);
   };
 
   const handleMarkAsPaid = async (expense) => {
@@ -670,18 +687,22 @@ const FixedExpensesTable = ({
               onClick={() => {
                 // Collapse all fully paid categories
                 const newCollapsedCategories = new Set(collapsedCategories);
+                const newManualOverrides = new Set(manualOverrides);
                 let collapsedCount = 0;
                 
                 Object.entries(groupedExpenses).forEach(([categoryName, categoryExpenses]) => {
                   const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
                   if (allPaid && !newCollapsedCategories.has(categoryName)) {
                     newCollapsedCategories.add(categoryName);
+                    // Remove from manual overrides since we're collapsing it
+                    newManualOverrides.delete(categoryName);
                     collapsedCount++;
                   }
                 });
                 
                 if (collapsedCount > 0) {
                   setCollapsedCategories(newCollapsedCategories);
+                  setManualOverrides(newManualOverrides);
                   console.log(`📦 Manually collapsed ${collapsedCount} paid categories`);
                 }
               }}
@@ -692,9 +713,10 @@ const FixedExpensesTable = ({
             </button>
             <button
               onClick={() => {
-                // Expand all categories
+                // Expand all categories and clear manual overrides
                 setCollapsedCategories(new Set());
-                console.log('📂 Expanded all categories');
+                setManualOverrides(new Set());
+                console.log('📂 Expanded all categories and cleared manual overrides');
               }}
               className="text-sm px-3 py-1 rounded hover:bg-white/10"
               title="Expand all categories"
