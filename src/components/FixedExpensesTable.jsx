@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { logger } from "../utils/logger";
 import { Plus, Home, Zap, Shield, Car, Smartphone, CreditCard, Stethoscope, GraduationCap, Package, ChevronDown, ChevronRight } from 'lucide-react'
 import { 
@@ -155,16 +155,18 @@ const FixedExpensesTable = ({
   };
 
   // Group expenses by category and sort within each category
-  const groupedExpenses = expenses.reduce((groups, expense) => {
-    const category = expense.category || 'Uncategorized';
-    if (!groups[category]) {
-      groups[category] = [];
-    }
-    groups[category].push(expense);
-    // Sort using current sort method
-    groups[category] = [...groups[category]].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
-    return groups;
-  }, {});
+  const groupedExpenses = useMemo(() => {
+    return expenses.reduce((groups, expense) => {
+      const category = expense.category || 'Uncategorized';
+      if (!groups[category]) {
+        groups[category] = [];
+      }
+      groups[category].push(expense);
+      // Sort using current sort method
+      groups[category] = [...groups[category]].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
+      return groups;
+    }, {});
+  }, [expenses, sortBy]);
 
   // Get category icon
   const getCategoryIcon = (categoryName) => {
