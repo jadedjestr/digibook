@@ -89,18 +89,21 @@ const FixedExpensesTable = ({
   useEffect(() => {
     const initializeComponent = async () => {
       try {
+        console.log('🔧 Starting FixedExpensesTable initialization...');
         setInitState(INIT_STATES.LOADING);
         setInitError(null);
         
         // Step 1: Load categories (required for grouping)
-        logger.debug('Loading categories...');
+        console.log('📂 Loading categories...');
         const categoriesData = await dbHelpers.getCategories();
+        console.log('📂 Categories loaded:', categoriesData?.length || 0);
         setCategories(categoriesData);
         
         // Step 2: Load user preferences (optional, with fallbacks)
-        logger.debug('Loading user preferences...');
+        console.log('⚙️ Loading user preferences...');
         try {
           const prefs = await dbHelpers.getUserPreferences();
+          console.log('⚙️ User preferences loaded:', prefs);
           if (prefs) {
             setUserPreferences({
               collapsedCategories: new Set(prefs.collapsedCategories || []),
@@ -112,16 +115,16 @@ const FixedExpensesTable = ({
             setCollapsedCategories(new Set(prefs.collapsedCategories || []));
           }
         } catch (prefError) {
-          logger.warn('Could not load user preferences, using defaults:', prefError);
+          console.warn('⚠️ Could not load user preferences, using defaults:', prefError);
           // Continue with defaults - not a critical error
         }
         
         // Step 3: Mark as ready
-        logger.debug('Component initialization complete');
+        console.log('✅ Component initialization complete');
         setInitState(INIT_STATES.READY);
         
       } catch (error) {
-        logger.error('Component initialization failed:', error);
+        console.error('❌ Component initialization failed:', error);
         setInitError(error.message);
         setInitState(INIT_STATES.ERROR);
       }
@@ -130,11 +133,36 @@ const FixedExpensesTable = ({
     initializeComponent();
   }, [onDataChange]); // Only re-initialize when data changes
 
+  // Sorting helpers - MUST be defined BEFORE useMemo that uses them
+  const sortByDueDate = (a, b) => {
+    if (!a.dueDate && !b.dueDate) return 0;
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return new Date(a.dueDate) - new Date(b.dueDate);
+  };
+
+  const sortByName = (a, b) => {
+    return a.name.localeCompare(b.name);
+  };
+
   // 🔧 SAFE DATA PROCESSING - Only run when ready
   const groupedExpenses = useMemo(() => {
-    // Don't process data until initialization is complete
-    if (initState !== INIT_STATES.READY || !expenses) {
+    console.log('🔄 Processing grouped expenses...', { 
+      initState, 
+      expensesCount: expenses?.length || 0,
+      sortBy 
+    });
+    
+    // TEMPORARY: Allow processing even if not fully initialized
+    if (!expenses) {
+      console.log('⏳ No expenses data yet');
       return {};
+    }
+    
+    // Don't process data until initialization is complete
+    if (initState !== INIT_STATES.READY) {
+      console.log('⏳ Not ready to process expenses yet, but processing anyway for debugging');
+      // Continue processing for debugging
     }
 
     try {
@@ -153,9 +181,10 @@ const FixedExpensesTable = ({
         groups[category].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
       });
 
+      console.log('✅ Grouped expenses processed:', Object.keys(groups));
       return groups;
     } catch (error) {
-      logger.error('Error processing grouped expenses:', error);
+      console.error('❌ Error processing grouped expenses:', error);
       return {};
     }
   }, [expenses, sortBy, initState]); // Include initState in dependencies
@@ -169,18 +198,6 @@ const FixedExpensesTable = ({
       logger.error('Failed to persist user preferences:', error);
       // Don't crash the app - just log the error
     }
-  };
-
-  // Sorting helpers
-  const sortByDueDate = (a, b) => {
-    if (!a.dueDate && !b.dueDate) return 0;
-    if (!a.dueDate) return 1;
-    if (!b.dueDate) return -1;
-    return new Date(a.dueDate) - new Date(b.dueDate);
-  };
-
-  const sortByName = (a, b) => {
-    return a.name.localeCompare(b.name);
   };
 
   // Get category icon
@@ -538,6 +555,7 @@ const FixedExpensesTable = ({
 
   // 🔧 LOADING AND ERROR STATES
   if (initState === INIT_STATES.LOADING) {
+    console.log('🔄 Rendering loading state...');
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
@@ -554,6 +572,7 @@ const FixedExpensesTable = ({
   }
 
   if (initState === INIT_STATES.ERROR) {
+    console.log('❌ Rendering error state...', initError);
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
@@ -574,6 +593,12 @@ const FixedExpensesTable = ({
       </div>
     );
   }
+
+  console.log('🎯 Rendering main FixedExpensesTable component...', {
+    initState,
+    expensesCount: expenses?.length || 0,
+    groupedExpensesKeys: Object.keys(groupedExpenses)
+  });
 
   return (
     <div className="space-y-4">
