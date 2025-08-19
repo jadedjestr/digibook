@@ -154,10 +154,6 @@ const FixedExpensesTable = ({
     return a.name.localeCompare(b.name);
   };
 
-  const sortExpenses = (expenses) => {
-    return [...expenses].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
-  };
-
   // Group expenses by category and sort within each category
   const groupedExpenses = expenses.reduce((groups, expense) => {
     const category = expense.category || 'Uncategorized';
@@ -165,7 +161,8 @@ const FixedExpensesTable = ({
       groups[category] = [];
     }
     groups[category].push(expense);
-    groups[category] = sortExpenses(groups[category]); // Sort using current sort method
+    // Sort using current sort method
+    groups[category] = [...groups[category]].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
     return groups;
   }, {});
 
