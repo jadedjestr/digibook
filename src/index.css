@@ -100,6 +100,26 @@
     @apply overflow-hidden;
   }
 
+  /* Category Collapse Animations */
+  .category-content {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .category-content.collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .category-content.expanded {
+    max-height: 1000px;
+    opacity: 1;
+  }
+
   /* Enhanced Glass Button */
   .glass-button {
     @apply liquid-glass;
