@@ -52,7 +52,7 @@ export const usePersistedState = (key, defaultValue, component = 'fixedExpenses'
         }
 
         // Handle special types (Set, Date, etc.)
-        if (key === 'collapsedCategories' && Array.isArray(value)) {
+        if ((key === 'collapsedCategories' || key === 'manualOverrides') && Array.isArray(value)) {
           value = new Set(value);
         }
 
