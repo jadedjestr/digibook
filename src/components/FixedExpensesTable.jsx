@@ -103,7 +103,7 @@ const FixedExpensesTable = ({
 
   // Auto-collapse fully paid categories (do not auto-expand to respect manual user choice)
   useEffect(() => {
-    if (!autoCollapseEnabled) return;
+    if (!autoCollapseEnabled || expenses.length === 0) return;
 
     const newCollapsedCategories = new Set(collapsedCategories);
     let hasChanges = false;
@@ -318,7 +318,7 @@ const FixedExpensesTable = ({
 
   // Calculate payment status for a category
   const getCategoryPaymentStatus = (categoryExpenses) => {
-    if (categoryExpenses.length === 0) return { allPaid: true, paidCount: 0, totalCount: 0 };
+    if (!categoryExpenses || categoryExpenses.length === 0) return { allPaid: true, paidCount: 0, totalCount: 0 };
     
     const paidCount = categoryExpenses.filter(expense => 
       expense.paidAmount >= expense.amount
@@ -621,6 +621,11 @@ const FixedExpensesTable = ({
         >
           <div className="space-y-6">
             {Object.entries(groupedExpenses).map(([categoryName, categoryExpenses]) => {
+              // Guard against empty or undefined categoryExpenses
+              if (!categoryExpenses || categoryExpenses.length === 0) {
+                return null;
+              }
+              
               // Respect the "show only unpaid" filter
               if (showOnlyUnpaid) {
                 const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
