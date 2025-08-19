@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { logger } from "../utils/logger";
-import { Plus, Home, Zap, Shield, Car, Smartphone, CreditCard, Stethoscope, GraduationCap, Package, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Home, Zap, Shield, Car, Smartphone, CreditCard, Stethoscope, GraduationCap, Package, Check, X } from 'lucide-react'
 import { 
   DndContext, 
   closestCenter, 
@@ -47,31 +47,10 @@ const FixedExpensesTable = ({
   const [duplicatingExpense, setDuplicatingExpense] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [sortBy, setSortBy] = useState('dueDate'); // 'dueDate' or 'name'
-  const [collapsedCategories, setCollapsedCategories] = useState(() => {
-    try {
-      const raw = localStorage.getItem('fx_collapsed_categories');
-      const parsed = raw ? JSON.parse(raw) : [];
-      return new Set(Array.isArray(parsed) ? parsed : []);
-    } catch (_) {
-      return new Set();
-    }
-  });
-  const [autoCollapseEnabled, setAutoCollapseEnabled] = useState(() => {
-    try {
-      const raw = localStorage.getItem('fx_auto_collapse_enabled');
-      return raw === null ? true : raw === 'true';
-    } catch (_) {
-      return true;
-    }
-  });
-  const [showOnlyUnpaid, setShowOnlyUnpaid] = useState(() => {
-    try {
-      const raw = localStorage.getItem('fx_show_only_unpaid');
-      return raw === 'true';
-    } catch (_) {
-      return false;
-    }
-  });
+  
+  // Simplified state - no localStorage for now
+  const [collapsedCategories, setCollapsedCategories] = useState(new Set());
+
   const [dropAnimation, setDropAnimation] = useState({
     duration: 250,
     easing: 'ease-in-out',
@@ -101,47 +80,6 @@ const FixedExpensesTable = ({
     loadCategories();
   }, [onDataChange]); // Refresh when categories are modified
 
-  // Auto-collapse fully paid categories (do not auto-expand to respect manual user choice)
-  useEffect(() => {
-    if (!autoCollapseEnabled || expenses.length === 0) return;
-
-    const newCollapsedCategories = new Set(collapsedCategories);
-    let hasChanges = false;
-
-    Object.entries(groupedExpenses).forEach(([categoryName, categoryExpenses]) => {
-      const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
-
-      if (allPaid && categoryExpenses.length > 0 && !newCollapsedCategories.has(categoryName)) {
-        newCollapsedCategories.add(categoryName);
-        hasChanges = true;
-      }
-      // If not all paid, do nothing — user may have manually collapsed it
-    });
-
-    if (hasChanges) {
-      setCollapsedCategories(newCollapsedCategories);
-    }
-  }, [expenses, groupedExpenses, autoCollapseEnabled]); // Re-run when expenses change
-
-  // Persist user preferences
-  useEffect(() => {
-    try {
-      localStorage.setItem('fx_collapsed_categories', JSON.stringify([...collapsedCategories]));
-    } catch (_) {}
-  }, [collapsedCategories]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('fx_auto_collapse_enabled', String(autoCollapseEnabled));
-    } catch (_) {}
-  }, [autoCollapseEnabled]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('fx_show_only_unpaid', String(showOnlyUnpaid));
-    } catch (_) {}
-  }, [showOnlyUnpaid]);
-
   // Sorting helpers
   const sortByDueDate = (a, b) => {
     if (!a.dueDate && !b.dueDate) return 0;
@@ -154,20 +92,24 @@ const FixedExpensesTable = ({
     return a.name.localeCompare(b.name);
   };
 
-  // Group expenses by category and sort within each category
+  // Group expenses by category and sort within each category - simplified
   const groupedExpenses = useMemo(() => {
-    if (!sortBy) return {};
+    const groups = {};
     
-    return expenses.reduce((groups, expense) => {
+    expenses.forEach(expense => {
       const category = expense.category || 'Uncategorized';
       if (!groups[category]) {
         groups[category] = [];
       }
       groups[category].push(expense);
-      // Sort using current sort method
-      groups[category] = [...groups[category]].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
-      return groups;
-    }, {});
+    });
+
+    // Sort each category's expenses
+    Object.keys(groups).forEach(category => {
+      groups[category].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
+    });
+
+    return groups;
   }, [expenses, sortBy]);
 
   // Get category icon
@@ -341,21 +283,6 @@ const FixedExpensesTable = ({
       }
       return newSet;
     });
-  };
-
-  const collapseAllPaid = () => {
-    const newSet = new Set(collapsedCategories);
-    Object.entries(groupedExpenses).forEach(([categoryName, categoryExpenses]) => {
-      const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
-      if (allPaid && categoryExpenses.length > 0) {
-        newSet.add(categoryName);
-      }
-    });
-    setCollapsedCategories(newSet);
-  };
-
-  const expandAll = () => {
-    setCollapsedCategories(new Set());
   };
 
   const handleMarkAsPaid = async (expense) => {
@@ -558,42 +485,6 @@ const FixedExpensesTable = ({
             >
               Sort by Name
             </button>
-            <button
-              onClick={collapseAllPaid}
-              className="text-sm px-3 py-1 rounded hover:bg-white/10"
-              title="Collapse all fully paid categories"
-            >
-              Collapse Paid
-            </button>
-            <button
-              onClick={expandAll}
-              className="text-sm px-3 py-1 rounded hover:bg-white/10"
-              title="Expand all categories"
-            >
-              Expand All
-            </button>
-            <button
-              onClick={() => setAutoCollapseEnabled(!autoCollapseEnabled)}
-              className={`text-sm px-3 py-1 rounded ${
-                autoCollapseEnabled 
-                  ? 'bg-green-500/20 text-green-300' 
-                  : 'hover:bg-white/10'
-              }`}
-              title={autoCollapseEnabled ? "Auto-collapse enabled" : "Auto-collapse disabled"}
-            >
-              {autoCollapseEnabled ? 'Auto-Collapse ON' : 'Auto-Collapse OFF'}
-            </button>
-            <button
-              onClick={() => setShowOnlyUnpaid(!showOnlyUnpaid)}
-              className={`text-sm px-3 py-1 rounded ${
-                showOnlyUnpaid 
-                  ? 'bg-red-500/20 text-red-300' 
-                  : 'hover:bg-white/10'
-              }`}
-              title={showOnlyUnpaid ? 'Showing only unpaid categories' : 'Show only unpaid categories'}
-            >
-              {showOnlyUnpaid ? 'Only Unpaid: ON' : 'Only Unpaid: OFF'}
-            </button>
           </div>
         </div>
         <button
@@ -627,14 +518,8 @@ const FixedExpensesTable = ({
                 return null;
               }
               
-              // Respect the "show only unpaid" filter
-              if (showOnlyUnpaid) {
-                const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
-                if (allPaid) {
-                  return null;
-                }
-              }
               const categoryTotal = getCategoryTotal(categoryExpenses);
+              const { allPaid, paidCount, totalCount } = getCategoryPaymentStatus(categoryExpenses);
               
               return (
                 <div key={categoryName} className="glass-panel">
@@ -646,52 +531,23 @@ const FixedExpensesTable = ({
                         className="p-1 hover:bg-white/10 rounded transition-colors"
                         title={collapsedCategories.has(categoryName) ? "Expand category" : "Collapse category"}
                       >
-                        {collapsedCategories.has(categoryName) ? (
-                          <ChevronRight size={20} className="text-white/70" />
-                        ) : (
-                          <ChevronDown size={20} className="text-white/70" />
-                        )}
+                        {collapsedCategories.has(categoryName) ? "→" : "↓"}
                       </button>
-                      {(() => {
-                        const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
-                        if (allPaid && categoryExpenses.length > 0) {
-                          return (
-                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" 
-                                 title="Auto-collapsed: All expenses paid" />
-                          );
-                        }
-                        return null;
-                      })()}
                       {getCategoryIcon(categoryName)}
                       <h3 className="text-lg font-semibold text-primary">
                         {getCategoryDisplayName(categoryName)}
                       </h3>
                       <span className="text-sm text-secondary">
                         {categoryExpenses.length} expense{categoryExpenses.length !== 1 ? 's' : ''}
-                        {(() => {
-                          const { allPaid, paidCount, totalCount } = getCategoryPaymentStatus(categoryExpenses);
-                          return (
-                            <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
-                              allPaid 
-                                ? 'bg-green-500/20 text-green-300' 
-                                : paidCount > 0 
-                                  ? 'bg-yellow-500/20 text-yellow-300'
-                                  : 'bg-red-500/20 text-red-300'
-                            }`}>
-                              {allPaid ? 'All paid' : `${paidCount}/${totalCount} paid`}
-                            </span>
-                          );
-                        })()}
-                        {collapsedCategories.has(categoryName) && (
-                          <span className="ml-2 text-xs text-white/50">
-                            {(() => {
-                              const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
-                              return allPaid && categoryExpenses.length > 0 
-                                ? '(auto-collapsed)' 
-                                : '(collapsed)';
-                            })()}
-                          </span>
-                        )}
+                        <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+                          allPaid 
+                            ? 'bg-green-500/20 text-green-300' 
+                            : paidCount > 0 
+                              ? 'bg-yellow-500/20 text-yellow-300'
+                              : 'bg-red-500/20 text-red-300'
+                        }`}>
+                          {allPaid ? 'All paid' : `${paidCount}/${totalCount} paid`}
+                        </span>
                       </span>
                     </div>
                     <div className="text-right">
@@ -789,4 +645,4 @@ const FixedExpensesTable = ({
   );
 };
 
-export default FixedExpensesTable; 
+export default FixedExpensesTable;
