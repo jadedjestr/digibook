@@ -347,7 +347,7 @@ const FixedExpensesTable = ({
     return { allPaid, paidCount, totalCount };
   };
 
-  // 🔧 AUTO-COLLAPSE LOGIC with Manual Override Support
+  // 🔧 ROBUST AUTO-COLLAPSE LOGIC - No dependency on collapsedCategories
   const applyAutoCollapseLogic = useCallback(() => {
     if (!autoCollapseEnabled || !expenses || expenses.length === 0) {
       return; // No auto-collapse if disabled or no expenses
@@ -389,7 +389,7 @@ const FixedExpensesTable = ({
       console.log(`📦 Auto-collapsed ${autoCollapsedCount} categories`);
       setCollapsedCategories(newCollapsedCategories);
     }
-  }, [autoCollapseEnabled, expenses, collapsedCategories, setCollapsedCategories, manualOverrides]);
+  }, [autoCollapseEnabled, expenses, setCollapsedCategories, manualOverrides]); // Removed collapsedCategories dependency
 
   // 🔧 SEPARATE AUTO-COLLAPSE TRIGGER - Only when data actually changes
   useEffect(() => {
@@ -399,6 +399,16 @@ const FixedExpensesTable = ({
     }
   }, [expenses, autoCollapseEnabled, initState]); // Only trigger on actual data changes, not UI state changes
 
+  // 🔧 DEBUG: Track when auto-collapse logic runs
+  useEffect(() => {
+    console.log('🔍 Auto-collapse dependencies changed:', {
+      autoCollapseEnabled,
+      expensesCount: expenses?.length || 0,
+      manualOverridesCount: manualOverrides?.size || 0,
+      collapsedCategoriesCount: collapsedCategories?.size || 0
+    });
+  }, [autoCollapseEnabled, expenses, manualOverrides, collapsedCategories]);
+
   const toggleCategoryCollapse = (categoryName) => {
     const newSet = new Set(collapsedCategories);
     const newManualOverrides = new Set(manualOverrides);
@@ -406,22 +416,28 @@ const FixedExpensesTable = ({
     if (newSet.has(categoryName)) {
       // Expanding the category
       newSet.delete(categoryName);
-      // If this was auto-collapsed, add to manual overrides
+      // If this was auto-collapsed, add to manual overrides IMMEDIATELY
       const { allPaid } = getCategoryPaymentStatus(groupedExpenses[categoryName] || []);
       if (allPaid && autoCollapseEnabled) {
         newManualOverrides.add(categoryName);
-        console.log(`👤 Manual override added for ${categoryName}`);
+        console.log(`👤 Manual override added for ${categoryName} - IMMEDIATE`);
       }
     } else {
       // Collapsing the category
       newSet.add(categoryName);
       // Remove from manual overrides since user is now collapsing it
       newManualOverrides.delete(categoryName);
+      console.log(`👤 Manual override removed for ${categoryName}`);
     }
     
-    // Update both states
+    // Update both states IMMEDIATELY and synchronously
     setCollapsedCategories(newSet);
     setManualOverrides(newManualOverrides);
+    
+    // Force a small delay to ensure state updates are processed
+    setTimeout(() => {
+      console.log(`✅ State update completed for ${categoryName}`);
+    }, 0);
   };
 
   const handleMarkAsPaid = async (expense) => {
