@@ -13,6 +13,7 @@ export class DigibookDB extends Dexie {
       categories: '++id',
       creditCards: '++id',
       paycheckSettings: '++id',
+      userPreferences: '++id',
       auditLogs: '++id'
     };
 
@@ -118,6 +119,19 @@ export class DigibookDB extends Dexie {
       paycheckSettings: '++id, lastPaycheckDate, frequency',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details'
     });
+
+    // Add user preferences table
+    this.version(8).stores({
+      ...stores,
+      accounts: '++id, name, type, currentBalance, isDefault',
+      pendingTransactions: '++id, accountId, amount, category, description, createdAt',
+      fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status, category',
+      categories: '++id, &nameLower, name, color, icon, isDefault',
+      creditCards: '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
+      paycheckSettings: '++id, lastPaycheckDate, frequency',
+      userPreferences: '++id, component, preferences',
+      auditLogs: '++id, timestamp, actionType, entityType, entityId, details'
+    });
   }
 }
 
@@ -151,6 +165,7 @@ export const dbHelpers = {
       await db.categories.clear();
       await db.creditCards.clear();
       await db.paycheckSettings.clear();
+      await db.userPreferences.clear();
       await db.auditLogs.clear();
       logger.success("Database cleared successfully");
     } catch (error) {
@@ -1058,6 +1073,38 @@ export const dbHelpers = {
     } catch (error) {
       logger.error('Error recording credit card payment:', error);
       throw new Error('Failed to record payment');
+    }
+  },
+
+  // User Preferences Management
+  async getUserPreferences(component = 'fixedExpenses') {
+    try {
+      const prefs = await db.userPreferences.where('component').equals(component).first();
+      return prefs ? prefs.preferences : null;
+    } catch (error) {
+      logger.error('Error getting user preferences:', error);
+      return null;
+    }
+  },
+
+  async updateUserPreferences(preferences, component = 'fixedExpenses') {
+    try {
+      const existing = await db.userPreferences.where('component').equals(component).first();
+      
+      if (existing) {
+        await db.userPreferences.update(existing.id, { preferences });
+      } else {
+        await db.userPreferences.add({
+          component,
+          preferences,
+          createdAt: new Date().toISOString()
+        });
+      }
+      
+      logger.success('User preferences updated successfully');
+    } catch (error) {
+      logger.error('Error updating user preferences:', error);
+      throw new Error('Failed to update user preferences');
     }
   },
 

@@ -24,6 +24,13 @@ import PrivacyWrapper from './PrivacyWrapper'
 import DraggableExpenseRow from './DraggableExpenseRow';
 import CategoryDropZone from './CategoryDropZone';
 
+// Initialization State Machine
+const INIT_STATES = {
+  LOADING: 'loading',
+  READY: 'ready',
+  ERROR: 'error'
+};
+
 const FixedExpensesTable = ({ 
   expenses, 
   accounts, 
@@ -33,23 +40,27 @@ const FixedExpensesTable = ({
   isPanelOpen,
   setIsPanelOpen
 }) => {
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8, // 8px movement required before drag starts
-      },
-    })
-  );
+  // 🔧 ROBUST INITIALIZATION STATE MACHINE
+  const [initState, setInitState] = useState(INIT_STATES.LOADING);
+  const [initError, setInitError] = useState(null);
+  
+  // Core state - initialized with safe defaults
   const [editingId, setEditingId] = useState(null);
   const [editingField, setEditingField] = useState(null);
   const [categories, setCategories] = useState([]);
   const [newExpenseId, setNewExpenseId] = useState(null);
   const [duplicatingExpense, setDuplicatingExpense] = useState(null);
   const [activeId, setActiveId] = useState(null);
-  const [sortBy, setSortBy] = useState('dueDate'); // 'dueDate' or 'name'
-  
-  // Simplified state - no localStorage for now
+  const [sortBy, setSortBy] = useState('dueDate');
   const [collapsedCategories, setCollapsedCategories] = useState(new Set());
+  
+  // User preferences - loaded asynchronously
+  const [userPreferences, setUserPreferences] = useState({
+    collapsedCategories: new Set(),
+    sortBy: 'dueDate',
+    autoCollapseEnabled: true,
+    showOnlyUnpaid: false
+  });
 
   const [dropAnimation, setDropAnimation] = useState({
     duration: 250,
@@ -63,22 +74,102 @@ const FixedExpensesTable = ({
     }),
   });
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement required before drag starts
+      },
+    })
+  );
+
   const paycheckService = new PaycheckService(paycheckSettings);
   const paycheckDates = paycheckService.calculatePaycheckDates();
 
-  // Load categories
+  // 🔧 ROBUST INITIALIZATION PROCESS
   useEffect(() => {
-    const loadCategories = async () => {
+    const initializeComponent = async () => {
       try {
+        setInitState(INIT_STATES.LOADING);
+        setInitError(null);
+        
+        // Step 1: Load categories (required for grouping)
+        logger.debug('Loading categories...');
         const categoriesData = await dbHelpers.getCategories();
         setCategories(categoriesData);
+        
+        // Step 2: Load user preferences (optional, with fallbacks)
+        logger.debug('Loading user preferences...');
+        try {
+          const prefs = await dbHelpers.getUserPreferences();
+          if (prefs) {
+            setUserPreferences({
+              collapsedCategories: new Set(prefs.collapsedCategories || []),
+              sortBy: prefs.sortBy || 'dueDate',
+              autoCollapseEnabled: prefs.autoCollapseEnabled !== false, // default true
+              showOnlyUnpaid: prefs.showOnlyUnpaid || false
+            });
+            setSortBy(prefs.sortBy || 'dueDate');
+            setCollapsedCategories(new Set(prefs.collapsedCategories || []));
+          }
+        } catch (prefError) {
+          logger.warn('Could not load user preferences, using defaults:', prefError);
+          // Continue with defaults - not a critical error
+        }
+        
+        // Step 3: Mark as ready
+        logger.debug('Component initialization complete');
+        setInitState(INIT_STATES.READY);
+        
       } catch (error) {
-        logger.error('Error loading categories:', error);
+        logger.error('Component initialization failed:', error);
+        setInitError(error.message);
+        setInitState(INIT_STATES.ERROR);
       }
     };
-    
-    loadCategories();
-  }, [onDataChange]); // Refresh when categories are modified
+
+    initializeComponent();
+  }, [onDataChange]); // Only re-initialize when data changes
+
+  // 🔧 SAFE DATA PROCESSING - Only run when ready
+  const groupedExpenses = useMemo(() => {
+    // Don't process data until initialization is complete
+    if (initState !== INIT_STATES.READY || !expenses) {
+      return {};
+    }
+
+    try {
+      const groups = {};
+      
+      expenses.forEach(expense => {
+        const category = expense.category || 'Uncategorized';
+        if (!groups[category]) {
+          groups[category] = [];
+        }
+        groups[category].push(expense);
+      });
+
+      // Sort each category's expenses
+      Object.keys(groups).forEach(category => {
+        groups[category].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
+      });
+
+      return groups;
+    } catch (error) {
+      logger.error('Error processing grouped expenses:', error);
+      return {};
+    }
+  }, [expenses, sortBy, initState]); // Include initState in dependencies
+
+  // 🔧 PERSISTENCE WITH ERROR HANDLING
+  const persistUserPreferences = async (newPreferences) => {
+    try {
+      await dbHelpers.updateUserPreferences(newPreferences);
+      setUserPreferences(newPreferences);
+    } catch (error) {
+      logger.error('Failed to persist user preferences:', error);
+      // Don't crash the app - just log the error
+    }
+  };
 
   // Sorting helpers
   const sortByDueDate = (a, b) => {
@@ -91,26 +182,6 @@ const FixedExpensesTable = ({
   const sortByName = (a, b) => {
     return a.name.localeCompare(b.name);
   };
-
-  // Group expenses by category and sort within each category - simplified
-  const groupedExpenses = useMemo(() => {
-    const groups = {};
-    
-    expenses.forEach(expense => {
-      const category = expense.category || 'Uncategorized';
-      if (!groups[category]) {
-        groups[category] = [];
-      }
-      groups[category].push(expense);
-    });
-
-    // Sort each category's expenses
-    Object.keys(groups).forEach(category => {
-      groups[category].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
-    });
-
-    return groups;
-  }, [expenses, sortBy]);
 
   // Get category icon
   const getCategoryIcon = (categoryName) => {
@@ -281,6 +352,13 @@ const FixedExpensesTable = ({
       } else {
         newSet.add(categoryName);
       }
+      
+      // Persist the change
+      persistUserPreferences({
+        ...userPreferences,
+        collapsedCategories: newSet
+      });
+      
       return newSet;
     });
   };
@@ -458,6 +536,45 @@ const FixedExpensesTable = ({
     );
   };
 
+  // 🔧 LOADING AND ERROR STATES
+  if (initState === INIT_STATES.LOADING) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold text-white">Fixed Expenses</h2>
+        </div>
+        <div className="glass-panel">
+          <div className="text-center py-8">
+            <div className="glass-loading"></div>
+            <p className="text-white/70 mt-4">Loading expenses...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (initState === INIT_STATES.ERROR) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold text-white">Fixed Expenses</h2>
+        </div>
+        <div className="glass-panel bg-red-500/10 border-red-500/30">
+          <div className="text-center py-8">
+            <h3 className="text-lg font-semibold text-red-300 mb-2">Loading Error</h3>
+            <p className="text-white/70 mb-4">{initError || 'Failed to load expenses'}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="glass-button bg-red-500/20 text-red-300 hover:bg-red-500/30"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Add Expense Button */}
@@ -466,7 +583,10 @@ const FixedExpensesTable = ({
           <h2 className="text-xl font-semibold text-white">Fixed Expenses</h2>
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => setSortBy('dueDate')}
+              onClick={() => {
+                setSortBy('dueDate');
+                persistUserPreferences({ ...userPreferences, sortBy: 'dueDate' });
+              }}
               className={`text-sm px-3 py-1 rounded ${
                 sortBy === 'dueDate' 
                   ? 'bg-blue-500/20 text-blue-300' 
@@ -476,7 +596,10 @@ const FixedExpensesTable = ({
               Sort by Due Date
             </button>
             <button
-              onClick={() => setSortBy('name')}
+              onClick={() => {
+                setSortBy('name');
+                persistUserPreferences({ ...userPreferences, sortBy: 'name' });
+              }}
               className={`text-sm px-3 py-1 rounded ${
                 sortBy === 'name' 
                   ? 'bg-blue-500/20 text-blue-300' 
