@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { logger } from "../utils/logger";
 import { Plus, Home, Zap, Shield, Car, Smartphone, CreditCard, Stethoscope, GraduationCap, Package, Check, X } from 'lucide-react'
+import { useCollapsedCategories, useSortPreference, useAutoCollapsePreference, useShowOnlyUnpaidPreference } from '../hooks/usePersistedState'
 import { 
   DndContext, 
   closestCenter, 
@@ -51,16 +52,12 @@ const FixedExpensesTable = ({
   const [newExpenseId, setNewExpenseId] = useState(null);
   const [duplicatingExpense, setDuplicatingExpense] = useState(null);
   const [activeId, setActiveId] = useState(null);
-  const [sortBy, setSortBy] = useState('dueDate');
-  const [collapsedCategories, setCollapsedCategories] = useState(new Set());
   
-  // User preferences - loaded asynchronously
-  const [userPreferences, setUserPreferences] = useState({
-    collapsedCategories: new Set(),
-    sortBy: 'dueDate',
-    autoCollapseEnabled: true,
-    showOnlyUnpaid: false
-  });
+  // 🔧 ENHANCED PERSISTED STATE with localStorage + IndexedDB hybrid
+  const { value: collapsedCategories, setValue: setCollapsedCategories, isLoaded: collapsedLoaded } = useCollapsedCategories();
+  const { value: sortBy, setValue: setSortBy, isLoaded: sortLoaded } = useSortPreference();
+  const { value: autoCollapseEnabled, setValue: setAutoCollapseEnabled, isLoaded: autoCollapseLoaded } = useAutoCollapsePreference();
+  const { value: showOnlyUnpaid, setValue: setShowOnlyUnpaid, isLoaded: showOnlyUnpaidLoaded } = useShowOnlyUnpaidPreference();
 
   const [dropAnimation, setDropAnimation] = useState({
     duration: 250,
@@ -99,24 +96,23 @@ const FixedExpensesTable = ({
         console.log('📂 Categories loaded:', categoriesData?.length || 0);
         setCategories(categoriesData);
         
-        // Step 2: Load user preferences (optional, with fallbacks)
-        console.log('⚙️ Loading user preferences...');
-        try {
-          const prefs = await dbHelpers.getUserPreferences();
-          console.log('⚙️ User preferences loaded:', prefs);
-          if (prefs) {
-            setUserPreferences({
-              collapsedCategories: new Set(prefs.collapsedCategories || []),
-              sortBy: prefs.sortBy || 'dueDate',
-              autoCollapseEnabled: prefs.autoCollapseEnabled !== false, // default true
-              showOnlyUnpaid: prefs.showOnlyUnpaid || false
-            });
-            setSortBy(prefs.sortBy || 'dueDate');
-            setCollapsedCategories(new Set(prefs.collapsedCategories || []));
-          }
-        } catch (prefError) {
-          console.warn('⚠️ Could not load user preferences, using defaults:', prefError);
-          // Continue with defaults - not a critical error
+        // Step 2: Wait for persisted preferences to load
+        console.log('⚙️ Waiting for preferences to load...');
+        const checkPreferencesLoaded = () => {
+          return collapsedLoaded && sortLoaded && autoCollapseLoaded && showOnlyUnpaidLoaded;
+        };
+        
+        // Wait for preferences with timeout
+        let attempts = 0;
+        while (!checkPreferencesLoaded() && attempts < 10) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          attempts++;
+        }
+        
+        if (checkPreferencesLoaded()) {
+          console.log('✅ Preferences loaded successfully');
+        } else {
+          console.warn('⚠️ Preferences loading timed out, continuing with current values');
         }
         
         // Step 3: Mark as ready
@@ -131,7 +127,7 @@ const FixedExpensesTable = ({
     };
 
     initializeComponent();
-  }, [onDataChange]); // Only re-initialize when data changes
+  }, [onDataChange, collapsedLoaded, sortLoaded, autoCollapseLoaded, showOnlyUnpaidLoaded]); // Wait for preferences
 
   // Sorting helpers - MUST be defined BEFORE useMemo that uses them
   const sortByDueDate = (a, b) => {
@@ -188,17 +184,6 @@ const FixedExpensesTable = ({
       return {};
     }
   }, [expenses, sortBy, initState]); // Include initState in dependencies
-
-  // 🔧 PERSISTENCE WITH ERROR HANDLING
-  const persistUserPreferences = async (newPreferences) => {
-    try {
-      await dbHelpers.updateUserPreferences(newPreferences);
-      setUserPreferences(newPreferences);
-    } catch (error) {
-      logger.error('Failed to persist user preferences:', error);
-      // Don't crash the app - just log the error
-    }
-  };
 
   // Get category icon
   const getCategoryIcon = (categoryName) => {
@@ -362,22 +347,15 @@ const FixedExpensesTable = ({
   };
 
   const toggleCategoryCollapse = (categoryName) => {
-    setCollapsedCategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(categoryName)) {
-        newSet.delete(categoryName);
-      } else {
-        newSet.add(categoryName);
-      }
-      
-      // Persist the change
-      persistUserPreferences({
-        ...userPreferences,
-        collapsedCategories: newSet
-      });
-      
-      return newSet;
-    });
+    const newSet = new Set(collapsedCategories);
+    if (newSet.has(categoryName)) {
+      newSet.delete(categoryName);
+    } else {
+      newSet.add(categoryName);
+    }
+    
+    // Persistence is handled automatically by the hook
+    setCollapsedCategories(newSet);
   };
 
   const handleMarkAsPaid = async (expense) => {
@@ -608,10 +586,7 @@ const FixedExpensesTable = ({
           <h2 className="text-xl font-semibold text-white">Fixed Expenses</h2>
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => {
-                setSortBy('dueDate');
-                persistUserPreferences({ ...userPreferences, sortBy: 'dueDate' });
-              }}
+              onClick={() => setSortBy('dueDate')}
               className={`text-sm px-3 py-1 rounded ${
                 sortBy === 'dueDate' 
                   ? 'bg-blue-500/20 text-blue-300' 
@@ -621,10 +596,7 @@ const FixedExpensesTable = ({
               Sort by Due Date
             </button>
             <button
-              onClick={() => {
-                setSortBy('name');
-                persistUserPreferences({ ...userPreferences, sortBy: 'name' });
-              }}
+              onClick={() => setSortBy('name')}
               className={`text-sm px-3 py-1 rounded ${
                 sortBy === 'name' 
                   ? 'bg-blue-500/20 text-blue-300' 
