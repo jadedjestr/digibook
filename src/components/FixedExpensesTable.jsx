@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { logger } from "../utils/logger";
 import { Plus, Home, Zap, Shield, Car, Smartphone, CreditCard, Stethoscope, GraduationCap, Package, Check, X } from 'lucide-react'
 import { useCollapsedCategories, useSortPreference, useAutoCollapsePreference, useShowOnlyUnpaidPreference } from '../hooks/usePersistedState'
