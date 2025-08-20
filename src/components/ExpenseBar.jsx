@@ -43,12 +43,12 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
       />
       
       {/* Expense name */}
-      <span className="text-sm font-medium w-[120px] text-white truncate flex-shrink-0">
+      <span className="text-sm font-medium w-[180px] text-white truncate flex-shrink-0">
         {expense.name}
       </span>
       
       {/* Progress bar container */}
-      <div className="flex-grow h-2 bg-gray-600 rounded mx-3 flex-shrink-0" style={{ minWidth: '100px' }}>
+      <div className="flex-grow h-2 bg-gray-600 rounded mx-3 flex-shrink-0" style={{ minWidth: '120px' }}>
         <div 
           className="h-full rounded transition-all duration-800 ease-out"
           style={{ 
