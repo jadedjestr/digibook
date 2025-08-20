@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { logger } from "../utils/logger";
 import { dbHelpers } from '../db/database';
-import { Plus, CreditCard, AlertTriangle, TrendingUp, Calendar, DollarSign } from 'lucide-react';
+import { Plus, CreditCard } from 'lucide-react';
 import { notify } from '../utils/notifications';
+import EnhancedCreditCard from '../components/EnhancedCreditCard';
 
 const CreditCards = ({ onDataChange }) => {
   const [creditCards, setCreditCards] = useState([]);
@@ -155,13 +156,6 @@ const CreditCards = ({ onDataChange }) => {
     return (balance / limit) * 100;
   };
 
-  const getUtilizationColor = (utilization) => {
-    if (utilization >= 80) return 'text-red-400';
-    if (utilization >= 60) return 'text-yellow-400';
-    if (utilization >= 30) return 'text-orange-400';
-    return 'text-green-400';
-  };
-
   const getDaysUntilDue = (dueDate) => {
     if (!dueDate) return null;
     const today = new Date();
@@ -169,30 +163,6 @@ const CreditCards = ({ onDataChange }) => {
     const diffTime = due - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
-  };
-
-  const getDaysUntilStatement = (statementDate) => {
-    if (!statementDate) return null;
-    const today = new Date();
-    const statement = new Date(statementDate);
-    const diffTime = statement - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  const calculateMonthlyInterest = (balance, interestRate) => {
-    return (balance * (interestRate / 100)) / 12;
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
-
-  const formatPercentage = (value) => {
-    return `${value.toFixed(2)}%`;
   };
 
   if (isLoading) {
@@ -206,11 +176,11 @@ const CreditCards = ({ onDataChange }) => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-white">Credit Cards</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-semibold text-white text-shadow">Credit Cards</h1>
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="glass-button flex items-center space-x-2"
+          className="glass-button flex items-center space-x-2 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
         >
           <Plus size={16} />
           <span>Add Credit Card</span>
@@ -232,111 +202,26 @@ const CreditCards = ({ onDataChange }) => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {creditCards.map((card) => {
+          {creditCards.map((card, index) => {
+            // Calculate derived values for the enhanced component
             const utilization = calculateUtilization(card.balance, card.creditLimit);
             const daysUntilDue = getDaysUntilDue(card.dueDate);
-            const daysUntilStatement = getDaysUntilStatement(card.statementClosingDate);
-            const monthlyInterest = calculateMonthlyInterest(card.balance, card.interestRate);
-            const availableCredit = card.creditLimit - card.balance;
-            const utilizationDiff = utilization - 30; // Ideal utilization is 30%
+            
+            // Create enhanced card data object
+            const enhancedCard = {
+              ...card,
+              utilization,
+              daysUntilDue
+            };
 
             return (
-              <div key={card.id} className="liquid-glass rounded-2xl p-6 space-y-4">
-                {/* Header */}
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold text-white">{card.name}</h3>
-                    <p className="text-white/70 text-sm">Balance: {formatCurrency(card.balance)}</p>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleEdit(card)}
-                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                    >
-                      <span className="text-white/70 hover:text-white">Edit</span>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(card)}
-                      className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
-                    >
-                      <span className="text-red-400 hover:text-red-300">Delete</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Credit Limit & Utilization */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-white/70">Credit Limit:</span>
-                    <span className="text-white">{formatCurrency(card.creditLimit)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-white/70">Available Credit:</span>
-                    <span className="text-white">{formatCurrency(availableCredit)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-white/70">Utilization:</span>
-                    <span className={getUtilizationColor(utilization)}>
-                      {formatPercentage(utilization)}
-                    </span>
-                  </div>
-                  {utilizationDiff > 0 && (
-                    <div className="text-xs text-yellow-400">
-                      {formatPercentage(utilizationDiff)} above ideal (30%)
-                    </div>
-                  )}
-                </div>
-
-                {/* Interest & Payment Info */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-white/70">Interest Rate:</span>
-                    <span className="text-white">{formatPercentage(card.interestRate)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-white/70">Monthly Interest:</span>
-                    <span className="text-white">{formatCurrency(monthlyInterest)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-white/70">Minimum Payment:</span>
-                    <span className="text-white">{formatCurrency(card.minimumPayment)}</span>
-                  </div>
-                </div>
-
-                {/* Due Date & Alerts */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-white/70">Due Date:</span>
-                    <span className="text-white">{new Date(card.dueDate).toLocaleDateString()}</span>
-                  </div>
-                  {daysUntilDue !== null && (
-                    <div className={`text-sm ${daysUntilDue <= 7 ? 'text-red-400' : 'text-white/70'}`}>
-                      {daysUntilDue > 0 ? `${daysUntilDue} days until due` : 
-                       daysUntilDue === 0 ? 'Due today!' : `${Math.abs(daysUntilDue)} days overdue`}
-                    </div>
-                  )}
-                  {card.statementClosingDate && daysUntilStatement !== null && (
-                    <div className="text-sm text-white/70">
-                      {daysUntilStatement > 0 ? `${daysUntilStatement} days until statement closes` : 
-                       daysUntilStatement === 0 ? 'Statement closes today' : 'Statement closed'}
-                    </div>
-                  )}
-                </div>
-
-                {/* Alerts */}
-                {(daysUntilDue <= 7 && daysUntilDue >= 0) && (
-                  <div className="flex items-center space-x-2 text-yellow-400 text-sm">
-                    <AlertTriangle size={14} />
-                    <span>Payment due soon</span>
-                  </div>
-                )}
-                {utilization >= 80 && (
-                  <div className="flex items-center space-x-2 text-red-400 text-sm">
-                    <TrendingUp size={14} />
-                    <span>High utilization</span>
-                  </div>
-                )}
-              </div>
+              <EnhancedCreditCard
+                key={card.id}
+                card={enhancedCard}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                index={index}
+              />
             );
           })}
         </div>

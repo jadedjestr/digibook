@@ -1,7 +1,26 @@
 import React from 'react';
 
-const StatusBadge = ({ status, className = '' }) => {
-  const getStatusColor = (status) => {
+const StatusBadge = ({ status, className = '', variant = 'default' }) => {
+  const getStatusColor = (status, variant) => {
+    // Credit card specific statuses
+    if (variant === 'credit-card') {
+      switch (status) {
+        case 'High Usage':
+          return 'badge-danger';
+        case 'Above Ideal':
+          return 'badge-warning';
+        case 'Good Standing':
+          return 'badge-success';
+        case 'Due Soon':
+          return 'badge-danger';
+        case 'Payment Due':
+          return 'badge-info';
+        default:
+          return 'badge-info';
+      }
+    }
+    
+    // Original statuses for backward compatibility
     switch (status) {
       case 'Paid':
         return 'bg-green-500/20 text-green-300 border-green-500/30';
@@ -20,8 +39,12 @@ const StatusBadge = ({ status, className = '' }) => {
     }
   };
 
+  const baseClasses = variant === 'credit-card' 
+    ? 'credit-card-badge' 
+    : 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border status-badge';
+
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border status-badge ${getStatusColor(status)} ${className}`}>
+    <span className={`${baseClasses} ${getStatusColor(status, variant)} ${className}`}>
       {status}
     </span>
   );

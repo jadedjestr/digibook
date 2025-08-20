@@ -333,6 +333,285 @@
       display: none;
     }
   }
+
+  /* Credit Card Redesign Styles */
+  
+  /* Enhanced Status Badges */
+  .badge-danger {
+    @apply bg-red-500/20 text-red-300 border border-red-500/30;
+  }
+  
+  .badge-warning {
+    @apply bg-yellow-500/20 text-yellow-300 border border-yellow-500/30;
+  }
+  
+  .badge-success {
+    @apply bg-green-500/20 text-green-300 border border-green-500/30;
+  }
+  
+  .badge-info {
+    @apply bg-blue-500/20 text-blue-300 border border-blue-500/30;
+  }
+
+  /* Credit Card Layout */
+  .credit-card {
+    @apply liquid-glass;
+    @apply p-6;
+    @apply space-y-4;
+    @apply transition-all duration-300 ease-out;
+    @apply hover:transform hover:translate-y-[-2px];
+    @apply hover:border-blue-500/30;
+  }
+
+  .credit-card-header {
+    @apply flex justify-between items-start;
+    @apply mb-4;
+  }
+
+  .credit-card-title {
+    @apply text-xl font-bold text-white;
+    @apply text-shadow;
+  }
+
+  .credit-card-balance {
+    @apply text-2xl font-bold text-red-400;
+    @apply text-shadow;
+  }
+
+  .credit-card-actions {
+    @apply flex flex-col gap-2;
+    @apply items-end;
+  }
+
+  .credit-card-badges {
+    @apply flex flex-col gap-1.5;
+    @apply items-end;
+  }
+
+  .credit-card-badge {
+    @apply px-2.5 py-1;
+    @apply text-xs font-medium;
+    @apply rounded-xl;
+    @apply transition-all duration-200;
+  }
+
+  .credit-card-badge:hover {
+    @apply transform scale-105;
+  }
+
+  .credit-card-action-btn {
+    @apply px-3 py-1.5;
+    @apply text-xs font-medium;
+    @apply rounded-lg;
+    @apply border border-gray-500/50;
+    @apply bg-transparent;
+    @apply text-white/70;
+    @apply hover:text-white;
+    @apply transition-all duration-200;
+  }
+
+  .credit-card-action-btn.edit:hover {
+    @apply border-blue-500/50;
+    @apply bg-blue-500/10;
+    @apply text-blue-300;
+  }
+
+  .credit-card-action-btn.delete:hover {
+    @apply border-red-500/50;
+    @apply bg-red-500/10;
+    @apply text-red-300;
+  }
+
+  /* Financial Overview Grid */
+  .credit-info-grid {
+    @apply grid grid-cols-2 gap-4;
+    @apply mb-4;
+  }
+
+  .credit-info-item {
+    @apply bg-gray-700/50;
+    @apply p-3;
+    @apply rounded-lg;
+    @apply border border-gray-600/30;
+  }
+
+  .credit-info-label {
+    @apply text-xs text-gray-400;
+    @apply mb-1;
+  }
+
+  .credit-info-value {
+    @apply text-base font-semibold text-white;
+  }
+
+  /* Utilization Progress Bar */
+  .utilization-section {
+    @apply mb-4;
+  }
+
+  .utilization-header {
+    @apply flex justify-between items-center;
+    @apply mb-2;
+  }
+
+  .utilization-label {
+    @apply text-sm text-gray-300;
+  }
+
+  .utilization-percentage {
+    @apply text-base font-bold;
+  }
+
+  .utilization-percentage.danger {
+    @apply text-red-400;
+  }
+
+  .utilization-percentage.warning {
+    @apply text-yellow-400;
+  }
+
+  .utilization-percentage.success {
+    @apply text-green-400;
+  }
+
+  .utilization-bar {
+    @apply h-2;
+    @apply bg-gray-700/50;
+    @apply rounded-full;
+    @apply overflow-hidden;
+    @apply border border-gray-600/30;
+  }
+
+  .utilization-fill {
+    @apply h-full;
+    @apply rounded-full;
+    @apply transition-all duration-1000 ease-out;
+    @apply transform origin-left;
+  }
+
+  .utilization-fill.danger {
+    background: linear-gradient(90deg, #ef4444, #dc2626);
+  }
+
+  .utilization-fill.warning {
+    background: linear-gradient(90deg, #f59e0b, #d97706);
+  }
+
+  .utilization-fill.success {
+    background: linear-gradient(90deg, #10b981, #059669);
+  }
+
+  /* Payment Section */
+  .payment-section {
+    @apply grid grid-cols-2 gap-4;
+    @apply mb-4;
+  }
+
+  .payment-item {
+    @apply bg-gray-700/50;
+    @apply p-3;
+    @apply rounded-lg;
+    @apply border border-gray-600/30;
+    @apply transition-all duration-200;
+  }
+
+  .payment-item.urgent {
+    @apply border-red-500/50;
+    @apply bg-red-500/10;
+  }
+
+  .payment-date {
+    @apply text-sm font-semibold text-white;
+  }
+
+  .payment-countdown {
+    @apply text-xs text-gray-400;
+  }
+
+  .payment-countdown.urgent {
+    @apply text-red-400;
+    @apply font-semibold;
+  }
+
+  .payment-amount {
+    @apply text-base font-bold text-white;
+  }
+
+  /* Additional Info Section */
+  .additional-info {
+    @apply grid grid-cols-2 gap-3;
+    @apply text-sm text-gray-400;
+  }
+
+  .additional-info-item {
+    @apply flex justify-between items-center;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .credit-info-grid,
+    .payment-section,
+    .additional-info {
+      @apply grid-cols-1;
+    }
+    
+    .credit-card-header {
+      @apply flex-col gap-3;
+      @apply items-start;
+    }
+    
+    .credit-card-actions {
+      @apply flex-row;
+      @apply items-center;
+      @apply gap-2;
+    }
+    
+    .credit-card-badges {
+      @apply flex-row;
+      @apply gap-2;
+    }
+  }
+
+  /* Animation Classes */
+  .slide-in-up {
+    animation: slideInUp 0.5s ease-out;
+  }
+
+  .slide-in-up-delay-1 {
+    animation: slideInUp 0.5s ease-out 0.1s both;
+  }
+
+  .slide-in-up-delay-2 {
+    animation: slideInUp 0.5s ease-out 0.2s both;
+  }
+
+  .slide-in-up-delay-3 {
+    animation: slideInUp 0.5s ease-out 0.3s both;
+  }
+
+  @keyframes slideInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .progress-animate {
+    animation: progressFill 1s ease-out 0.5s both;
+  }
+
+  @keyframes progressFill {
+    from {
+      width: 0%;
+    }
+    to {
+      width: var(--utilization-percentage);
+    }
+  }
 }
 
 @layer utilities {
