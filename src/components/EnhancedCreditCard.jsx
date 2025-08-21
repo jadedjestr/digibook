@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Edit, Trash2, AlertTriangle } from 'lucide-react';
 import StatusBadge from './StatusBadge';
+import PrivacyWrapper from './PrivacyWrapper';
 
 const EnhancedCreditCard = ({ 
   card, 
@@ -92,7 +93,11 @@ const EnhancedCreditCard = ({
       <div className="credit-card-header">
         <div>
           <h3 className="credit-card-title">{card.name}</h3>
-          <p className="credit-card-balance">{formatCurrency(card.balance)}</p>
+          <p className="credit-card-balance">
+            <PrivacyWrapper>
+              {formatCurrency(card.balance)}
+            </PrivacyWrapper>
+          </p>
         </div>
         
         <div className="credit-card-actions">
@@ -132,19 +137,35 @@ const EnhancedCreditCard = ({
       <div className="credit-info-grid">
         <div className="credit-info-item">
           <div className="credit-info-label">Credit Limit</div>
-          <div className="credit-info-value">{formatCurrency(card.creditLimit)}</div>
+          <div className="credit-info-value">
+            <PrivacyWrapper>
+              {formatCurrency(card.creditLimit)}
+            </PrivacyWrapper>
+          </div>
         </div>
         <div className="credit-info-item">
           <div className="credit-info-label">Available Credit</div>
-          <div className="credit-info-value">{formatCurrency(availableCredit)}</div>
+          <div className="credit-info-value">
+            <PrivacyWrapper>
+              {formatCurrency(availableCredit)}
+            </PrivacyWrapper>
+          </div>
         </div>
         <div className="credit-info-item">
           <div className="credit-info-label">Interest Rate</div>
-          <div className="credit-info-value">{formatPercentage(card.interestRate)}</div>
+          <div className="credit-info-value">
+            <PrivacyWrapper>
+              {formatPercentage(card.interestRate)}
+            </PrivacyWrapper>
+          </div>
         </div>
         <div className="credit-info-item">
           <div className="credit-info-label">Monthly Interest</div>
-          <div className="credit-info-value">{formatCurrency(monthlyInterest)}</div>
+          <div className="credit-info-value">
+            <PrivacyWrapper>
+              {formatCurrency(monthlyInterest)}
+            </PrivacyWrapper>
+          </div>
         </div>
       </div>
 
@@ -153,7 +174,9 @@ const EnhancedCreditCard = ({
         <div className="utilization-header">
           <span className="utilization-label">Credit Utilization</span>
           <span className={`utilization-percentage ${getUtilizationColor(utilization)}`}>
-            {formatPercentage(utilization)}
+            <PrivacyWrapper>
+              {formatPercentage(utilization)}
+            </PrivacyWrapper>
           </span>
         </div>
         <div className="utilization-bar">
@@ -176,7 +199,11 @@ const EnhancedCreditCard = ({
         </div>
         <div className="payment-item">
           <div className="credit-info-label">Minimum Payment</div>
-          <div className="payment-amount">{formatCurrency(card.minimumPayment)}</div>
+          <div className="payment-amount">
+            <PrivacyWrapper>
+              {formatCurrency(card.minimumPayment)}
+            </PrivacyWrapper>
+          </div>
         </div>
       </div>
 
@@ -189,7 +216,9 @@ const EnhancedCreditCard = ({
         <div className="additional-info-item">
           <span>Utilization vs Ideal</span>
           <span className={utilization > 30 ? 'text-yellow-400' : 'text-green-400'}>
-            {utilization > 30 ? `+${(utilization - 30).toFixed(1)}%` : `${(30 - utilization).toFixed(1)}% under`}
+            <PrivacyWrapper>
+              {utilization > 30 ? `+${(utilization - 30).toFixed(1)}%` : `${(30 - utilization).toFixed(1)}% under`}
+            </PrivacyWrapper>
           </span>
         </div>
       </div>

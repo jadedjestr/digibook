@@ -4,6 +4,7 @@ import { dbHelpers } from '../db/database';
 import { Plus, CreditCard } from 'lucide-react';
 import { notify } from '../utils/notifications';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';
+import PrivacyWrapper from '../components/PrivacyWrapper';
 
 const CreditCards = ({ onDataChange }) => {
   const [creditCards, setCreditCards] = useState([]);
