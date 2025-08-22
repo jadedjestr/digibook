@@ -87,15 +87,17 @@ const FixedExpenses = ({ accounts: accountsProp, creditCards: creditCardsProp = 
   };
 
   const handleAccountChange = async () => {
-    // Only reload accounts and credit cards for account changes
+    // Reload accounts, credit cards, and expenses for account changes
     try {
-      const [accountsData, creditCardsData] = await Promise.all([
+      const [accountsData, creditCardsData, expensesData] = await Promise.all([
         dbHelpers.getAccounts(),
-        dbHelpers.getCreditCards()
+        dbHelpers.getCreditCards(),
+        dbHelpers.getFixedExpenses()
       ]);
       
       setAccounts(accountsData);
       setCreditCards(creditCardsData);
+      setExpenses(expensesData);
       
       // Notify parent to update account balances
       onDataChange();

@@ -257,6 +257,7 @@ const FixedExpensesTable = ({
         }
       }
       
+      // Update the expense in the database
       await dbHelpers.updateFixedExpense(id, updates);
       setEditingId(null);
       setEditingField(null);
