@@ -17,10 +17,12 @@ const AccountSelector = ({
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const buttonRef = useRef(null);
 
-  // Sync editValue with value prop when it changes
+  // Only sync editValue with value prop when not editing
   useEffect(() => {
-    setEditValue(value);
-  }, [value]);
+    if (!isOpen) {
+      setEditValue(value);
+    }
+  }, [value, isOpen]);
 
   const handleSave = () => {
     console.log(`AccountSelector: Saving account change from ${value} to ${editValue}`);
