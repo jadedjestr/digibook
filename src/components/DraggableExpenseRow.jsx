@@ -13,6 +13,7 @@ const DraggableExpenseRow = ({
   status, 
   account, 
   isNewExpense,
+  isUpdating = false,
   onMarkAsPaid,
   onDuplicate,
   onDelete,
@@ -93,7 +94,9 @@ const DraggableExpenseRow = ({
         {...listeners}
         className={`transition-all duration-1000 ${
           isNewExpense ? 'new-expense-animation' : ''
-        } ${isDragging ? 'bg-white/5' : ''} hover:bg-white/5`}
+        } ${isDragging ? 'bg-white/5' : ''} hover:bg-white/5 ${
+          isUpdating ? 'bg-blue-500/10 border-l-4 border-l-blue-400' : ''
+        }`}
       >
       <td>
         <InlineEdit
@@ -122,12 +125,19 @@ const DraggableExpenseRow = ({
         />
       </td>
       <td>
-        <AccountSelector
-          value={expense.accountId}
-          onSave={(accountId) => onUpdateExpense(expense.id, { accountId })}
-          accounts={accounts}
-          creditCards={creditCards}
-        />
+        <div className="relative">
+          <AccountSelector
+            value={expense.accountId}
+            onSave={(accountId) => onUpdateExpense(expense.id, { accountId })}
+            accounts={accounts}
+            creditCards={creditCards}
+          />
+          {isUpdating && (
+            <div className="absolute inset-0 flex items-center justify-center bg-blue-500/20 rounded">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+            </div>
+          )}
+        </div>
       </td>
       <td>
         <InlineEdit

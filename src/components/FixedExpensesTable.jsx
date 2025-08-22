@@ -52,6 +52,7 @@ const FixedExpensesTable = ({
   const [newExpenseId, setNewExpenseId] = useState(null);
   const [duplicatingExpense, setDuplicatingExpense] = useState(null);
   const [activeId, setActiveId] = useState(null);
+  const [updatingExpenseId, setUpdatingExpenseId] = useState(null);
   
   // 🔧 SIMPLIFIED PERSISTED STATE - No complex manual overrides
   const { value: collapsedCategories, setValue: setCollapsedCategories, isLoaded: collapsedLoaded } = useCollapsedCategories();
@@ -226,10 +227,17 @@ const FixedExpensesTable = ({
     try {
       logger.debug(`Updating expense with ID: ${id}`, updates);
       
+      // Set loading state for this specific expense
+      setUpdatingExpenseId(id);
+      
+      // Preserve scroll position
+      const scrollPosition = window.scrollY;
+      
       // Get the current expense to check for account changes
       const currentExpense = expenses.find(e => e.id === id);
       if (!currentExpense) {
         logger.error("Could not find expense to update");
+        setUpdatingExpenseId(null);
         return;
       }
       
@@ -265,9 +273,18 @@ const FixedExpensesTable = ({
       if (updates.accountId !== undefined && updates.accountId !== currentExpense.accountId) {
         onDataChange();
       }
+      
+      // Restore scroll position after update
+      setTimeout(() => {
+        window.scrollTo(0, scrollPosition);
+      }, 0);
+      
     } catch (error) {
       logger.error("Error updating expense:", error);
       alert('Failed to update expense. Please try again.');
+    } finally {
+      // Clear loading state
+      setUpdatingExpenseId(null);
     }
   };
 
@@ -825,6 +842,7 @@ const FixedExpensesTable = ({
                                   status={status}
                                   account={account}
                                   isNewExpense={isNewExpense}
+                                  isUpdating={updatingExpenseId === expense.id}
                                   onMarkAsPaid={handleMarkAsPaid}
                                   onDuplicate={setDuplicatingExpense}
                                   onDelete={handleDeleteExpense}
