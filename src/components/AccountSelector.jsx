@@ -113,6 +113,12 @@ const AccountSelector = ({
               <button
                 key={`${account.type}-${account.id}`}
                 onClick={() => {
+                  console.log(`AccountSelector: Clicked on account ${account.id}, current value is ${value}`);
+                  // Prevent clicking on already selected account
+                  if (account.id === value) {
+                    console.log(`AccountSelector: Ignoring click on already selected account ${account.id}`);
+                    return;
+                  }
                   setEditValue(account.id);
                   handleSave();
                 }}
@@ -194,6 +200,12 @@ const AccountSelector = ({
             <button
               key={`${account.type}-${account.id}`}
               onClick={() => {
+                console.log(`AccountSelector: Clicked on account ${account.id}, current value is ${value}`);
+                // Prevent clicking on already selected account
+                if (account.id === value) {
+                  console.log(`AccountSelector: Ignoring click on already selected account ${account.id}`);
+                  return;
+                }
                 setEditValue(account.id);
                 handleSave();
               }}
