@@ -176,9 +176,9 @@ const AccountSelector = ({
             maxWidth: '400px'
           }}
         >
-          {accounts.map((account) => (
+          {allAccounts.map((account) => (
             <button
-              key={account.id}
+              key={`${account.type}-${account.id}`}
               onClick={() => {
                 setEditValue(account.id);
                 handleSave();

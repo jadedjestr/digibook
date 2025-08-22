@@ -68,6 +68,24 @@ const FixedExpenses = ({ accounts: accountsProp, creditCards: creditCardsProp = 
     }
   };
 
+  const handleExpenseUpdate = async (updatedExpense) => {
+    try {
+      // Update the expense in local state without triggering a full reload
+      setExpenses(prevExpenses => 
+        prevExpenses.map(expense => 
+          expense.id === updatedExpense.id ? updatedExpense : expense
+        )
+      );
+      
+      // Only notify parent for account changes that affect account balances
+      if (updatedExpense.accountId !== undefined) {
+        onDataChange();
+      }
+    } catch (error) {
+      logger.error("Error updating expense in local state:", error);
+    }
+  };
+
   const paycheckService = new PaycheckService(paycheckSettings);
   const paycheckDates = paycheckService.calculatePaycheckDates();
   const summaryTotals = paycheckService.calculateSummaryTotals(expenses, paycheckDates);

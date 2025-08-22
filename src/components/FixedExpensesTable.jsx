@@ -260,7 +260,11 @@ const FixedExpensesTable = ({
       await dbHelpers.updateFixedExpense(id, updates);
       setEditingId(null);
       setEditingField(null);
-      onDataChange();
+      
+      // Only trigger full reload for account changes that affect balances
+      if (updates.accountId !== undefined) {
+        onDataChange();
+      }
     } catch (error) {
       logger.error("Error updating expense:", error);
       alert('Failed to update expense. Please try again.');
