@@ -278,9 +278,11 @@ const FixedExpensesTable = ({
       logger.error("Error updating expense:", error);
       alert('Failed to update expense. Please try again.');
     } finally {
-      // Clear loading state
-      logger.debug(`Clearing updatingExpenseId (was: ${updatingExpenseId})`);
-      setUpdatingExpenseId(null);
+      // Clear loading state after a delay to show visual feedback
+      setTimeout(() => {
+        logger.debug(`Clearing updatingExpenseId (was: ${updatingExpenseId})`);
+        setUpdatingExpenseId(null);
+      }, 1000); // Show loading state for 1 second
     }
   };
 

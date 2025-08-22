@@ -24,7 +24,10 @@ const AccountSelector = ({
 
   const handleSave = () => {
     console.log(`AccountSelector: Saving account change from ${value} to ${editValue}`);
-    onSave(editValue);
+    // Only save if the account actually changed
+    if (editValue !== value) {
+      onSave(editValue);
+    }
     setIsOpen(false);
   };
 
