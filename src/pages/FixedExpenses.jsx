@@ -61,8 +61,8 @@ const FixedExpenses = ({ accounts: accountsProp, creditCards: creditCardsProp = 
       setExpenses(expensesData);
       setCategories(categoriesData);
       
-      // Notify parent
-      onDataChange();
+      // Only notify parent for account changes that affect balances
+      // This prevents infinite loops
     } catch (error) {
       logger.error("Error updating expense data:", error);
     }
@@ -83,6 +83,24 @@ const FixedExpenses = ({ accounts: accountsProp, creditCards: creditCardsProp = 
       }
     } catch (error) {
       logger.error("Error updating expense in local state:", error);
+    }
+  };
+
+  const handleAccountChange = async () => {
+    // Only reload accounts and credit cards for account changes
+    try {
+      const [accountsData, creditCardsData] = await Promise.all([
+        dbHelpers.getAccounts(),
+        dbHelpers.getCreditCards()
+      ]);
+      
+      setAccounts(accountsData);
+      setCreditCards(creditCardsData);
+      
+      // Notify parent to update account balances
+      onDataChange();
+    } catch (error) {
+      logger.error("Error updating account data:", error);
     }
   };
 
@@ -255,6 +273,7 @@ const FixedExpenses = ({ accounts: accountsProp, creditCards: creditCardsProp = 
         creditCards={creditCards}
         paycheckSettings={paycheckSettings}
         onDataChange={handleDataChange}
+        onAccountChange={handleAccountChange}
         isPanelOpen={isPanelOpen}
         setIsPanelOpen={setIsPanelOpen}
       />

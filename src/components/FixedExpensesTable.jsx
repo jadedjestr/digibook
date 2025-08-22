@@ -38,6 +38,7 @@ const FixedExpensesTable = ({
   creditCards = [], 
   paycheckSettings, 
   onDataChange,
+  onAccountChange,
   isPanelOpen,
   setIsPanelOpen
 }) => {
@@ -228,7 +229,6 @@ const FixedExpensesTable = ({
       logger.debug(`Updating expense with ID: ${id}`, updates);
       
       // Set loading state for this specific expense
-      console.log('Setting loading state for expense:', id);
       setUpdatingExpenseId(id);
       
       // Preserve scroll position
@@ -244,7 +244,6 @@ const FixedExpensesTable = ({
 
       // Optimistic update for account changes
       if (updates.accountId !== undefined && updates.accountId !== currentExpense.accountId) {
-        console.log('Optimistically updating account in UI');
         // Update the expense in local state immediately
         const updatedExpense = { ...currentExpense, ...updates };
         // This will be handled by the parent component's data reload
@@ -278,12 +277,9 @@ const FixedExpensesTable = ({
       setEditingId(null);
       setEditingField(null);
       
-      // Only trigger full reload for account changes that affect balances
+      // Only trigger account reload for account changes that affect balances
       if (updates.accountId !== undefined && updates.accountId !== currentExpense.accountId) {
-        console.log('Account changed, triggering data reload');
-        onDataChange();
-      } else {
-        console.log('Non-account update, skipping data reload');
+        onAccountChange();
       }
       
       // Restore scroll position after update
@@ -296,7 +292,6 @@ const FixedExpensesTable = ({
       alert('Failed to update expense. Please try again.');
     } finally {
       // Clear loading state
-      console.log('Clearing loading state for expense:', id);
       setUpdatingExpenseId(null);
     }
   };
