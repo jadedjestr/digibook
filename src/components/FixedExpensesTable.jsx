@@ -262,7 +262,7 @@ const FixedExpensesTable = ({
       setEditingField(null);
       
       // Only trigger full reload for account changes that affect balances
-      if (updates.accountId !== undefined) {
+      if (updates.accountId !== undefined && updates.accountId !== currentExpense.accountId) {
         onDataChange();
       }
     } catch (error) {

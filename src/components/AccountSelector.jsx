@@ -17,6 +17,11 @@ const AccountSelector = ({
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const buttonRef = useRef(null);
 
+  // Sync editValue with value prop when it changes
+  useEffect(() => {
+    setEditValue(value);
+  }, [value]);
+
   const handleSave = () => {
     onSave(editValue);
     setIsOpen(false);
