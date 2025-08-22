@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { logger } from '../utils/logger';
 import { dbHelpers } from '../db/database';
 
@@ -149,17 +149,21 @@ export const usePersistedState = (key, defaultValue, component = 'fixedExpenses'
 
 // Convenience hooks for common preferences
 export const useCollapsedCategories = () => {
-  return usePersistedState('collapsedCategories', new Set(), 'fixedExpenses');
+  const defaultSet = useMemo(() => new Set(), []);
+  return usePersistedState('collapsedCategories', defaultSet, 'fixedExpenses');
 };
 
 export const useSortPreference = () => {
-  return usePersistedState('sortBy', 'dueDate', 'fixedExpenses');
+  const defaultSort = useMemo(() => 'dueDate', []);
+  return usePersistedState('sortBy', defaultSort, 'fixedExpenses');
 };
 
 export const useAutoCollapsePreference = () => {
-  return usePersistedState('autoCollapseEnabled', true, 'fixedExpenses');
+  const defaultAutoCollapse = useMemo(() => true, []);
+  return usePersistedState('autoCollapseEnabled', defaultAutoCollapse, 'fixedExpenses');
 };
 
 export const useShowOnlyUnpaidPreference = () => {
-  return usePersistedState('showOnlyUnpaid', false, 'fixedExpenses');
+  const defaultShowOnlyUnpaid = useMemo(() => false, []);
+  return usePersistedState('showOnlyUnpaid', defaultShowOnlyUnpaid, 'fixedExpenses');
 };
