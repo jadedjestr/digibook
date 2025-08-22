@@ -2,7 +2,7 @@ import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { createPortal } from 'react-dom';
-import { Check, Copy, Trash2 } from 'lucide-react';
+import { Check, Copy, Trash2, RotateCcw } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import AccountSelector from './AccountSelector';
 import InlineEdit from './InlineEdit';
@@ -160,6 +160,15 @@ const DraggableExpenseRow = ({
               title="Mark as paid"
             >
               <Check size={16} />
+            </button>
+          )}
+          {status === 'Paid' && (
+            <button
+              onClick={() => onUpdateExpense(expense.id, { paidAmount: 0 })}
+              className="p-1 text-yellow-300 hover:text-yellow-200"
+              title="Mark as unpaid"
+            >
+              <RotateCcw size={16} />
             </button>
           )}
           <button
