@@ -89,12 +89,14 @@ const FixedExpenses = ({ accounts: accountsProp, creditCards: creditCardsProp = 
   const handleAccountChange = async () => {
     // Reload accounts, credit cards, and expenses for account changes
     try {
+      logger.debug("handleAccountChange: Reloading data from database...");
       const [accountsData, creditCardsData, expensesData] = await Promise.all([
         dbHelpers.getAccounts(),
         dbHelpers.getCreditCards(),
         dbHelpers.getFixedExpenses()
       ]);
       
+      logger.debug("handleAccountChange: Reloaded expenses data:", expensesData);
       setAccounts(accountsData);
       setCreditCards(creditCardsData);
       setExpenses(expensesData);

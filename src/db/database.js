@@ -520,9 +520,14 @@ export const dbHelpers = {
 
   async updateFixedExpense(id, updates) {
     try {
+      logger.debug(`Database: Updating fixed expense ${id} with:`, updates);
       await db.fixedExpenses.update(id, updates);
       await this.addAuditLog('UPDATE', 'fixedExpense', id, updates);
       logger.success('Fixed expense updated successfully: ' + id);
+      
+      // Verify the update was saved
+      const updatedExpense = await db.fixedExpenses.get(id);
+      logger.debug(`Database: Verification - expense ${id} after update:`, updatedExpense);
     } catch (error) {
       logger.error('Error updating fixed expense:', error);
       throw new Error('Failed to update fixed expense');
