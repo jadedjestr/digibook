@@ -88,18 +88,14 @@ const FixedExpensesTable = ({
   useEffect(() => {
     const initializeComponent = async () => {
       try {
-        console.log('🔧 Starting FixedExpensesTable initialization...');
         setInitState(INIT_STATES.LOADING);
         setInitError(null);
         
         // Step 1: Load categories (required for grouping)
-        console.log('📂 Loading categories...');
         const categoriesData = await dbHelpers.getCategories();
-        console.log('📂 Categories loaded:', categoriesData?.length || 0);
         setCategories(categoriesData);
         
         // Step 2: Wait for persisted preferences to load
-        console.log('⚙️ Waiting for preferences to load...');
         const checkPreferencesLoaded = () => {
           return collapsedLoaded && sortLoaded && autoCollapseLoaded && showOnlyUnpaidLoaded;
         };
@@ -112,24 +108,22 @@ const FixedExpensesTable = ({
         }
         
         if (checkPreferencesLoaded()) {
-          console.log('✅ Preferences loaded successfully');
+          // Preferences loaded successfully
         } else {
-          console.warn('⚠️ Preferences loading timed out, continuing with current values');
+          // Preferences loading timed out, continuing with current values
         }
         
         // Step 3: Mark as ready
-        console.log('✅ Component initialization complete');
         setInitState(INIT_STATES.READY);
         
       } catch (error) {
-        console.error('❌ Component initialization failed:', error);
         setInitError(error.message);
         setInitState(INIT_STATES.ERROR);
       }
     };
 
     initializeComponent();
-  }, [onDataChange, collapsedLoaded, sortLoaded, autoCollapseLoaded, showOnlyUnpaidLoaded]); // Wait for preferences
+  }, [collapsedLoaded, sortLoaded, autoCollapseLoaded, showOnlyUnpaidLoaded]); // Wait for preferences
 
   // Sorting helpers - MUST be defined BEFORE useMemo that uses them
   const sortByDueDate = (a, b) => {
@@ -145,21 +139,13 @@ const FixedExpensesTable = ({
 
   // 🔧 SAFE DATA PROCESSING - Only run when ready
   const groupedExpenses = useMemo(() => {
-    console.log('🔄 Processing grouped expenses...', { 
-      initState, 
-      expensesCount: expenses?.length || 0,
-      sortBy 
-    });
-    
     // TEMPORARY: Allow processing even if not fully initialized
     if (!expenses) {
-      console.log('⏳ No expenses data yet');
       return {};
     }
     
     // Don't process data until initialization is complete
     if (initState !== INIT_STATES.READY) {
-      console.log('⏳ Not ready to process expenses yet, but processing anyway for debugging');
       // Continue processing for debugging
     }
 
@@ -179,10 +165,8 @@ const FixedExpensesTable = ({
         groups[category].sort(sortBy === 'dueDate' ? sortByDueDate : sortByName);
       });
 
-      console.log('✅ Grouped expenses processed:', Object.keys(groups));
       return groups;
     } catch (error) {
-      console.error('❌ Error processing grouped expenses:', error);
       return {};
     }
   }, [expenses, sortBy, initState]); // Include initState in dependencies
@@ -380,8 +364,6 @@ const FixedExpensesTable = ({
     if (!autoCollapseEnabled || !expenses || expenses.length === 0) {
       return; // No auto-collapse if disabled or no expenses
     }
-
-    console.log('🔄 Applying simplified auto-collapse logic...');
     
     // Group expenses by category
     const expensesByCategory = {};
@@ -404,14 +386,12 @@ const FixedExpensesTable = ({
         if (!newCollapsedCategories.has(categoryName)) {
           newCollapsedCategories.add(categoryName);
           autoCollapsedCount++;
-          console.log(`📦 Auto-collapsed category: ${categoryName}`);
         }
       }
     });
 
     // Only update if we actually auto-collapsed something
     if (autoCollapsedCount > 0) {
-      console.log(`📦 Auto-collapsed ${autoCollapsedCount} categories`);
       setCollapsedCategories(newCollapsedCategories);
     }
   }, [autoCollapseEnabled, expenses, collapsedCategories, setCollapsedCategories]); // Simple dependencies
@@ -419,10 +399,9 @@ const FixedExpensesTable = ({
   // 🔧 AUTO-COLLAPSE TRIGGER - Only when data actually changes
   useEffect(() => {
     if (initState === INIT_STATES.READY && autoCollapseEnabled && expenses && expenses.length > 0) {
-      console.log('🔄 Auto-collapse triggered by data change...');
       applyAutoCollapseLogic();
     }
-  }, [expenses, autoCollapseEnabled, initState]); // Only trigger on actual data changes
+  }, [expenses, autoCollapseEnabled, initState, applyAutoCollapseLogic]); // Only trigger on actual data changes
 
   // 🔧 SIMPLIFIED TOGGLE - Direct and immediate
   const toggleCategoryCollapse = (categoryName) => {
@@ -431,11 +410,9 @@ const FixedExpensesTable = ({
     if (newSet.has(categoryName)) {
       // Expanding the category
       newSet.delete(categoryName);
-      console.log(`👤 Manually expanded category: ${categoryName}`);
     } else {
       // Collapsing the category
       newSet.add(categoryName);
-      console.log(`👤 Manually collapsed category: ${categoryName}`);
     }
     
     // Update state immediately
@@ -617,7 +594,6 @@ const FixedExpensesTable = ({
 
   // 🔧 LOADING AND ERROR STATES
   if (initState === INIT_STATES.LOADING) {
-    console.log('🔄 Rendering loading state...');
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
@@ -634,7 +610,6 @@ const FixedExpensesTable = ({
   }
 
   if (initState === INIT_STATES.ERROR) {
-    console.log('❌ Rendering error state...', initError);
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
