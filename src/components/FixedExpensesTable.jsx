@@ -214,6 +214,7 @@ const FixedExpensesTable = ({
       
       // Set loading state for this specific expense
       setUpdatingExpenseId(id);
+      logger.debug(`Set updatingExpenseId to: ${id}`);
       
       // Preserve scroll position
       const scrollPosition = window.scrollY;
@@ -264,6 +265,7 @@ const FixedExpensesTable = ({
       
       // Only trigger account reload for account changes that affect balances
       if (updates.accountId !== undefined && updates.accountId !== currentExpense.accountId) {
+        logger.debug(`Account changed from ${currentExpense.accountId} to ${updates.accountId}, calling onAccountChange`);
         onAccountChange();
       }
       
@@ -277,6 +279,7 @@ const FixedExpensesTable = ({
       alert('Failed to update expense. Please try again.');
     } finally {
       // Clear loading state
+      logger.debug(`Clearing updatingExpenseId (was: ${updatingExpenseId})`);
       setUpdatingExpenseId(null);
     }
   };

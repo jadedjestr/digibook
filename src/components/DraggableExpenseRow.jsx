@@ -97,6 +97,8 @@ const DraggableExpenseRow = ({
         } ${isDragging ? 'bg-white/5' : ''} hover:bg-white/5 ${
           isUpdating ? 'bg-blue-500/10 border-l-4 border-l-blue-400' : ''
         }`}
+        data-updating={isUpdating}
+        data-expense-id={expense.id}
       >
       <td>
         <InlineEdit

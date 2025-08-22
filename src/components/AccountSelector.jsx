@@ -23,6 +23,7 @@ const AccountSelector = ({
   }, [value]);
 
   const handleSave = () => {
+    console.log(`AccountSelector: Saving account change from ${value} to ${editValue}`);
     onSave(editValue);
     setIsOpen(false);
   };
