@@ -198,17 +198,9 @@ const AddExpensePanel = ({
 
       const newExpenseId = await dbHelpers.addFixedExpense(expenseData);
 
-      // Handle balance updates based on account type
-      const selectedAccount = availableAccounts.find(acc => acc.id === parseInt(formData.accountId));
-      if (selectedAccount) {
-        if (selectedAccount.type === 'creditCard') {
-          // For credit card expenses, increase the credit card balance (increase debt)
-          const newBalance = selectedAccount.balance + expenseData.amount;
-          await dbHelpers.updateCreditCard(selectedAccount.id, { balance: newBalance });
-          logger.success(`Credit card balance updated: ${selectedAccount.name} balance increased by ${expenseData.amount}`);
-        }
-        // For regular accounts, no balance change needed (will be handled when paid)
-      }
+      // Note: We don't update credit card balances when creating expenses
+      // Credit card balances should only be updated when expenses are actually marked as paid
+      // This prevents artificially inflating debt when just creating expense assignments
 
       logger.success('Expense added successfully');
       onDataChange(newExpenseId);

@@ -279,27 +279,9 @@ const FixedExpensesTable = ({
         const newCreditCard = creditCards.find(card => card.id === newAccountId);
         const newAccount = accounts.find(acc => acc.id === newAccountId);
 
-        if (oldCreditCard && newAccount) {
-          // Moving from credit card to regular account
-          // Decrease credit card balance (remove debt)
-          const newBalance = Math.max(0, oldCreditCard.balance - currentExpense.amount);
-          await dbHelpers.updateCreditCard(oldAccountId, { balance: newBalance });
-          logger.info(`Credit card balance decreased: ${oldCreditCard.balance} -> ${newBalance}`);
-        } else if (oldAccount && newCreditCard) {
-          // Moving from regular account to credit card
-          // Increase credit card balance (add debt)
-          const newBalance = newCreditCard.balance + currentExpense.amount;
-          await dbHelpers.updateCreditCard(newAccountId, { balance: newBalance });
-          logger.info(`Credit card balance increased: ${newCreditCard.balance} -> ${newBalance}`);
-        } else if (oldCreditCard && newCreditCard) {
-          // Moving from one credit card to another
-          // Decrease old credit card balance, increase new credit card balance
-          const oldNewBalance = Math.max(0, oldCreditCard.balance - currentExpense.amount);
-          const newNewBalance = newCreditCard.balance + currentExpense.amount;
-          await dbHelpers.updateCreditCard(oldAccountId, { balance: oldNewBalance });
-          await dbHelpers.updateCreditCard(newAccountId, { balance: newNewBalance });
-          logger.info(`Credit card balances updated: ${oldCreditCard.name} ${oldCreditCard.balance} -> ${oldNewBalance}, ${newCreditCard.name} ${newCreditCard.balance} -> ${newNewBalance}`);
-        }
+        // Note: We don't update credit card balances when changing account assignments
+        // Credit card balances should only be updated when expenses are actually marked as paid
+        // This prevents artificially inflating debt when just changing account assignments
         // Note: Moving between regular accounts doesn't require balance updates
       }
 
