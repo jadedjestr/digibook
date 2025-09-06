@@ -208,6 +208,7 @@ const MobileExpenseCard = ({
                   selectedAccountId={editValue}
                   onAccountChange={setEditValue}
                   className="w-32"
+                  isCreditCardPayment={expense.category === 'Credit Card Payment' || expense.name.toLowerCase().includes('payment')}
                 />
                 <button
                   onClick={handleSave}
@@ -232,6 +233,7 @@ const MobileExpenseCard = ({
             )}
           </div>
         </div>
+
 
         {/* Paid Amount */}
         <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">

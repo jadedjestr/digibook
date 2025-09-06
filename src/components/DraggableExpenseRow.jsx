@@ -163,6 +163,7 @@ const DraggableExpenseRow = ({
               }}
               accounts={accounts}
               creditCards={creditCards}
+              isCreditCardPayment={expense.category === 'Credit Card Payment' || expense.name.toLowerCase().includes('payment')}
             />
             {isUpdating && (
               <div className="absolute inset-0 flex items-center justify-center bg-blue-500/20 rounded">

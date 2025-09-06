@@ -253,6 +253,20 @@ export class DigibookDB extends Dexie {
       monthlyExpenseHistory: '++id, expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
     });
+
+    // Add dedicated credit card field for fixed expenses (Version 11)
+    this.version(11).stores({
+      ...stores,
+      accounts: '++id, name, type, currentBalance, isDefault',
+      pendingTransactions: '++id, accountId, amount, category, description, createdAt, *category',
+      fixedExpenses: '++id, name, dueDate, amount, accountId, creditCardId, paidAmount, status, category, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, *category',
+      categories: '++id, &nameLower, name, color, icon, isDefault',
+      creditCards: '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
+      paycheckSettings: '++id, lastPaycheckDate, frequency',
+      userPreferences: '++id, component, preferences',
+      monthlyExpenseHistory: '++id, expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
+      auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
+    });
   }
 }
 
@@ -1111,6 +1125,15 @@ export const dbHelpers = {
       // Initialize default categories if needed
       await this.initializeDefaultCategories();
 
+      // Invalidate category cache after import to ensure fresh data
+      try {
+        const { categoryCache } = await import('../services/categoryCache');
+        categoryCache.invalidate();
+        logger.debug('Category cache invalidated after import');
+      } catch (error) {
+        logger.warn('Could not invalidate category cache after import:', error);
+      }
+
       logger.success('Data imported successfully');
     } catch (error) {
       logger.error('Error importing data:', error);
@@ -1192,6 +1215,10 @@ export const dbHelpers = {
           }
           if (expense.mappedAt !== undefined && expense.mappedAt !== null && isNaN(new Date(expense.mappedAt).getTime())) {
             errors.push(`Expense ${index + 1}: Invalid mappedAt date`);
+          }
+          // Validate credit card assignment (optional)
+          if (expense.creditCardId !== undefined && expense.creditCardId !== null && (typeof expense.creditCardId !== 'number' || expense.creditCardId <= 0)) {
+            errors.push(`Expense ${index + 1}: Invalid creditCardId (must be a positive number or null)`);
           }
         });
       }

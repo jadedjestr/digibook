@@ -22,16 +22,23 @@ const AddExpensePanel = ({
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Combine regular accounts and credit cards for account selector
-  const allAccounts = [
-    ...accounts.map(acc => ({ ...acc, type: 'account' })),
-    ...creditCards.map(card => ({
-      ...card,
-      type: 'creditCard',
-      currentBalance: card.balance, // Map balance to currentBalance for consistency
-      name: `${card.name} (Credit Card)`,
-    })),
-  ];
+  // Smart account filtering based on expense type
+  const isCreditCardPayment = formData.name.toLowerCase().includes('payment') || 
+                             formData.category === 'Credit Card Payment';
+
+  // For credit card payments: only allow checking/savings accounts (funding source)
+  // For regular expenses: allow all accounts (checking, savings, credit cards)
+  const availableAccounts = isCreditCardPayment 
+    ? accounts.map(acc => ({ ...acc, type: 'account' }))
+    : [
+        ...accounts.map(acc => ({ ...acc, type: 'account' })),
+        ...creditCards.map(card => ({
+          ...card,
+          type: 'creditCard',
+          currentBalance: card.balance,
+          name: `${card.name} (Credit Card)`,
+        })),
+      ];
 
   const panelRef = useRef(null);
   const firstInputRef = useRef(null);
@@ -191,12 +198,16 @@ const AddExpensePanel = ({
 
       const newExpenseId = await dbHelpers.addFixedExpense(expenseData);
 
-      // If this expense is assigned to a credit card, update the credit card balance
-      const selectedAccount = allAccounts.find(acc => acc.id === parseInt(formData.accountId));
-      if (selectedAccount && selectedAccount.type === 'creditCard') {
-        const newBalance = selectedAccount.balance + expenseData.amount;
-        await dbHelpers.updateCreditCard(selectedAccount.id, { balance: newBalance });
-        logger.success('Credit card balance updated');
+      // Handle balance updates based on account type
+      const selectedAccount = availableAccounts.find(acc => acc.id === parseInt(formData.accountId));
+      if (selectedAccount) {
+        if (selectedAccount.type === 'creditCard') {
+          // For credit card expenses, increase the credit card balance (increase debt)
+          const newBalance = selectedAccount.balance + expenseData.amount;
+          await dbHelpers.updateCreditCard(selectedAccount.id, { balance: newBalance });
+          logger.success(`Credit card balance updated: ${selectedAccount.name} balance increased by ${expenseData.amount}`);
+        }
+        // For regular accounts, no balance change needed (will be handled when paid)
       }
 
       logger.success('Expense added successfully');
@@ -335,15 +346,15 @@ const AddExpensePanel = ({
               value={formData.accountId}
               onChange={(e) => {
                 const accountId = parseInt(e.target.value) || '';
-                const account = allAccounts.find(acc => acc.id === accountId);
+                const account = availableAccounts.find(acc => acc.id === accountId);
                 setSelectedAccount(account);
                 handleInputChange('accountId', accountId);
               }}
               className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white"
             >
               <option value="">Select account</option>
-              {allAccounts.map((account) => (
-                <option key={`${account.type}-${account.id}`} value={account.id}>
+              {availableAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
                   {account.name} - {formatBalance(account.currentBalance)}
                 </option>
               ))}
@@ -352,6 +363,7 @@ const AddExpensePanel = ({
               <p className="mt-1 text-sm text-red-400">{errors.accountId}</p>
             )}
           </div>
+
 
           {/* Category Selector */}
           <div>

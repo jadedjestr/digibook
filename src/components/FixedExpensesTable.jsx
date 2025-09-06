@@ -290,6 +290,7 @@ const FixedExpensesTable = ({
         }
       }
 
+
       // Update the expense in the database
       await dbHelpers.updateFixedExpense(id, updates);
       
@@ -335,15 +336,15 @@ const FixedExpensesTable = ({
               notify.warning(`Payment processed but could not find corresponding credit card for ${currentExpense.name}`);
             }
           } else {
-            // For regular expenses, handle single account
-            const creditCard = creditCards.find(card => card.id === currentExpense.accountId);
+            // For regular expenses, handle single account (could be checking, savings, or credit card)
             const account = accounts.find(acc => acc.id === currentExpense.accountId);
+            const creditCard = creditCards.find(card => card.id === currentExpense.accountId);
             
             if (creditCard) {
-              // For credit cards, adjust the balance (reduce debt when paying more)
-              const newBalance = Math.max(0, creditCard.balance - paymentDifference);
+              // For credit card expenses, increase the balance when paid (increase debt)
+              const newBalance = creditCard.balance + paymentDifference;
               await dbHelpers.updateCreditCard(currentExpense.accountId, { balance: newBalance });
-              logger.info(`Credit card balance updated: ${creditCard.balance} -> ${newBalance} (payment difference: ${paymentDifference})`);
+              logger.info(`Credit card balance updated: ${creditCard.name} ${creditCard.balance} -> ${newBalance} (payment difference: ${paymentDifference})`);
             } else if (account) {
               // For regular accounts, deduct the payment difference from balance
               const newBalance = account.currentBalance - paymentDifference;
@@ -625,27 +626,28 @@ const FixedExpensesTable = ({
           notify.warning(`Payment processed but could not find corresponding credit card for ${expense.name}`);
         }
       } else {
-        // For regular expenses, handle single account
+        // For regular expenses, handle single account (could be checking, savings, or credit card)
+        const account = accounts.find(acc => acc.id === expense.accountId);
         const creditCard = creditCards.find(card => card.id === expense.accountId);
+        
         if (creditCard) {
-          // For credit cards, decrease the balance (reduce debt) when marked as paid
-          const newBalance = Math.max(0, creditCard.balance - expense.amount);
-          await dbHelpers.updateCreditCard(expense.accountId, {
-            balance: newBalance,
-          });
-          logger.info(`Credit card balance updated: ${creditCard.balance} -> ${newBalance}`);
+          // For credit card expenses, increase the balance when paid (increase debt)
+          const newBalance = creditCard.balance + expense.amount;
+          await dbHelpers.updateCreditCard(expense.accountId, { balance: newBalance });
+          logger.info(`Credit card balance updated: ${creditCard.name} ${creditCard.balance} -> ${newBalance}`);
+        } else if (account) {
+          // For regular accounts, deduct the payment from balance
+          const newBalance = account.currentBalance - expense.amount;
+          await dbHelpers.updateAccount(expense.accountId, { currentBalance: newBalance });
+          logger.info(`Account balance updated: ${account.currentBalance} -> ${newBalance}`);
         } else if (expense.accountId === null) {
           // Unlinked account - payment processed but no balance update
           logger.info(`Payment processed for unlinked expense ${expense.id} - no account balance update`);
           notify.info(`Payment processed but expense is not linked to any account.`);
         } else {
-          // Deduct from regular account balance
-          const account = accounts.find(acc => acc.id === expense.accountId);
-          if (account) {
-            await dbHelpers.updateAccount(expense.accountId, {
-              currentBalance: account.currentBalance - expense.amount,
-            });
-          }
+          // Invalid account reference
+          logger.error(`Invalid account reference: Account ID ${expense.accountId} not found`);
+          notify.error(`Warning: Payment processed but account ${expense.accountId} not found.`);
         }
       }
 

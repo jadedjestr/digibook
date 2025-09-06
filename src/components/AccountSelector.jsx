@@ -11,6 +11,7 @@ const AccountSelector = ({
   onEdit = null,
   onCancel = null,
   showSaveCancel = true,
+  isCreditCardPayment = false,
 }) => {
   const [editValue, setEditValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
@@ -54,16 +55,20 @@ const AccountSelector = ({
     setIsOpen(!isOpen);
   };
 
-  // Combine regular accounts and credit cards
-  const allAccounts = [
-    ...accounts.map(acc => ({ ...acc, type: 'account' })),
-    ...creditCards.map(card => ({
-      ...card,
-      type: 'creditCard',
-      currentBalance: card.balance, // Map balance to currentBalance for consistency
-      name: `${card.name} (Credit Card)`,
-    })),
-  ];
+  // Smart account filtering based on expense type
+  // For credit card payments: only allow checking/savings accounts (funding source)
+  // For regular expenses: allow all accounts (checking, savings, credit cards)
+  const allAccounts = isCreditCardPayment 
+    ? accounts.map(acc => ({ ...acc, type: 'account' }))
+    : [
+        ...accounts.map(acc => ({ ...acc, type: 'account' })),
+        ...creditCards.map(card => ({
+          ...card,
+          type: 'creditCard',
+          currentBalance: card.balance, // Map balance to currentBalance for consistency
+          name: `${card.name} (Credit Card)`,
+        })),
+      ];
 
   const selectedAccount = allAccounts.find(account => account.id === editValue);
 
