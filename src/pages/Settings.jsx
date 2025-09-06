@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { logger } from '../utils/logger';
-import { Download, Upload, Eye, Trash2, Lock, Shield, Database } from 'lucide-react';
+import { Download, Upload, Eye, Trash2, Lock, Shield, Database, DollarSign, Settings as SettingsIcon } from 'lucide-react';
 import { dataManager } from '../services/dataManager';
 import PaycheckManager from '../components/PaycheckManager';
 import CategoryManager from '../components/CategoryManager';
+import CollapsibleCardGroup from '../components/CollapsibleCardGroup';
 
 const Settings = ({ onDataChange }) => {
   const [auditLogs, setAuditLogs] = useState([]);
@@ -256,256 +257,254 @@ const Settings = ({ onDataChange }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Paycheck Manager */}
-          <PaycheckManager onDataChange={onDataChange} />
-
-          {/* Import/Export Section */}
-          <div className="glass-panel">
-            <div className="flex items-center space-x-2 mb-4">
-              <Database size={20} className="text-primary" />
-              <h3 className="text-lg font-semibold text-primary">Data Management</h3>
-            </div>
-
-            <div className="space-y-6">
-              {/* Export Section */}
-              <div>
-                <h4 className="text-primary font-medium mb-3">Export Data</h4>
-                <div className="flex space-x-3">
-                  <button
-                    onClick={handleExportJSON}
-                    disabled={isExporting}
-                    className={`glass-button flex items-center space-x-2 ${isExporting ? 'glass-loading' : ''}`}
-                  >
-                    {isExporting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                        <span>Exporting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Download size={16} />
-                        <span>Export JSON</span>
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={handleExportCSV}
-                    disabled={isExporting}
-                    className={`glass-button flex items-center space-x-2 ${isExporting ? 'glass-loading' : ''}`}
-                  >
-                    {isExporting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                        <span>Exporting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Download size={16} />
-                        <span>Export CSV</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Import Section */}
-              <div>
-                <h4 className="text-primary font-medium mb-3">Import Data</h4>
-                <div className="space-y-3">
-                  <div className="flex space-x-3">
-                    <select
-                      value={importType}
-                      onChange={(e) => setImportType(e.target.value)}
-                      className="glass-input"
-                    >
-                      <option value="json">JSON</option>
-                      <option value="csv">CSV</option>
-                    </select>
-                    <input
-                      type="file"
-                      accept={importType === 'json' ? '.json' : '.csv'}
-                      onChange={handleImportFile}
-                      className="glass-input"
-                    />
+        {/* Collapsible Settings Cards */}
+        <CollapsibleCardGroup
+          cards={[
+            {
+              title: "Paycheck Management",
+              icon: DollarSign,
+              content: <PaycheckManager onDataChange={onDataChange} />
+            },
+            {
+              title: "Data Management",
+              icon: Database,
+              content: (
+                <div className="space-y-6">
+                  {/* Export Section */}
+                  <div>
+                    <h4 className="text-primary font-medium mb-3">Export Data</h4>
+                    <div className="flex space-x-3">
+                      <button
+                        onClick={handleExportJSON}
+                        disabled={isExporting}
+                        className={`glass-button flex items-center space-x-2 ${isExporting ? 'glass-loading' : ''}`}
+                      >
+                        {isExporting ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                            <span>Exporting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download size={16} />
+                            <span>Export JSON</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={handleExportCSV}
+                        disabled={isExporting}
+                        className={`glass-button flex items-center space-x-2 ${isExporting ? 'glass-loading' : ''}`}
+                      >
+                        {isExporting ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                            <span>Exporting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download size={16} />
+                            <span>Export CSV</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                  {importFile && (
+
+                  {/* Import Section */}
+                  <div>
+                    <h4 className="text-primary font-medium mb-3">Import Data</h4>
                     <div className="space-y-3">
-                      <div className="flex items-center space-x-3">
-                        <span className="text-secondary text-sm">
-                        Selected: {importFile.name}
-                        </span>
-                        <button
-                          onClick={handleImport}
-                          disabled={isImporting}
-                          className={`glass-button flex items-center space-x-2 ${isImporting ? 'glass-loading' : ''}`}
+                      <div className="flex space-x-3">
+                        <select
+                          value={importType}
+                          onChange={(e) => setImportType(e.target.value)}
+                          className="glass-input"
                         >
-                          {isImporting ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                              <span>Importing...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Upload size={16} />
-                              <span>Import</span>
-                            </>
-                          )}
-                        </button>
+                          <option value="json">JSON</option>
+                          <option value="csv">CSV</option>
+                        </select>
+                        <input
+                          type="file"
+                          accept={importType === 'json' ? '.json' : '.csv'}
+                          onChange={handleImportFile}
+                          className="glass-input"
+                        />
                       </div>
-                      {importProgress && (
-                        <div className="text-sm text-blue-300 bg-blue-500/20 rounded-lg px-3 py-2">
-                          {importProgress}
+                      {importFile && (
+                        <div className="space-y-3">
+                          <div className="flex items-center space-x-3">
+                            <span className="text-secondary text-sm">
+                            Selected: {importFile.name}
+                            </span>
+                            <button
+                              onClick={handleImport}
+                              disabled={isImporting}
+                              className={`glass-button flex items-center space-x-2 ${isImporting ? 'glass-loading' : ''}`}
+                            >
+                              {isImporting ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                  <span>Importing...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Upload size={16} />
+                                  <span>Import</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          {importProgress && (
+                            <div className="text-sm text-blue-300 bg-blue-500/20 rounded-lg px-3 py-2">
+                              {importProgress}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Clear Data Section */}
+                  <div>
+                    <h4 className="text-primary font-medium mb-3">Clear Data</h4>
+                    <div className="space-y-3">
+                      <p className="text-secondary text-sm">
+                      Clear all data from all tables. A backup will be created automatically.
+                      </p>
+                      <button
+                        onClick={handleClearAllData}
+                        className="glass-button bg-red-500/20 hover:bg-red-500/30 text-red-300 flex items-center space-x-2"
+                      >
+                        <Trash2 size={16} />
+                        <span>Clear All Data</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Backup Recovery Section */}
+                  <div>
+                    <h4 className="text-primary font-medium mb-3">Backup Recovery</h4>
+                    <div className="space-y-3">
+                      <p className="text-secondary text-sm">
+                      If an import failed or you need to restore from a backup created before import.
+                      </p>
+                      <button
+                        onClick={handleRestoreFromBackup}
+                        className="glass-button bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300"
+                      >
+                        <Shield size={16} />
+                        <span>Restore from Backup</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            },
+            {
+              title: "Category Management",
+              icon: SettingsIcon,
+              content: (
+                <div className="category-manager-wrapper">
+                  <CategoryManager onDataChange={onDataChange} />
+                </div>
+              )
+            },
+            {
+              title: "Audit Log",
+              icon: Eye,
+              content: (
+                <div className="space-y-4">
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => setShowAuditLogs(!showAuditLogs)}
+                      className="glass-button flex items-center space-x-2"
+                    >
+                      <Eye size={16} />
+                      <span>{showAuditLogs ? 'Hide' : 'Show'}</span>
+                    </button>
+                    <button
+                      onClick={handleClearAuditLogs}
+                      className="glass-button bg-red-500/20 hover:bg-red-500/30 flex items-center space-x-2"
+                    >
+                      <Trash2 size={16} />
+                      <span>Clear</span>
+                    </button>
+                  </div>
+
+                  {showAuditLogs && (
+                    <div className="max-h-96 overflow-y-auto">
+                      {auditLogs.length === 0 ? (
+                        <div className="empty-state">
+                          <div className="empty-state-icon">📝</div>
+                          <h3 className="text-lg font-semibold text-primary mb-2">No audit logs yet</h3>
+                          <p className="text-secondary">Actions will be logged here as you use the app</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {auditLogs.map((log) => (
+                            <div key={log.id} className="bg-white/5 rounded-lg p-3 backdrop-blur-sm">
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center space-x-2">
+                                  <span>{getActionIcon(log.actionType)}</span>
+                                  <span>{getEntityIcon(log.entityType)}</span>
+                                  <span className="text-primary font-medium">
+                                    {log.actionType} {log.entityType}
+                                  </span>
+                                </div>
+                                <span className="text-muted text-xs">
+                                  {formatTimestamp(log.timestamp)}
+                                </span>
+                              </div>
+                              {log.details && (
+                                <div className="text-secondary text-sm bg-white/5 rounded p-2 mt-2">
+                                  <pre className="whitespace-pre-wrap text-xs">
+                                    {JSON.stringify(JSON.parse(log.details), null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
                   )}
                 </div>
-              </div>
-
-              {/* Clear Data Section */}
-              <div>
-                <h4 className="text-primary font-medium mb-3">Clear Data</h4>
-                <div className="space-y-3">
-                  <p className="text-secondary text-sm">
-                  Clear all data from all tables. A backup will be created automatically.
-                  </p>
-                  <button
-                    onClick={handleClearAllData}
-                    className="glass-button bg-red-500/20 hover:bg-red-500/30 text-red-300 flex items-center space-x-2"
-                  >
-                    <Trash2 size={16} />
-                    <span>Clear All Data</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Backup Recovery Section */}
-              <div>
-                <h4 className="text-primary font-medium mb-3">Backup Recovery</h4>
-                <div className="space-y-3">
-                  <p className="text-secondary text-sm">
-                  If an import failed or you need to restore from a backup created before import.
-                  </p>
-                  <button
-                    onClick={handleRestoreFromBackup}
-                    className="glass-button bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300"
-                  >
-                    <Shield size={16} />
-                    <span>Restore from Backup</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Category Management Section */}
-          <div className="glass-panel">
-            <div className="flex items-center space-x-2 mb-4">
-              <Database size={20} className="text-primary" />
-              <h3 className="text-lg font-semibold text-primary">Category Management</h3>
-            </div>
-            <div className="category-manager-wrapper">
-              <CategoryManager onDataChange={onDataChange} />
-            </div>
-          </div>
-
-          {/* Audit Logs Section */}
-          <div className="glass-panel">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-2">
-                <Eye size={20} className="text-primary" />
-                <h3 className="text-lg font-semibold text-primary">Audit Log</h3>
-              </div>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setShowAuditLogs(!showAuditLogs)}
-                  className="glass-button flex items-center space-x-2"
-                >
-                  <Eye size={16} />
-                  <span>{showAuditLogs ? 'Hide' : 'Show'}</span>
-                </button>
-                <button
-                  onClick={handleClearAuditLogs}
-                  className="glass-button bg-red-500/20 hover:bg-red-500/30 flex items-center space-x-2"
-                >
-                  <Trash2 size={16} />
-                  <span>Clear</span>
-                </button>
-              </div>
-            </div>
-
-            {showAuditLogs && (
-              <div className="max-h-96 overflow-y-auto">
-                {auditLogs.length === 0 ? (
-                  <div className="empty-state">
-                    <div className="empty-state-icon">📝</div>
-                    <h3 className="text-lg font-semibold text-primary mb-2">No audit logs yet</h3>
-                    <p className="text-secondary">Actions will be logged here as you use the app</p>
+              )
+            },
+            {
+              title: "Privacy & Security",
+              icon: Shield,
+              content: (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                    <div>
+                      <h4 className="text-primary font-medium">PIN Lock</h4>
+                      <p className="text-secondary text-sm">
+                      Secure your financial data with a local PIN
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Lock size={20} className="text-muted" />
+                      <span className="text-secondary">Enabled</span>
+                    </div>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {auditLogs.map((log) => (
-                      <div key={log.id} className="bg-white/5 rounded-lg p-3 backdrop-blur-sm">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center space-x-2">
-                            <span>{getActionIcon(log.actionType)}</span>
-                            <span>{getEntityIcon(log.entityType)}</span>
-                            <span className="text-primary font-medium">
-                              {log.actionType} {log.entityType}
-                            </span>
-                          </div>
-                          <span className="text-muted text-xs">
-                            {formatTimestamp(log.timestamp)}
-                          </span>
-                        </div>
-                        {log.details && (
-                          <div className="text-secondary text-sm bg-white/5 rounded p-2 mt-2">
-                            <pre className="whitespace-pre-wrap text-xs">
-                              {JSON.stringify(JSON.parse(log.details), null, 2)}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+
+                  <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                    <div>
+                      <h4 className="text-primary font-medium">Data Storage</h4>
+                      <p className="text-secondary text-sm">
+                      All data is stored locally in your browser
+                      </p>
+                    </div>
+                    <span className="text-green-400 text-sm">✓ Local Only</span>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Privacy Section */}
-        <div className="glass-panel">
-          <div className="flex items-center space-x-2 mb-4">
-            <Shield size={20} className="text-primary" />
-            <h3 className="text-lg font-semibold text-primary">Privacy & Security</h3>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-              <div>
-                <h4 className="text-primary font-medium">PIN Lock</h4>
-                <p className="text-secondary text-sm">
-                Secure your financial data with a local PIN
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Lock size={20} className="text-muted" />
-                <span className="text-secondary">Enabled</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-              <div>
-                <h4 className="text-primary font-medium">Data Storage</h4>
-                <p className="text-secondary text-sm">
-                All data is stored locally in your browser
-                </p>
-              </div>
-              <span className="text-green-400 text-sm">✓ Local Only</span>
-            </div>
-          </div>
-        </div>
+                </div>
+              )
+            }
+          ]}
+          exclusive={true}
+        />
       </div>
     );
   } catch (error) {

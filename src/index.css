@@ -120,6 +120,37 @@
     opacity: 1;
   }
 
+  /* Collapsible Card Animations */
+  .collapsible-card-header {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .collapsible-card-header:hover {
+    background: rgba(255, 255, 255, 0.05);
+    transform: translateY(-1px);
+  }
+
+  .collapsible-card-header:active {
+    transform: translateY(0px);
+  }
+
+  .collapsible-card-content {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .collapsible-card-chevron {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .collapsible-card-chevron.expanded {
+    transform: rotate(180deg);
+  }
+
+  .collapsible-card-chevron.collapsed {
+    transform: rotate(0deg);
+  }
+
   /* Enhanced Glass Button */
   .glass-button {
     @apply liquid-glass;
