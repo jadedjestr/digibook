@@ -69,11 +69,21 @@ const AccountSelector = ({
           name: card.name, // Keep original name without "(Credit Card)" suffix
           // Create unique ID by prefixing with 'cc-' to avoid conflicts with regular accounts
           uniqueId: `cc-${card.id}`,
+          // Override the id to use the unique ID to prevent conflicts
+          id: `cc-${card.id}`,
+          // Store the original ID for database operations
+          originalId: card.id,
         })),
       ];
 
   // Find the selected account, checking both regular accounts and credit cards
-  const selectedAccount = allAccounts.find(account => account.id === editValue);
+  // For credit cards, we need to check if the value matches the originalId
+  const selectedAccount = allAccounts.find(account => {
+    if (account.type === 'creditCard') {
+      return account.originalId === editValue;
+    }
+    return account.id === editValue;
+  });
 
 
 
@@ -134,18 +144,23 @@ const AccountSelector = ({
                 key={`${account.type}-${account.id}`}
                 onClick={() => {
                   // Prevent clicking on already selected account
-                  if (account.id === value) {
+                  const isCurrentlySelected = account.type === 'creditCard' 
+                    ? account.originalId === value 
+                    : account.id === value;
+                  if (isCurrentlySelected) {
                     return;
                   }
-                  onSave(account.id);
+                  // Use originalId for credit cards, regular id for accounts
+                  const accountIdToSave = account.type === 'creditCard' ? account.originalId : account.id;
+                  onSave(accountIdToSave);
                   setIsOpen(false);
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-all duration-150 first:rounded-t-lg last:rounded-b-lg border-b border-white/10 last:border-b-0 ${
-                  account.id === value
+                  (account.type === 'creditCard' ? account.originalId === value : account.id === value)
                     ? 'bg-blue-500/20 text-blue-300 cursor-default'
                     : 'text-white hover:bg-white/20 cursor-pointer'
                 }`}
-                disabled={account.id === value}
+                disabled={account.type === 'creditCard' ? account.originalId === value : account.id === value}
               >
                 <div className="flex items-center space-x-3">
                   {getAccountIcon(account.type)}
@@ -276,18 +291,23 @@ const AccountSelector = ({
               key={`${account.type}-${account.id}`}
               onClick={() => {
                 // Prevent clicking on already selected account
-                if (account.id === value) {
+                const isCurrentlySelected = account.type === 'creditCard' 
+                  ? account.originalId === value 
+                  : account.id === value;
+                if (isCurrentlySelected) {
                   return;
                 }
-                onSave(account.id);
+                // Use originalId for credit cards, regular id for accounts
+                const accountIdToSave = account.type === 'creditCard' ? account.originalId : account.id;
+                onSave(accountIdToSave);
                 setIsOpen(false);
               }}
               className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-all duration-150 first:rounded-t-lg last:rounded-b-lg border-b border-white/10 last:border-b-0 ${
-                account.id === value
+                (account.type === 'creditCard' ? account.originalId === value : account.id === value)
                   ? 'bg-blue-500/20 text-blue-300 cursor-default'
                   : 'text-white hover:bg-white/20 cursor-pointer'
               }`}
-              disabled={account.id === value}
+              disabled={account.type === 'creditCard' ? account.originalId === value : account.id === value}
             >
               <div className="flex items-center space-x-3">
                 {getAccountIcon(account.type)}
