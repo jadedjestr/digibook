@@ -1,6 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, CreditCard, PiggyBank, Building2 } from 'lucide-react';
+import PropTypes from 'prop-types';
+import { 
+  createAccountMapping, 
+  findSelectedAccount, 
+  getAccountIdToSave, 
+  isAccountSelected,
+  formatAccountBalance 
+} from '../utils/accountUtils';
 
 const AccountSelector = ({
   value,
@@ -22,28 +30,47 @@ const AccountSelector = ({
   useEffect(() => {
     if (!isOpen) {
       setEditValue(value);
+      // Debug logging for Spotify expense
+      if (value === 1) {
+        console.log(`🔍 AccountSelector useEffect: value prop changed to ${value}, setting editValue to ${value}`);
+      }
     }
   }, [value, isOpen]);
 
-  const handleSave = () => {
+  // Cleanup event listeners and portal on unmount
+  useEffect(() => {
+    return () => {
+      // Clean up any global event listeners if needed
+      if (isOpen) {
+        setIsOpen(false);
+      }
+    };
+  }, [isOpen]);
+
+  // Memoize callback functions to prevent unnecessary re-renders
+  const handleSave = useCallback(() => {
     console.log(`AccountSelector: Saving account change from ${value} to ${editValue}`);
     // Only save if the account actually changed
     if (editValue !== value) {
       console.log(`AccountSelector: Account changed, calling onSave with ${editValue}`);
-      onSave(editValue);
+      if (typeof onSave === 'function') {
+        onSave(editValue);
+      } else {
+        console.warn('AccountSelector: onSave callback is not a function');
+      }
     } else {
       console.log('AccountSelector: No change detected, not calling onSave');
     }
     setIsOpen(false);
-  };
+  }, [editValue, value, onSave]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setEditValue(value);
     setIsOpen(false);
     if (onCancel) onCancel();
-  };
+  }, [value, onCancel]);
 
-  const handleToggleDropdown = (event) => {
+  const handleToggleDropdown = useCallback((event) => {
     if (!isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       setDropdownPosition({
@@ -53,37 +80,35 @@ const AccountSelector = ({
       });
     }
     setIsOpen(!isOpen);
-  };
+  }, [isOpen]);
 
-  // Smart account filtering based on expense type
-  // For credit card payments: only allow checking/savings accounts (funding source)
-  // For regular expenses: allow all accounts (checking, savings, credit cards)
-  const allAccounts = isCreditCardPayment 
-    ? accounts.map(acc => ({ ...acc, type: 'account' }))
-    : [
-        ...accounts.map(acc => ({ ...acc, type: 'account' })),
-        ...creditCards.map(card => ({
-          ...card,
-          type: 'creditCard',
-          currentBalance: card.balance, // Map balance to currentBalance for consistency
-          name: card.name, // Keep original name without "(Credit Card)" suffix
-          // Create unique ID by prefixing with 'cc-' to avoid conflicts with regular accounts
-          uniqueId: `cc-${card.id}`,
-          // Override the id to use the unique ID to prevent conflicts
-          id: `cc-${card.id}`,
-          // Store the original ID for database operations
-          originalId: card.id,
+  // Memoize expensive calculations to prevent unnecessary re-renders
+  const allAccounts = useMemo(() => 
+    createAccountMapping(accounts, creditCards, isCreditCardPayment),
+    [accounts, creditCards, isCreditCardPayment]
+  );
+
+  // Memoize selected account lookup
+  const selectedAccount = useMemo(() => {
+    const found = findSelectedAccount(allAccounts, editValue);
+    
+    // Debug logging for Spotify expense
+    if (editValue === 1) {
+      console.log(`🔍 AccountSelector debug for value 1:`, {
+        editValue,
+        allAccounts: allAccounts.map(acc => ({ 
+          id: acc.id, 
+          originalId: acc.originalId, 
+          name: acc.name, 
+          type: acc.type 
         })),
-      ];
-
-  // Find the selected account, checking both regular accounts and credit cards
-  // For credit cards, we need to check if the value matches the originalId
-  const selectedAccount = allAccounts.find(account => {
-    if (account.type === 'creditCard') {
-      return account.originalId === editValue;
+        found: found ? { id: found.id, originalId: found.originalId, name: found.name, type: found.type } : null,
+        foundAccountName: found ? found.name : 'NOT FOUND'
+      });
     }
-    return account.id === editValue;
-  });
+    
+    return found;
+  }, [allAccounts, editValue]);
 
 
 
@@ -101,14 +126,25 @@ const AccountSelector = ({
     }
   };
 
-  // Format balance for display
-  const formatBalance = (balance) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    }).format(balance);
-  };
+  // Use utility function for consistent balance formatting
+  const formatBalance = formatAccountBalance;
+
+  // Memoize account click handler to prevent unnecessary re-renders
+  const handleAccountClick = useCallback((account) => {
+    // Prevent clicking on already selected account
+    if (isAccountSelected(account, editValue)) {
+      return;
+    }
+    // Use utility function to get correct ID to save
+    const accountIdToSave = getAccountIdToSave(account);
+    setEditValue(accountIdToSave);
+    if (typeof onSave === 'function') {
+      onSave(accountIdToSave);
+    } else {
+      console.warn('AccountSelector: onSave callback is not a function');
+    }
+    setIsOpen(false);
+  }, [editValue, onSave]);
 
   if (isEditing) {
     return (
@@ -142,25 +178,13 @@ const AccountSelector = ({
             {allAccounts.map((account) => (
               <button
                 key={`${account.type}-${account.id}`}
-                onClick={() => {
-                  // Prevent clicking on already selected account
-                  const isCurrentlySelected = account.type === 'creditCard' 
-                    ? account.originalId === value 
-                    : account.id === value;
-                  if (isCurrentlySelected) {
-                    return;
-                  }
-                  // Use originalId for credit cards, regular id for accounts
-                  const accountIdToSave = account.type === 'creditCard' ? account.originalId : account.id;
-                  onSave(accountIdToSave);
-                  setIsOpen(false);
-                }}
+                onClick={() => handleAccountClick(account)}
                 className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-all duration-150 first:rounded-t-lg last:rounded-b-lg border-b border-white/10 last:border-b-0 ${
-                  (account.type === 'creditCard' ? account.originalId === value : account.id === value)
+                  isAccountSelected(account, editValue)
                     ? 'bg-blue-500/20 text-blue-300 cursor-default'
                     : 'text-white hover:bg-white/20 cursor-pointer'
                 }`}
-                disabled={account.type === 'creditCard' ? account.originalId === value : account.id === value}
+                disabled={isAccountSelected(account, editValue)}
               >
                 <div className="flex items-center space-x-3">
                   {getAccountIcon(account.type)}
@@ -289,37 +313,46 @@ const AccountSelector = ({
           {allAccounts.map((account) => (
             <button
               key={`${account.type}-${account.id}`}
-              onClick={() => {
-                // Prevent clicking on already selected account
-                const isCurrentlySelected = account.type === 'creditCard' 
-                  ? account.originalId === value 
-                  : account.id === value;
-                if (isCurrentlySelected) {
-                  return;
-                }
-                // Use originalId for credit cards, regular id for accounts
-                const accountIdToSave = account.type === 'creditCard' ? account.originalId : account.id;
-                onSave(accountIdToSave);
-                setIsOpen(false);
-              }}
+              onClick={() => handleAccountClick(account)}
               className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-all duration-150 first:rounded-t-lg last:rounded-b-lg border-b border-white/10 last:border-b-0 ${
-                (account.type === 'creditCard' ? account.originalId === value : account.id === value)
+                isAccountSelected(account, editValue)
                   ? 'bg-blue-500/20 text-blue-300 cursor-default'
                   : 'text-white hover:bg-white/20 cursor-pointer'
               }`}
-              disabled={account.type === 'creditCard' ? account.originalId === value : account.id === value}
+              disabled={isAccountSelected(account, editValue)}
             >
               <div className="flex items-center space-x-3">
                 {getAccountIcon(account.type)}
                 <div className="text-left">
-                  <div className="font-medium">{account.name}</div>
-                  <div className="text-xs text-gray-400 capitalize">{account.type}</div>
+                  <div className="font-medium flex items-center space-x-2">
+                    <span>{account.name}</span>
+                    {account.type === 'creditCard' && (
+                      <span className="px-2 py-0.5 text-xs bg-red-500/20 text-red-300 rounded-full border border-red-500/30">
+                        Credit Card
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-400 capitalize">
+                    {account.type === 'creditCard' ? 'Debt Account' : account.type}
+                  </div>
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-xs font-medium text-green-400">
-                  {formatBalance(account.currentBalance)}
+                <div className={`text-xs font-medium ${
+                  account.type === 'creditCard' && account.currentBalance > 0 
+                    ? 'text-red-400' 
+                    : 'text-green-400'
+                }`}>
+                  {account.type === 'creditCard' && account.currentBalance > 0 
+                    ? `Debt: ${formatBalance(account.currentBalance)}`
+                    : formatBalance(account.currentBalance)
+                  }
                 </div>
+                {account.type === 'creditCard' && account.creditLimit && (
+                  <div className="text-xs text-gray-500">
+                    Limit: {formatBalance(account.creditLimit)}
+                  </div>
+                )}
               </div>
             </button>
           ))}
@@ -328,6 +361,46 @@ const AccountSelector = ({
       )}
     </div>
   );
+};
+
+// PropTypes validation
+AccountSelector.propTypes = {
+  value: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  onSave: PropTypes.func.isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
+    name: PropTypes.string.isRequired,
+    currentBalance: PropTypes.number,
+    type: PropTypes.string,
+    isDefault: PropTypes.bool,
+  })).isRequired,
+  creditCards: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
+    name: PropTypes.string.isRequired,
+    balance: PropTypes.number,
+    creditLimit: PropTypes.number,
+    interestRate: PropTypes.number,
+    dueDate: PropTypes.string,
+    statementClosingDate: PropTypes.string,
+    minimumPayment: PropTypes.number,
+    createdAt: PropTypes.string,
+  })),
+  isEditing: PropTypes.bool,
+  isCreditCardPayment: PropTypes.bool,
+  showSaveCancel: PropTypes.bool,
+  onEdit: PropTypes.func,
+  onCancel: PropTypes.func,
+};
+
+// Default props
+AccountSelector.defaultProps = {
+  value: null,
+  creditCards: [],
+  isEditing: false,
+  isCreditCardPayment: false,
+  showSaveCancel: true,
+  onEdit: null,
+  onCancel: null,
 };
 
 export default AccountSelector;

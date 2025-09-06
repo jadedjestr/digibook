@@ -372,7 +372,11 @@ const FixedExpensesTable = ({
         // Show success notification
         const fieldNames = Object.keys(updates);
         if (fieldNames.includes('accountId')) {
-          const newAccount = [...accounts, ...creditCards].find(acc => acc.id === updates.accountId);
+          // Find the account - prioritize credit cards since they have the same ID structure
+          let newAccount = creditCards.find(card => card.id === updates.accountId);
+          if (!newAccount) {
+            newAccount = accounts.find(acc => acc.id === updates.accountId);
+          }
           const accountName = newAccount ? newAccount.name : `Account ${updates.accountId}`;
           notify.success(`Account updated to ${accountName}`);
         } else if (fieldNames.includes('dueDate')) {
@@ -520,28 +524,15 @@ const FixedExpensesTable = ({
     return { allPaid, paidCount, totalCount };
   };
 
-  // 🔧 SIMPLIFIED AUTO-COLLAPSE LOGIC - Only runs on data changes
-  const applyAutoCollapseLogic = useCallback(() => {
-    if (!autoCollapseEnabled || !expenses || expenses.length === 0) {
-      return; // No auto-collapse if disabled or no expenses
-    }
 
-    // Group expenses by category
-    const expensesByCategory = {};
-    expenses.forEach(expense => {
-      if (!expensesByCategory[expense.category]) {
-        expensesByCategory[expense.category] = [];
-      }
-      expensesByCategory[expense.category].push(expense);
-    });
-
-    // Check each category for auto-collapse
-    // Use a functional update to avoid dependency on collapsedCategories
-    setCollapsedCategories(currentCollapsed => {
-      const newCollapsedCategories = new Set(currentCollapsed);
+  // 🔧 AUTO-COLLAPSE TRIGGER - Only when data actually changes
+  useEffect(() => {
+    if (initState === INIT_STATES.READY && autoCollapseEnabled && expenses && expenses.length > 0) {
+      // Calculate auto-collapse without functional updates to prevent DataCloneError
+      const newCollapsedCategories = new Set(collapsedCategories);
       let autoCollapsedCount = 0;
 
-      Object.entries(expensesByCategory).forEach(([categoryName, categoryExpenses]) => {
+      Object.entries(groupedExpenses).forEach(([categoryName, categoryExpenses]) => {
         const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
 
         if (allPaid) {
@@ -553,17 +544,12 @@ const FixedExpensesTable = ({
         }
       });
 
-      // Only return new state if we actually auto-collapsed something
-      return autoCollapsedCount > 0 ? newCollapsedCategories : currentCollapsed;
-    });
-  }, [autoCollapseEnabled, expenses, setCollapsedCategories]); // Removed collapsedCategories dependency
-
-  // 🔧 AUTO-COLLAPSE TRIGGER - Only when data actually changes
-  useEffect(() => {
-    if (initState === INIT_STATES.READY && autoCollapseEnabled && expenses && expenses.length > 0) {
-      applyAutoCollapseLogic();
+      // Only update state if we actually auto-collapsed something
+      if (autoCollapsedCount > 0) {
+        setCollapsedCategories(newCollapsedCategories);
+      }
     }
-  }, [expenses, autoCollapseEnabled, initState, applyAutoCollapseLogic]); // Only trigger on actual data changes
+  }, [expenses, autoCollapseEnabled, initState, groupedExpenses, collapsedCategories]); // Include collapsedCategories to avoid stale closure
 
   // 🔧 SIMPLIFIED TOGGLE - Direct and immediate
   const toggleCategoryCollapse = (categoryName) => {
@@ -1039,7 +1025,28 @@ const FixedExpensesTable = ({
                             >
                               {categoryExpenses.map((expense) => {
                                 const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
-                                const account = accounts.find(acc => acc.id === expense.accountId);
+                                // Find account in both regular accounts and credit cards
+                                let account = creditCards.find(card => card.id === expense.accountId);
+                                if (!account) {
+                                  account = accounts.find(acc => acc.id === expense.accountId);
+                                }
+                                
+                                // Debug logging for Spotify expense
+                                if (expense.name === 'Spotify') {
+                                  const foundCreditCard = creditCards.find(card => card.id === expense.accountId);
+                                  const foundRegularAccount = accounts.find(acc => acc.id === expense.accountId);
+                                  console.log(`🔍 Spotify expense debug:`, {
+                                    expenseId: expense.id,
+                                    accountId: expense.accountId,
+                                    foundCreditCard: foundCreditCard ? { id: foundCreditCard.id, name: foundCreditCard.name } : null,
+                                    foundRegularAccount: foundRegularAccount ? { id: foundRegularAccount.id, name: foundRegularAccount.name } : null,
+                                    finalAccount: account ? { id: account.id, name: account.name, type: account.type } : null,
+                                    finalAccountName: account ? account.name : 'NOT FOUND',
+                                    allCreditCards: creditCards.map(c => ({ id: c.id, name: c.name })),
+                                    allAccounts: accounts.map(a => ({ id: a.id, name: a.name }))
+                                  });
+                                }
+                                
                                 const isNewExpense = newExpenseId === expense.id;
 
                                 return (

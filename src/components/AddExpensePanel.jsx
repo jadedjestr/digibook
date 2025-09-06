@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { logger } from '../utils/logger';
 import { X, CreditCard, PiggyBank, Building2, ChevronDown } from 'lucide-react';
 import { dbHelpers } from '../db/database';
+import AccountSelector from './AccountSelector';
+import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
 
 const AddExpensePanel = ({
   isOpen,
@@ -17,7 +19,6 @@ const AddExpensePanel = ({
     accountId: '',
     category: '',
   });
-  const [selectedAccount, setSelectedAccount] = useState(null);
   const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
@@ -26,19 +27,6 @@ const AddExpensePanel = ({
   const isCreditCardPayment = formData.name.toLowerCase().includes('payment') || 
                              formData.category === 'Credit Card Payment';
 
-  // For credit card payments: only allow checking/savings accounts (funding source)
-  // For regular expenses: allow all accounts (checking, savings, credit cards)
-  const availableAccounts = isCreditCardPayment 
-    ? accounts.map(acc => ({ ...acc, type: 'account' }))
-    : [
-        ...accounts.map(acc => ({ ...acc, type: 'account' })),
-        ...creditCards.map(card => ({
-          ...card,
-          type: 'creditCard',
-          currentBalance: card.balance,
-          name: card.name, // Keep original name without "(Credit Card)" suffix
-        })),
-      ];
 
   const panelRef = useRef(null);
   const firstInputRef = useRef(null);
@@ -190,7 +178,7 @@ const AddExpensePanel = ({
         name: formData.name,
         dueDate: formData.dueDate,
         amount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
-        accountId: parseInt(formData.accountId),
+        accountId: formData.accountId, // Keep as-is since it's already the correct ID
         category: formData.category,
         paidAmount: 0,
         status: 'pending',
@@ -224,18 +212,7 @@ const AddExpensePanel = ({
     }
   };
 
-  const formatBalance = (balance) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    }).format(balance);
-  };
 
-  const handleAccountSelect = (account) => {
-    setSelectedAccount(account);
-    setFormData(prev => ({ ...prev, accountId: account.id }));
-  };
 
   return (
     <>
@@ -334,23 +311,18 @@ const AddExpensePanel = ({
             <label className="block text-sm font-medium text-white mb-2">
               Account
             </label>
-            <select
-              value={formData.accountId}
-              onChange={(e) => {
-                const accountId = parseInt(e.target.value) || '';
-                const account = availableAccounts.find(acc => acc.id === accountId);
-                setSelectedAccount(account);
-                handleInputChange('accountId', accountId);
-              }}
-              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white"
-            >
-              <option value="">Select account</option>
-              {availableAccounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name} - {formatBalance(account.currentBalance)}
-                </option>
-              ))}
-            </select>
+            <AccountSelectorErrorBoundary>
+              <AccountSelector
+                value={formData.accountId}
+                onSave={(accountId) => {
+                  console.log(`AddExpensePanel: Account selected: ${accountId}`);
+                  handleInputChange('accountId', accountId);
+                }}
+                accounts={accounts}
+                creditCards={creditCards}
+                isCreditCardPayment={isCreditCardPayment}
+              />
+            </AccountSelectorErrorBoundary>
             {errors.accountId && (
               <p className="mt-1 text-sm text-red-400">{errors.accountId}</p>
             )}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Edit3, Trash2, Copy, Check, X, Calendar, DollarSign, Building2 } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import AccountSelector from './AccountSelector';
+import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
 import PrivacyWrapper from './PrivacyWrapper';
 import { DateUtils } from '../utils/dateUtils';
 
@@ -202,14 +203,15 @@ const MobileExpenseCard = ({
           <div className="text-right">
             {isEditing && editingField === 'accountId' ? (
               <div className="flex items-center space-x-2">
-                <AccountSelector
-                  accounts={accounts}
-                  creditCards={creditCards}
-                  selectedAccountId={editValue}
-                  onAccountChange={setEditValue}
-                  className="w-32"
-                  isCreditCardPayment={expense.category === 'Credit Card Payment' || expense.name.toLowerCase().includes('payment')}
-                />
+                <AccountSelectorErrorBoundary>
+                  <AccountSelector
+                    value={editValue}
+                    onSave={setEditValue}
+                    accounts={accounts}
+                    creditCards={creditCards}
+                    isCreditCardPayment={expense.category === 'Credit Card Payment' || expense.name.toLowerCase().includes('payment')}
+                  />
+                </AccountSelectorErrorBoundary>
                 <button
                   onClick={handleSave}
                   className="p-1 text-green-400 hover:text-green-300"

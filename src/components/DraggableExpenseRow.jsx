@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Check, Copy, Trash2, RotateCcw } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import AccountSelector from './AccountSelector';
+import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
 import InlineEdit from './InlineEdit';
 import PrivacyWrapper from './PrivacyWrapper';
 
@@ -154,17 +155,20 @@ const DraggableExpenseRow = ({
         </td>
         <td>
           <div className="relative">
-            <AccountSelector
-              value={expense.accountId}
-              onSave={(accountId) => {
-                console.log(`DraggableExpenseRow: Account changed for expense ${expense.id} from ${expense.accountId} to ${accountId}`);
-                console.log(`DraggableExpenseRow: Calling onUpdateExpense with accountId: ${accountId}`);
-                onUpdateExpense(expense.id, { accountId });
-              }}
-              accounts={accounts}
-              creditCards={creditCards}
-              isCreditCardPayment={expense.category === 'Credit Card Payment' || expense.name.toLowerCase().includes('payment')}
-            />
+            <AccountSelectorErrorBoundary>
+              <AccountSelector
+                value={expense.accountId}
+                onSave={(accountId) => {
+                  console.log(`DraggableExpenseRow: Account changed for expense ${expense.id} from ${expense.accountId} to ${accountId}`);
+                  console.log(`DraggableExpenseRow: Calling onUpdateExpense with accountId: ${accountId}`);
+                  onUpdateExpense(expense.id, { accountId });
+                }}
+                accounts={accounts}
+                creditCards={creditCards}
+              />
+              {/* Debug logging for Spotify expense */}
+              {expense.name === 'Spotify' && console.log(`🔍 DraggableExpenseRow: Passing value ${expense.accountId} to AccountSelector for Spotify expense`)}
+            </AccountSelectorErrorBoundary>
             {isUpdating && (
               <div className="absolute inset-0 flex items-center justify-center bg-blue-500/20 rounded">
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400" />
