@@ -67,9 +67,12 @@ const AccountSelector = ({
           type: 'creditCard',
           currentBalance: card.balance, // Map balance to currentBalance for consistency
           name: `${card.name} (Credit Card)`,
+          // Create unique ID by prefixing with 'cc-' to avoid conflicts with regular accounts
+          uniqueId: `cc-${card.id}`,
         })),
       ];
 
+  // Find the selected account, checking both regular accounts and credit cards
   const selectedAccount = allAccounts.find(account => account.id === editValue);
 
 
@@ -130,14 +133,13 @@ const AccountSelector = ({
               <button
                 key={`${account.type}-${account.id}`}
                 onClick={() => {
-                  console.log(`AccountSelector: Clicked on account ${account.id}, current value is ${value}`);
+                  console.log(`AccountSelector: Clicked on account ${account.id} (${account.name}), type: ${account.type}, current value is ${value}`);
                   // Prevent clicking on already selected account
                   if (account.id === value) {
                     console.log(`AccountSelector: Ignoring click on already selected account ${account.id}`);
                     return;
                   }
-                  // Directly call onSave with the new account ID to avoid race conditions
-                  console.log(`AccountSelector: Account changed, calling onSave with ${account.id}`);
+                  console.log(`AccountSelector: Account changed, calling onSave with ${account.id} (type: ${account.type}, name: ${account.name})`);
                   onSave(account.id);
                   setIsOpen(false);
                 }}
@@ -276,14 +278,13 @@ const AccountSelector = ({
             <button
               key={`${account.type}-${account.id}`}
               onClick={() => {
-                console.log(`AccountSelector: Clicked on account ${account.id}, current value is ${value}`);
+                console.log(`AccountSelector: Clicked on account ${account.id} (${account.name}), type: ${account.type}, current value is ${value}`);
                 // Prevent clicking on already selected account
                 if (account.id === value) {
                   console.log(`AccountSelector: Ignoring click on already selected account ${account.id}`);
                   return;
                 }
-                // Directly call onSave with the new account ID to avoid race conditions
-                console.log(`AccountSelector: Account changed, calling onSave with ${account.id}`);
+                console.log(`AccountSelector: Account changed, calling onSave with ${account.id} (type: ${account.type}, name: ${account.name})`);
                 onSave(account.id);
                 setIsOpen(false);
               }}

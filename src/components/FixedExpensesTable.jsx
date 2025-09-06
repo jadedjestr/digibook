@@ -271,23 +271,36 @@ const FixedExpensesTable = ({
         const oldAccountId = currentExpense.accountId;
         const newAccountId = updates.accountId;
 
-        // Check if moving from credit card to regular account
+        // Check if old account was a credit card
         const oldCreditCard = creditCards.find(card => card.id === oldAccountId);
+        const oldAccount = accounts.find(acc => acc.id === oldAccountId);
+        
+        // Check if new account is a credit card
         const newCreditCard = creditCards.find(card => card.id === newAccountId);
+        const newAccount = accounts.find(acc => acc.id === newAccountId);
 
-        if (oldCreditCard && !newCreditCard) {
+        if (oldCreditCard && newAccount) {
           // Moving from credit card to regular account
           // Decrease credit card balance (remove debt)
           const newBalance = Math.max(0, oldCreditCard.balance - currentExpense.amount);
           await dbHelpers.updateCreditCard(oldAccountId, { balance: newBalance });
           logger.info(`Credit card balance decreased: ${oldCreditCard.balance} -> ${newBalance}`);
-        } else if (!oldCreditCard && newCreditCard) {
+        } else if (oldAccount && newCreditCard) {
           // Moving from regular account to credit card
           // Increase credit card balance (add debt)
           const newBalance = newCreditCard.balance + currentExpense.amount;
           await dbHelpers.updateCreditCard(newAccountId, { balance: newBalance });
           logger.info(`Credit card balance increased: ${newCreditCard.balance} -> ${newBalance}`);
+        } else if (oldCreditCard && newCreditCard) {
+          // Moving from one credit card to another
+          // Decrease old credit card balance, increase new credit card balance
+          const oldNewBalance = Math.max(0, oldCreditCard.balance - currentExpense.amount);
+          const newNewBalance = newCreditCard.balance + currentExpense.amount;
+          await dbHelpers.updateCreditCard(oldAccountId, { balance: oldNewBalance });
+          await dbHelpers.updateCreditCard(newAccountId, { balance: newNewBalance });
+          logger.info(`Credit card balances updated: ${oldCreditCard.name} ${oldCreditCard.balance} -> ${oldNewBalance}, ${newCreditCard.name} ${newCreditCard.balance} -> ${newNewBalance}`);
         }
+        // Note: Moving between regular accounts doesn't require balance updates
       }
 
 
