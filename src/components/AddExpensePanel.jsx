@@ -36,7 +36,7 @@ const AddExpensePanel = ({
           ...card,
           type: 'creditCard',
           currentBalance: card.balance,
-          name: `${card.name} (Credit Card)`,
+          name: card.name, // Keep original name without "(Credit Card)" suffix
         })),
       ];
 

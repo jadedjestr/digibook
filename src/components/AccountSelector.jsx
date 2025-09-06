@@ -66,7 +66,7 @@ const AccountSelector = ({
           ...card,
           type: 'creditCard',
           currentBalance: card.balance, // Map balance to currentBalance for consistency
-          name: `${card.name} (Credit Card)`,
+          name: card.name, // Keep original name without "(Credit Card)" suffix
           // Create unique ID by prefixing with 'cc-' to avoid conflicts with regular accounts
           uniqueId: `cc-${card.id}`,
         })),
