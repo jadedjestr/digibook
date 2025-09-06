@@ -17,7 +17,7 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
 
   const handlePINSubmit = async () => {
     if (isSubmitting) return;
-    
+
     setIsSubmitting(true);
     try {
       if (isSettingPIN) {
@@ -73,7 +73,7 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
             {isSettingPIN ? 'Set PIN' : 'Enter PIN'}
           </h2>
           <p className="text-secondary">
-            {isSettingPIN 
+            {isSettingPIN
               ? 'Create a 4-digit PIN to secure your data'
               : 'Enter your PIN to unlock Digibook'
             }
@@ -141,7 +141,7 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
             >
               {isSubmitting ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                   <span>Processing...</span>
                 </>
               ) : (
@@ -151,7 +151,7 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
                 </>
               )}
             </button>
-            
+
             {!isSettingPIN && pin && (
               <button
                 onClick={resetPIN}
@@ -180,4 +180,4 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
   );
 };
 
-export default PINLock; 
+export default PINLock;

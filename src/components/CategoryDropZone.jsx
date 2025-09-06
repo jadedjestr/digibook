@@ -6,17 +6,17 @@ const CategoryDropZone = ({ categoryName, getCategoryDisplayName, activeId }) =>
     id: `dropzone-${categoryName}`,
     data: {
       category: categoryName,
-      type: 'category-dropzone'
-    }
+      type: 'category-dropzone',
+    },
   });
 
   return (
     <div
       ref={setNodeRef}
       className={`h-16 w-full mt-2 rounded transition-all duration-300 border-2 border-dashed ${
-        isOver && activeId ? 'border-blue-500 bg-blue-500/20 dropzone-pulse scale-105' : 
-        activeId ? 'border-blue-500/50 bg-blue-500/10 hover:bg-blue-500/15 hover:scale-[1.02]' : 
-        'border-white/10'
+        isOver && activeId ? 'border-blue-500 bg-blue-500/20 dropzone-pulse scale-105' :
+          activeId ? 'border-blue-500/50 bg-blue-500/10 hover:bg-blue-500/15 hover:scale-[1.02]' :
+            'border-white/10'
       }`}
       style={{
         transition: 'all 0.2s ease-in-out',

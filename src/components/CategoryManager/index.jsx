@@ -19,7 +19,7 @@ const CategoryManagerContent = () => {
     handleDeleteCategory,
     handleSaveCategory,
     setDeletionModal,
-    refreshAfterMutation
+    refreshAfterMutation,
   } = useCategoryContext();
 
   useEffect(() => {
@@ -29,7 +29,7 @@ const CategoryManagerContent = () => {
   if (isLoading) {
     return (
       <div className="text-center py-8">
-        <div className="glass-loading"></div>
+        <div className="glass-loading" />
         <p className="text-white/70 mt-4">Loading categories...</p>
       </div>
     );
@@ -77,10 +77,10 @@ const CategoryManagerContent = () => {
       {/* Category Deletion Modal */}
       <CategoryDeletionModal
         isOpen={deletionModal.isOpen}
-        onClose={() => setDeletionModal({ 
-          isOpen: false, 
-          category: null, 
-          affectedItems: { fixedExpenses: [], pendingTransactions: [] } 
+        onClose={() => setDeletionModal({
+          isOpen: false,
+          category: null,
+          affectedItems: { fixedExpenses: [], pendingTransactions: [] },
         })}
         categoryToDelete={deletionModal.category}
         affectedItems={deletionModal.affectedItems}

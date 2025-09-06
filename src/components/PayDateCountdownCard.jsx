@@ -14,7 +14,7 @@ const PayDateCountdownCard = ({ nextPayDate, followingPayDate, daysUntilNextPay,
         <h3 className="text-sm font-medium text-secondary">Paycheck Countdown</h3>
         <Calendar size={16} className="text-secondary" />
       </div>
-      
+
       <div className="grid grid-cols-2 gap-4">
         <div className="text-center">
           <div className="text-lg font-semibold text-white mb-1">
@@ -28,7 +28,7 @@ const PayDateCountdownCard = ({ nextPayDate, followingPayDate, daysUntilNextPay,
             </span>
           </div>
         </div>
-        
+
         <div className="text-center">
           <div className="text-lg font-semibold text-white mb-1">
             {formatDate(followingPayDate)}
@@ -46,4 +46,4 @@ const PayDateCountdownCard = ({ nextPayDate, followingPayDate, daysUntilNextPay,
   );
 };
 
-export default PayDateCountdownCard; 
+export default PayDateCountdownCard;

@@ -1,60 +1,60 @@
 export const iconCategories = [
   {
-    name: "Housing & Home",
-    icons: ['🏠', '🏡', '🏘️', '🏢', '🏬', '🏦', '🏨', '🏪', '🏫']
+    name: 'Housing & Home',
+    icons: ['🏠', '🏡', '🏘️', '🏢', '🏬', '🏦', '🏨', '🏪', '🏫'],
   },
   {
-    name: "Utilities & Services",
-    icons: ['⚡', '💡', '🔌', '🔋', '⚙️', '🔧', '🛠️', '🚰', '🚿']
+    name: 'Utilities & Services',
+    icons: ['⚡', '💡', '🔌', '🔋', '⚙️', '🔧', '🛠️', '🚰', '🚿'],
   },
   {
-    name: "Transportation",
-    icons: ['🚗', '🚕', '🚌', '🚲', '🛵', '✈️', '🚅', '🚇', '🚖']
+    name: 'Transportation',
+    icons: ['🚗', '🚕', '🚌', '🚲', '🛵', '✈️', '🚅', '🚇', '🚖'],
   },
   {
-    name: "Technology",
-    icons: ['📱', '💻', '🖥️', '⌨️', '🖱️', '🎮', '📺', '🔌', '💾']
+    name: 'Technology',
+    icons: ['📱', '💻', '🖥️', '⌨️', '🖱️', '🎮', '📺', '🔌', '💾'],
   },
   {
-    name: "Finance & Banking",
-    icons: ['💳', '💰', '💵', '🏦', '💸', '💱', '💲', '🏧', '📊']
+    name: 'Finance & Banking',
+    icons: ['💳', '💰', '💵', '🏦', '💸', '💱', '💲', '🏧', '📊'],
   },
   {
-    name: "Healthcare",
-    icons: ['🏥', '💊', '💉', '🩺', '🧬', '🦷', '👨‍⚕️', '🫀', '🧠']
+    name: 'Healthcare',
+    icons: ['🏥', '💊', '💉', '🩺', '🧬', '🦷', '👨‍⚕️', '🫀', '🧠'],
   },
   {
-    name: "Education",
-    icons: ['🎓', '📚', '✏️', '📝', '🎒', '🔬', '🧮', '📐', '🎨']
+    name: 'Education',
+    icons: ['🎓', '📚', '✏️', '📝', '🎒', '🔬', '🧮', '📐', '🎨'],
   },
   {
-    name: "Food & Dining",
-    icons: ['🍔', '🍕', '🍜', '🥗', '🥘', '🍳', '🥂', '☕', '🍽️']
+    name: 'Food & Dining',
+    icons: ['🍔', '🍕', '🍜', '🥗', '🥘', '🍳', '🥂', '☕', '🍽️'],
   },
   {
-    name: "Shopping",
-    icons: ['🛍️', '🛒', '👕', '👗', '👟', '💄', '🎽', '👜', '🏷️']
+    name: 'Shopping',
+    icons: ['🛍️', '🛒', '👕', '👗', '👟', '💄', '🎽', '👜', '🏷️'],
   },
   {
-    name: "Entertainment",
-    icons: ['🎬', '🎭', '🎪', '🎟️', '🎼', '🎮', '🎲', '🎨', '🎯']
+    name: 'Entertainment',
+    icons: ['🎬', '🎭', '🎪', '🎟️', '🎼', '🎮', '🎲', '🎨', '🎯'],
   },
   {
-    name: "Fitness & Sports",
-    icons: ['⚽', '🏀', '🎾', '🏋️‍♂️', '🧘‍♀️', '🏃‍♂️', '🚴‍♀️', '⛹️‍♂️', '🎳']
+    name: 'Fitness & Sports',
+    icons: ['⚽', '🏀', '🎾', '🏋️‍♂️', '🧘‍♀️', '🏃‍♂️', '🚴‍♀️', '⛹️‍♂️', '🎳'],
   },
   {
-    name: "Business",
-    icons: ['💼', '📈', '📊', '📱', '💻', '📝', '✍️', '📌', '📎']
+    name: 'Business',
+    icons: ['💼', '📈', '📊', '📱', '💻', '📝', '✍️', '📌', '📎'],
   },
   {
-    name: "Travel",
-    icons: ['✈️', '🏖️', '🗺️', '🎪', '🏕️', '⛺', '🚅', '🧳', '🌎']
+    name: 'Travel',
+    icons: ['✈️', '🏖️', '🗺️', '🎪', '🏕️', '⛺', '🚅', '🧳', '🌎'],
   },
   {
-    name: "Miscellaneous",
-    icons: ['📦', '🎁', '🔑', '📍', '⭐', '💫', '🎯', '🎪', '🔮']
-  }
+    name: 'Miscellaneous',
+    icons: ['📦', '🎁', '🔑', '📍', '⭐', '💫', '🎯', '🎪', '🔮'],
+  },
 ];
 
 export const colorOptions = [
@@ -65,7 +65,7 @@ export const colorOptions = [
   { id: 'blue-4', name: 'Steel Blue', hex: '#475569', swatch: '🔵' },
   { id: 'blue-5', name: 'Cornflower Blue', hex: '#6366F1', swatch: '🔵' },
   { id: 'blue-6', name: 'Indigo Blue', hex: '#4F46E5', swatch: '🔵' },
-  
+
   // Greens - Different shades and hues
   { id: 'green-1', name: 'Emerald Green', hex: '#10B981', swatch: '🟢' },
   { id: 'green-2', name: 'Forest Green', hex: '#059669', swatch: '🟢' },
@@ -73,14 +73,14 @@ export const colorOptions = [
   { id: 'green-4', name: 'Olive Green', hex: '#65A30D', swatch: '🟢' },
   { id: 'green-5', name: 'Mint Green', hex: '#34D399', swatch: '🟢' },
   { id: 'green-6', name: 'Teal Green', hex: '#14B8A6', swatch: '🟢' },
-  
+
   // Purples - Different shades and hues
   { id: 'purple-1', name: 'Royal Purple', hex: '#8B5CF6', swatch: '🟣' },
   { id: 'purple-2', name: 'Lavender', hex: '#A78BFA', swatch: '🟣' },
   { id: 'purple-3', name: 'Deep Purple', hex: '#7C3AED', swatch: '🟣' },
   { id: 'purple-4', name: 'Plum Purple', hex: '#C084FC', swatch: '🟣' },
   { id: 'purple-5', name: 'Violet', hex: '#9333EA', swatch: '🟣' },
-  
+
   // Reds & Pinks - Different shades and hues
   { id: 'red-1', name: 'Coral Red', hex: '#EF4444', swatch: '🔴' },
   { id: 'pink-1', name: 'Rose Pink', hex: '#EC4899', swatch: '🩷' },
@@ -88,7 +88,7 @@ export const colorOptions = [
   { id: 'red-2', name: 'Cherry Red', hex: '#DC2626', swatch: '🔴' },
   { id: 'pink-3', name: 'Salmon Pink', hex: '#FB7185', swatch: '🩷' },
   { id: 'red-3', name: 'Burgundy', hex: '#BE123C', swatch: '🔴' },
-  
+
   // Oranges & Yellows - Different shades and hues
   { id: 'orange-1', name: 'Sunset Orange', hex: '#F59E0B', swatch: '🟠' },
   { id: 'yellow-1', name: 'Golden Yellow', hex: '#FCD34D', swatch: '🟡' },
@@ -96,19 +96,19 @@ export const colorOptions = [
   { id: 'orange-3', name: 'Warm Orange', hex: '#FB923C', swatch: '🟠' },
   { id: 'yellow-2', name: 'Honey Yellow', hex: '#FBBF24', swatch: '🟡' },
   { id: 'orange-4', name: 'Rust Orange', hex: '#EA580C', swatch: '🟠' },
-  
+
   // Teals & Cyans - Different shades and hues
   { id: 'teal-1', name: 'Ocean Teal', hex: '#06B6D4', swatch: '🔷' },
   { id: 'teal-2', name: 'Turquoise', hex: '#14B8A6', swatch: '🔷' },
   { id: 'cyan-1', name: 'Light Cyan', hex: '#22D3EE', swatch: '🔷' },
   { id: 'teal-3', name: 'Seafoam', hex: '#5EEAD4', swatch: '🔷' },
   { id: 'teal-4', name: 'Aqua Blue', hex: '#0891B2', swatch: '🔷' },
-  
+
   // Grays & Neutrals - Different shades and hues
   { id: 'gray-1', name: 'Slate Gray', hex: '#6B7280', swatch: '⚫' },
   { id: 'gray-2', name: 'Charcoal', hex: '#374151', swatch: '⚫' },
   { id: 'gray-3', name: 'Light Gray', hex: '#9CA3AF', swatch: '⚫' },
   { id: 'gray-4', name: 'Warm Gray', hex: '#78716C', swatch: '⚫' },
   { id: 'gray-5', name: 'Cool Gray', hex: '#4B5563', swatch: '⚫' },
-  { id: 'gray-6', name: 'Silver', hex: '#D1D5DB', swatch: '⚫' }
+  { id: 'gray-6', name: 'Silver', hex: '#D1D5DB', swatch: '⚫' },
 ];

@@ -12,7 +12,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
   const [newAccount, setNewAccount] = useState({
     name: '',
     type: 'checking',
-    currentBalance: 0
+    currentBalance: 0,
   });
 
   const { calculateLiquidBalance } = useFinanceCalculations(accounts, pendingTransactions);
@@ -24,7 +24,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
     const pendingForAccount = pendingTransactions
       .filter(t => t.accountId === account.id)
       .reduce((sum, t) => sum + t.amount, 0);
-    
+
     // For expenses (negative amounts), we add the pending amount to get the projected balance
     // For income (positive amounts), we also add the pending amount
     return account.currentBalance + pendingForAccount;
@@ -43,24 +43,24 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
   // Get account type icon
   const getAccountTypeIcon = (type) => {
     switch (type) {
-      case 'checking':
-        return <CreditCard size={20} className="text-blue-300" />;
-      case 'savings':
-        return <PiggyBank size={20} className="text-green-300" />;
-      default:
-        return <Wallet size={20} className="text-secondary" />;
+    case 'checking':
+      return <CreditCard size={20} className="text-blue-300" />;
+    case 'savings':
+      return <PiggyBank size={20} className="text-green-300" />;
+    default:
+      return <Wallet size={20} className="text-secondary" />;
     }
   };
 
   // Get account type display name
   const getAccountTypeDisplayName = (type) => {
     switch (type) {
-      case 'checking':
-        return 'Checking Accounts';
-      case 'savings':
-        return 'Savings Accounts';
-      default:
-        return `${type.charAt(0).toUpperCase() + type.slice(1)} Accounts`;
+    case 'checking':
+      return 'Checking Accounts';
+    case 'savings':
+      return 'Savings Accounts';
+    default:
+      return `${type.charAt(0).toUpperCase() + type.slice(1)} Accounts`;
     }
   };
 
@@ -78,12 +78,12 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
 
   const handleAddAccount = async () => {
     if (!validateForm()) return;
-    
+
     setIsLoading(true);
     try {
       // Add a small delay to make loading state visible
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       await dbHelpers.addAccount(newAccount);
       setNewAccount({ name: '', type: 'checking', currentBalance: 0 });
       setIsAddingAccount(false);
@@ -110,7 +110,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
 
   const handleDeleteAccount = async (accountId) => {
     if (!confirm('Are you sure you want to delete this account?')) return;
-    
+
     try {
       await dbHelpers.deleteAccount(accountId);
       onDataChange();
@@ -185,7 +185,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
     }
 
     return (
-      <div 
+      <div
         onClick={() => setIsEditing(true)}
         className="cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-all duration-200 group"
         title="Click to edit"
@@ -281,7 +281,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
             >
               {isLoading ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                   <span>Adding...</span>
                 </>
               ) : (
@@ -352,9 +352,9 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
                   {typeAccounts.map((account) => {
                     const projectedBalance = calculateProjectedBalance(account);
                     const isEditing = editingId === account.id;
-                    
+
                     console.log('Account data:', account);
-                    
+
                     return (
                       <tr key={account.id}>
                         <td>
@@ -384,8 +384,8 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
                             <button
                               onClick={() => handleSetDefault(account.id)}
                               className={`p-1 rounded transition-all duration-200 ${
-                                account.isDefault 
-                                  ? 'text-yellow-400 bg-yellow-500/20' 
+                                account.isDefault
+                                  ? 'text-yellow-400 bg-yellow-500/20'
                                   : 'text-muted hover:text-white hover:bg-white/10'
                               }`}
                               title={account.isDefault ? 'Default Account' : 'Set as Default'}
@@ -414,4 +414,4 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
   );
 };
 
-export default Accounts; 
+export default Accounts;

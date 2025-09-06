@@ -22,7 +22,7 @@ const ExpensePreview = React.memo(({ formData, numCopies }) => (
 const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
   const [numCopies, setNumCopies] = useState(1);
   const [categories, setCategories] = useState([]);
-  
+
   // Memoize category options to prevent unnecessary re-renders
   const categoryOptions = useMemo(() => (
     categories.map(category => (
@@ -39,7 +39,7 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
     category: expense.category,
     accountId: expense.accountId,
     status: expense.status,
-    paidAmount: expense.status === 'paid' ? expense.amount : 0
+    paidAmount: expense.status === 'paid' ? expense.amount : 0,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -53,7 +53,7 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
         logger.error('Error loading categories:', error);
       }
     };
-    
+
     loadCategories();
   }, []);
 
@@ -73,7 +73,7 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
           accountId: formData.accountId,
           status: formData.status,
           paidAmount: formData.status === 'paid' ? parseFloat(formData.amount) : 0,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         };
       });
 
@@ -192,7 +192,7 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
                     setFormData({
                       ...formData,
                       status: newStatus,
-                      paidAmount: newStatus === 'paid' ? formData.amount : 0
+                      paidAmount: newStatus === 'paid' ? formData.amount : 0,
                     });
                   }}
                   className="glass-input mt-1 w-full"
@@ -230,7 +230,7 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
             >
               {isSubmitting ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                   <span>Creating...</span>
                 </>
               ) : (

@@ -72,7 +72,7 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
             type="date"
             value={editValue}
             onChange={(e) => {
-              logger.debug("Date input changed:", e.target.value);
+              logger.debug('Date input changed:', e.target.value);
               setEditValue(e.target.value);
             }}
             onKeyDown={handleKeyDown}
@@ -121,7 +121,7 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
   };
 
   return (
-    <div 
+    <div
       className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors"
       onClick={() => setIsEditing(true)}
     >

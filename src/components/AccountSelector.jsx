@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, CreditCard, PiggyBank, Building2 } from 'lucide-react';
 
-const AccountSelector = ({ 
-  value, 
-  onSave, 
-  accounts, 
-  creditCards = [], 
-  isEditing = false, 
+const AccountSelector = ({
+  value,
+  onSave,
+  accounts,
+  creditCards = [],
+  isEditing = false,
   onEdit = null,
   onCancel = null,
-  showSaveCancel = true
+  showSaveCancel = true,
 }) => {
   const [editValue, setEditValue] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
@@ -28,7 +28,10 @@ const AccountSelector = ({
     console.log(`AccountSelector: Saving account change from ${value} to ${editValue}`);
     // Only save if the account actually changed
     if (editValue !== value) {
+      console.log(`AccountSelector: Account changed, calling onSave with ${editValue}`);
       onSave(editValue);
+    } else {
+      console.log('AccountSelector: No change detected, not calling onSave');
     }
     setIsOpen(false);
   };
@@ -45,7 +48,7 @@ const AccountSelector = ({
       setDropdownPosition({
         top: rect.bottom + window.scrollY,
         left: rect.left + window.scrollX,
-        width: rect.width
+        width: rect.width,
       });
     }
     setIsOpen(!isOpen);
@@ -54,14 +57,14 @@ const AccountSelector = ({
   // Combine regular accounts and credit cards
   const allAccounts = [
     ...accounts.map(acc => ({ ...acc, type: 'account' })),
-    ...creditCards.map(card => ({ 
-      ...card, 
+    ...creditCards.map(card => ({
+      ...card,
       type: 'creditCard',
       currentBalance: card.balance, // Map balance to currentBalance for consistency
-      name: `${card.name} (Credit Card)`
-    }))
+      name: `${card.name} (Credit Card)`,
+    })),
   ];
-  
+
   const selectedAccount = allAccounts.find(account => account.id === editValue);
 
 
@@ -69,14 +72,14 @@ const AccountSelector = ({
   // Get account icon based on type
   const getAccountIcon = (accountType) => {
     switch (accountType?.toLowerCase()) {
-      case 'checking':
-        return <CreditCard size={16} className="text-blue-400" />;
-      case 'savings':
-        return <PiggyBank size={16} className="text-green-400" />;
-      case 'creditcard':
-        return <CreditCard size={16} className="text-red-400" />;
-      default:
-        return <Building2 size={16} className="text-purple-400" />;
+    case 'checking':
+      return <CreditCard size={16} className="text-blue-400" />;
+    case 'savings':
+      return <PiggyBank size={16} className="text-green-400" />;
+    case 'creditcard':
+      return <CreditCard size={16} className="text-red-400" />;
+    default:
+      return <Building2 size={16} className="text-purple-400" />;
     }
   };
 
@@ -85,7 +88,7 @@ const AccountSelector = ({
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 2
+      minimumFractionDigits: 2,
     }).format(balance);
   };
 
@@ -98,16 +101,23 @@ const AccountSelector = ({
         >
           <div className="flex items-center space-x-3">
             {selectedAccount && getAccountIcon(selectedAccount.type)}
-            <span className={selectedAccount ? 'text-white font-medium' : 'text-gray-400'}>
-              {selectedAccount ? selectedAccount.name : 'Select account'}
-            </span>
+            <div className="text-left">
+              <span className={selectedAccount ? 'text-white font-medium' : 'text-gray-400'}>
+                {selectedAccount ? selectedAccount.name : 'Select account'}
+              </span>
+              {selectedAccount && selectedAccount.type === 'creditCard' && (
+                <div className="text-xs text-red-300">
+                  Credit Card • {selectedAccount.currentBalance > 0 ? `$${selectedAccount.currentBalance.toFixed(2)} debt` : 'Paid off'}
+                </div>
+              )}
+            </div>
           </div>
-          <ChevronDown 
-            size={16} 
-            className={`text-secondary transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
+          <ChevronDown
+            size={16}
+            className={`text-secondary transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
           />
         </button>
-        
+
         {isOpen && (
           <div className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200">
 
@@ -121,12 +131,14 @@ const AccountSelector = ({
                     console.log(`AccountSelector: Ignoring click on already selected account ${account.id}`);
                     return;
                   }
-                  setEditValue(account.id);
-                  handleSave();
+                  // Directly call onSave with the new account ID to avoid race conditions
+                  console.log(`AccountSelector: Account changed, calling onSave with ${account.id}`);
+                  onSave(account.id);
+                  setIsOpen(false);
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-all duration-150 first:rounded-t-lg last:rounded-b-lg border-b border-white/10 last:border-b-0 ${
-                  account.id === value 
-                    ? 'bg-blue-500/20 text-blue-300 cursor-default' 
+                  account.id === value
+                    ? 'bg-blue-500/20 text-blue-300 cursor-default'
                     : 'text-white hover:bg-white/20 cursor-pointer'
                 }`}
                 disabled={account.id === value}
@@ -134,20 +146,65 @@ const AccountSelector = ({
                 <div className="flex items-center space-x-3">
                   {getAccountIcon(account.type)}
                   <div className="text-left">
-                    <div className="font-medium">{account.name}</div>
-                    <div className="text-xs text-gray-400 capitalize">{account.type}</div>
+                    <div className="font-medium flex items-center space-x-2">
+                      <span>{account.name}</span>
+                      {account.type === 'creditCard' && (
+                        <span className="px-2 py-0.5 text-xs bg-red-500/20 text-red-300 rounded-full border border-red-500/30">
+                          Credit Card
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400 capitalize">
+                      {account.type === 'creditCard' ? 'Debt Account' : account.type}
+                    </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs font-medium text-green-400">
-                    {formatBalance(account.currentBalance)}
+                  <div className={`text-xs font-medium ${
+                    account.type === 'creditCard' && account.currentBalance > 0 
+                      ? 'text-red-400' 
+                      : 'text-green-400'
+                  }`}>
+                    {account.type === 'creditCard' && account.currentBalance > 0 
+                      ? `Debt: ${formatBalance(account.currentBalance)}`
+                      : formatBalance(account.currentBalance)
+                    }
                   </div>
+                  {account.type === 'creditCard' && account.creditLimit && (
+                    <div className="text-xs text-gray-500">
+                      Limit: {formatBalance(account.creditLimit)}
+                    </div>
+                  )}
                 </div>
               </button>
             ))}
-            </div>
+
+            {/* Unlink Account Option */}
+            {selectedAccount && (
+              <div className="border-t border-white/10">
+                <button
+                  onClick={() => {
+                    console.log('AccountSelector: Unlinking account');
+                    onSave(null); // Pass null to indicate unlinking
+                    setIsOpen(false);
+                  }}
+                  className="w-full flex items-center space-x-3 px-4 py-3 text-sm text-orange-300 hover:bg-orange-500/20 transition-all duration-150"
+                >
+                  <div className="w-4 h-4 flex items-center justify-center">
+                    <span className="text-orange-400">✕</span>
+                  </div>
+                  <div className="text-left">
+                    <div className="font-medium">Unlink Account</div>
+                    <div className="text-xs text-orange-400/70">
+                      Remove account mapping
+                    </div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         )}
-        
+
         {showSaveCancel && (
           <div className="flex space-x-2 mt-3">
             <button
@@ -170,32 +227,44 @@ const AccountSelector = ({
 
   return (
     <div className="relative">
-      <div 
+      <div
         ref={buttonRef}
         className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors"
         onClick={handleToggleDropdown}
       >
         <div className="flex items-center space-x-2">
           {selectedAccount && getAccountIcon(selectedAccount.type)}
-          <span className={selectedAccount ? 'text-white' : 'text-gray-400'}>
-            {selectedAccount ? selectedAccount.name : 'Select account'}
-          </span>
-          <ChevronDown 
-            size={14} 
-            className={`text-secondary transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
+          <div className="text-left">
+            <span className={selectedAccount ? 'text-white' : 'text-gray-400'}>
+              {selectedAccount ? selectedAccount.name : (value === null ? 'No Account' : 'Select account')}
+            </span>
+            {selectedAccount && selectedAccount.type === 'creditCard' && (
+              <div className="text-xs text-red-300">
+                💳 Credit Card
+              </div>
+            )}
+            {value === null && (
+              <div className="text-xs text-orange-300">
+                ⚠️ Unlinked
+              </div>
+            )}
+          </div>
+          <ChevronDown
+            size={14}
+            className={`text-secondary transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
           />
         </div>
       </div>
-      
+
       {isOpen && createPortal(
-        <div 
+        <div
           className="fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-64 overflow-y-auto backdrop-blur-md"
           style={{
             top: dropdownPosition.top,
             left: dropdownPosition.left,
             width: Math.max(dropdownPosition.width, 300),
             minWidth: '300px',
-            maxWidth: '400px'
+            maxWidth: '400px',
           }}
         >
           {allAccounts.map((account) => (
@@ -208,12 +277,14 @@ const AccountSelector = ({
                   console.log(`AccountSelector: Ignoring click on already selected account ${account.id}`);
                   return;
                 }
-                setEditValue(account.id);
-                handleSave();
+                // Directly call onSave with the new account ID to avoid race conditions
+                console.log(`AccountSelector: Account changed, calling onSave with ${account.id}`);
+                onSave(account.id);
+                setIsOpen(false);
               }}
               className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-all duration-150 first:rounded-t-lg last:rounded-b-lg border-b border-white/10 last:border-b-0 ${
-                account.id === value 
-                  ? 'bg-blue-500/20 text-blue-300 cursor-default' 
+                account.id === value
+                  ? 'bg-blue-500/20 text-blue-300 cursor-default'
                   : 'text-white hover:bg-white/20 cursor-pointer'
               }`}
               disabled={account.id === value}
@@ -233,10 +304,10 @@ const AccountSelector = ({
             </button>
           ))}
         </div>,
-        document.body
+        document.body,
       )}
     </div>
   );
 };
 
-export default AccountSelector; 
+export default AccountSelector;

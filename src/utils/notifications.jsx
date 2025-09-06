@@ -7,21 +7,21 @@ export const notify = {
     logger.success(message);
     toast.success(message);
   },
-  
+
   error: (message, error) => {
     logger.error(message, error);
     toast.error(message);
   },
-  
+
   warning: (message) => {
     logger.warn(message);
     toast.warning(message);
   },
-  
+
   info: (message) => {
     logger.info(message);
     toast.info(message);
-  }
+  },
 };
 
 export const showConfirmation = (message) => {
@@ -54,8 +54,8 @@ export const showConfirmation = (message) => {
         autoClose: false,
         closeOnClick: false,
         draggable: false,
-        closeButton: false
-      }
+        closeButton: false,
+      },
     );
   });
 };

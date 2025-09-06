@@ -5,7 +5,7 @@ import PrivacyWrapper from './PrivacyWrapper';
 const ProjectedBalanceCard = ({ projectedBalance, payThisWeekTotal, defaultAccountName }) => {
   const balanceAfterExpenses = projectedBalance - payThisWeekTotal;
   const isPositive = balanceAfterExpenses >= 0;
-  
+
   return (
     <div className="glass-card">
       <div className="flex items-center justify-between mb-4">
@@ -16,7 +16,7 @@ const ProjectedBalanceCard = ({ projectedBalance, payThisWeekTotal, defaultAccou
           <TrendingDown size={16} className="text-red-300" />
         )}
       </div>
-      
+
       <div className="space-y-2">
         <div className="text-center">
           <div className={`text-2xl font-bold mb-1 ${
@@ -28,7 +28,7 @@ const ProjectedBalanceCard = ({ projectedBalance, payThisWeekTotal, defaultAccou
           </div>
           <div className="text-xs text-secondary">Projected Balance</div>
         </div>
-        
+
         <div className="text-xs text-secondary text-center">
           {defaultAccountName} • After expenses
         </div>
@@ -37,4 +37,4 @@ const ProjectedBalanceCard = ({ projectedBalance, payThisWeekTotal, defaultAccou
   );
 };
 
-export default ProjectedBalanceCard; 
+export default ProjectedBalanceCard;

@@ -1,21 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { logger } from "../utils/logger";;
-import { X, CreditCard, PiggyBank, Building2, ChevronDown } from 'lucide-react'
-import { dbHelpers } from '../db/database'
+import React, { useState, useEffect, useRef } from 'react';
+import { logger } from '../utils/logger';
+import { X, CreditCard, PiggyBank, Building2, ChevronDown } from 'lucide-react';
+import { dbHelpers } from '../db/database';
 
-const AddExpensePanel = ({ 
-  isOpen, 
-  onClose, 
-  accounts, 
-  creditCards = [], 
-  onDataChange 
+const AddExpensePanel = ({
+  isOpen,
+  onClose,
+  accounts,
+  creditCards = [],
+  onDataChange,
 }) => {
   const [formData, setFormData] = useState({
     name: '',
     dueDate: '',
     amount: '',
     accountId: '',
-    category: ''
+    category: '',
   });
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -25,14 +25,14 @@ const AddExpensePanel = ({
   // Combine regular accounts and credit cards for account selector
   const allAccounts = [
     ...accounts.map(acc => ({ ...acc, type: 'account' })),
-    ...creditCards.map(card => ({ 
-      ...card, 
+    ...creditCards.map(card => ({
+      ...card,
       type: 'creditCard',
       currentBalance: card.balance, // Map balance to currentBalance for consistency
-      name: `${card.name} (Credit Card)`
-    }))
+      name: `${card.name} (Credit Card)`,
+    })),
   ];
-  
+
   const panelRef = useRef(null);
   const firstInputRef = useRef(null);
 
@@ -53,7 +53,7 @@ const AddExpensePanel = ({
         logger.error('Error loading categories:', error);
       }
     };
-    
+
     loadCategories();
   }, []);
 
@@ -64,14 +64,14 @@ const AddExpensePanel = ({
     const handleTabKey = (e) => {
       if (e.key === 'Tab') {
         const focusableElements = panelRef.current?.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
         );
-        
+
         if (!focusableElements?.length) return;
-        
+
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
-        
+
         if (e.shiftKey) {
           if (document.activeElement === firstElement) {
             e.preventDefault();
@@ -130,7 +130,7 @@ const AddExpensePanel = ({
 
   const handleInputChange = (field, value) => {
     console.log('handleInputChange:', { field, value, currentFormData: formData });
-    
+
     // Simplified handling for amount field
     if (field === 'amount') {
       console.log('Amount field update:', { original: value });
@@ -138,7 +138,7 @@ const AddExpensePanel = ({
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
-    
+
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -148,25 +148,25 @@ const AddExpensePanel = ({
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (!formData.dueDate) newErrors.dueDate = 'Due date is required';
-    
+
     // Improved amount validation for decimals
     const amountStr = formData.amount.toString().replace(/[$,]/g, ''); // Remove $ and commas
     const amountValue = parseFloat(amountStr);
-    
+
     console.log('Amount validation:', {
       original: formData.amount,
       cleaned: amountStr,
       parsed: amountValue,
-      isValid: !isNaN(amountValue) && amountValue > 0
+      isValid: !isNaN(amountValue) && amountValue > 0,
     });
-    
+
     if (!formData.amount || isNaN(amountValue) || amountValue <= 0) {
       newErrors.amount = 'Amount must be greater than 0';
     }
-    
+
     if (!formData.accountId) newErrors.accountId = 'Account is required';
     if (!formData.category) newErrors.category = 'Category is required';
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -186,11 +186,11 @@ const AddExpensePanel = ({
         accountId: parseInt(formData.accountId),
         category: formData.category,
         paidAmount: 0,
-        status: 'pending'
+        status: 'pending',
       };
-      
+
       const newExpenseId = await dbHelpers.addFixedExpense(expenseData);
-      
+
       // If this expense is assigned to a credit card, update the credit card balance
       const selectedAccount = allAccounts.find(acc => acc.id === parseInt(formData.accountId));
       if (selectedAccount && selectedAccount.type === 'creditCard') {
@@ -198,7 +198,7 @@ const AddExpensePanel = ({
         await dbHelpers.updateCreditCard(selectedAccount.id, { balance: newBalance });
         logger.success('Credit card balance updated');
       }
-      
+
       logger.success('Expense added successfully');
       onDataChange(newExpenseId);
       onClose();
@@ -212,12 +212,12 @@ const AddExpensePanel = ({
 
   const getAccountIcon = (accountType) => {
     switch (accountType?.toLowerCase()) {
-      case 'checking':
-        return <CreditCard size={16} className="text-blue-400" />;
-      case 'savings':
-        return <PiggyBank size={16} className="text-green-400" />;
-      default:
-        return <Building2 size={16} className="text-purple-400" />;
+    case 'checking':
+      return <CreditCard size={16} className="text-blue-400" />;
+    case 'savings':
+      return <PiggyBank size={16} className="text-green-400" />;
+    default:
+      return <Building2 size={16} className="text-purple-400" />;
     }
   };
 
@@ -225,7 +225,7 @@ const AddExpensePanel = ({
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 2
+      minimumFractionDigits: 2,
     }).format(balance);
   };
 
@@ -237,27 +237,27 @@ const AddExpensePanel = ({
   return (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-black/20 backdrop-blur-[2px] transition-opacity duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
         style={{
           zIndex: 9999,
           opacity: isOpen ? 1 : 0,
           pointerEvents: isOpen ? 'auto' : 'none',
-          visibility: isOpen ? 'visible' : 'hidden'
+          visibility: isOpen ? 'visible' : 'hidden',
         }}
         onClick={handleClose}
       />
-      
+
       {/* Panel */}
-      <div 
+      <div
         ref={panelRef}
         className="fixed top-0 right-0 h-full w-[450px] liquid-glass border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden"
-        style={{ 
+        style={{
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
           boxSizing: 'border-box',
           right: '0px',
           zIndex: 10000,
-          visibility: isOpen ? 'visible' : 'hidden'
+          visibility: isOpen ? 'visible' : 'hidden',
         }}
       >
         {/* Header */}
@@ -397,4 +397,4 @@ const AddExpensePanel = ({
   );
 };
 
-export default AddExpensePanel; 
+export default AddExpensePanel;

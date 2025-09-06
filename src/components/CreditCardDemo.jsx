@@ -14,7 +14,7 @@ const CreditCardDemo = () => {
       minimumPayment: 160.00,
       statementClosingDate: '2025-01-10',
       utilization: 89.96,
-      daysUntilDue: 9
+      daysUntilDue: 9,
     },
     {
       id: 'demo-2',
@@ -26,7 +26,7 @@ const CreditCardDemo = () => {
       minimumPayment: 35.00,
       statementClosingDate: '2025-01-20',
       utilization: 25.00,
-      daysUntilDue: 19
+      daysUntilDue: 19,
     },
     {
       id: 'demo-3',
@@ -38,8 +38,8 @@ const CreditCardDemo = () => {
       minimumPayment: 150.00,
       statementClosingDate: '2025-01-03',
       utilization: 56.25,
-      daysUntilDue: 2
-    }
+      daysUntilDue: 2,
+    },
   ];
 
   const handleEdit = (card) => {

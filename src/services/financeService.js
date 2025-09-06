@@ -6,11 +6,11 @@ export const useFinanceCalculations = (accounts, pendingTransactions) => {
       const numericAccountId = parseInt(accountId);
       const account = accounts.find(a => a.id === numericAccountId);
       if (!account) return 0;
-      
+
       const pendingForAccount = pendingTransactions
         .filter(t => parseInt(t.accountId) === numericAccountId)
         .reduce((sum, t) => sum + t.amount, 0);
-      
+
       // For expenses (negative amounts), we add the pending amount to get the projected balance
       // For income (positive amounts), we also add the pending amount
       return account.currentBalance + pendingForAccount;
@@ -40,11 +40,11 @@ export const useFinanceCalculations = (accounts, pendingTransactions) => {
   const getDefaultAccountProjectedBalance = useMemo(() => {
     const defaultAccount = getDefaultAccount;
     if (!defaultAccount) return 0;
-    
+
     const pendingForAccount = pendingTransactions
       .filter(t => parseInt(t.accountId) === defaultAccount.id)
       .reduce((sum, t) => sum + t.amount, 0);
-    
+
     return defaultAccount.currentBalance + pendingForAccount;
   }, [getDefaultAccount, pendingTransactions]);
 
@@ -62,6 +62,6 @@ export const useFinanceCalculations = (accounts, pendingTransactions) => {
     getAccountProjectedBalances,
     getDefaultAccount,
     getDefaultAccountProjectedBalance,
-    getAccountName
+    getAccountName,
   };
 };

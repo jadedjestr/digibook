@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react'
-import { logger } from "../utils/logger";;
-import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react'
-import { dbHelpers } from '../db/database'
-import { useFinanceCalculations } from '../services/financeService'
-import PrivacyWrapper from '../components/PrivacyWrapper'
+import React, { useState, useEffect } from 'react';
+import { logger } from '../utils/logger';
+import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react';
+import { dbHelpers } from '../db/database';
+import { useFinanceCalculations } from '../services/financeService';
+import PrivacyWrapper from '../components/PrivacyWrapper';
 
 const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) => {
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
@@ -26,7 +26,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
     category: '',
     description: '',
     date: getTodayDate(), // Today's date in local timezone
-    type: 'expense' // 'income' or 'expense'
+    type: 'expense', // 'income' or 'expense'
   });
 
   const { calculateProjectedBalance, getAccountName } = useFinanceCalculations(accounts, pendingTransactions);
@@ -41,7 +41,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
         logger.error('Error loading categories:', error);
       }
     };
-    
+
     loadCategories();
   }, [onDataChange]); // Refresh when categories are modified
 
@@ -62,15 +62,15 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
 
   const handleAddTransaction = async () => {
     if (!validateForm()) return;
-    
+
     setIsLoading(true);
     try {
       // Prepare transaction with correct sign based on type
       const transactionToAdd = {
         ...newTransaction,
-        amount: newTransaction.type === 'expense' ? -Math.abs(newTransaction.amount) : Math.abs(newTransaction.amount)
+        amount: newTransaction.type === 'expense' ? -Math.abs(newTransaction.amount) : Math.abs(newTransaction.amount),
       };
-      
+
       await dbHelpers.addPendingTransaction(transactionToAdd);
       logger.success('Transaction added successfully');
       setNewTransaction({ accountId: '', amount: 0, category: '', description: '', date: getTodayDate(), type: 'expense' });
@@ -90,18 +90,18 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
       await dbHelpers.completePendingTransaction(transactionId);
       onDataChange();
     } catch (error) {
-      logger.error("Error completing transaction:", error);
+      logger.error('Error completing transaction:', error);
     }
   };
 
   const handleDeleteTransaction = async (transactionId) => {
     if (!confirm('Are you sure you want to delete this transaction?')) return;
-    
+
     try {
       await dbHelpers.deletePendingTransaction(transactionId);
       onDataChange();
     } catch (error) {
-      logger.error("Error deleting transaction:", error);
+      logger.error('Error deleting transaction:', error);
     }
   };
 
@@ -110,7 +110,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
       await dbHelpers.updatePendingTransaction(transactionId, updates);
       onDataChange();
     } catch (error) {
-      logger.error("Error updating transaction:", error);
+      logger.error('Error updating transaction:', error);
     }
   };
 
@@ -183,7 +183,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
     }
 
     return (
-      <div 
+      <div
         onClick={() => setIsEditing(true)}
         className="cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-all duration-200 group"
         title="Click to edit"
@@ -198,7 +198,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
 
   const categoryOptions = categories.map(category => ({
     value: category.name,
-    label: `${category.icon} ${category.name}`
+    label: `${category.icon} ${category.name}`,
   }));
 
   return (
@@ -318,7 +318,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
             >
               {isLoading ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                   <span>Adding...</span>
                 </>
               ) : (
@@ -376,7 +376,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
               {pendingTransactions.map((transaction) => {
                 const account = accounts.find(a => a.id === parseInt(transaction.accountId));
                 const projectedBalance = calculateProjectedBalance(transaction.accountId);
-                
+
                 return (
                   <tr key={transaction.id}>
                     <td>

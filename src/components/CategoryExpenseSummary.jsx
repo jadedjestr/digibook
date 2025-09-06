@@ -9,7 +9,7 @@ const calculateTotals = (expenses, categories) => {
       totals[category] = {
         total: 0,
         count: 0,
-        color: categories.find(c => c.name === category)?.color || '#6B7280'
+        color: categories.find(c => c.name === category)?.color || '#6B7280',
       };
     }
     const remaining = expense.amount - (expense.paidAmount || 0);
@@ -31,7 +31,7 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
     total: data.total,
     count: data.count,
     percentage: (data.total / totalAmount) * 100,
-    color: data.color
+    color: data.color,
   })).sort((a, b) => b.total - a.total); // Sort by total amount descending
 
   // Prepare expense data for bar chart
@@ -39,17 +39,17 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
     name: category.name,
     amount: category.total,
     percentage: category.percentage,
-    color: category.color
+    color: category.color,
   }));
 
   return (
     <div className="glass-panel">
       <h3 className="text-lg font-semibold text-primary mb-4">Expense Distribution</h3>
-      
+
       {/* Horizontal Bar Chart Layout */}
       <div className="space-y-0">
         {expenseData.map((expense, index) => (
-          <ExpenseBar 
+          <ExpenseBar
             key={expense.name}
             expense={expense}
             index={index}

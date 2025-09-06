@@ -44,15 +44,15 @@ export const CategoryProvider = ({ children, onDataChange }) => {
         await dbHelpers.updateCategory(state.editingCategory.id, categoryData);
         notify.success('Category updated successfully');
       }
-      
+
       dispatch({ type: ACTIONS.RESET_FORM });
       await refreshAfterMutation();
     } catch (error) {
       notify.error(
-        state.formMode === 'add' 
+        state.formMode === 'add'
           ? 'Failed to add category. Please try again.'
           : 'Failed to update category. Please try again.',
-        error
+        error,
       );
     }
   };
@@ -61,12 +61,12 @@ export const CategoryProvider = ({ children, onDataChange }) => {
     try {
       const affectedFixedExpenses = await dbHelpers.getFixedExpenses();
       const affectedPendingTransactions = await dbHelpers.getPendingTransactions();
-      
+
       const filteredFixedExpenses = affectedFixedExpenses.filter(expense => expense.category === category.name);
       const filteredPendingTransactions = affectedPendingTransactions.filter(transaction => transaction.category === category.name);
-      
+
       const totalAffected = filteredFixedExpenses.length + filteredPendingTransactions.length;
-      
+
       if (totalAffected === 0) {
         const confirmed = await showConfirmation(`Are you sure you want to delete "${category.name}"?`);
         if (confirmed) {
@@ -82,9 +82,9 @@ export const CategoryProvider = ({ children, onDataChange }) => {
             category: category,
             affectedItems: {
               fixedExpenses: filteredFixedExpenses,
-              pendingTransactions: filteredPendingTransactions
-            }
-          }
+              pendingTransactions: filteredPendingTransactions,
+            },
+          },
         });
       }
     } catch (error) {
@@ -105,12 +105,12 @@ export const CategoryProvider = ({ children, onDataChange }) => {
     handleSaveCategory,
     handleDeleteCategory,
     refreshAfterMutation,
-    
+
     // Dispatch helpers
     setFormMode: (mode) => dispatch({ type: ACTIONS.SET_FORM_MODE, payload: mode }),
     setEditingCategory: (category) => dispatch({ type: ACTIONS.SET_EDITING_CATEGORY, payload: category }),
     setDeletionModal: (modalState) => dispatch({ type: ACTIONS.SET_DELETION_MODAL, payload: modalState }),
-    resetForm: () => dispatch({ type: ACTIONS.RESET_FORM })
+    resetForm: () => dispatch({ type: ACTIONS.RESET_FORM }),
   };
 
   return (

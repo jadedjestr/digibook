@@ -30,7 +30,7 @@ export const PrivacyProvider = ({ children }) => {
   const value = {
     isHidden,
     setIsHidden,
-    toggleHidden: () => setIsHidden(prev => !prev)
+    toggleHidden: () => setIsHidden(prev => !prev),
   };
 
   return (
@@ -38,4 +38,4 @@ export const PrivacyProvider = ({ children }) => {
       {children}
     </PrivacyContext.Provider>
   );
-}; 
+};

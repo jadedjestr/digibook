@@ -3,20 +3,20 @@ import { Edit3, Trash2 } from 'lucide-react';
 
 const CategoryCard = ({ category, onEdit, onDelete }) => {
   return (
-    <div 
+    <div
       className="glass-card relative cursor-pointer transition-all duration-200 hover:scale-105"
-      style={{ 
+      style={{
         borderLeft: `4px solid ${category.color}`,
-        minHeight: '80px'
+        minHeight: '80px',
       }}
     >
       {/* Category Content */}
       <div className="flex flex-col items-center justify-center text-center p-2">
-        <div 
+        <div
           className="w-8 h-8 rounded-full flex items-center justify-center text-lg mb-2"
-          style={{ 
-            backgroundColor: category.color + '20', 
-            color: category.color 
+          style={{
+            backgroundColor: category.color + '20',
+            color: category.color,
           }}
         >
           {category.icon}

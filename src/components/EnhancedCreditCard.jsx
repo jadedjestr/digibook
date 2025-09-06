@@ -3,12 +3,12 @@ import { Edit, Trash2, AlertTriangle } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 import PrivacyWrapper from './PrivacyWrapper';
 
-const EnhancedCreditCard = ({ 
-  card, 
-  onEdit, 
-  onDelete, 
+const EnhancedCreditCard = ({
+  card,
+  onEdit,
+  onDelete,
   index = 0,
-  className = '' 
+  className = '',
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [utilizationWidth, setUtilizationWidth] = useState(0);
@@ -16,7 +16,7 @@ const EnhancedCreditCard = ({
   useEffect(() => {
     // Staggered animation for card entry
     const visibilityTimer = setTimeout(() => setIsVisible(true), index * 100);
-    
+
     // Animate utilization bar after card is visible
     const barTimer = setTimeout(() => {
       setUtilizationWidth(card.utilization);
@@ -56,7 +56,7 @@ const EnhancedCreditCard = ({
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'USD',
     }).format(amount);
   };
 
@@ -64,10 +64,16 @@ const EnhancedCreditCard = ({
     return `${value.toFixed(1)}%`;
   };
 
+  const formatInterestRate = (value) => {
+    return `${value.toFixed(2)}%`;
+  };
+
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    // Parse as local date to avoid timezone shifts
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toLocaleDateString('en-US', {
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
     });
   };
 
@@ -81,12 +87,12 @@ const EnhancedCreditCard = ({
   const isPaymentUrgent = daysUntilDue <= 7 && daysUntilDue >= 0;
 
   return (
-    <div 
+    <div
       className={`credit-card ${className} ${
         isVisible ? 'slide-in-up' : 'opacity-0'
       }`}
       style={{
-        '--utilization-percentage': `${utilization}%`
+        '--utilization-percentage': `${utilization}%`,
       }}
     >
       {/* Header Section */}
@@ -99,21 +105,21 @@ const EnhancedCreditCard = ({
             </PrivacyWrapper>
           </p>
         </div>
-        
+
         <div className="credit-card-actions">
           <div className="credit-card-badges">
-            <StatusBadge 
-              status={getUtilizationStatus(utilization)} 
+            <StatusBadge
+              status={getUtilizationStatus(utilization)}
               variant="credit-card"
             />
             {getDueDateStatus(daysUntilDue) && (
-              <StatusBadge 
-                status={getDueDateStatus(daysUntilDue)} 
+              <StatusBadge
+                status={getDueDateStatus(daysUntilDue)}
                 variant="credit-card"
               />
             )}
           </div>
-          
+
           <div className="flex gap-2">
             <button
               onClick={() => onEdit(card)}
@@ -155,7 +161,7 @@ const EnhancedCreditCard = ({
           <div className="credit-info-label">Interest Rate</div>
           <div className="credit-info-value">
             <PrivacyWrapper>
-              {formatPercentage(card.interestRate)}
+              {formatInterestRate(card.interestRate)}
             </PrivacyWrapper>
           </div>
         </div>
@@ -180,7 +186,7 @@ const EnhancedCreditCard = ({
           </span>
         </div>
         <div className="utilization-bar">
-          <div 
+          <div
             className={`utilization-fill ${getUtilizationColor(utilization)} progress-animate`}
             style={{ width: `${utilizationWidth}%` }}
             aria-label={`Credit utilization: ${formatPercentage(utilization)}`}

@@ -1,16 +1,16 @@
-import { logger } from "../utils/logger";
-import { dbHelpers } from "../db/database";
+import { logger } from '../utils/logger';
+import { dbHelpers } from '../db/database';
 
 // Current data format version
 const CURRENT_DATA_VERSION = 1;
 
 class DataManager {
-  constructor() {
+  constructor () {
     this.backupManager = new BackupManager();
   }
 
   // Database Management
-  async deleteDatabase() {
+  async deleteDatabase () {
     try {
       await dbHelpers.deleteDatabase();
       logger.success('Database deleted successfully');
@@ -20,15 +20,15 @@ class DataManager {
     }
   }
 
-  async clearAllData(createBackup = true) {
+  async clearAllData (createBackup = true) {
     try {
       if (createBackup) {
         await this.backupManager.createBackup('pre_clear_all');
       }
-      
+
       await dbHelpers.clearDatabase();
       await dbHelpers.initializeDefaultCategories(); // Reinitialize default categories
-      
+
       logger.success('All data cleared successfully');
     } catch (error) {
       logger.error('Error clearing all data:', error);
@@ -37,7 +37,7 @@ class DataManager {
   }
 
   // Audit Log Management
-  async getAuditLogs() {
+  async getAuditLogs () {
     try {
       return await dbHelpers.getAuditLogs();
     } catch (error) {
@@ -46,7 +46,7 @@ class DataManager {
     }
   }
 
-  async clearAuditLogs() {
+  async clearAuditLogs () {
     try {
       await dbHelpers.clearAuditLogs();
       logger.success('Audit logs cleared successfully');
@@ -57,18 +57,18 @@ class DataManager {
   }
 
   // File Reading and Validation
-  async readImportFile(file) {
+  async readImportFile (file) {
     try {
       const text = await file.text();
       const fileType = file.name.toLowerCase().endsWith('.json') ? 'json' : 'csv';
-      
+
       let data;
       if (fileType === 'json') {
         data = await this.parseAndValidateJSON(text);
       } else {
         data = await this.parseAndValidateCSV(text);
       }
-      
+
       return { data, fileType };
     } catch (error) {
       logger.error('Error reading import file:', error);
@@ -76,49 +76,49 @@ class DataManager {
     }
   }
 
-  async parseAndValidateJSON(text) {
+  async parseAndValidateJSON (text) {
     try {
       const data = JSON.parse(text);
-      
+
       // Check data format version
       if (data.version && data.version > CURRENT_DATA_VERSION) {
         throw new Error(`Data format version ${data.version} is not supported. Current version: ${CURRENT_DATA_VERSION}`);
       }
-      
+
       // Validate data structure
       if (!data || typeof data !== 'object') {
         throw new Error('Invalid data format: expected an object');
       }
-      
+
       return data;
     } catch (error) {
       throw new Error(`Invalid JSON format: ${error.message}`);
     }
   }
 
-  async parseAndValidateCSV(text) {
+  async parseAndValidateCSV (text) {
     try {
       const Papa = await import('papaparse');
       const result = Papa.parse(text, { header: true });
-      
+
       if (result.errors && result.errors.length > 0) {
         throw new Error(`CSV parsing errors: ${result.errors.map(e => e.message).join(', ')}`);
       }
-      
+
       if (!result.data || result.data.length === 0) {
         throw new Error('CSV file is empty or has no valid data');
       }
-      
+
       return this.detectAndConvertCSVData(result.data);
     } catch (error) {
       throw new Error(`Invalid CSV format: ${error.message}`);
     }
   }
 
-  detectAndConvertCSVData(csvData) {
+  detectAndConvertCSVData (csvData) {
     const firstRow = csvData[0] || {};
     const headers = Object.keys(firstRow);
-    
+
     // Detect data type from headers
     if (headers.includes('name') && headers.includes('type') && headers.includes('currentBalance')) {
       return { accounts: this.convertCSVData(csvData, 'accounts') };
@@ -135,60 +135,60 @@ class DataManager {
     if (headers.includes('lastPaycheckDate') && headers.includes('frequency')) {
       return { paycheckSettings: this.convertCSVData(csvData, 'paycheckSettings') };
     }
-    
+
     throw new Error('Could not detect CSV data type from headers');
   }
 
-  convertCSVData(csvData, dataType) {
+  convertCSVData (csvData, dataType) {
     return csvData.map(row => {
       const converted = { ...row };
-      
+
       switch (dataType) {
-        case 'accounts':
-          converted.currentBalance = parseFloat(row.currentBalance) || 0;
-          converted.isDefault = row.isDefault === 'true' || row.isDefault === '1' || row.isDefault === 'Yes';
-          break;
-        case 'pendingTransactions':
-          converted.accountId = parseInt(row.accountId) || 0;
-          converted.amount = parseFloat(row.amount) || 0;
-          converted.createdAt = row.createdAt ? new Date(row.createdAt).toISOString() : new Date().toISOString();
-          break;
-        case 'fixedExpenses':
-          converted.amount = parseFloat(row.amount) || 0;
-          converted.paidAmount = parseFloat(row.paidAmount) || 0;
-          converted.accountId = parseInt(row.accountId) || 0;
-          converted.dueDate = row.dueDate ? new Date(row.dueDate).toISOString() : '';
-          break;
-        case 'categories':
-          converted.isDefault = row.isDefault === 'true' || row.isDefault === '1' || row.isDefault === 'Yes';
-          break;
-        case 'paycheckSettings':
-          converted.lastPaycheckDate = row.lastPaycheckDate ? new Date(row.lastPaycheckDate).toISOString() : '';
-          break;
+      case 'accounts':
+        converted.currentBalance = parseFloat(row.currentBalance) || 0;
+        converted.isDefault = row.isDefault === 'true' || row.isDefault === '1' || row.isDefault === 'Yes';
+        break;
+      case 'pendingTransactions':
+        converted.accountId = parseInt(row.accountId) || 0;
+        converted.amount = parseFloat(row.amount) || 0;
+        converted.createdAt = row.createdAt ? new Date(row.createdAt).toISOString() : new Date().toISOString();
+        break;
+      case 'fixedExpenses':
+        converted.amount = parseFloat(row.amount) || 0;
+        converted.paidAmount = parseFloat(row.paidAmount) || 0;
+        converted.accountId = parseInt(row.accountId) || 0;
+        converted.dueDate = row.dueDate ? new Date(row.dueDate).toISOString() : '';
+        break;
+      case 'categories':
+        converted.isDefault = row.isDefault === 'true' || row.isDefault === '1' || row.isDefault === 'Yes';
+        break;
+      case 'paycheckSettings':
+        converted.lastPaycheckDate = row.lastPaycheckDate ? new Date(row.lastPaycheckDate).toISOString() : '';
+        break;
       }
-      
+
       return converted;
     });
   }
 
   // Import Process
-  async importData(file, onProgress = () => {}) {
+  async importData (file, onProgress = () => {}) {
     try {
       onProgress('Reading file...');
       const { data, fileType } = await this.readImportFile(file);
-      
+
       onProgress('Creating backup...');
       await this.backupManager.createBackup('pre_import');
-      
+
       onProgress('Validating data...');
       const validationResult = await this.validateImportData(data);
       if (!validationResult.isValid) {
         throw new Error(`Import validation failed: ${validationResult.errors.join(', ')}`);
       }
-      
+
       onProgress('Importing data...');
       await dbHelpers.importData(data);
-      
+
       onProgress('Import completed successfully!');
       logger.success(`Data imported successfully from ${fileType} file`);
     } catch (error) {
@@ -198,15 +198,15 @@ class DataManager {
   }
 
   // Export Process
-  async exportData(format = 'json', onProgress = () => {}) {
+  async exportData (format = 'json', onProgress = () => {}) {
     try {
       onProgress('Preparing data...');
       const data = await dbHelpers.exportData();
-      
+
       // Add format version
       data.version = CURRENT_DATA_VERSION;
       data.exportedAt = new Date().toISOString();
-      
+
       onProgress('Creating file...');
       if (format === 'json') {
         return this.createJSONExport(data);
@@ -219,18 +219,18 @@ class DataManager {
     }
   }
 
-  async createJSONExport(data) {
+  async createJSONExport (data) {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     return {
       blob,
-      filename: `digibook_backup_${new Date().toISOString().split('T')[0]}.json`
+      filename: `digibook_backup_${new Date().toISOString().split('T')[0]}.json`,
     };
   }
 
-  async createCSVExport(data) {
+  async createCSVExport (data) {
     const Papa = await import('papaparse');
     const files = [];
-    
+
     // Export each table as a separate CSV file
     for (const [table, items] of Object.entries(data)) {
       if (Array.isArray(items) && items.length > 0) {
@@ -238,43 +238,43 @@ class DataManager {
         const blob = new Blob([csv], { type: 'text/csv' });
         files.push({
           blob,
-          filename: `${table}_${new Date().toISOString().split('T')[0]}.csv`
+          filename: `${table}_${new Date().toISOString().split('T')[0]}.csv`,
         });
       }
     }
-    
+
     return files;
   }
 
   // Data Validation
-  async validateImportData(data) {
+  async validateImportData (data) {
     return dbHelpers.validateImportData(data);
   }
 }
 
 class BackupManager {
-  constructor() {
+  constructor () {
     this.BACKUP_PREFIX = 'digibook_backup_';
     this.MAX_BACKUPS = 5;
   }
 
-  async createBackup(reason) {
+  async createBackup (reason) {
     try {
       const data = await dbHelpers.exportData();
       const backup = {
         data,
         reason,
         timestamp: new Date().toISOString(),
-        version: CURRENT_DATA_VERSION
+        version: CURRENT_DATA_VERSION,
       };
-      
+
       // Store backup
       const key = `${this.BACKUP_PREFIX}${reason}_${backup.timestamp}`;
       localStorage.setItem(key, JSON.stringify(backup));
-      
+
       // Rotate old backups
       await this.rotateBackups();
-      
+
       logger.success('Backup created successfully');
       return key;
     } catch (error) {
@@ -283,7 +283,7 @@ class BackupManager {
     }
   }
 
-  async rotateBackups() {
+  async rotateBackups () {
     try {
       const backups = this.listBackups();
       if (backups.length > this.MAX_BACKUPS) {
@@ -298,7 +298,7 @@ class BackupManager {
     }
   }
 
-  listBackups() {
+  listBackups () {
     const backups = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -314,26 +314,26 @@ class BackupManager {
     return backups;
   }
 
-  async restoreBackup(key) {
+  async restoreBackup (key) {
     try {
       const backupJson = localStorage.getItem(key);
       if (!backupJson) {
         throw new Error('Backup not found');
       }
-      
+
       const backup = JSON.parse(backupJson);
-      
+
       // Validate backup
       if (!backup.data || !backup.timestamp || !backup.version) {
         throw new Error('Invalid backup format');
       }
-      
+
       // Create safety backup before restore
       await this.createBackup('pre_restore');
-      
+
       // Restore data
       await dbHelpers.importData(backup.data);
-      
+
       logger.success('Backup restored successfully');
     } catch (error) {
       logger.error('Failed to restore backup:', error);
@@ -341,16 +341,16 @@ class BackupManager {
     }
   }
 
-  async getLatestBackup() {
+  async getLatestBackup () {
     const backups = this.listBackups();
     if (backups.length === 0) {
       return null;
     }
-    
+
     return backups.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
   }
 
-  clearBackups() {
+  clearBackups () {
     const backups = this.listBackups();
     backups.forEach(backup => localStorage.removeItem(backup.key));
     logger.success('All backups cleared');

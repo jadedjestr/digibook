@@ -10,12 +10,12 @@ const IconSelector = ({ value, onChange, categories }) => {
 
   const filteredCategories = searchTerm
     ? categories.map(category => ({
-        ...category,
-        icons: category.icons.filter(icon => 
-          icon.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          category.name.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      })).filter(category => category.icons.length > 0)
+      ...category,
+      icons: category.icons.filter(icon =>
+        icon.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          category.name.toLowerCase().includes(searchTerm.toLowerCase()),
+      ),
+    })).filter(category => category.icons.length > 0)
     : categories;
 
   useEffect(() => {
@@ -35,7 +35,7 @@ const IconSelector = ({ value, onChange, categories }) => {
 
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEscape);
-    
+
     // Prevent body scroll when modal is open
     document.body.style.overflow = 'hidden';
 
@@ -54,11 +54,11 @@ const IconSelector = ({ value, onChange, categories }) => {
 
   // Modal component to be rendered in portal
   const Modal = () => (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
       style={{ zIndex: 999999 }}
     >
-      <div 
+      <div
         ref={modalRef}
         className="w-full max-w-2xl glass-panel border border-white/10 shadow-2xl"
         style={{ backgroundColor: 'rgba(15, 23, 42, 0.95)' }}
@@ -100,10 +100,10 @@ const IconSelector = ({ value, onChange, categories }) => {
                     key={icon}
                     onClick={() => handleIconSelect(icon)}
                     className={`aspect-square flex items-center justify-center rounded-lg text-2xl
-                      ${value === icon 
-                        ? 'bg-white/20 ring-2 ring-blue-500' 
-                        : 'hover:bg-white/10'
-                      } transition-all duration-150`}
+                      ${value === icon
+                    ? 'bg-white/20 ring-2 ring-blue-500'
+                    : 'hover:bg-white/10'
+                  } transition-all duration-150`}
                   >
                     {icon}
                   </button>

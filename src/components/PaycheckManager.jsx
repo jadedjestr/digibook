@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react'
-import { logger } from "../utils/logger";
-import { Calendar, Clock } from 'lucide-react'
-import { dbHelpers } from '../db/database'
-import { DateUtils } from '../utils/dateUtils'
+import React, { useState, useEffect } from 'react';
+import { logger } from '../utils/logger';
+import { Calendar, Clock } from 'lucide-react';
+import { dbHelpers } from '../db/database';
+import { DateUtils } from '../utils/dateUtils';
 
 const PaycheckManager = ({ onDataChange }) => {
   const [paycheckSettings, setPaycheckSettings] = useState({
     lastPaycheckDate: '',
-    frequency: 'biweekly'
+    frequency: 'biweekly',
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -22,11 +22,11 @@ const PaycheckManager = ({ onDataChange }) => {
       if (settings) {
         setPaycheckSettings({
           lastPaycheckDate: settings.lastPaycheckDate || '',
-          frequency: settings.frequency || 'biweekly'
+          frequency: settings.frequency || 'biweekly',
         });
       }
     } catch (error) {
-      logger.error("Error loading paycheck settings:", error);
+      logger.error('Error loading paycheck settings:', error);
     } finally {
       setIsLoading(false);
     }
@@ -53,10 +53,10 @@ const PaycheckManager = ({ onDataChange }) => {
     // Parse the date string and ensure it's treated as local time
     const [year, month, day] = paycheckSettings.lastPaycheckDate.split('-').map(Number);
     const lastPayDate = new Date(year, month - 1, day); // month is 0-indexed
-    
+
     const nextPayDate = new Date(lastPayDate);
     nextPayDate.setDate(nextPayDate.getDate() + 14);
-    
+
     const followingPayDate = new Date(lastPayDate);
     followingPayDate.setDate(followingPayDate.getDate() + 28);
 
@@ -70,7 +70,7 @@ const PaycheckManager = ({ onDataChange }) => {
 
     return {
       nextPayDate: formatDate(nextPayDate),
-      followingPayDate: formatDate(followingPayDate)
+      followingPayDate: formatDate(followingPayDate),
     };
   };
 
@@ -80,7 +80,7 @@ const PaycheckManager = ({ onDataChange }) => {
     return (
       <div className="glass-panel">
         <div className="text-center py-8">
-          <div className="glass-loading"></div>
+          <div className="glass-loading" />
           <p className="text-white/70 mt-4">Loading paycheck settings...</p>
         </div>
       </div>
@@ -105,7 +105,7 @@ const PaycheckManager = ({ onDataChange }) => {
             value={paycheckSettings.lastPaycheckDate}
             onChange={(e) => setPaycheckSettings({
               ...paycheckSettings,
-              lastPaycheckDate: e.target.value
+              lastPaycheckDate: e.target.value,
             })}
             className="glass-input w-full"
           />
@@ -123,7 +123,7 @@ const PaycheckManager = ({ onDataChange }) => {
             value={paycheckSettings.frequency}
             onChange={(e) => setPaycheckSettings({
               ...paycheckSettings,
-              frequency: e.target.value
+              frequency: e.target.value,
             })}
             className="glass-input w-full"
           >
@@ -170,7 +170,7 @@ const PaycheckManager = ({ onDataChange }) => {
           >
             {isSaving ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
                 <span>Saving...</span>
               </>
             ) : (
@@ -186,4 +186,4 @@ const PaycheckManager = ({ onDataChange }) => {
   );
 };
 
-export default PaycheckManager; 
+export default PaycheckManager;

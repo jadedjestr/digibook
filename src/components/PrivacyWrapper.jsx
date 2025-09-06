@@ -15,4 +15,4 @@ const PrivacyWrapper = ({ children, fallback = '••••••' }) => {
   return <>{children}</>;
 };
 
-export default PrivacyWrapper; 
+export default PrivacyWrapper;

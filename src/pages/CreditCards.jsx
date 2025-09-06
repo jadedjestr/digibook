@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { logger } from "../utils/logger";
+import { logger } from '../utils/logger';
 import { dbHelpers } from '../db/database';
 import { Plus, CreditCard } from 'lucide-react';
 import { notify } from '../utils/notifications';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';
 import PrivacyWrapper from '../components/PrivacyWrapper';
+import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
+import CreditCardMigrationModal from '../components/CreditCardMigrationModal';
 
-const CreditCards = ({ onDataChange }) => {
+const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp = [] }) => {
   const [creditCards, setCreditCards] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCard, setEditingCard] = useState(null);
+  const [deletionModal, setDeletionModal] = useState({ isOpen: false, card: null });
+  const [migrationModal, setMigrationModal] = useState({ isOpen: false });
   const [formData, setFormData] = useState({
     name: '',
     balance: '',
@@ -18,9 +22,10 @@ const CreditCards = ({ onDataChange }) => {
     interestRate: '',
     dueDate: '',
     statementClosingDate: '',
-    minimumPayment: ''
+    minimumPayment: '',
   });
   const [errors, setErrors] = useState({});
+  const [sortBy, setSortBy] = useState('name'); // 'name', 'dueDate', 'balance', 'utilization'
 
   useEffect(() => {
     loadCreditCards();
@@ -48,31 +53,31 @@ const CreditCards = ({ onDataChange }) => {
 
   const validateForm = () => {
     const newErrors = {};
-    
+
     if (!formData.name.trim()) {
       newErrors.name = 'Name is required';
     }
-    
+
     if (!formData.balance || parseFloat(formData.balance) < 0) {
       newErrors.balance = 'Balance must be a positive number';
     }
-    
+
     if (!formData.creditLimit || parseFloat(formData.creditLimit) <= 0) {
       newErrors.creditLimit = 'Credit limit must be greater than 0';
     }
-    
+
     if (!formData.interestRate || parseFloat(formData.interestRate) < 0) {
       newErrors.interestRate = 'Interest rate must be a positive number';
     }
-    
+
     if (!formData.dueDate) {
       newErrors.dueDate = 'Due date is required';
     }
-    
+
     if (!formData.minimumPayment || parseFloat(formData.minimumPayment) < 0) {
       newErrors.minimumPayment = 'Minimum payment must be a positive number';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -89,7 +94,7 @@ const CreditCards = ({ onDataChange }) => {
         balance: parseFloat(formData.balance),
         creditLimit: parseFloat(formData.creditLimit),
         interestRate: parseFloat(formData.interestRate),
-        minimumPayment: parseFloat(formData.minimumPayment)
+        minimumPayment: parseFloat(formData.minimumPayment),
       };
 
       if (editingCard) {
@@ -109,7 +114,7 @@ const CreditCards = ({ onDataChange }) => {
         interestRate: '',
         dueDate: '',
         statementClosingDate: '',
-        minimumPayment: ''
+        minimumPayment: '',
       });
       setErrors({});
       loadCreditCards();
@@ -129,27 +134,49 @@ const CreditCards = ({ onDataChange }) => {
       interestRate: card.interestRate.toString(),
       dueDate: card.dueDate,
       statementClosingDate: card.statementClosingDate || '',
-      minimumPayment: card.minimumPayment.toString()
+      minimumPayment: card.minimumPayment.toString(),
     });
     setIsAddModalOpen(true);
   };
 
   const handleDelete = async (card) => {
-    const confirmed = await notify.showConfirmation(
-      `Are you sure you want to delete "${card.name}"? This action cannot be undone.`
-    );
-    
-    if (confirmed) {
-      try {
-        await dbHelpers.deleteCreditCard(card.id);
-        notify.success('Credit card deleted successfully');
-        loadCreditCards();
-        onDataChange();
-      } catch (error) {
-        logger.error('Error deleting credit card:', error);
-        notify.error('Failed to delete credit card');
+    // Open the enhanced deletion modal instead of simple confirmation
+    setDeletionModal({ isOpen: true, card });
+  };
+
+  const handleDeleteConfirmed = (deletedCardId) => {
+    // Remove the deleted card from local state
+    setCreditCards(prev => prev.filter(card => card.id !== deletedCardId));
+    setDeletionModal({ isOpen: false, card: null });
+    onDataChange();
+  };
+
+  const handleDeleteModalClose = () => {
+    setDeletionModal({ isOpen: false, card: null });
+  };
+
+  const handleCreateMissingExpenses = async () => {
+    try {
+      const createdCount = await dbHelpers.createMissingCreditCardExpenses();
+      if (createdCount > 0) {
+        notify.success(`Created ${createdCount} missing credit card expenses`);
+        onDataChange(); // Refresh the data
+      } else {
+        notify.info('All credit cards already have corresponding fixed expenses');
       }
+    } catch (error) {
+      logger.error('Error creating missing expenses:', error);
+      notify.error('Failed to create missing expenses');
     }
+  };
+
+  const handleOpenMigration = () => {
+    setMigrationModal({ isOpen: true });
+  };
+
+  const handleMigrationComplete = () => {
+    loadCreditCards();
+    onDataChange(); // Refresh the data in parent
   };
 
   const calculateUtilization = (balance, limit) => {
@@ -159,12 +186,50 @@ const CreditCards = ({ onDataChange }) => {
 
   const getDaysUntilDue = (dueDate) => {
     if (!dueDate) return null;
+    
+    // Create dates in local timezone to avoid timezone shifts
     const today = new Date();
-    const due = new Date(dueDate);
+    today.setHours(0, 0, 0, 0); // Reset to start of day
+    
+    // Parse the due date as a local date (not UTC)
+    const due = new Date(dueDate + 'T00:00:00');
+    
     const diffTime = due - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
   };
+
+  // Sort credit cards based on selected criteria
+  const sortedCreditCards = React.useMemo(() => {
+    if (!creditCards.length) return [];
+
+    const sorted = [...creditCards].sort((a, b) => {
+      switch (sortBy) {
+        case 'dueDate':
+          // Sort by due date (closest due date first)
+          const aDue = a.dueDate ? new Date(a.dueDate + 'T00:00:00') : new Date('2099-12-31');
+          const bDue = b.dueDate ? new Date(b.dueDate + 'T00:00:00') : new Date('2099-12-31');
+          return aDue - bDue;
+        
+        case 'balance':
+          // Sort by current balance (highest debt first)
+          return b.balance - a.balance;
+        
+        case 'utilization':
+          // Sort by utilization percentage (highest utilization first)
+          const aUtil = calculateUtilization(a.balance, a.creditLimit);
+          const bUtil = calculateUtilization(b.balance, b.creditLimit);
+          return bUtil - aUtil;
+        
+        case 'name':
+        default:
+          // Sort alphabetically by name
+          return a.name.localeCompare(b.name);
+      }
+    });
+
+    return sorted;
+  }, [creditCards, sortBy]);
 
   if (isLoading) {
     return (
@@ -179,14 +244,74 @@ const CreditCards = ({ onDataChange }) => {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-semibold text-white text-shadow">Credit Cards</h1>
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="glass-button flex items-center space-x-2 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-        >
-          <Plus size={16} />
-          <span>Add Credit Card</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          {creditCards.length > 0 && (
+            <button
+              onClick={handleOpenMigration}
+              className="glass-button flex items-center space-x-2 bg-green-500/20 text-green-300 hover:bg-green-500/30"
+            >
+              <Plus size={16} />
+              <span>Smart Link Expenses</span>
+            </button>
+          )}
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="glass-button flex items-center space-x-2 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+          >
+            <Plus size={16} />
+            <span>Add Credit Card</span>
+          </button>
+        </div>
       </div>
+
+      {/* Sorting Controls */}
+      {creditCards.length > 0 && (
+        <div className="flex items-center space-x-4 mb-4">
+          <span className="text-white/70 text-sm">Sort by:</span>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setSortBy('name')}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                sortBy === 'name'
+                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+              }`}
+            >
+              Name
+            </button>
+            <button
+              onClick={() => setSortBy('dueDate')}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                sortBy === 'dueDate'
+                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+              }`}
+            >
+              Due Date (Soonest First)
+            </button>
+            <button
+              onClick={() => setSortBy('balance')}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                sortBy === 'balance'
+                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+              }`}
+            >
+              Balance (Highest First)
+            </button>
+            <button
+              onClick={() => setSortBy('utilization')}
+              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                sortBy === 'utilization'
+                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                  : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+              }`}
+            >
+              Utilization (Highest First)
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Credit Cards Grid */}
       {creditCards.length === 0 ? (
@@ -203,16 +328,16 @@ const CreditCards = ({ onDataChange }) => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {creditCards.map((card, index) => {
+          {sortedCreditCards.map((card, index) => {
             // Calculate derived values for the enhanced component
             const utilization = calculateUtilization(card.balance, card.creditLimit);
             const daysUntilDue = getDaysUntilDue(card.dueDate);
-            
+
             // Create enhanced card data object
             const enhancedCard = {
               ...card,
               utilization,
-              daysUntilDue
+              daysUntilDue,
             };
 
             return (
@@ -235,7 +360,7 @@ const CreditCards = ({ onDataChange }) => {
             <h2 className="text-xl font-semibold text-white">
               {editingCard ? 'Edit Credit Card' : 'Add Credit Card'}
             </h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-white mb-2">Name</label>
@@ -341,7 +466,7 @@ const CreditCards = ({ onDataChange }) => {
                     interestRate: '',
                     dueDate: '',
                     statementClosingDate: '',
-                    minimumPayment: ''
+                    minimumPayment: '',
                   });
                   setErrors({});
                 }}
@@ -353,6 +478,23 @@ const CreditCards = ({ onDataChange }) => {
           </div>
         </div>
       )}
+
+      {/* Credit Card Deletion Modal */}
+      <CreditCardDeletionModal
+        isOpen={deletionModal.isOpen}
+        creditCard={deletionModal.card}
+        accounts={accounts}
+        creditCards={creditCards}
+        onClose={handleDeleteModalClose}
+        onDelete={handleDeleteConfirmed}
+      />
+
+      {/* Credit Card Migration Modal */}
+      <CreditCardMigrationModal
+        isOpen={migrationModal.isOpen}
+        onClose={() => setMigrationModal({ isOpen: false })}
+        onComplete={handleMigrationComplete}
+      />
     </div>
   );
 };

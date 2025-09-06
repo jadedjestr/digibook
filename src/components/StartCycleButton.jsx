@@ -16,4 +16,4 @@ const StartCycleButton = ({ onClick, disabled = false, className = '' }) => {
   );
 };
 
-export default StartCycleButton; 
+export default StartCycleButton;

@@ -1,8 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    './index.html',
+    './src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
     extend: {
@@ -18,7 +18,7 @@ export default {
         backdrop: {
           light: 'rgba(255, 255, 255, 0.8)',
           dark: 'rgba(0, 0, 0, 0.8)',
-        }
+        },
       },
       backdropBlur: {
         'glass': '14px',
@@ -52,4 +52,4 @@ export default {
     },
   },
   plugins: [],
-} 
+};

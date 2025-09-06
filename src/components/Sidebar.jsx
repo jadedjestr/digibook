@@ -4,18 +4,18 @@ import { useFinanceCalculations } from '../services/financeService';
 import PrivacyWrapper from './PrivacyWrapper';
 import { usePrivacy } from '../contexts/PrivacyContext';
 
-const Sidebar = ({ 
-  navigation, 
-  currentPage, 
-  onPageChange, 
-  onToggleLock, 
+const Sidebar = ({
+  navigation,
+  currentPage,
+  onPageChange,
+  onToggleLock,
   isLocked,
   accounts,
-  pendingTransactions
+  pendingTransactions,
 }) => {
-  const { 
-    getDefaultAccount, 
-    getDefaultAccountProjectedBalance
+  const {
+    getDefaultAccount,
+    getDefaultAccountProjectedBalance,
   } = useFinanceCalculations(accounts, pendingTransactions);
   const { isHidden, toggleHidden } = usePrivacy();
 
@@ -65,7 +65,7 @@ const Sidebar = ({
           {navigation.map((item) => {
             const Icon = item.icon;
             const isActive = currentPage === item.id;
-            
+
             return (
               <li key={item.id}>
                 <button

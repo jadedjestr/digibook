@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Save, X } from 'lucide-react';
 import IconSelector from '../IconSelector';
-import { validateCategory } from '../../utils/validation';
+import { validateCategoryName } from '../../utils/validation';
 import { notify } from '../../utils/notifications.jsx';
 
-const CategoryForm = ({ 
-  mode = 'add', 
+const CategoryForm = ({
+  mode = 'add',
   initialData = { name: '', color: '#3B82F6', icon: '📦' },
   onSave,
   onCancel,
   existingCategories = [],
   colorOptions,
-  iconCategories = []
+  iconCategories = [],
 }) => {
   const [formData, setFormData] = useState(initialData);
   const [errors, setErrors] = useState({});
@@ -30,13 +30,15 @@ const CategoryForm = ({
 
   const handleSubmit = async () => {
     const sanitized = { ...formData, name: (formData.name || '').trim() };
-    const validation = validateCategory(sanitized, existingCategories, mode === 'edit' ? initialData.id : null);
-    setErrors(validation.errors);
+    const validation = validateCategoryName(sanitized.name, existingCategories);
     
     if (!validation.isValid) {
+      setErrors({ name: validation.error });
       notify.error('Please fix the errors before saving');
       return;
     }
+    
+    setErrors({});
 
     onSave(sanitized);
   };
@@ -54,7 +56,7 @@ const CategoryForm = ({
           <X size={16} className="text-white" />
         </button>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 overflow-visible">
         {/* Name Input */}
         <div>

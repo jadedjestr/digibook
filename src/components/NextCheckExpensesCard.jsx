@@ -8,7 +8,7 @@ const NextCheckExpensesCard = ({ totalAmount, expenseCount }) => {
         <h3 className="text-sm font-medium text-secondary">Next Check Expenses</h3>
         <Calendar size={16} className="text-secondary" />
       </div>
-      
+
       <div className="grid grid-cols-2 gap-4">
         <div className="text-center">
           <div className="text-2xl font-bold text-blue-300 mb-1">
@@ -16,7 +16,7 @@ const NextCheckExpensesCard = ({ totalAmount, expenseCount }) => {
           </div>
           <div className="text-xs text-secondary">Total Amount</div>
         </div>
-        
+
         <div className="text-center">
           <div className="text-2xl font-bold text-blue-300 mb-1">
             {expenseCount}
@@ -30,4 +30,4 @@ const NextCheckExpensesCard = ({ totalAmount, expenseCount }) => {
   );
 };
 
-export default NextCheckExpensesCard; 
+export default NextCheckExpensesCard;

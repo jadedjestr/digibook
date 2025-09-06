@@ -9,7 +9,7 @@ const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal, overdueTotal = 0 
         <h3 className="text-sm font-medium text-secondary">Payment Summary</h3>
         <DollarSign size={16} className="text-secondary" />
       </div>
-      
+
       <div className="grid grid-cols-3 gap-3">
         <div className="text-center">
           <div className="text-xl font-bold text-orange-300 mb-1">
@@ -19,7 +19,7 @@ const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal, overdueTotal = 0 
           </div>
           <div className="text-xs text-secondary">Pay This Week</div>
         </div>
-        
+
         <div className="text-center">
           <div className="text-xl font-bold text-blue-300 mb-1">
             <PrivacyWrapper>
@@ -28,7 +28,7 @@ const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal, overdueTotal = 0 
           </div>
           <div className="text-xs text-secondary">Pay with Next Check</div>
         </div>
-        
+
         <div className="text-center">
           <div className="text-xl font-bold text-red-300 mb-1">
             <PrivacyWrapper>
@@ -42,4 +42,4 @@ const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal, overdueTotal = 0 
   );
 };
 
-export default PaySummaryCard; 
+export default PaySummaryCard;

@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, AlertTriangle, CheckCircle } from 'lucide-react';
-import { logger } from "../utils/logger";
-import { notify } from "../utils/notifications.jsx";
+import { logger } from '../utils/logger';
+import { notify } from '../utils/notifications.jsx';
 import { dbHelpers } from '../db/database';
 
-const CategoryDeletionModal = ({ 
-  isOpen, 
-  onClose, 
-  categoryToDelete, 
-  affectedItems, 
-  onCategoryDeleted 
+const CategoryDeletionModal = ({
+  isOpen,
+  onClose,
+  categoryToDelete,
+  affectedItems,
+  onCategoryDeleted,
 }) => {
   const [categories, setCategories] = useState([]);
   const [bulkCategory, setBulkCategory] = useState('');
@@ -36,23 +36,23 @@ const CategoryDeletionModal = ({
 
   const initializeIndividualAssignments = () => {
     const assignments = {};
-    
+
     // Initialize fixed expenses
     affectedItems.fixedExpenses.forEach(expense => {
       assignments[`expense-${expense.id}`] = '';
     });
-    
+
     // Initialize pending transactions
     affectedItems.pendingTransactions.forEach(transaction => {
       assignments[`transaction-${transaction.id}`] = '';
     });
-    
+
     setIndividualAssignments(assignments);
   };
 
   const handleBulkReassign = async () => {
     if (!bulkCategory) return;
-    
+
     setIsProcessing(true);
     try {
       await dbHelpers.reassignCategoryItems(categoryToDelete.name, bulkCategory, affectedItems);
@@ -135,7 +135,7 @@ const CategoryDeletionModal = ({
         {/* Warning Message */}
         <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
           <p className="text-red-300">
-            You are about to delete <strong>"{categoryToDelete.name}"</strong>. 
+            You are about to delete <strong>"{categoryToDelete.name}"</strong>.
             This will affect <strong>{totalAffectedItems} items</strong>.
           </p>
         </div>
@@ -170,7 +170,7 @@ const CategoryDeletionModal = ({
         {/* Individual Reassign Section */}
         <div className="mb-6">
           <h4 className="text-lg font-medium text-primary mb-4">Individual Reassignment</h4>
-          
+
           {/* Fixed Expenses */}
           {affectedItems.fixedExpenses.length > 0 && (
             <div className="mb-4">
@@ -183,7 +183,7 @@ const CategoryDeletionModal = ({
                       value={individualAssignments[`expense-${expense.id}`] || ''}
                       onChange={(e) => setIndividualAssignments({
                         ...individualAssignments,
-                        [`expense-${expense.id}`]: e.target.value
+                        [`expense-${expense.id}`]: e.target.value,
                       })}
                       className="glass-input text-sm"
                       disabled={isProcessing}
@@ -213,7 +213,7 @@ const CategoryDeletionModal = ({
                       value={individualAssignments[`transaction-${transaction.id}`] || ''}
                       onChange={(e) => setIndividualAssignments({
                         ...individualAssignments,
-                        [`transaction-${transaction.id}`]: e.target.value
+                        [`transaction-${transaction.id}`]: e.target.value,
                       })}
                       className="glass-input text-sm"
                       disabled={isProcessing}
@@ -244,4 +244,4 @@ const CategoryDeletionModal = ({
   );
 };
 
-export default CategoryDeletionModal; 
+export default CategoryDeletionModal;
