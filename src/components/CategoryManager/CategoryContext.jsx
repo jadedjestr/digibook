@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useReducer } from 'react';
+import React, { createContext, useContext, useReducer, useMemo, useCallback, useState, useEffect } from 'react';
 import { categoryReducer, initialState, ACTIONS } from './categoryReducer';
 import { dbHelpers } from '../../db/database';
 import { notify, showConfirmation } from '../../utils/notifications.jsx';
+import { useGlobalCategories } from '../../contexts/GlobalCategoryContext';
 
 const CategoryContext = createContext(null);
 
@@ -15,38 +16,96 @@ export const useCategoryContext = () => {
 
 export const CategoryProvider = ({ children, onDataChange }) => {
   const [state, dispatch] = useReducer(categoryReducer, initialState);
+  const [operationLoading, setOperationLoading] = useState({
+    saving: false,
+    deleting: false,
+    loading: false,
+  });
 
-  // Actions
-  const loadCategories = async () => {
+  // Use global category service
+  const globalCategories = useGlobalCategories();
+
+  // Actions - memoized with useCallback
+  const loadCategories = useCallback(async () => {
     try {
-      const categoriesData = await dbHelpers.getCategories();
+      setOperationLoading(prev => ({ ...prev, loading: true }));
+      const categoriesData = await globalCategories.getCategories();
       dispatch({ type: ACTIONS.SET_CATEGORIES, payload: categoriesData });
     } catch (error) {
       notify.error('Failed to load categories. Please try again.', error);
       dispatch({ type: ACTIONS.SET_CATEGORIES, payload: [] });
     } finally {
+      setOperationLoading(prev => ({ ...prev, loading: false }));
       dispatch({ type: ACTIONS.SET_LOADING, payload: false });
     }
-  };
+  }, [globalCategories]);
 
   // Helper to refresh UI and notify parent after mutations
-  const refreshAfterMutation = async () => {
+  const refreshAfterMutation = useCallback(async () => {
     await loadCategories();
     onDataChange();
-  };
+  }, [loadCategories, onDataChange]);
 
-  const handleSaveCategory = async (categoryData) => {
+  const handleSaveCategory = useCallback(async (categoryData) => {
     try {
+      setOperationLoading(prev => ({ ...prev, saving: true }));
+      
+      // Optimistic update - add to local state immediately
+      const optimisticCategory = {
+        ...categoryData,
+        id: state.formMode === 'add' ? `temp-${Date.now()}` : state.editingCategory.id,
+        isDefault: false,
+        createdAt: new Date().toISOString(),
+      };
+
       if (state.formMode === 'add') {
-        await dbHelpers.addCategory({ ...categoryData, isDefault: false });
-        notify.success('Category added successfully');
+        // Optimistically add to categories
+        dispatch({ 
+          type: ACTIONS.ADD_CATEGORY_OPTIMISTIC, 
+          payload: optimisticCategory 
+        });
+        
+        try {
+          const id = await globalCategories.addCategory({ ...categoryData, isDefault: false });
+          // Replace optimistic category with real one
+          dispatch({ 
+            type: ACTIONS.CONFIRM_CATEGORY_ADD, 
+            payload: { ...optimisticCategory, id } 
+          });
+        } catch (error) {
+          // Revert optimistic update on error
+          dispatch({ 
+            type: ACTIONS.REVERT_CATEGORY_ADD, 
+            payload: optimisticCategory.id 
+          });
+          throw error;
+        }
       } else {
-        await dbHelpers.updateCategory(state.editingCategory.id, categoryData);
-        notify.success('Category updated successfully');
+        // Optimistically update category
+        dispatch({ 
+          type: ACTIONS.UPDATE_CATEGORY_OPTIMISTIC, 
+          payload: { id: state.editingCategory.id, updates: categoryData } 
+        });
+        
+        try {
+          await globalCategories.updateCategory(state.editingCategory.id, categoryData);
+          // Confirm optimistic update
+          dispatch({ 
+            type: ACTIONS.CONFIRM_CATEGORY_UPDATE, 
+            payload: { id: state.editingCategory.id, updates: categoryData } 
+          });
+        } catch (error) {
+          // Revert optimistic update on error
+          dispatch({ 
+            type: ACTIONS.REVERT_CATEGORY_UPDATE, 
+            payload: { id: state.editingCategory.id, originalData: state.editingCategory } 
+          });
+          throw error;
+        }
       }
 
       dispatch({ type: ACTIONS.RESET_FORM });
-      await refreshAfterMutation();
+      onDataChange(); // Notify parent of change
     } catch (error) {
       notify.error(
         state.formMode === 'add'
@@ -54,25 +113,28 @@ export const CategoryProvider = ({ children, onDataChange }) => {
           : 'Failed to update category. Please try again.',
         error,
       );
+    } finally {
+      setOperationLoading(prev => ({ ...prev, saving: false }));
     }
-  };
+  }, [state.formMode, state.editingCategory, globalCategories, onDataChange]);
 
-  const handleDeleteCategory = async (category) => {
+  const handleDeleteCategory = useCallback(async (category) => {
     try {
-      const affectedFixedExpenses = await dbHelpers.getFixedExpenses();
-      const affectedPendingTransactions = await dbHelpers.getPendingTransactions();
-
-      const filteredFixedExpenses = affectedFixedExpenses.filter(expense => expense.category === category.name);
-      const filteredPendingTransactions = affectedPendingTransactions.filter(transaction => transaction.category === category.name);
+      setOperationLoading(prev => ({ ...prev, deleting: true }));
+      
+      // Use optimized queries instead of loading all data
+      const [filteredFixedExpenses, filteredPendingTransactions] = await Promise.all([
+        dbHelpers.getExpensesByCategory(category.name),
+        dbHelpers.getTransactionsByCategory(category.name)
+      ]);
 
       const totalAffected = filteredFixedExpenses.length + filteredPendingTransactions.length;
 
       if (totalAffected === 0) {
         const confirmed = await showConfirmation(`Are you sure you want to delete "${category.name}"?`);
         if (confirmed) {
-          await dbHelpers.deleteCategory(category.id);
+          await globalCategories.deleteCategory(category.id);
           await refreshAfterMutation();
-          notify.success('Category deleted successfully');
         }
       } else {
         dispatch({
@@ -89,13 +151,23 @@ export const CategoryProvider = ({ children, onDataChange }) => {
       }
     } catch (error) {
       notify.error('Failed to prepare category deletion. Please try again.', error);
+    } finally {
+      setOperationLoading(prev => ({ ...prev, deleting: false }));
     }
-  };
+  }, [globalCategories, refreshAfterMutation]);
 
-  const value = {
+  // Memoized dispatch helpers
+  const setFormMode = useCallback((mode) => dispatch({ type: ACTIONS.SET_FORM_MODE, payload: mode }), []);
+  const setEditingCategory = useCallback((category) => dispatch({ type: ACTIONS.SET_EDITING_CATEGORY, payload: category }), []);
+  const setDeletionModal = useCallback((modalState) => dispatch({ type: ACTIONS.SET_DELETION_MODAL, payload: modalState }), []);
+  const resetForm = useCallback(() => dispatch({ type: ACTIONS.RESET_FORM }), []);
+
+  // Memoized context value
+  const value = useMemo(() => ({
     // State
     categories: state.categories,
     isLoading: state.isLoading,
+    operationLoading,
     formMode: state.formMode,
     editingCategory: state.editingCategory,
     deletionModal: state.deletionModal,
@@ -107,11 +179,26 @@ export const CategoryProvider = ({ children, onDataChange }) => {
     refreshAfterMutation,
 
     // Dispatch helpers
-    setFormMode: (mode) => dispatch({ type: ACTIONS.SET_FORM_MODE, payload: mode }),
-    setEditingCategory: (category) => dispatch({ type: ACTIONS.SET_EDITING_CATEGORY, payload: category }),
-    setDeletionModal: (modalState) => dispatch({ type: ACTIONS.SET_DELETION_MODAL, payload: modalState }),
-    resetForm: () => dispatch({ type: ACTIONS.RESET_FORM }),
-  };
+    setFormMode,
+    setEditingCategory,
+    setDeletionModal,
+    resetForm,
+  }), [
+    state.categories,
+    state.isLoading,
+    operationLoading,
+    state.formMode,
+    state.editingCategory,
+    state.deletionModal,
+    loadCategories,
+    handleSaveCategory,
+    handleDeleteCategory,
+    refreshAfterMutation,
+    setFormMode,
+    setEditingCategory,
+    setDeletionModal,
+    resetForm,
+  ]);
 
   return (
     <CategoryContext.Provider value={value}>

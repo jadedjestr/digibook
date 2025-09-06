@@ -5,6 +5,7 @@ import { dataManager } from '../services/dataManager';
 import PaycheckManager from '../components/PaycheckManager';
 import CategoryManager from '../components/CategoryManager';
 import CollapsibleCardGroup from '../components/CollapsibleCardGroup';
+import { useGlobalCategories } from '../contexts/GlobalCategoryContext';
 
 const Settings = ({ onDataChange }) => {
   const [auditLogs, setAuditLogs] = useState([]);
@@ -16,6 +17,9 @@ const Settings = ({ onDataChange }) => {
   const [importProgress, setImportProgress] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Global categories service for cache invalidation
+  const globalCategories = useGlobalCategories();
 
   useEffect(() => {
     const initializeSettings = async () => {
@@ -129,6 +133,10 @@ const Settings = ({ onDataChange }) => {
     try {
       if (confirm('This will overwrite all existing data. A backup will be created automatically. Are you sure?')) {
         await dataManager.importData(importFile, setImportProgress);
+        
+        // Invalidate category cache after import to ensure fresh data
+        globalCategories.invalidateCache();
+        
         onDataChange();
         setImportFile(null);
         alert('Data imported successfully');
@@ -159,6 +167,10 @@ const Settings = ({ onDataChange }) => {
       try {
         setImportProgress('Creating backup...');
         await dataManager.clearAllData();
+        
+        // Invalidate category cache after clearing data
+        globalCategories.invalidateCache();
+        
         setImportProgress('All data cleared successfully!');
         onDataChange();
         setTimeout(() => setImportProgress(''), 3000);
@@ -182,6 +194,9 @@ const Settings = ({ onDataChange }) => {
 
         setImportProgress('Restoring backup...');
         await dataManager.backupManager.restoreBackup(backup.key);
+
+        // Invalidate category cache after backup restore
+        globalCategories.invalidateCache();
 
         setImportProgress('Backup restored successfully!');
         onDataChange();

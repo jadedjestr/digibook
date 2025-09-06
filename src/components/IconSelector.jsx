@@ -33,6 +33,9 @@ const IconSelector = ({ value, onChange, categories }) => {
       }
     };
 
+    // Store original overflow style to restore it properly
+    const originalOverflow = document.body.style.overflow;
+    
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEscape);
 
@@ -42,7 +45,8 @@ const IconSelector = ({ value, onChange, categories }) => {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      // Restore original overflow style
+      document.body.style.overflow = originalOverflow;
     };
   }, [isOpen]);
 
@@ -51,6 +55,16 @@ const IconSelector = ({ value, onChange, categories }) => {
     setIsOpen(false);
     setSearchTerm('');
   };
+
+  // Cleanup effect to handle component unmounting
+  useEffect(() => {
+    return () => {
+      // Ensure body overflow is restored if component unmounts while modal is open
+      if (isOpen) {
+        document.body.style.overflow = '';
+      }
+    };
+  }, [isOpen]);
 
   // Modal component to be rendered in portal
   const Modal = () => (

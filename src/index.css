@@ -352,6 +352,47 @@
     }
   }
 
+  /* Mobile-First Responsive Design */
+  @media (max-width: 1023px) {
+    /* Touch-friendly button sizing */
+    .glass-button {
+      @apply min-h-[44px] px-4 py-3;
+    }
+    
+    /* Mobile-optimized spacing */
+    .glass-panel {
+      @apply p-4;
+    }
+    
+    .glass-card {
+      @apply p-4;
+    }
+    
+    /* Disable hover effects on touch devices */
+    .glass-button:hover,
+    .glass-card:hover,
+    .liquid-glass:hover {
+      transform: none;
+    }
+  }
+
+  /* Tablet optimizations */
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .glass-sidebar {
+      @apply w-72;
+    }
+  }
+
+  /* Desktop optimizations */
+  @media (min-width: 1024px) {
+    /* Re-enable hover effects on desktop */
+    .glass-button:hover,
+    .glass-card:hover,
+    .liquid-glass:hover {
+      transform: translateY(-1px);
+    }
+  }
+
   /* High Performance Mode */
   @media (prefers-reduced-motion: reduce) {
     .liquid-glass,

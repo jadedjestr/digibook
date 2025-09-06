@@ -9,6 +9,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSpinner from './components/LoadingSpinner';
 import { dbHelpers } from './db/database';
 import { PrivacyProvider } from './contexts/PrivacyContext';
+import { GlobalCategoryProvider } from './contexts/GlobalCategoryContext';
 
 // Lazy load pages for better performance
 const Accounts = lazy(() => import('./pages/Accounts'));
@@ -138,7 +139,8 @@ function App () {
   return (
     <ErrorBoundary>
       <PrivacyProvider>
-        <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <GlobalCategoryProvider>
+          <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
           <ToastContainer
             position="top-right"
             autoClose={3000}
@@ -160,14 +162,15 @@ function App () {
             accounts={accounts}
             pendingTransactions={pendingTransactions}
           />
-          <main className="flex-1 overflow-auto">
-            <div className="p-6">
+          <main className="flex-1 overflow-auto lg:ml-0">
+            <div className="p-4 lg:p-6 pt-16 lg:pt-6">
               <Suspense fallback={<LoadingSpinner />}>
                 {renderPage()}
               </Suspense>
             </div>
           </main>
         </div>
+        </GlobalCategoryProvider>
       </PrivacyProvider>
     </ErrorBoundary>
   );

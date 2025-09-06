@@ -1,5 +1,5 @@
-import React from 'react';
-import { Lock, Unlock, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, Unlock, Eye, EyeOff, Menu, X } from 'lucide-react';
 import { useFinanceCalculations } from '../services/financeService';
 import PrivacyWrapper from './PrivacyWrapper';
 import { usePrivacy } from '../contexts/PrivacyContext';
@@ -22,8 +22,73 @@ const Sidebar = ({
   const defaultAccount = getDefaultAccount;
   const projectedBalance = getDefaultAccountProjectedBalance;
 
-  return (
-    <div className="glass-sidebar">
+  // Mobile sidebar state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Check if we're on mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Close mobile menu when page changes
+  useEffect(() => {
+    if (isMobile) {
+      setIsMobileMenuOpen(false);
+    }
+  }, [currentPage, isMobile]);
+
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isMobileMenuOpen && !event.target.closest('.mobile-sidebar')) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    if (isMobileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isMobileMenuOpen]);
+
+  const handlePageChange = (pageId) => {
+    onPageChange(pageId);
+    if (isMobile) {
+      setIsMobileMenuOpen(false);
+    }
+  };
+
+  // Mobile hamburger menu component
+  const MobileMenuButton = () => (
+    <button
+      onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+      className="lg:hidden fixed top-4 left-4 z-50 glass-button p-3"
+      aria-label="Toggle menu"
+    >
+      {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+    </button>
+  );
+
+  // Mobile overlay
+  const MobileOverlay = () => (
+    isMobileMenuOpen && (
+      <div 
+        className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+    )
+  );
+
+  // Sidebar content component
+  const SidebarContent = () => (
+    <div className="glass-sidebar mobile-sidebar">
       {/* Header */}
       <div className="p-6 border-b border-white/20">
         <h1 className="text-2xl font-bold text-primary text-shadow-lg mb-1">Digibook</h1>
@@ -55,8 +120,6 @@ const Sidebar = ({
             </div>
           </div>
         )}
-
-
       </div>
 
       {/* Navigation */}
@@ -69,7 +132,7 @@ const Sidebar = ({
             return (
               <li key={item.id}>
                 <button
-                  onClick={() => onPageChange(item.id)}
+                  onClick={() => handlePageChange(item.id)}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 glass-focus ${
                     isActive
                       ? 'bg-white/20 text-white shadow-lg backdrop-blur-sm'
@@ -103,6 +166,29 @@ const Sidebar = ({
         </button>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {/* Mobile Menu Button */}
+      <MobileMenuButton />
+      
+      {/* Mobile Overlay */}
+      <MobileOverlay />
+      
+      {/* Desktop Sidebar */}
+      <div className="hidden lg:block">
+        <SidebarContent />
+      </div>
+      
+      {/* Mobile Sidebar */}
+      <div className={`
+        lg:hidden fixed top-0 left-0 h-full z-50 transform transition-transform duration-300 ease-in-out
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <SidebarContent />
+      </div>
+    </>
   );
 };
 

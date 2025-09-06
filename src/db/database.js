@@ -239,6 +239,20 @@ export class DigibookDB extends Dexie {
         }
       }
     });
+
+    // Add optimized indexes for category filtering (Version 10)
+    this.version(10).stores({
+      ...stores,
+      accounts: '++id, name, type, currentBalance, isDefault',
+      pendingTransactions: '++id, accountId, amount, category, description, createdAt, *category',
+      fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status, category, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, *category',
+      categories: '++id, &nameLower, name, color, icon, isDefault',
+      creditCards: '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
+      paycheckSettings: '++id, lastPaycheckDate, frequency',
+      userPreferences: '++id, component, preferences',
+      monthlyExpenseHistory: '++id, expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
+      auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
+    });
   }
 }
 
@@ -350,8 +364,15 @@ export const dbHelpers = {
         logger.info(`Removed ${duplicatesRemoved} duplicate categories during schema fix`);
       }
 
-      // Initialize default categories (will only add missing ones)
-      await this.initializeDefaultCategories();
+      // Only initialize default categories if the database is completely empty
+      // This prevents deleted default categories from being recreated on app startup
+      const categoryCount = await db.categories.count();
+      if (categoryCount === 0) {
+        logger.info('No categories found, initializing default categories');
+        await this.initializeDefaultCategories();
+      } else {
+        logger.debug(`Found ${categoryCount} existing categories, skipping default initialization`);
+      }
 
       logger.success('Database schema fixed');
     } catch (error) {
@@ -879,6 +900,44 @@ export const dbHelpers = {
     } catch (error) {
       logger.error('Error reassigning category items:', error);
       throw new Error('Failed to reassign category items');
+    }
+  },
+
+  // Optimized category query methods
+  async getExpensesByCategory (categoryName) {
+    try {
+      return await db.fixedExpenses.where('category').equals(categoryName).toArray();
+    } catch (error) {
+      logger.error('Error getting expenses by category:', error);
+      return [];
+    }
+  },
+
+  async getTransactionsByCategory (categoryName) {
+    try {
+      return await db.pendingTransactions.where('category').equals(categoryName).toArray();
+    } catch (error) {
+      logger.error('Error getting transactions by category:', error);
+      return [];
+    }
+  },
+
+  async getCategoryUsageStats (categoryName) {
+    try {
+      const [expenses, transactions] = await Promise.all([
+        this.getExpensesByCategory(categoryName),
+        this.getTransactionsByCategory(categoryName)
+      ]);
+      
+      return {
+        expenseCount: expenses.length,
+        transactionCount: transactions.length,
+        totalExpenseAmount: expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0),
+        totalTransactionAmount: transactions.reduce((sum, transaction) => sum + (transaction.amount || 0), 0)
+      };
+    } catch (error) {
+      logger.error('Error getting category usage stats:', error);
+      return { expenseCount: 0, transactionCount: 0, totalExpenseAmount: 0, totalTransactionAmount: 0 };
     }
   },
 

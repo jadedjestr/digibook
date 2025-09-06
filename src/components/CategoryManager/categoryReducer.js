@@ -6,6 +6,13 @@ export const ACTIONS = {
   SET_EDITING_CATEGORY: 'SET_EDITING_CATEGORY',
   SET_DELETION_MODAL: 'SET_DELETION_MODAL',
   RESET_FORM: 'RESET_FORM',
+  // Optimistic update actions
+  ADD_CATEGORY_OPTIMISTIC: 'ADD_CATEGORY_OPTIMISTIC',
+  CONFIRM_CATEGORY_ADD: 'CONFIRM_CATEGORY_ADD',
+  REVERT_CATEGORY_ADD: 'REVERT_CATEGORY_ADD',
+  UPDATE_CATEGORY_OPTIMISTIC: 'UPDATE_CATEGORY_OPTIMISTIC',
+  CONFIRM_CATEGORY_UPDATE: 'CONFIRM_CATEGORY_UPDATE',
+  REVERT_CATEGORY_UPDATE: 'REVERT_CATEGORY_UPDATE',
 };
 
 // Initial State
@@ -65,6 +72,57 @@ export const categoryReducer = (state, action) => {
       ...state,
       formMode: null,
       editingCategory: null,
+    };
+
+  // Optimistic update cases
+  case ACTIONS.ADD_CATEGORY_OPTIMISTIC:
+    return {
+      ...state,
+      categories: [...state.categories, action.payload],
+    };
+
+  case ACTIONS.CONFIRM_CATEGORY_ADD:
+    return {
+      ...state,
+      categories: state.categories.map(cat => 
+        cat.id === action.payload.id ? action.payload : cat
+      ),
+    };
+
+  case ACTIONS.REVERT_CATEGORY_ADD:
+    return {
+      ...state,
+      categories: state.categories.filter(cat => cat.id !== action.payload),
+    };
+
+  case ACTIONS.UPDATE_CATEGORY_OPTIMISTIC:
+    return {
+      ...state,
+      categories: state.categories.map(cat => 
+        cat.id === action.payload.id 
+          ? { ...cat, ...action.payload.updates }
+          : cat
+      ),
+    };
+
+  case ACTIONS.CONFIRM_CATEGORY_UPDATE:
+    return {
+      ...state,
+      categories: state.categories.map(cat => 
+        cat.id === action.payload.id 
+          ? { ...cat, ...action.payload.updates }
+          : cat
+      ),
+    };
+
+  case ACTIONS.REVERT_CATEGORY_UPDATE:
+    return {
+      ...state,
+      categories: state.categories.map(cat => 
+        cat.id === action.payload.id 
+          ? action.payload.originalData
+          : cat
+      ),
     };
 
   default:

@@ -26,6 +26,7 @@ import PrivacyWrapper from './PrivacyWrapper';
 
 import DraggableExpenseRow from './DraggableExpenseRow';
 import CategoryDropZone from './CategoryDropZone';
+import MobileExpenseCard from './MobileExpenseCard';
 
 // Initialization State Machine
 const INIT_STATES = {
@@ -862,14 +863,14 @@ const FixedExpensesTable = ({
         onNavigateToSettings={handleNavigateToSettings}
         onFixAccount={handleFixAccount}
       />
-      {/* Add Expense Button */}
-      <div className="flex justify-between items-center">
-        <div className="flex items-center space-x-4">
+      {/* Controls */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <h2 className="text-xl font-semibold text-white">Fixed Expenses</h2>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setSortBy('dueDate')}
-              className={`text-sm px-3 py-1 rounded ${
+              className={`text-sm px-3 py-2 rounded transition-colors ${
                 sortBy === 'dueDate'
                   ? 'bg-blue-500/20 text-blue-300'
                   : 'hover:bg-white/10'
@@ -879,7 +880,7 @@ const FixedExpensesTable = ({
             </button>
             <button
               onClick={() => setSortBy('name')}
-              className={`text-sm px-3 py-1 rounded ${
+              className={`text-sm px-3 py-2 rounded transition-colors ${
                 sortBy === 'name'
                   ? 'bg-blue-500/20 text-blue-300'
                   : 'hover:bg-white/10'
@@ -887,10 +888,10 @@ const FixedExpensesTable = ({
             >
               Sort by Name
             </button>
-            <div className="h-4 w-px bg-white/20" />
+            <div className="h-4 w-px bg-white/20 hidden sm:block" />
             <button
               onClick={() => setAutoCollapseEnabled(!autoCollapseEnabled)}
-              className={`text-sm px-3 py-1 rounded flex items-center space-x-1 ${
+              className={`text-sm px-3 py-2 rounded flex items-center space-x-1 transition-colors ${
                 autoCollapseEnabled
                   ? 'bg-green-500/20 text-green-300'
                   : 'hover:bg-white/10'
@@ -919,7 +920,7 @@ const FixedExpensesTable = ({
                   console.log(`📦 Manually collapsed ${collapsedCount} paid categories`);
                 }
               }}
-              className="text-sm px-3 py-1 rounded hover:bg-white/10"
+              className="text-sm px-3 py-2 rounded hover:bg-white/10 transition-colors"
               title="Collapse all fully paid categories"
             >
               Collapse All Paid
@@ -930,7 +931,7 @@ const FixedExpensesTable = ({
                 setCollapsedCategories(new Set());
                 console.log('📂 Expanded all categories');
               }}
-              className="text-sm px-3 py-1 rounded hover:bg-white/10"
+              className="text-sm px-3 py-2 rounded hover:bg-white/10 transition-colors"
               title="Expand all categories"
             >
               Expand All
@@ -939,7 +940,7 @@ const FixedExpensesTable = ({
         </div>
         <button
           onClick={() => setIsPanelOpen(true)}
-          className="glass-button flex items-center space-x-2"
+          className="glass-button flex items-center justify-center space-x-2 w-full lg:w-auto min-h-[44px]"
         >
           <Plus size={16} />
           <span>Add Expense</span>
@@ -1016,51 +1017,80 @@ const FixedExpensesTable = ({
                     </div>
                   </div>
 
-                  {/* Expenses Table for this category */}
+                  {/* Expenses Display for this category */}
                   {!collapsedCategories.has(categoryName) && (
                     <>
-                      <table className="glass-table">
-                        <thead>
-                          <tr>
-                            <th>Name</th>
-                            <th>Due Date</th>
-                            <th>Amount</th>
-                            <th>Account</th>
-                            <th>Paid Amount</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <SortableContext
-                            items={categoryExpenses.map(e => e.id)}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            {categoryExpenses.map((expense) => {
-                              const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
-                              const account = accounts.find(acc => acc.id === expense.accountId);
-                              const isNewExpense = newExpenseId === expense.id;
+                      {/* Desktop Table View */}
+                      <div className="hidden lg:block">
+                        <table className="glass-table">
+                          <thead>
+                            <tr>
+                              <th>Name</th>
+                              <th>Due Date</th>
+                              <th>Amount</th>
+                              <th>Account</th>
+                              <th>Paid Amount</th>
+                              <th>Status</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <SortableContext
+                              items={categoryExpenses.map(e => e.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              {categoryExpenses.map((expense) => {
+                                const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
+                                const account = accounts.find(acc => acc.id === expense.accountId);
+                                const isNewExpense = newExpenseId === expense.id;
 
-                              return (
-                                <DraggableExpenseRow
-                                  key={expense.id}
-                                  expense={expense}
-                                  status={status}
-                                  account={account}
-                                  isNewExpense={isNewExpense}
-                                  isUpdating={updatingExpenseId === expense.id}
-                                  onMarkAsPaid={handleMarkAsPaid}
-                                  onDuplicate={setDuplicatingExpense}
-                                  onDelete={handleDeleteExpense}
-                                  onUpdateExpense={handleUpdateExpense}
-                                  accounts={accounts}
-                                  creditCards={creditCards}
-                                />
-                              );
-                            })}
-                          </SortableContext>
-                        </tbody>
-                      </table>
+                                return (
+                                  <DraggableExpenseRow
+                                    key={expense.id}
+                                    expense={expense}
+                                    status={status}
+                                    account={account}
+                                    isNewExpense={isNewExpense}
+                                    isUpdating={updatingExpenseId === expense.id}
+                                    onMarkAsPaid={handleMarkAsPaid}
+                                    onDuplicate={setDuplicatingExpense}
+                                    onDelete={handleDeleteExpense}
+                                    onUpdateExpense={handleUpdateExpense}
+                                    accounts={accounts}
+                                    creditCards={creditCards}
+                                  />
+                                );
+                              })}
+                            </SortableContext>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Mobile Card View */}
+                      <div className="lg:hidden space-y-4">
+                        {categoryExpenses.map((expense) => {
+                          const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
+                          const account = accounts.find(acc => acc.id === expense.accountId);
+                          const isNewExpense = newExpenseId === expense.id;
+
+                          return (
+                            <MobileExpenseCard
+                              key={expense.id}
+                              expense={expense}
+                              status={status}
+                              account={account}
+                              isNewExpense={isNewExpense}
+                              isUpdating={updatingExpenseId === expense.id}
+                              onMarkAsPaid={handleMarkAsPaid}
+                              onDuplicate={setDuplicatingExpense}
+                              onDelete={handleDeleteExpense}
+                              onUpdateExpense={handleUpdateExpense}
+                              accounts={accounts}
+                              creditCards={creditCards}
+                            />
+                          );
+                        })}
+                      </div>
 
                       <CategoryDropZone
                         categoryName={categoryName}
