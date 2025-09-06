@@ -15,9 +15,11 @@ import { GlobalCategoryProvider } from './contexts/GlobalCategoryContext';
 const Accounts = lazy(() => import('./pages/Accounts'));
 const PendingTransactions = lazy(() => import('./pages/PendingTransactions'));
 const FixedExpenses = lazy(() => import('./pages/FixedExpenses'));
-const SettingsPage = lazy(() => import('./pages/Settings'));
 const CreditCards = lazy(() => import('./pages/CreditCards'));
 const Insights = lazy(() => import('./pages/Insights'));
+
+// Import Settings directly to avoid context issues with lazy loading
+import SettingsPage from './pages/Settings';
 
 function App () {
   const [currentPage, setCurrentPage] = useState('accounts');
