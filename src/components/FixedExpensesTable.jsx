@@ -541,26 +541,27 @@ const FixedExpensesTable = ({
     });
 
     // Check each category for auto-collapse
-    const newCollapsedCategories = new Set(collapsedCategories);
-    let autoCollapsedCount = 0;
+    // Use a functional update to avoid dependency on collapsedCategories
+    setCollapsedCategories(currentCollapsed => {
+      const newCollapsedCategories = new Set(currentCollapsed);
+      let autoCollapsedCount = 0;
 
-    Object.entries(expensesByCategory).forEach(([categoryName, categoryExpenses]) => {
-      const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
+      Object.entries(expensesByCategory).forEach(([categoryName, categoryExpenses]) => {
+        const { allPaid } = getCategoryPaymentStatus(categoryExpenses);
 
-      if (allPaid) {
-        // Category is fully paid - auto-collapse it
-        if (!newCollapsedCategories.has(categoryName)) {
-          newCollapsedCategories.add(categoryName);
-          autoCollapsedCount++;
+        if (allPaid) {
+          // Category is fully paid - auto-collapse it
+          if (!newCollapsedCategories.has(categoryName)) {
+            newCollapsedCategories.add(categoryName);
+            autoCollapsedCount++;
+          }
         }
-      }
-    });
+      });
 
-    // Only update if we actually auto-collapsed something
-    if (autoCollapsedCount > 0) {
-      setCollapsedCategories(newCollapsedCategories);
-    }
-  }, [autoCollapseEnabled, expenses, collapsedCategories, setCollapsedCategories]); // Simple dependencies
+      // Only return new state if we actually auto-collapsed something
+      return autoCollapsedCount > 0 ? newCollapsedCategories : currentCollapsed;
+    });
+  }, [autoCollapseEnabled, expenses, setCollapsedCategories]); // Removed collapsedCategories dependency
 
   // 🔧 AUTO-COLLAPSE TRIGGER - Only when data actually changes
   useEffect(() => {
