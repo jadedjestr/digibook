@@ -471,7 +471,7 @@ export const dbHelpers = {
   // User preferences helpers
   async getUserPreferences(component) {
     try {
-      const preferences = await db.userPreferences.where('component').equals(component).toArray();
+      const preferences = await db.userPreferences.filter(pref => pref.component === component).toArray();
       return preferences.length > 0 ? preferences[0].preferences : null;
     } catch (error) {
       logger.error('Error getting user preferences:', error);
@@ -494,7 +494,7 @@ export const dbHelpers = {
   // Default account helpers
   async getDefaultAccount() {
     try {
-      const defaultAccount = await db.accounts.where('isDefault').equals(true).first();
+      const defaultAccount = await db.accounts.filter(account => account.isDefault === true).first();
       return defaultAccount || null;
     } catch (error) {
       logger.error('Error getting default account:', error);
@@ -534,7 +534,7 @@ export const dbHelpers = {
   // Clean up duplicate default accounts
   async cleanupDuplicateDefaults() {
     try {
-      const defaultAccounts = await db.accounts.where('isDefault').equals(true).toArray();
+      const defaultAccounts = await db.accounts.filter(account => account.isDefault === true).toArray();
       if (defaultAccounts.length > 1) {
         // Keep the first one, remove the rest
         const accountsToUpdate = defaultAccounts.slice(1);
