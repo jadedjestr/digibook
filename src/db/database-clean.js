@@ -505,8 +505,10 @@ export const dbHelpers = {
   async ensureDefaultAccount() {
     try {
       const defaultAccount = await this.getDefaultAccount();
-      if (!defaultAccount) {
-        // Create a default account if none exists
+      const totalAccounts = await db.accounts.count();
+      
+      // Only create a default account if there are NO accounts at all
+      if (!defaultAccount && totalAccounts === 0) {
         const defaultAccountData = {
           name: 'Default Account',
           type: 'checking',
@@ -515,16 +517,43 @@ export const dbHelpers = {
           createdAt: new Date().toISOString(),
         };
         await db.accounts.add(defaultAccountData);
-        logger.info('Created default account');
+        logger.info('Created default account (no accounts existed)');
+      } else if (totalAccounts > 0 && !defaultAccount) {
+        // If there are accounts but no default, make the first one the default
+        const firstAccount = await db.accounts.orderBy('createdAt').first();
+        if (firstAccount) {
+          await db.accounts.update(firstAccount.id, { isDefault: true });
+          logger.info(`Set ${firstAccount.name} as default account`);
+        }
       }
     } catch (error) {
       logger.error('Error ensuring default account:', error);
     }
   },
 
+  // Clean up duplicate default accounts
+  async cleanupDuplicateDefaults() {
+    try {
+      const defaultAccounts = await db.accounts.where('isDefault').equals(true).toArray();
+      if (defaultAccounts.length > 1) {
+        // Keep the first one, remove the rest
+        const accountsToUpdate = defaultAccounts.slice(1);
+        for (const account of accountsToUpdate) {
+          await db.accounts.update(account.id, { isDefault: false });
+        }
+        logger.info(`Cleaned up ${accountsToUpdate.length} duplicate default accounts`);
+      }
+    } catch (error) {
+      logger.error('Error cleaning up duplicate defaults:', error);
+    }
+  },
+
   // Initialize default data
   async initializeDefaultData() {
     try {
+      // Clean up any duplicate default accounts first
+      await this.cleanupDuplicateDefaults();
+      
       const paycheckSettingsCount = await db.paycheckSettings.count();
       if (paycheckSettingsCount === 0) {
         await db.paycheckSettings.add({
