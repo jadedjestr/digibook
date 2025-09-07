@@ -468,6 +468,60 @@ export const dbHelpers = {
     }
   },
 
+  // User preferences helpers
+  async getUserPreferences(component) {
+    try {
+      const preferences = await db.userPreferences.where('component').equals(component).toArray();
+      return preferences.length > 0 ? preferences[0].preferences : null;
+    } catch (error) {
+      logger.error('Error getting user preferences:', error);
+      return null;
+    }
+  },
+
+  async setUserPreferences(component, preferences) {
+    try {
+      await db.userPreferences.put({
+        component,
+        preferences,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error('Error setting user preferences:', error);
+    }
+  },
+
+  // Default account helpers
+  async getDefaultAccount() {
+    try {
+      const defaultAccount = await db.accounts.where('isDefault').equals(true).first();
+      return defaultAccount || null;
+    } catch (error) {
+      logger.error('Error getting default account:', error);
+      return null;
+    }
+  },
+
+  async ensureDefaultAccount() {
+    try {
+      const defaultAccount = await this.getDefaultAccount();
+      if (!defaultAccount) {
+        // Create a default account if none exists
+        const defaultAccountData = {
+          name: 'Default Account',
+          type: 'checking',
+          currentBalance: 0,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+        };
+        await db.accounts.add(defaultAccountData);
+        logger.info('Created default account');
+      }
+    } catch (error) {
+      logger.error('Error ensuring default account:', error);
+    }
+  },
+
   // Initialize default data
   async initializeDefaultData() {
     try {
