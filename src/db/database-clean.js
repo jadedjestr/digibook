@@ -1,10 +1,12 @@
-import { logger } from '../utils/logger';
-import { dataIntegrity } from '../utils/crypto';
 import Dexie from 'dexie';
+
+import { dataIntegrity } from '../utils/crypto';
+import { DateUtils } from '../utils/dateUtils';
+import { logger } from '../utils/logger';
 
 /**
  * Clean Consolidated Digibook Database Schema
- * 
+ *
  * This is a clean, consolidated version that combines all features
  * into a logical, optimized structure with just 4 versions.
  */
@@ -16,13 +18,17 @@ export class DigibookDBClean extends Dexie {
     // Single version with all features - simplified schema to avoid index conflicts
     this.version(1).stores({
       accounts: '++id, name, type, currentBalance, isDefault, createdAt',
-      pendingTransactions: '++id, accountId, amount, category, description, createdAt',
-      fixedExpenses: '++id, name, dueDate, amount, accountId, paidAmount, status, category, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, createdAt',
+      pendingTransactions:
+        '++id, accountId, amount, category, description, createdAt',
+      fixedExpenses:
+        '++id, name, dueDate, amount, accountId, paidAmount, status, category, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, createdAt',
       categories: '++id, name, color, icon, isDefault, createdAt',
-      creditCards: '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
+      creditCards:
+        '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
       paycheckSettings: '++id, lastPaycheckDate, frequency, createdAt',
       userPreferences: '++id, component, preferences, createdAt',
-      monthlyExpenseHistory: '++id, expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
+      monthlyExpenseHistory:
+        '++id, expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
     });
   }
@@ -39,14 +45,14 @@ export async function initializeDatabase() {
     return true;
   } catch (error) {
     logger.error('Database initialization failed:', error);
-    
+
     // If initialization fails, try to force reset all databases
     try {
       logger.info('Attempting to force reset all databases...');
-      
+
       // Force clear all databases
       await dbHelpers.forceResetAllDatabases();
-      
+
       // Create a completely new database instance with unique name
       const timestamp = Date.now();
       const randomSuffix = Math.random().toString(36).substring(2, 15);
@@ -54,16 +60,18 @@ export async function initializeDatabase() {
       logger.info(`Creating new database with name: ${uniqueDbName}`);
       const newDb = new DigibookDBClean(uniqueDbName);
       await newDb.open();
-      
+
       // Replace the global db instance properties
       Object.setPrototypeOf(db, Object.getPrototypeOf(newDb));
       Object.assign(db, newDb);
-      
+
       logger.success('Database recreated successfully');
       return true;
     } catch (recreateError) {
       logger.error('Database recreation failed:', recreateError);
-      throw new Error('Failed to initialize database: ' + recreateError.message);
+      throw new Error(
+        `Failed to initialize database: ${recreateError.message}`
+      );
     }
   }
 }
@@ -108,16 +116,16 @@ export const dbHelpers = {
   async forceResetAllDatabases() {
     try {
       logger.info('Force resetting all IndexedDB databases...');
-      
+
       // Close current database
       if (db.isOpen()) {
         await db.close();
       }
-      
+
       // Get all database names
       const databases = await indexedDB.databases();
       logger.info(`Found ${databases.length} databases to check`);
-      
+
       // Delete all databases that might be related
       const dbNamesToDelete = [
         'DigibookDB_Fresh',
@@ -131,19 +139,19 @@ export const dbHelpers = {
         'DigibookDB_v7',
         'DigibookDB_v8',
         'DigibookDB_v9',
-        'DigibookDB_v10'
+        'DigibookDB_v10',
       ];
-      
+
       // Add any databases found by indexedDB.databases()
       for (const database of databases) {
         if (database.name && database.name.includes('Digibook')) {
           dbNamesToDelete.push(database.name);
         }
       }
-      
+
       // Remove duplicates
       const uniqueDbNames = [...new Set(dbNamesToDelete)];
-      
+
       // Delete all databases
       for (const dbName of uniqueDbNames) {
         try {
@@ -167,7 +175,7 @@ export const dbHelpers = {
           logger.warn(`Error deleting ${dbName}:`, error);
         }
       }
-      
+
       // Clear localStorage and sessionStorage as well
       try {
         const keysToRemove = [];
@@ -177,7 +185,7 @@ export const dbHelpers = {
             keysToRemove.push(key);
           }
         }
-        
+
         keysToRemove.forEach(key => {
           localStorage.removeItem(key);
           logger.info(`Removed localStorage key: ${key}`);
@@ -185,10 +193,10 @@ export const dbHelpers = {
       } catch (error) {
         logger.warn('Error clearing localStorage:', error);
       }
-      
+
       // Wait longer for cleanup
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       logger.success('All databases and storage cleared successfully');
       return true;
     } catch (error) {
@@ -200,7 +208,7 @@ export const dbHelpers = {
   // Account helpers
   async getAccounts() {
     const accounts = await db.accounts.toArray();
-    
+
     // Ensure there's always a default account if accounts exist
     if (accounts.length > 0) {
       const hasDefault = accounts.some(account => account.isDefault);
@@ -209,7 +217,7 @@ export const dbHelpers = {
         return await db.accounts.toArray();
       }
     }
-    
+
     return accounts;
   },
 
@@ -224,14 +232,98 @@ export const dbHelpers = {
     }
   },
 
+  async addCreditCard(creditCard) {
+    try {
+      const creditCardData = {
+        ...creditCard,
+        createdAt: new Date().toISOString(),
+      };
+
+      const id = await db.creditCards.add(creditCardData);
+      logger.success(`Credit card added successfully: ${id}`);
+      return id;
+    } catch (error) {
+      logger.error('Error adding credit card:', error);
+      throw new Error(`Failed to add credit card: ${error.message}`);
+    }
+  },
+
+  async updateCreditCard(id, updates) {
+    try {
+      await db.creditCards.update(id, updates);
+      logger.success(`Credit card updated successfully: ${id}`);
+    } catch (error) {
+      logger.error('Error updating credit card:', error);
+      throw new Error('Failed to update credit card');
+    }
+  },
+
+  async deleteCreditCard(id) {
+    try {
+      await db.creditCards.delete(id);
+      logger.success(`Credit card deleted successfully: ${id}`);
+    } catch (error) {
+      logger.error('Error deleting credit card:', error);
+      throw new Error('Failed to delete credit card');
+    }
+  },
+
   // Pending transaction helpers
   async getPendingTransactions() {
     try {
       const transactions = await db.pendingTransactions.toArray();
-      return transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return transactions.sort(
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      );
     } catch (error) {
       logger.error('Error getting pending transactions:', error);
       throw new Error('Failed to get pending transactions');
+    }
+  },
+
+  async addPendingTransaction(transaction) {
+    try {
+      const transactionData = {
+        ...transaction,
+        createdAt: new Date().toISOString(),
+      };
+
+      const id = await db.pendingTransactions.add(transactionData);
+      logger.success(`Pending transaction added successfully: ${id}`);
+      return id;
+    } catch (error) {
+      logger.error('Error adding pending transaction:', error);
+      throw new Error(`Failed to add pending transaction: ${error.message}`);
+    }
+  },
+
+  async updatePendingTransaction(id, updates) {
+    try {
+      await db.pendingTransactions.update(id, updates);
+      logger.success(`Pending transaction updated successfully: ${id}`);
+    } catch (error) {
+      logger.error('Error updating pending transaction:', error);
+      throw new Error('Failed to update pending transaction');
+    }
+  },
+
+  async deletePendingTransaction(id) {
+    try {
+      await db.pendingTransactions.delete(id);
+      logger.success(`Pending transaction deleted successfully: ${id}`);
+    } catch (error) {
+      logger.error('Error deleting pending transaction:', error);
+      throw new Error('Failed to delete pending transaction');
+    }
+  },
+
+  async completePendingTransaction(id) {
+    try {
+      await db.pendingTransactions.delete(id);
+      logger.success(`Pending transaction completed successfully: ${id}`);
+    } catch (error) {
+      logger.error('Error completing pending transaction:', error);
+      throw new Error('Failed to complete pending transaction');
     }
   },
 
@@ -246,6 +338,59 @@ export const dbHelpers = {
     }
   },
 
+  async addFixedExpense(expense) {
+    try {
+      // Validate expense data
+      if (
+        !expense.name ||
+        !expense.dueDate ||
+        !expense.amount ||
+        !expense.accountId ||
+        !expense.category
+      ) {
+        throw new Error('Missing required expense fields');
+      }
+
+      const expenseData = {
+        ...expense,
+        createdAt: new Date().toISOString(),
+
+        // Ensure numeric fields are properly typed
+        amount: parseFloat(expense.amount),
+        paidAmount: parseFloat(expense.paidAmount || 0),
+        accountId: expense.accountId,
+        status: expense.status || 'pending',
+      };
+
+      const id = await db.fixedExpenses.add(expenseData);
+      logger.success(`Fixed expense added successfully: ${id}`);
+      return id;
+    } catch (error) {
+      logger.error('Error adding fixed expense:', error);
+      throw new Error(`Failed to add fixed expense: ${error.message}`);
+    }
+  },
+
+  async updateFixedExpense(id, updates) {
+    try {
+      await db.fixedExpenses.update(id, updates);
+      logger.success(`Fixed expense updated successfully: ${id}`);
+    } catch (error) {
+      logger.error('Error updating fixed expense:', error);
+      throw new Error('Failed to update fixed expense');
+    }
+  },
+
+  async deleteFixedExpense(id) {
+    try {
+      await db.fixedExpenses.delete(id);
+      logger.success(`Fixed expense deleted successfully: ${id}`);
+    } catch (error) {
+      logger.error('Error deleting fixed expense:', error);
+      throw new Error('Failed to delete fixed expense');
+    }
+  },
+
   async getDefaultAccount() {
     try {
       const accountCount = await db.accounts.count();
@@ -254,7 +399,9 @@ export const dbHelpers = {
       }
 
       const allAccounts = await db.accounts.toArray();
-      const defaultAccount = allAccounts.find(account => account.isDefault === true);
+      const defaultAccount = allAccounts.find(
+        account => account.isDefault === true
+      );
 
       if (defaultAccount) {
         return defaultAccount;
@@ -296,13 +443,15 @@ export const dbHelpers = {
       // Validate account data
       const validation = dataIntegrity.validateAccount(account);
       if (!validation.isValid) {
-        throw new Error(`Invalid account data: ${validation.errors.join(', ')}`);
+        throw new Error(
+          `Invalid account data: ${validation.errors.join(', ')}`
+        );
       }
 
       // Sanitize account data
       const sanitizedAccount = {
         ...account,
-        name: dataIntegrity.sanitizeString(account.name)
+        name: dataIntegrity.sanitizeString(account.name),
       };
 
       const accountCount = await db.accounts.count();
@@ -315,18 +464,18 @@ export const dbHelpers = {
       };
 
       const id = await db.accounts.add(accountData);
-      logger.success('Account added successfully: ' + id);
+      logger.success(`Account added successfully: ${id}`);
       return id;
     } catch (error) {
       logger.error('Error adding account:', error);
-      throw new Error('Failed to add account: ' + error.message);
+      throw new Error(`Failed to add account: ${error.message}`);
     }
   },
 
   async updateAccount(id, updates) {
     try {
       await db.accounts.update(id, updates);
-      logger.success('Account updated successfully: ' + id);
+      logger.success(`Account updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating account:', error);
       throw new Error('Failed to update account');
@@ -335,13 +484,16 @@ export const dbHelpers = {
 
   async deleteAccount(id) {
     try {
-      const pendingCount = await db.pendingTransactions.where('accountId').equals(id).count();
+      const pendingCount = await db.pendingTransactions
+        .where('accountId')
+        .equals(id)
+        .count();
       if (pendingCount > 0) {
         throw new Error('Cannot delete account with pending transactions');
       }
 
       await db.accounts.delete(id);
-      logger.success('Account deleted successfully: ' + id);
+      logger.success(`Account deleted successfully: ${id}`);
     } catch (error) {
       logger.error('Error deleting account:', error);
       throw error;
@@ -364,7 +516,9 @@ export const dbHelpers = {
       // Validate category data
       const validation = dataIntegrity.validateCategory(category);
       if (!validation.isValid) {
-        throw new Error(`Invalid category data: ${validation.errors.join(', ')}`);
+        throw new Error(
+          `Invalid category data: ${validation.errors.join(', ')}`
+        );
       }
 
       // Use sanitized data
@@ -379,23 +533,23 @@ export const dbHelpers = {
       };
 
       const id = await db.categories.add(categoryData);
-      logger.success('Category added successfully: ' + id);
+      logger.success(`Category added successfully: ${id}`);
       return id;
     } catch (error) {
       logger.error('Error adding category:', error);
-      throw new Error('Failed to add category: ' + error.message);
+      throw new Error(`Failed to add category: ${error.message}`);
     }
   },
 
   async updateCategory(id, updates) {
     try {
-      let payload = { ...updates };
+      const payload = { ...updates };
       if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
         const trimmedName = (updates.name || '').trim();
         payload.name = trimmedName;
       }
       await db.categories.update(id, payload);
-      logger.success('Category updated successfully: ' + id);
+      logger.success(`Category updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating category:', error);
       throw new Error('Failed to update category');
@@ -405,11 +559,17 @@ export const dbHelpers = {
   async deleteCategory(id) {
     try {
       const category = await db.categories.get(id);
-      const affectedFixedExpenses = await db.fixedExpenses.where('category').equals(category.name).toArray();
-      const affectedPendingTransactions = await db.pendingTransactions.where('category').equals(category.name).toArray();
+      const affectedFixedExpenses = await db.fixedExpenses
+        .where('category')
+        .equals(category.name)
+        .toArray();
+      const affectedPendingTransactions = await db.pendingTransactions
+        .where('category')
+        .equals(category.name)
+        .toArray();
 
       await db.categories.delete(id);
-      logger.success('Category deleted successfully: ' + id);
+      logger.success(`Category deleted successfully: ${id}`);
       return {
         affectedFixedExpenses,
         affectedPendingTransactions,
@@ -420,33 +580,133 @@ export const dbHelpers = {
     }
   },
 
+  async getExpensesByCategory(categoryName) {
+    try {
+      const expenses = await db.fixedExpenses
+        .where('category')
+        .equals(categoryName)
+        .toArray();
+      return expenses;
+    } catch (error) {
+      logger.error('Error getting expenses by category:', error);
+      return [];
+    }
+  },
+
+  async getTransactionsByCategory(categoryName) {
+    try {
+      const transactions = await db.pendingTransactions
+        .where('category')
+        .equals(categoryName)
+        .toArray();
+      return transactions;
+    } catch (error) {
+      logger.error('Error getting transactions by category:', error);
+      return [];
+    }
+  },
+
+  async reassignCategoryItems(oldCategoryName, newCategoryName, affectedItems) {
+    try {
+      // Update fixed expenses
+      const expenseIds =
+        affectedItems.fixedExpenses?.map(expense => expense.id) || [];
+      for (const expenseId of expenseIds) {
+        await db.fixedExpenses.update(expenseId, { category: newCategoryName });
+      }
+
+      // Update pending transactions
+      const transactionIds =
+        affectedItems.pendingTransactions?.map(transaction => transaction.id) ||
+        [];
+      for (const transactionId of transactionIds) {
+        await db.pendingTransactions.update(transactionId, {
+          category: newCategoryName,
+        });
+      }
+
+      logger.success(
+        `Reassigned ${expenseIds.length} expenses and ${transactionIds.length} transactions from ${oldCategoryName} to ${newCategoryName}`
+      );
+    } catch (error) {
+      logger.error('Error reassigning category items:', error);
+      throw new Error('Failed to reassign category items');
+    }
+  },
+
+  async getCategoryUsageStats(categoryName) {
+    try {
+      const expenses = await db.fixedExpenses
+        .where('category')
+        .equals(categoryName)
+        .toArray();
+      const transactions = await db.pendingTransactions
+        .where('category')
+        .equals(categoryName)
+        .toArray();
+
+      return {
+        expenseCount: expenses.length,
+        transactionCount: transactions.length,
+        totalExpenseAmount: expenses.reduce(
+          (sum, expense) => sum + expense.amount,
+          0
+        ),
+        totalTransactionAmount: transactions.reduce(
+          (sum, transaction) => sum + transaction.amount,
+          0
+        ),
+      };
+    } catch (error) {
+      logger.error('Error getting category usage stats:', error);
+      return {
+        expenseCount: 0,
+        transactionCount: 0,
+        totalExpenseAmount: 0,
+        totalTransactionAmount: 0,
+      };
+    }
+  },
+
   // Initialize default categories
   async initializeDefaultCategories() {
     try {
       const existingCategories = await db.categories.toArray();
-      const existingCategoryNames = existingCategories.map(cat => cat.name.toLowerCase());
+      const existingCategoryNames = existingCategories.map(cat =>
+        cat.name.toLowerCase()
+      );
 
       const defaultCategories = [
         { name: 'Housing', color: '#3B82F6', icon: '🏠', isDefault: true },
         { name: 'Utilities', color: '#10B981', icon: '⚡', isDefault: true },
         { name: 'Insurance', color: '#F59E0B', icon: '🛡️', isDefault: true },
-        { name: 'Transportation', color: '#8B5CF6', icon: '🚗', isDefault: true },
-        { name: 'Subscriptions', color: '#EC4899', icon: '📱', isDefault: true },
+        {
+          name: 'Transportation',
+          color: '#8B5CF6',
+          icon: '🚗',
+          isDefault: true,
+        },
+        {
+          name: 'Subscriptions',
+          color: '#EC4899',
+          icon: '📱',
+          isDefault: true,
+        },
         { name: 'Debt', color: '#EF4444', icon: '💳', isDefault: true },
         { name: 'Healthcare', color: '#06B6D4', icon: '🏥', isDefault: true },
         { name: 'Education', color: '#84CC16', icon: '🎓', isDefault: true },
         { name: 'Other', color: '#6B7280', icon: '📦', isDefault: true },
       ];
 
-      const categoriesToAdd = defaultCategories.filter(category =>
-        !existingCategoryNames.includes(category.name.toLowerCase()),
+      const categoriesToAdd = defaultCategories.filter(
+        category => !existingCategoryNames.includes(category.name.toLowerCase())
       );
 
       if (categoriesToAdd.length > 0) {
-      const withTimestamps = categoriesToAdd.map(c => ({
-        ...c,
-        createdAt: new Date().toISOString(),
-      }));
+        const withTimestamps = categoriesToAdd.map(c => ({
+          ...c,
+          createdAt: new Date().toISOString(),
+        }));
         await db.categories.bulkAdd(withTimestamps);
         logger.success(`Added ${categoriesToAdd.length} default categories`);
       } else {
@@ -468,10 +728,43 @@ export const dbHelpers = {
     }
   },
 
+  async updatePaycheckSettings(settings) {
+    try {
+      // Validate settings before saving
+      if (
+        settings.lastPaycheckDate &&
+        !DateUtils.isValidDate(settings.lastPaycheckDate)
+      ) {
+        throw new Error('Invalid date format for lastPaycheckDate');
+      }
+
+      if (settings.frequency && !['biweekly'].includes(settings.frequency)) {
+        throw new Error('Invalid frequency value');
+      }
+
+      const existingSettings = await db.paycheckSettings.toArray();
+      if (existingSettings.length > 0) {
+        await db.paycheckSettings.update(existingSettings[0].id, settings);
+      } else {
+        await db.paycheckSettings.add({
+          ...settings,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      logger.success('Paycheck settings updated successfully');
+    } catch (error) {
+      logger.error('Error updating paycheck settings:', error);
+      logger.error('Settings data:', settings);
+      throw new Error(`Failed to update paycheck settings: ${error.message}`);
+    }
+  },
+
   // User preferences helpers
   async getUserPreferences(component) {
     try {
-      const preferences = await db.userPreferences.filter(pref => pref.component === component).toArray();
+      const preferences = await db.userPreferences
+        .filter(pref => pref.component === component)
+        .toArray();
       return preferences.length > 0 ? preferences[0].preferences : null;
     } catch (error) {
       logger.error('Error getting user preferences:', error);
@@ -491,10 +784,33 @@ export const dbHelpers = {
     }
   },
 
+  async updateUserPreferences(preferences, component) {
+    try {
+      const existing = await db.userPreferences
+        .filter(pref => pref.component === component)
+        .first();
+      if (existing) {
+        await db.userPreferences.update(existing.id, { preferences });
+      } else {
+        await db.userPreferences.add({
+          component,
+          preferences,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      logger.success('User preferences updated successfully');
+    } catch (error) {
+      logger.error('Error updating user preferences:', error);
+      throw new Error('Failed to update user preferences');
+    }
+  },
+
   // Default account helpers
   async getDefaultAccount() {
     try {
-      const defaultAccount = await db.accounts.filter(account => account.isDefault === true).first();
+      const defaultAccount = await db.accounts
+        .filter(account => account.isDefault === true)
+        .first();
       return defaultAccount || null;
     } catch (error) {
       logger.error('Error getting default account:', error);
@@ -506,7 +822,7 @@ export const dbHelpers = {
     try {
       const defaultAccount = await this.getDefaultAccount();
       const totalAccounts = await db.accounts.count();
-      
+
       // Only create a default account if there are NO accounts at all
       if (!defaultAccount && totalAccounts === 0) {
         const defaultAccountData = {
@@ -526,6 +842,11 @@ export const dbHelpers = {
           logger.info(`Set ${firstAccount.name} as default account`);
         }
       }
+
+      // Clean up any placeholder "Default Account" entries if real accounts exist
+      if (totalAccounts > 0) {
+        await this.cleanupDuplicateDefaults();
+      }
     } catch (error) {
       logger.error('Error ensuring default account:', error);
     }
@@ -535,36 +856,45 @@ export const dbHelpers = {
   async cleanupDuplicateDefaults() {
     try {
       const allAccounts = await db.accounts.toArray();
-      const defaultAccounts = allAccounts.filter(account => account.isDefault === true);
-      
+      const defaultAccounts = allAccounts.filter(
+        account => account.isDefault === true
+      );
+
       // If there are multiple default accounts, keep only the first one
       if (defaultAccounts.length > 1) {
         const accountsToUpdate = defaultAccounts.slice(1);
         for (const account of accountsToUpdate) {
           await db.accounts.update(account.id, { isDefault: false });
         }
-        logger.info(`Cleaned up ${accountsToUpdate.length} duplicate default accounts`);
-      }
-      
-      // Remove any "Default Account" placeholders if there are real accounts
-      const realAccounts = allAccounts.filter(account => 
-        account.name !== 'Default Account' && account.currentBalance > 0
-      );
-      
-      if (realAccounts.length > 0) {
-        const defaultAccountPlaceholders = allAccounts.filter(account => 
-          account.name === 'Default Account' && account.currentBalance === 0
+        logger.info(
+          `Cleaned up ${accountsToUpdate.length} duplicate default accounts`
         );
-        
+      }
+
+      // Remove any "Default Account" placeholders if there are real accounts
+      const realAccounts = allAccounts.filter(
+        account => account.name !== 'Default Account'
+      );
+
+      if (realAccounts.length > 0) {
+        const defaultAccountPlaceholders = allAccounts.filter(
+          account =>
+            account.name === 'Default Account' && account.currentBalance === 0
+        );
+
         for (const placeholder of defaultAccountPlaceholders) {
           await db.accounts.delete(placeholder.id);
-          logger.info(`Removed placeholder Default Account (ID: ${placeholder.id})`);
+          logger.info(
+            `Removed placeholder Default Account (ID: ${placeholder.id})`
+          );
         }
-        
+
         // If we removed placeholders and there's no default, make the first real account the default
         const remainingAccounts = await db.accounts.toArray();
-        const hasDefault = remainingAccounts.some(account => account.isDefault === true);
-        
+        const hasDefault = remainingAccounts.some(
+          account => account.isDefault === true
+        );
+
         if (!hasDefault && remainingAccounts.length > 0) {
           const firstAccount = remainingAccounts[0];
           await db.accounts.update(firstAccount.id, { isDefault: true });
@@ -576,12 +906,411 @@ export const dbHelpers = {
     }
   },
 
+  // Credit card migration helpers
+  async detectCreditCardExpenses() {
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+      const creditCards = await db.creditCards.toArray();
+
+      const mappings = [];
+      for (const expense of expenses) {
+        for (const card of creditCards) {
+          if (
+            expense.name.toLowerCase().includes(card.name.toLowerCase()) ||
+            expense.description?.toLowerCase().includes(card.name.toLowerCase())
+          ) {
+            mappings.push({
+              expenseId: expense.id,
+              expenseName: expense.name,
+              creditCardId: card.id,
+              creditCardName: card.name,
+              confidence: 0.8, // High confidence for name matches
+            });
+          }
+        }
+      }
+
+      return mappings;
+    } catch (error) {
+      logger.error('Error detecting credit card expenses:', error);
+      return [];
+    }
+  },
+
+  async applyExpenseMappings(mappings) {
+    try {
+      let appliedCount = 0;
+      for (const mapping of mappings) {
+        await db.fixedExpenses.update(mapping.expenseId, {
+          accountId: mapping.creditCardId,
+          isManuallyMapped: true,
+          mappingConfidence: mapping.confidence,
+          mappedAt: new Date().toISOString(),
+        });
+        appliedCount++;
+      }
+
+      logger.success(`Applied ${appliedCount} expense mappings`);
+      return appliedCount;
+    } catch (error) {
+      logger.error('Error applying expense mappings:', error);
+      throw new Error('Failed to apply expense mappings');
+    }
+  },
+
+  async cleanupDuplicateCreditCardExpenses() {
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+      const duplicates = [];
+
+      // Find duplicates based on name and amount
+      const seen = new Map();
+      for (const expense of expenses) {
+        const key = `${expense.name}-${expense.amount}`;
+        if (seen.has(key)) {
+          duplicates.push(expense);
+        } else {
+          seen.set(key, expense);
+        }
+      }
+
+      // Remove duplicates
+      for (const duplicate of duplicates) {
+        await db.fixedExpenses.delete(duplicate.id);
+      }
+
+      logger.success(
+        `Cleaned up ${duplicates.length} duplicate credit card expenses`
+      );
+      return duplicates.length;
+    } catch (error) {
+      logger.error('Error cleaning up duplicate credit card expenses:', error);
+      return 0;
+    }
+  },
+
+  async createMissingCreditCardExpenses() {
+    try {
+      const creditCards = await db.creditCards.toArray();
+      const expenses = await db.fixedExpenses.toArray();
+      let createdCount = 0;
+
+      for (const card of creditCards) {
+        // Check if there's already an expense for this card
+        const hasExpense = expenses.some(
+          expense => expense.accountId === card.id
+        );
+
+        if (!hasExpense && card.balance > 0) {
+          // Create a minimum payment expense
+          await db.fixedExpenses.add({
+            name: `${card.name} Minimum Payment`,
+            dueDate: card.dueDate || new Date().toISOString().split('T')[0],
+            amount: card.minimumPayment || Math.max(card.balance * 0.02, 25), // 2% or $25 minimum
+            accountId: card.id,
+            category: 'Debt',
+            paidAmount: 0,
+            status: 'pending',
+            isAutoCreated: true,
+            createdAt: new Date().toISOString(),
+          });
+          createdCount++;
+        }
+      }
+
+      logger.success(`Created ${createdCount} missing credit card expenses`);
+      return createdCount;
+    } catch (error) {
+      logger.error('Error creating missing credit card expenses:', error);
+      return 0;
+    }
+  },
+
+  // Insights and analytics helpers
+  async getBudgetVsActualSummary() {
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+
+      // Calculate totals across all expenses
+      const totalBudget = expenses.reduce(
+        (sum, expense) => sum + expense.amount,
+        0
+      );
+      const totalActual = expenses.reduce(
+        (sum, expense) => sum + (expense.paidAmount || 0),
+        0
+      );
+      const totalOverpayment = expenses.reduce((sum, expense) => {
+        const overpayment = (expense.paidAmount || 0) - expense.amount;
+        return sum + Math.max(0, overpayment);
+      }, 0);
+
+      // Calculate budget accuracy percentage
+      const budgetAccuracy =
+        totalBudget > 0 ? (totalActual / totalBudget) * 100 : 0;
+
+      // Find significant overpayments (over 20% of budget)
+      const significantOverpayments = expenses.filter(expense => {
+        const overpayment = (expense.paidAmount || 0) - expense.amount;
+        const overpaymentPercentage =
+          expense.amount > 0 ? (overpayment / expense.amount) * 100 : 0;
+        return overpaymentPercentage > 20;
+      });
+
+      return {
+        totalBudget,
+        totalActual,
+        totalOverpayment,
+        budgetAccuracy,
+        significantOverpayments: significantOverpayments.length,
+      };
+    } catch (error) {
+      logger.error('Error getting budget vs actual summary:', error);
+      return {
+        totalBudget: 0,
+        totalActual: 0,
+        totalOverpayment: 0,
+        budgetAccuracy: 0,
+        significantOverpayments: 0,
+      };
+    }
+  },
+
+  async getOverpaymentByCategory() {
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+      const overpayments = {};
+
+      for (const expense of expenses) {
+        if (expense.paidAmount > expense.amount) {
+          const overpayment = expense.paidAmount - expense.amount;
+          const category = expense.category || 'Uncategorized';
+
+          if (!overpayments[category]) {
+            overpayments[category] = 0;
+          }
+          overpayments[category] += overpayment;
+        }
+      }
+
+      return overpayments;
+    } catch (error) {
+      logger.error('Error getting overpayment by category:', error);
+      return {};
+    }
+  },
+
+  async getMonthlyExpenseHistory(months = 12) {
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+      const history = {};
+
+      // Generate last N months
+      const now = new Date();
+      for (let i = 0; i < months; i++) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+        history[monthKey] = {
+          month: date.getMonth() + 1,
+          year: date.getFullYear(),
+          totalBudget: 0,
+          totalPaid: 0,
+          expenseCount: 0,
+        };
+      }
+
+      // Calculate totals for each month
+      for (const expense of expenses) {
+        const expenseDate = new Date(expense.dueDate);
+        const monthKey = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}`;
+
+        if (history[monthKey]) {
+          history[monthKey].totalBudget += expense.amount;
+          history[monthKey].totalPaid += expense.paidAmount || 0;
+          history[monthKey].expenseCount += 1;
+        }
+      }
+
+      return Object.values(history);
+    } catch (error) {
+      logger.error('Error getting monthly expense history:', error);
+      return [];
+    }
+  },
+
+  // Data management helpers
+  async deleteDatabase() {
+    try {
+      await db.delete();
+      logger.success('Database deleted successfully');
+    } catch (error) {
+      logger.error('Error deleting database:', error);
+      throw new Error('Failed to delete database');
+    }
+  },
+
+  async exportData() {
+    try {
+      const data = {
+        accounts: await db.accounts.toArray(),
+        creditCards: await db.creditCards.toArray(),
+        pendingTransactions: await db.pendingTransactions.toArray(),
+        fixedExpenses: await db.fixedExpenses.toArray(),
+        categories: await db.categories.toArray(),
+        paycheckSettings: await db.paycheckSettings.toArray(),
+        userPreferences: await db.userPreferences.toArray(),
+        monthlyExpenseHistory: await db.monthlyExpenseHistory.toArray(),
+        auditLogs: await db.auditLogs.toArray(),
+        exportDate: new Date().toISOString(),
+        version: '1.0',
+      };
+
+      logger.success('Data exported successfully');
+      return data;
+    } catch (error) {
+      logger.error('Error exporting data:', error);
+      throw new Error('Failed to export data');
+    }
+  },
+
+  async importData(data) {
+    try {
+      // Clear existing data
+      await this.clearDatabase();
+
+      // Import new data
+      if (data.accounts) await db.accounts.bulkAdd(data.accounts);
+      if (data.creditCards) await db.creditCards.bulkAdd(data.creditCards);
+      if (data.pendingTransactions)
+        await db.pendingTransactions.bulkAdd(data.pendingTransactions);
+      if (data.fixedExpenses)
+        await db.fixedExpenses.bulkAdd(data.fixedExpenses);
+      if (data.categories) await db.categories.bulkAdd(data.categories);
+      if (data.paycheckSettings)
+        await db.paycheckSettings.bulkAdd(data.paycheckSettings);
+      if (data.userPreferences)
+        await db.userPreferences.bulkAdd(data.userPreferences);
+      if (data.monthlyExpenseHistory)
+        await db.monthlyExpenseHistory.bulkAdd(data.monthlyExpenseHistory);
+      if (data.auditLogs) await db.auditLogs.bulkAdd(data.auditLogs);
+
+      logger.success('Data imported successfully');
+    } catch (error) {
+      logger.error('Error importing data:', error);
+      throw new Error('Failed to import data');
+    }
+  },
+
+  async validateImportData(data) {
+    try {
+      const requiredFields = [
+        'accounts',
+        'creditCards',
+        'pendingTransactions',
+        'fixedExpenses',
+        'categories',
+      ];
+
+      for (const field of requiredFields) {
+        if (!data[field] || !Array.isArray(data[field])) {
+          throw new Error(`Invalid data: missing or invalid ${field}`);
+        }
+      }
+
+      return { isValid: true, errors: [] };
+    } catch (error) {
+      return { isValid: false, errors: [error.message] };
+    }
+  },
+
+  // Audit log helpers
+  async getAuditLogs() {
+    try {
+      const logs = await db.auditLogs.toArray();
+      return logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    } catch (error) {
+      logger.error('Error getting audit logs:', error);
+      return [];
+    }
+  },
+
+  async addAuditLog(actionType, entityType, entityId, details = {}) {
+    try {
+      await db.auditLogs.add({
+        timestamp: new Date().toISOString(),
+        actionType,
+        entityType,
+        entityId,
+        details,
+      });
+    } catch (error) {
+      logger.error('Error adding audit log:', error);
+    }
+  },
+
+  async clearAuditLogs() {
+    try {
+      await db.auditLogs.clear();
+      logger.success('Audit logs cleared successfully');
+    } catch (error) {
+      logger.error('Error clearing audit logs:', error);
+      throw new Error('Failed to clear audit logs');
+    }
+  },
+
+  // Debt payoff calculator
+  async calculateDebtPayoff(balance, payment, interestRate) {
+    try {
+      const monthlyRate = interestRate / 100 / 12;
+      let remainingBalance = balance;
+      let totalInterest = 0;
+      let months = 0;
+
+      while (remainingBalance > 0.01 && months < 600) {
+        // Max 50 years
+        const interestPayment = remainingBalance * monthlyRate;
+        const principalPayment = Math.min(
+          payment - interestPayment,
+          remainingBalance
+        );
+
+        totalInterest += interestPayment;
+        remainingBalance -= principalPayment;
+        months++;
+
+        if (principalPayment <= 0) {
+          // Payment is less than interest, debt will never be paid off
+          return {
+            success: false,
+            message:
+              'Payment amount is less than monthly interest. Debt will never be paid off.',
+            totalInterest,
+            months,
+            finalBalance: remainingBalance,
+          };
+        }
+      }
+
+      return {
+        success: true,
+        months,
+        totalInterest,
+        totalPaid: balance + totalInterest,
+        finalBalance: Math.max(0, remainingBalance),
+      };
+    } catch (error) {
+      logger.error('Error calculating debt payoff:', error);
+      throw new Error('Failed to calculate debt payoff');
+    }
+  },
+
   // Initialize default data
   async initializeDefaultData() {
     try {
       // Clean up any duplicate default accounts first
       await this.cleanupDuplicateDefaults();
-      
+
       const paycheckSettingsCount = await db.paycheckSettings.count();
       if (paycheckSettingsCount === 0) {
         await db.paycheckSettings.add({
@@ -596,7 +1325,9 @@ export const dbHelpers = {
         logger.info('No categories found, initializing default categories');
         await this.initializeDefaultCategories();
       } else {
-        logger.debug(`Found ${categoryCount} existing categories, skipping default initialization`);
+        logger.debug(
+          `Found ${categoryCount} existing categories, skipping default initialization`
+        );
       }
 
       logger.success('Default data initialized');

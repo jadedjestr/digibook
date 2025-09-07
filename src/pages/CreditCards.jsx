@@ -1,19 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { logger } from '../utils/logger';
-import { dbHelpers } from '../db/database-clean';
 import { Plus, CreditCard } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+
+import { dbHelpers } from '../db/database-clean';
+import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
 import CreditCardMigrationModal from '../components/CreditCardMigrationModal';
 
-const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp = [] }) => {
+const CreditCards = ({
+  onDataChange,
+  accounts = [],
+  creditCards: creditCardsProp = [],
+}) => {
   const [creditCards, setCreditCards] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCard, setEditingCard] = useState(null);
-  const [deletionModal, setDeletionModal] = useState({ isOpen: false, card: null });
+  const [deletionModal, setDeletionModal] = useState({
+    isOpen: false,
+    card: null,
+  });
   const [migrationModal, setMigrationModal] = useState({ isOpen: false });
   const [formData, setFormData] = useState({
     name: '',
@@ -125,7 +134,7 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
     }
   };
 
-  const handleEdit = (card) => {
+  const handleEdit = card => {
     setEditingCard(card);
     setFormData({
       name: card.name,
@@ -139,12 +148,12 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
     setIsAddModalOpen(true);
   };
 
-  const handleDelete = async (card) => {
+  const handleDelete = async card => {
     // Open the enhanced deletion modal instead of simple confirmation
     setDeletionModal({ isOpen: true, card });
   };
 
-  const handleDeleteConfirmed = (deletedCardId) => {
+  const handleDeleteConfirmed = deletedCardId => {
     // Remove the deleted card from local state
     setCreditCards(prev => prev.filter(card => card.id !== deletedCardId));
     setDeletionModal({ isOpen: false, card: null });
@@ -162,7 +171,9 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
         notify.success(`Created ${createdCount} missing credit card expenses`);
         onDataChange(); // Refresh the data
       } else {
-        notify.info('All credit cards already have corresponding fixed expenses');
+        notify.info(
+          'All credit cards already have corresponding fixed expenses'
+        );
       }
     } catch (error) {
       logger.error('Error creating missing expenses:', error);
@@ -184,16 +195,16 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
     return (balance / limit) * 100;
   };
 
-  const getDaysUntilDue = (dueDate) => {
+  const getDaysUntilDue = dueDate => {
     if (!dueDate) return null;
-    
+
     // Create dates in local timezone to avoid timezone shifts
     const today = new Date();
     today.setHours(0, 0, 0, 0); // Reset to start of day
-    
+
     // Parse the due date as a local date (not UTC)
-    const due = new Date(dueDate + 'T00:00:00');
-    
+    const due = new Date(`${dueDate}T00:00:00`);
+
     const diffTime = due - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
@@ -207,20 +218,24 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
       switch (sortBy) {
         case 'dueDate':
           // Sort by due date (closest due date first)
-          const aDue = a.dueDate ? new Date(a.dueDate + 'T00:00:00') : new Date('2099-12-31');
-          const bDue = b.dueDate ? new Date(b.dueDate + 'T00:00:00') : new Date('2099-12-31');
+          const aDue = a.dueDate
+            ? new Date(`${a.dueDate}T00:00:00`)
+            : new Date('2099-12-31');
+          const bDue = b.dueDate
+            ? new Date(`${b.dueDate}T00:00:00`)
+            : new Date('2099-12-31');
           return aDue - bDue;
-        
+
         case 'balance':
           // Sort by current balance (highest debt first)
           return b.balance - a.balance;
-        
+
         case 'utilization':
           // Sort by utilization percentage (highest utilization first)
           const aUtil = calculateUtilization(a.balance, a.creditLimit);
           const bUtil = calculateUtilization(b.balance, b.creditLimit);
           return bUtil - aUtil;
-        
+
         case 'name':
         default:
           // Sort alphabetically by name
@@ -233,22 +248,24 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-white">Loading credit cards...</div>
+      <div className='flex items-center justify-center h-64'>
+        <div className='text-white'>Loading credit cards...</div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-semibold text-white text-shadow">Credit Cards</h1>
-        <div className="flex items-center space-x-3">
+      <div className='flex justify-between items-center mb-6'>
+        <h1 className='text-3xl font-semibold text-white text-shadow'>
+          Credit Cards
+        </h1>
+        <div className='flex items-center space-x-3'>
           {creditCards.length > 0 && (
             <button
               onClick={handleOpenMigration}
-              className="glass-button flex items-center space-x-2 bg-green-500/20 text-green-300 hover:bg-green-500/30"
+              className='glass-button flex items-center space-x-2 bg-green-500/20 text-green-300 hover:bg-green-500/30'
             >
               <Plus size={16} />
               <span>Smart Link Expenses</span>
@@ -256,7 +273,7 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
           )}
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="glass-button flex items-center space-x-2 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+            className='glass-button flex items-center space-x-2 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
           >
             <Plus size={16} />
             <span>Add Credit Card</span>
@@ -266,9 +283,9 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
 
       {/* Sorting Controls */}
       {creditCards.length > 0 && (
-        <div className="flex items-center space-x-4 mb-4">
-          <span className="text-white/70 text-sm">Sort by:</span>
-          <div className="flex items-center space-x-2">
+        <div className='flex items-center space-x-4 mb-4'>
+          <span className='text-white/70 text-sm'>Sort by:</span>
+          <div className='flex items-center space-x-2'>
             <button
               onClick={() => setSortBy('name')}
               className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
@@ -315,22 +332,29 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
 
       {/* Credit Cards Grid */}
       {creditCards.length === 0 ? (
-        <div className="text-center py-12">
-          <CreditCard size={48} className="mx-auto text-white/50 mb-4" />
-          <h3 className="text-lg font-medium text-white/70 mb-2">No Credit Cards</h3>
-          <p className="text-white/50 mb-4">Add your first credit card to start tracking your debt</p>
+        <div className='text-center py-12'>
+          <CreditCard size={48} className='mx-auto text-white/50 mb-4' />
+          <h3 className='text-lg font-medium text-white/70 mb-2'>
+            No Credit Cards
+          </h3>
+          <p className='text-white/50 mb-4'>
+            Add your first credit card to start tracking your debt
+          </p>
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="glass-button"
+            className='glass-button'
           >
             Add Credit Card
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
           {sortedCreditCards.map((card, index) => {
             // Calculate derived values for the enhanced component
-            const utilization = calculateUtilization(card.balance, card.creditLimit);
+            const utilization = calculateUtilization(
+              card.balance,
+              card.creditLimit
+            );
             const daysUntilDue = getDaysUntilDue(card.dueDate);
 
             // Create enhanced card data object
@@ -354,130 +378,202 @@ const CreditCards = ({ onDataChange, accounts = [], creditCards: creditCardsProp
       )}
 
       {/* Add/Edit Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="liquid-glass rounded-2xl p-8 w-full max-w-md space-y-6">
-            <h2 className="text-xl font-semibold text-white">
-              {editingCard ? 'Edit Credit Card' : 'Add Credit Card'}
-            </h2>
+      {isAddModalOpen &&
+        createPortal(
+          <div
+            className='fixed bg-black/50 backdrop-blur-sm flex items-center justify-center z-50'
+            style={{
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100vw',
+              height: '100vh',
+            }}
+            onClick={e => {
+              if (e.target === e.currentTarget) {
+                setIsAddModalOpen(false);
+                setEditingCard(null);
+                setFormData({
+                  name: '',
+                  balance: '',
+                  creditLimit: '',
+                  interestRate: '',
+                  dueDate: '',
+                  statementClosingDate: '',
+                  minimumPayment: '',
+                });
+                setErrors({});
+              }
+            }}
+          >
+            <div className='liquid-glass rounded-2xl p-8 w-full max-w-md space-y-6'>
+              <h2 className='text-xl font-semibold text-white'>
+                {editingCard ? 'Edit Credit Card' : 'Add Credit Card'}
+              </h2>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Name</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="w-full px-4 py-3 glass-input rounded-xl text-white"
-                  placeholder="Credit card name"
-                />
-                {errors.name && <p className="text-red-400 text-sm mt-1">{errors.name}</p>}
+              <div className='space-y-4'>
+                <div>
+                  <label className='block text-sm font-medium text-white mb-2'>
+                    Name
+                  </label>
+                  <input
+                    type='text'
+                    value={formData.name}
+                    onChange={e => handleInputChange('name', e.target.value)}
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    placeholder='Credit card name'
+                  />
+                  {errors.name && (
+                    <p className='text-red-400 text-sm mt-1'>{errors.name}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className='block text-sm font-medium text-white mb-2'>
+                    Current Balance
+                  </label>
+                  <input
+                    type='number'
+                    step='0.01'
+                    value={formData.balance}
+                    onChange={e => handleInputChange('balance', e.target.value)}
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    placeholder='0.00'
+                  />
+                  {errors.balance && (
+                    <p className='text-red-400 text-sm mt-1'>
+                      {errors.balance}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className='block text-sm font-medium text-white mb-2'>
+                    Credit Limit
+                  </label>
+                  <input
+                    type='number'
+                    step='0.01'
+                    value={formData.creditLimit}
+                    onChange={e =>
+                      handleInputChange('creditLimit', e.target.value)
+                    }
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    placeholder='0.00'
+                  />
+                  {errors.creditLimit && (
+                    <p className='text-red-400 text-sm mt-1'>
+                      {errors.creditLimit}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className='block text-sm font-medium text-white mb-2'>
+                    Interest Rate (%)
+                  </label>
+                  <input
+                    type='number'
+                    step='0.01'
+                    value={formData.interestRate}
+                    onChange={e =>
+                      handleInputChange('interestRate', e.target.value)
+                    }
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    placeholder='0.00'
+                  />
+                  {errors.interestRate && (
+                    <p className='text-red-400 text-sm mt-1'>
+                      {errors.interestRate}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className='block text-sm font-medium text-white mb-2'>
+                    Due Date
+                  </label>
+                  <input
+                    type='date'
+                    value={formData.dueDate}
+                    onChange={e => handleInputChange('dueDate', e.target.value)}
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                  />
+                  {errors.dueDate && (
+                    <p className='text-red-400 text-sm mt-1'>
+                      {errors.dueDate}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className='block text-sm font-medium text-white mb-2'>
+                    Statement Closing Date (Optional)
+                  </label>
+                  <input
+                    type='date'
+                    value={formData.statementClosingDate}
+                    onChange={e =>
+                      handleInputChange('statementClosingDate', e.target.value)
+                    }
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                  />
+                </div>
+
+                <div>
+                  <label className='block text-sm font-medium text-white mb-2'>
+                    Minimum Payment
+                  </label>
+                  <input
+                    type='number'
+                    step='0.01'
+                    value={formData.minimumPayment}
+                    onChange={e =>
+                      handleInputChange('minimumPayment', e.target.value)
+                    }
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    placeholder='0.00'
+                  />
+                  {errors.minimumPayment && (
+                    <p className='text-red-400 text-sm mt-1'>
+                      {errors.minimumPayment}
+                    </p>
+                  )}
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Current Balance</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.balance}
-                  onChange={(e) => handleInputChange('balance', e.target.value)}
-                  className="w-full px-4 py-3 glass-input rounded-xl text-white"
-                  placeholder="0.00"
-                />
-                {errors.balance && <p className="text-red-400 text-sm mt-1">{errors.balance}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Credit Limit</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.creditLimit}
-                  onChange={(e) => handleInputChange('creditLimit', e.target.value)}
-                  className="w-full px-4 py-3 glass-input rounded-xl text-white"
-                  placeholder="0.00"
-                />
-                {errors.creditLimit && <p className="text-red-400 text-sm mt-1">{errors.creditLimit}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Interest Rate (%)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.interestRate}
-                  onChange={(e) => handleInputChange('interestRate', e.target.value)}
-                  className="w-full px-4 py-3 glass-input rounded-xl text-white"
-                  placeholder="0.00"
-                />
-                {errors.interestRate && <p className="text-red-400 text-sm mt-1">{errors.interestRate}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Due Date</label>
-                <input
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) => handleInputChange('dueDate', e.target.value)}
-                  className="w-full px-4 py-3 glass-input rounded-xl text-white"
-                />
-                {errors.dueDate && <p className="text-red-400 text-sm mt-1">{errors.dueDate}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Statement Closing Date (Optional)</label>
-                <input
-                  type="date"
-                  value={formData.statementClosingDate}
-                  onChange={(e) => handleInputChange('statementClosingDate', e.target.value)}
-                  className="w-full px-4 py-3 glass-input rounded-xl text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">Minimum Payment</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.minimumPayment}
-                  onChange={(e) => handleInputChange('minimumPayment', e.target.value)}
-                  className="w-full px-4 py-3 glass-input rounded-xl text-white"
-                  placeholder="0.00"
-                />
-                {errors.minimumPayment && <p className="text-red-400 text-sm mt-1">{errors.minimumPayment}</p>}
+              <div className='flex space-x-3'>
+                <button
+                  onClick={handleSave}
+                  className='flex-1 px-4 py-3 glass-button bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
+                >
+                  {editingCard ? 'Update' : 'Add'} Credit Card
+                </button>
+                <button
+                  onClick={() => {
+                    setIsAddModalOpen(false);
+                    setEditingCard(null);
+                    setFormData({
+                      name: '',
+                      balance: '',
+                      creditLimit: '',
+                      interestRate: '',
+                      dueDate: '',
+                      statementClosingDate: '',
+                      minimumPayment: '',
+                    });
+                    setErrors({});
+                  }}
+                  className='flex-1 px-4 py-3 glass-button bg-white/10 text-white/70 hover:bg-white/20'
+                >
+                  Cancel
+                </button>
               </div>
             </div>
-
-            <div className="flex space-x-3">
-              <button
-                onClick={handleSave}
-                className="flex-1 px-4 py-3 glass-button bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-              >
-                {editingCard ? 'Update' : 'Add'} Credit Card
-              </button>
-              <button
-                onClick={() => {
-                  setIsAddModalOpen(false);
-                  setEditingCard(null);
-                  setFormData({
-                    name: '',
-                    balance: '',
-                    creditLimit: '',
-                    interestRate: '',
-                    dueDate: '',
-                    statementClosingDate: '',
-                    minimumPayment: '',
-                  });
-                  setErrors({});
-                }}
-                className="flex-1 px-4 py-3 glass-button bg-white/10 text-white/70 hover:bg-white/20"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {/* Credit Card Deletion Modal */}
       <CreditCardDeletionModal
