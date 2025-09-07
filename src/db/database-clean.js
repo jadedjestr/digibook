@@ -531,17 +531,45 @@ export const dbHelpers = {
     }
   },
 
-  // Clean up duplicate default accounts
+  // Clean up duplicate default accounts and remove placeholder defaults
   async cleanupDuplicateDefaults() {
     try {
-      const defaultAccounts = await db.accounts.filter(account => account.isDefault === true).toArray();
+      const allAccounts = await db.accounts.toArray();
+      const defaultAccounts = allAccounts.filter(account => account.isDefault === true);
+      
+      // If there are multiple default accounts, keep only the first one
       if (defaultAccounts.length > 1) {
-        // Keep the first one, remove the rest
         const accountsToUpdate = defaultAccounts.slice(1);
         for (const account of accountsToUpdate) {
           await db.accounts.update(account.id, { isDefault: false });
         }
         logger.info(`Cleaned up ${accountsToUpdate.length} duplicate default accounts`);
+      }
+      
+      // Remove any "Default Account" placeholders if there are real accounts
+      const realAccounts = allAccounts.filter(account => 
+        account.name !== 'Default Account' && account.currentBalance > 0
+      );
+      
+      if (realAccounts.length > 0) {
+        const defaultAccountPlaceholders = allAccounts.filter(account => 
+          account.name === 'Default Account' && account.currentBalance === 0
+        );
+        
+        for (const placeholder of defaultAccountPlaceholders) {
+          await db.accounts.delete(placeholder.id);
+          logger.info(`Removed placeholder Default Account (ID: ${placeholder.id})`);
+        }
+        
+        // If we removed placeholders and there's no default, make the first real account the default
+        const remainingAccounts = await db.accounts.toArray();
+        const hasDefault = remainingAccounts.some(account => account.isDefault === true);
+        
+        if (!hasDefault && remainingAccounts.length > 0) {
+          const firstAccount = remainingAccounts[0];
+          await db.accounts.update(firstAccount.id, { isDefault: true });
+          logger.info(`Set ${firstAccount.name} as default account`);
+        }
       }
     } catch (error) {
       logger.error('Error cleaning up duplicate defaults:', error);
@@ -587,6 +615,19 @@ window.digibookEmergencyReset = async () => {
     return true;
   } catch (error) {
     console.error('❌ Emergency reset failed:', error);
+    return false;
+  }
+};
+
+// Manual cleanup function - can be called from browser console
+window.digibookCleanupAccounts = async () => {
+  try {
+    console.log('🧹 CLEANING UP ACCOUNTS...');
+    await dbHelpers.cleanupDuplicateDefaults();
+    console.log('✅ Account cleanup complete! Please refresh the page.');
+    return true;
+  } catch (error) {
+    console.error('❌ Account cleanup failed:', error);
     return false;
   }
 };
