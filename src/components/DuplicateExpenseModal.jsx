@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Copy } from 'lucide-react';
 import { logger } from '../utils/logger';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 
 const ExpensePreview = React.memo(({ formData, numCopies }) => (
   <div className="glass-card bg-white/5">

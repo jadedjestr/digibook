@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { errorHandler } from '../utils/errorHandler';
 
 class ErrorBoundary extends Component {
   constructor (props) {
@@ -13,16 +14,20 @@ class ErrorBoundary extends Component {
   }
 
   componentDidCatch (error, errorInfo) {
-    // Log the error to our logging service
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    // Use centralized error handling
+    errorHandler.handle(error, {
+      component: this.props.componentName || 'ErrorBoundary',
+      action: 'render',
+      errorInfo: errorInfo
+    }, {
+      showNotification: false, // Don't show notification for boundary errors
+      attemptRecovery: false
+    });
     
     this.setState({
       error,
       errorInfo,
     });
-
-    // In production, you could send this to an error reporting service
-    // like Sentry, LogRocket, etc.
   }
 
   handleReset = () => {

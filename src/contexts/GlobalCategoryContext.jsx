@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useCallback, useMemo } from 'react';
 import { categoryCache } from '../services/categoryCache';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import { notify } from '../utils/notifications';
 
 const GlobalCategoryContext = createContext(null);

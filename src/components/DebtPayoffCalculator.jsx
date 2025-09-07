@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calculator, CreditCard, Calendar, DollarSign, TrendingDown, Edit3 } from 'lucide-react';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 import PrivacyWrapper from './PrivacyWrapper';
 

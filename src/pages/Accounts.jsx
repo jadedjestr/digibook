@@ -1,11 +1,18 @@
 import React, { useState } from 'react';
 import { Plus, Star, Trash2, Edit3, Check, X, Wallet, CreditCard, PiggyBank } from 'lucide-react';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { useFinanceCalculations } from '../services/financeService';
 import { formatCurrency } from '../utils/accountUtils';
+import { useAppStore } from '../stores/useAppStore';
 
-const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
+const Accounts = () => {
+  // Use Zustand store for data
+  const {
+    accounts,
+    pendingTransactions,
+    reloadAccounts,
+  } = useAppStore();
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -89,7 +96,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
       setNewAccount({ name: '', type: 'checking', currentBalance: 0 });
       setIsAddingAccount(false);
       setErrors({});
-      onDataChange();
+      reloadAccounts();
     } catch (error) {
       console.error('Error adding account:', error);
       setErrors({ general: 'Failed to add account. Please try again.' });
@@ -103,7 +110,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
       console.log('Setting default account:', accountId);
       await dbHelpers.setDefaultAccount(accountId);
       console.log('Default account set successfully');
-      onDataChange();
+      reloadAccounts();
     } catch (error) {
       console.error('Error setting default account:', error);
     }
@@ -114,7 +121,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
 
     try {
       await dbHelpers.deleteAccount(accountId);
-      onDataChange();
+      reloadAccounts();
     } catch (error) {
       alert(error.message);
     }
@@ -124,7 +131,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
     try {
       await dbHelpers.updateAccount(accountId, updates);
       setEditingId(null);
-      onDataChange();
+      reloadAccounts();
     } catch (error) {
       console.error('Error updating account:', error);
     }

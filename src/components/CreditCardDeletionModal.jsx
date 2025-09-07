@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, CreditCard, ExternalLink, ArrowRight } from 'lucide-react';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 import { formatCurrency } from '../utils/accountUtils';
 import { notify } from '../utils/notifications';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { logger } from '../utils/logger';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import BudgetVsActualDashboard from '../components/BudgetVsActualDashboard';
 import OverpaymentAnalysis from '../components/OverpaymentAnalysis';
 import DebtPayoffCalculator from '../components/DebtPayoffCalculator';

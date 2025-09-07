@@ -4,16 +4,20 @@ import { useFinanceCalculations } from '../services/financeService';
 import PrivacyWrapper from './PrivacyWrapper';
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { formatCurrency } from '../utils/accountUtils';
+import { useAppStore } from '../stores/useAppStore';
 
 const Sidebar = ({
   navigation,
-  currentPage,
-  onPageChange,
   onToggleLock,
   isLocked,
-  accounts,
-  pendingTransactions,
 }) => {
+  // Use Zustand store for data
+  const {
+    currentPage,
+    accounts,
+    pendingTransactions,
+    setCurrentPage,
+  } = useAppStore();
   const {
     getDefaultAccount,
     getDefaultAccountProjectedBalance,
@@ -60,7 +64,7 @@ const Sidebar = ({
   }, [isMobileMenuOpen]);
 
   const handlePageChange = (pageId) => {
-    onPageChange(pageId);
+    setCurrentPage(pageId);
     if (isMobile) {
       setIsMobileMenuOpen(false);
     }

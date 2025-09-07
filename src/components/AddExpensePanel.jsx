@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { logger } from '../utils/logger';
 import { X, CreditCard, PiggyBank, Building2, ChevronDown } from 'lucide-react';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import AccountSelector from './AccountSelector';
 import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
 

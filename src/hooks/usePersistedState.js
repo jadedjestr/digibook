@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { logger } from '../utils/logger';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 
 /**
  * Enhanced hook for persisting UI state with hybrid localStorage + IndexedDB approach

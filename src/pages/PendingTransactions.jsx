@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { logger } from '../utils/logger';
 import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import { useFinanceCalculations } from '../services/financeService';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { formatCurrency } from '../utils/accountUtils';

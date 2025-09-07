@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Eye, EyeOff, Shield } from 'lucide-react';
+import { securePINStorage } from '../utils/crypto';
 
 const PINLock = ({ pin, onUnlock, onPINChange }) => {
   const [enteredPIN, setEnteredPIN] = useState('');
@@ -29,11 +30,18 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
           setError('PINs do not match');
           return;
         }
-        onPINChange(enteredPIN);
-        setIsSettingPIN(false);
-        setEnteredPIN('');
-        setConfirmPIN('');
-        setError('');
+        
+        // Store PIN securely
+        const success = await securePINStorage.setPIN(enteredPIN);
+        if (success) {
+          onPINChange(enteredPIN);
+          setIsSettingPIN(false);
+          setEnteredPIN('');
+          setConfirmPIN('');
+          setError('');
+        } else {
+          setError('Failed to store PIN securely. Please try again.');
+        }
       } else {
         if (enteredPIN === pin) {
           onUnlock();

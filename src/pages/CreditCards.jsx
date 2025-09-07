@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { logger } from '../utils/logger';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import { Plus, CreditCard } from 'lucide-react';
 import { notify } from '../utils/notifications';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';

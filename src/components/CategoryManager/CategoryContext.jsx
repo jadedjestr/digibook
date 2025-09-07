@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useMemo, useCallback, useState, useEffect } from 'react';
 import { categoryReducer, initialState, ACTIONS } from './categoryReducer';
-import { dbHelpers } from '../../db/database';
+import { dbHelpers } from '../../db/database-clean';
 import { notify, showConfirmation } from '../../utils/notifications.jsx';
 import { useGlobalCategories } from '../../contexts/GlobalCategoryContext';
 

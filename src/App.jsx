@@ -7,9 +7,11 @@ import Sidebar from './components/Sidebar';
 import PINLock from './components/PINLock';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSpinner from './components/LoadingSpinner';
-import { dbHelpers } from './db/database';
+import PerformanceDashboard from './components/PerformanceDashboard';
 import { PrivacyProvider } from './contexts/PrivacyContext';
 import { GlobalCategoryProvider } from './contexts/GlobalCategoryContext';
+import { useAppStore } from './stores/useAppStore';
+import { securePINStorage } from './utils/crypto';
 
 // Lazy load pages for better performance
 const Accounts = lazy(() => import('./pages/Accounts'));
@@ -22,62 +24,64 @@ const Insights = lazy(() => import('./pages/Insights'));
 import SettingsPage from './pages/Settings';
 
 function App () {
-  const [currentPage, setCurrentPage] = useState('accounts');
   const [isLocked, setIsLocked] = useState(false);
-  const [pin, setPin] = useState(() => {
-    return localStorage.getItem('digibook_pin') || '';
-  });
-  const [accounts, setAccounts] = useState([]);
-  const [creditCards, setCreditCards] = useState([]);
-  const [pendingTransactions, setPendingTransactions] = useState([]);
-  const [, setDefaultAccount] = useState(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [pin, setPin] = useState('');
+  const [isLoadingPIN, setIsLoadingPIN] = useState(true);
+
+
+  // Use Zustand store for global state
+  const {
+    currentPage,
+    accounts,
+    creditCards,
+    pendingTransactions,
+    isPanelOpen,
+    isLoading,
+    error,
+    loadData,
+    setCurrentPage,
+    setPanelOpen,
+    clearError,
+  } = useAppStore();
+
+  // Load PIN securely on mount
+  useEffect(() => {
+    const loadPIN = async () => {
+      try {
+        const storedPIN = await securePINStorage.getPIN();
+        setPin(storedPIN);
+      } catch (error) {
+        logger.error('Error loading PIN:', error);
+        setPin('');
+      } finally {
+        setIsLoadingPIN(false);
+      }
+    };
+    
+    loadPIN();
+  }, []);
 
   // Load data on mount
   useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      // Fix database schema first
-      await dbHelpers.fixDatabaseSchema();
-
-      const [accountsData, creditCardsData, transactionsData, defaultAccountData] = await Promise.all([
-        dbHelpers.getAccounts(),
-        dbHelpers.getCreditCards(),
-        dbHelpers.getPendingTransactions(),
-        dbHelpers.getDefaultAccount(),
-      ]);
-
-      // Ensure there's a default account
-      await dbHelpers.ensureDefaultAccount();
-
-      setAccounts(accountsData);
-      setCreditCards(creditCardsData);
-      setPendingTransactions(transactionsData);
-      setDefaultAccount(defaultAccountData);
-    } catch (error) {
-      logger.error('Error loading data:', error);
-      // Set empty arrays if there's an error
-      setAccounts([]);
-      setCreditCards([]);
-      setPendingTransactions([]);
-      setDefaultAccount(null);
+    if (!isLoadingPIN) {
+      loadData();
     }
-  };
+  }, [loadData, isLoadingPIN]);
 
-  const handlePINChange = (newPin) => {
-    setPin(newPin);
-    localStorage.setItem('digibook_pin', newPin);
+  const handlePINChange = async (newPin) => {
+    try {
+      await securePINStorage.setPIN(newPin);
+      setPin(newPin);
+      logger.success('PIN updated securely');
+    } catch (error) {
+      logger.error('Error updating PIN:', error);
+      // Still update the state for UI consistency
+      setPin(newPin);
+    }
   };
 
   const toggleLock = () => {
     setIsLocked(!isLocked);
-  };
-
-  const handleDataChange = () => {
-    loadData();
   };
 
   const navigation = [
@@ -92,40 +96,42 @@ function App () {
   const renderPage = () => {
     switch (currentPage) {
     case 'accounts':
-      return <Accounts accounts={accounts} pendingTransactions={pendingTransactions} onDataChange={handleDataChange} />;
+      return <Accounts />;
     case 'pending':
-      return <PendingTransactions
+      return <PendingTransactions 
         pendingTransactions={pendingTransactions}
         accounts={accounts}
-        onDataChange={handleDataChange}
+        onDataChange={loadData}
       />;
     case 'expenses':
-      return <FixedExpenses
-        accounts={accounts}
-        creditCards={creditCards}
-        pendingTransactions={pendingTransactions}
-        onDataChange={handleDataChange}
-        isPanelOpen={isPanelOpen}
-        setIsPanelOpen={setIsPanelOpen}
-      />;
+      return <FixedExpenses />;
     case 'creditCards':
       return <CreditCards 
-        accounts={accounts} 
+        accounts={accounts}
         creditCards={creditCards}
-        onDataChange={handleDataChange} 
+        onDataChange={loadData}
       />;
     case 'insights':
       return <Insights 
-        accounts={accounts} 
-        creditCards={creditCards} 
-        onDataChange={handleDataChange} 
+        accounts={accounts}
+        creditCards={creditCards}
+        onDataChange={loadData}
       />;
     case 'settings':
-      return <SettingsPage onDataChange={handleDataChange} />;
+      return <SettingsPage />;
     default:
-      return <Accounts accounts={accounts} pendingTransactions={pendingTransactions} onDataChange={handleDataChange} />;
+      return <Accounts />;
     }
   };
+
+  // Show loading spinner while PIN is being loaded
+  if (isLoadingPIN) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
   // Show PIN lock if no PIN is set or if app is locked
   if (!pin || isLocked) {
@@ -157,12 +163,8 @@ function App () {
           />
           <Sidebar
             navigation={navigation}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
             onToggleLock={toggleLock}
             isLocked={isLocked}
-            accounts={accounts}
-            pendingTransactions={pendingTransactions}
           />
           <main className="flex-1 overflow-auto lg:ml-0">
             <div className="p-4 lg:p-6 pt-16 lg:pt-6">
@@ -174,6 +176,9 @@ function App () {
         </div>
         </GlobalCategoryProvider>
       </PrivacyProvider>
+      
+      {/* Performance Dashboard (Development Only) */}
+      <PerformanceDashboard />
     </ErrorBoundary>
   );
 }

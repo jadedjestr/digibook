@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { logger } from '../utils/logger';
 import { Calendar, Clock } from 'lucide-react';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import { DateUtils } from '../utils/dateUtils';
 
 const PaycheckManager = ({ onDataChange }) => {

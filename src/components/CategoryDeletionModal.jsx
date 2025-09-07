@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, AlertTriangle, CheckCircle } from 'lucide-react';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications.jsx';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 
 const CategoryDeletionModal = ({
   isOpen,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, AlertTriangle, Zap, Link, Search, Plus } from 'lucide-react';
-import { dbHelpers } from '../db/database';
+import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 
