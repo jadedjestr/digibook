@@ -22,6 +22,17 @@ const ProjectedBalanceCard = ({
 
   const { payThisWeekTotal = 0 } = summaryTotals;
   const balanceAfterExpenses = projectedBalance - payThisWeekTotal;
+
+  // Debug logging
+  console.log('ProjectedBalanceCard Debug:', {
+    accounts: accounts.map(acc => ({ name: acc.name, balance: acc.balance })),
+    creditCards: creditCards.map(card => ({ name: card.name, balance: card.balance })),
+    totalAccountBalance,
+    totalCreditCardBalance,
+    projectedBalance,
+    payThisWeekTotal,
+    balanceAfterExpenses
+  });
   const isPositive = balanceAfterExpenses >= 0;
 
   // Get the primary account name (first account or 'Primary Account')
