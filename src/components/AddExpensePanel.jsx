@@ -101,7 +101,6 @@ const AddExpensePanel = ({
   useEffect(() => {
     if (isOpen) {
       setFormData({ name: '', dueDate: '', amount: '', accountId: '', category: '' });
-      setSelectedAccount(null);
       setErrors({});
     }
   }, [isOpen]);
