@@ -1,5 +1,6 @@
 import React from 'react';
 import { Clock, DollarSign } from 'lucide-react';
+import { formatCurrency } from '../utils/accountUtils';
 
 const ThisWeekExpensesCard = ({ totalAmount, expenseCount }) => {
   return (
@@ -12,7 +13,7 @@ const ThisWeekExpensesCard = ({ totalAmount, expenseCount }) => {
       <div className="grid grid-cols-2 gap-4">
         <div className="text-center">
           <div className="text-2xl font-bold text-orange-300 mb-1">
-            ${totalAmount.toFixed(2)}
+            {formatCurrency(totalAmount)}
           </div>
           <div className="text-xs text-secondary">Total Amount</div>
         </div>

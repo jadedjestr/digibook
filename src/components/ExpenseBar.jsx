@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import PrivacyWrapper from './PrivacyWrapper';
+import { formatCurrency } from '../utils/accountUtils';
 
 const ExpenseBar = ({ expense, index, totalAmount }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -33,7 +34,7 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
       }}
       role="button"
       tabIndex={0}
-      aria-label={`${expense.name}: $${expense.amount.toFixed(2)} (${expense.percentage.toFixed(1)}% of total expenses)`}
+      aria-label={`${expense.name}: ${formatCurrency(expense.amount)} (${expense.percentage.toFixed(1)}% of total expenses)`}
     >
       {/* Color indicator dot */}
       <div
@@ -61,7 +62,7 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
       {/* Dollar amount */}
       <span className="text-sm font-semibold text-white min-w-[80px] text-right flex-shrink-0">
         <PrivacyWrapper>
-          ${expense.amount.toFixed(2)}
+          {formatCurrency(expense.amount)}
         </PrivacyWrapper>
       </span>
 

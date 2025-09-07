@@ -161,7 +161,7 @@ const AccountSelector = ({
               </span>
               {selectedAccount && selectedAccount.type === 'creditCard' && (
                 <div className="text-xs text-red-300">
-                  Credit Card • {selectedAccount.currentBalance > 0 ? `$${selectedAccount.currentBalance.toFixed(2)} debt` : 'Paid off'}
+                  Credit Card • {selectedAccount.currentBalance > 0 ? `${formatBalance(selectedAccount.currentBalance)} debt` : 'Paid off'}
                 </div>
               )}
             </div>

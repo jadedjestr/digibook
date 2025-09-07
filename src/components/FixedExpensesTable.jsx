@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 import { DateUtils } from '../utils/dateUtils';
+import { formatCurrency } from '../utils/accountUtils';
 import { Plus, Home, Zap, Shield, Car, Smartphone, CreditCard, Stethoscope, GraduationCap, Package, Check, X } from 'lucide-react';
 import { useCollapsedCategories, useSortPreference, useAutoCollapsePreference, useShowOnlyUnpaidPreference, usePersistedState } from '../hooks/usePersistedState';
 import {
@@ -382,15 +383,15 @@ const FixedExpensesTable = ({
         } else if (fieldNames.includes('dueDate')) {
           notify.success(`Due date updated to ${DateUtils.formatShortDate(updates.dueDate)}`);
         } else if (fieldNames.includes('amount')) {
-          notify.success(`Amount updated to $${updates.amount.toFixed(2)}`);
+          notify.success(`Amount updated to ${formatCurrency(updates.amount)}`);
         } else if (fieldNames.includes('name')) {
           notify.success(`Name updated to "${updates.name}"`);
         } else if (fieldNames.includes('paidAmount')) {
           const overpaymentAmount = Math.max(0, updates.paidAmount - currentExpense.amount);
           if (overpaymentAmount > 0) {
-            notify.success(`Payment updated to $${updates.paidAmount.toFixed(2)} (Overpaid: $${overpaymentAmount.toFixed(2)})`);
+            notify.success(`Payment updated to ${formatCurrency(updates.paidAmount)} (Overpaid: ${formatCurrency(overpaymentAmount)})`);
           } else {
-            notify.success(`Payment updated to $${updates.paidAmount.toFixed(2)}`);
+            notify.success(`Payment updated to ${formatCurrency(updates.paidAmount)}`);
           }
         } else {
           notify.success('Expense updated successfully');
@@ -761,7 +762,7 @@ const FixedExpensesTable = ({
       if (type === 'number') {
         return (
           <PrivacyWrapper>
-            ${parseFloat(val).toFixed(2)}
+            {formatCurrency(parseFloat(val))}
           </PrivacyWrapper>
         );
       } else if (type === 'date') {
@@ -995,7 +996,7 @@ const FixedExpensesTable = ({
                       <div className="text-sm text-secondary">Total Remaining</div>
                       <div className="text-lg font-bold text-primary">
                         <PrivacyWrapper>
-                          ${categoryTotal.toFixed(2)}
+                          {formatCurrency(categoryTotal)}
                         </PrivacyWrapper>
                       </div>
                     </div>

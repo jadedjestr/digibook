@@ -1,5 +1,6 @@
 import React from 'react';
 import PrivacyWrapper from './PrivacyWrapper';
+import { formatCurrency } from '../utils/accountUtils';
 import ExpenseBar from './ExpenseBar';
 
 const calculateTotals = (expenses, categories) => {
@@ -63,7 +64,7 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
         <div className="flex justify-between items-center">
           <span className="text-sm text-white/70">Total Fixed Expenses</span>
           <PrivacyWrapper>
-            <span className="text-lg font-bold text-white">${totalAmount.toFixed(2)}</span>
+            <span className="text-lg font-bold text-white">{formatCurrency(totalAmount)}</span>
           </PrivacyWrapper>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { Lock, Unlock, Eye, EyeOff, Menu, X } from 'lucide-react';
 import { useFinanceCalculations } from '../services/financeService';
 import PrivacyWrapper from './PrivacyWrapper';
 import { usePrivacy } from '../contexts/PrivacyContext';
+import { formatCurrency } from '../utils/accountUtils';
 
 const Sidebar = ({
   navigation,
@@ -112,7 +113,7 @@ const Sidebar = ({
               projectedBalance < defaultAccount.currentBalance ? 'warning' : ''
             }`}>
               <PrivacyWrapper>
-                ${projectedBalance.toFixed(2)}
+                {formatCurrency(projectedBalance)}
               </PrivacyWrapper>
             </div>
             <div className="text-xs text-muted mt-1">

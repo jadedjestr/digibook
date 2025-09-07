@@ -112,6 +112,21 @@ export const formatAccountBalance = (balance) => {
 };
 
 /**
+ * General currency formatter for all monetary values
+ * @param {number|string} amount - The amount to format
+ * @returns {string} Formatted currency string with thousands separators
+ */
+export const formatCurrency = (amount) => {
+  const numAmount = typeof amount === 'number' ? amount : parseFloat(amount) || 0;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numAmount);
+};
+
+/**
  * Validates account data structure
  * @param {Object} account - The account object to validate
  * @returns {Object} Validation result with isValid and errors

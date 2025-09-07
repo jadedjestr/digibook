@@ -4,6 +4,7 @@ import StatusBadge from './StatusBadge';
 import AccountSelector from './AccountSelector';
 import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
 import PrivacyWrapper from './PrivacyWrapper';
+import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
 
 const MobileExpenseCard = ({
@@ -51,7 +52,7 @@ const MobileExpenseCard = ({
   };
 
   const formatAmount = (amount) => {
-    return parseFloat(amount).toFixed(2);
+    return formatCurrency(parseFloat(amount));
   };
 
   const getStatusColor = (status) => {

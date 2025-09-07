@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CreditCard, ChevronDown, Check, X } from 'lucide-react';
 import { logger } from '../utils/logger';
+import { formatCurrency } from '../utils/accountUtils';
 
 const CreditCardSelector = ({ 
   value, 
@@ -111,7 +112,7 @@ const CreditCardSelector = ({
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="text-xs text-white/60">
-                      ${card.balance.toFixed(2)} / ${card.creditLimit.toFixed(2)}
+                      {formatCurrency(card.balance)} / {formatCurrency(card.creditLimit)}
                     </span>
                     {selectedValue === card.id && <Check size={12} className="text-purple-300" />}
                   </div>

@@ -3,6 +3,7 @@ import { Plus, Star, Trash2, Edit3, Check, X, Wallet, CreditCard, PiggyBank } fr
 import { dbHelpers } from '../db/database';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { useFinanceCalculations } from '../services/financeService';
+import { formatCurrency } from '../utils/accountUtils';
 
 const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
   const [isAddingAccount, setIsAddingAccount] = useState(false);
@@ -193,7 +194,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
         <span className="text-primary group-hover:text-white transition-colors">
           {type === 'number' ? (
             <PrivacyWrapper>
-              ${parseFloat(value).toFixed(2)}
+              {formatCurrency(parseFloat(value))}
             </PrivacyWrapper>
           ) : value}
         </span>
@@ -224,7 +225,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
         <div className="text-sm font-medium text-secondary mb-3">Liquid Balance</div>
         <div className="balance-display">
           <PrivacyWrapper>
-            ${liquidBalance.toFixed(2)}
+            {formatCurrency(liquidBalance)}
           </PrivacyWrapper>
         </div>
         <div className="text-xs text-muted mt-1">
@@ -375,7 +376,7 @@ const Accounts = ({ accounts, pendingTransactions, onDataChange }) => {
                             projectedBalance < account.currentBalance ? 'text-yellow-400' : 'text-primary'
                           }`}>
                             <PrivacyWrapper>
-                              ${projectedBalance.toFixed(2)}
+                              {formatCurrency(projectedBalance)}
                             </PrivacyWrapper>
                           </span>
                         </td>

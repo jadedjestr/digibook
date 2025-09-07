@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, CreditCard, ExternalLink, ArrowRight } from 'lucide-react';
 import { dbHelpers } from '../db/database';
 import { logger } from '../utils/logger';
+import { formatCurrency } from '../utils/accountUtils';
 import { notify } from '../utils/notifications';
 import AccountSelector from './AccountSelector';
 
@@ -215,7 +216,7 @@ const CreditCardDeletionModal = ({
                         <div>
                           <div className="font-medium text-white">{expense.name}</div>
                           <div className="text-sm text-white/60">
-                            ${expense.amount.toFixed(2)} • {expense.category}
+                            {formatCurrency(expense.amount)} • {expense.category}
                           </div>
                         </div>
                         <div className="flex items-center space-x-2 text-orange-400">

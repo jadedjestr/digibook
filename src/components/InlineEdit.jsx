@@ -3,6 +3,7 @@ import { Check, X } from 'lucide-react';
 import { logger } from '../utils/logger';
 import { DateUtils } from '../utils/dateUtils';
 import PrivacyWrapper from './PrivacyWrapper';
+import { formatCurrency } from '../utils/accountUtils';
 
 const InlineEdit = ({ value, onSave, type = 'text' }) => {
   const [editValue, setEditValue] = useState(value);
@@ -110,7 +111,7 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
     if (type === 'number') {
       return (
         <PrivacyWrapper>
-          ${parseFloat(val).toFixed(2)}
+          {formatCurrency(parseFloat(val))}
         </PrivacyWrapper>
       );
     } else if (type === 'date') {

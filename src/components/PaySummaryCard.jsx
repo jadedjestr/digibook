@@ -1,6 +1,7 @@
 import React from 'react';
 import { DollarSign } from 'lucide-react';
 import PrivacyWrapper from './PrivacyWrapper';
+import { formatCurrency } from '../utils/accountUtils';
 
 const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal, overdueTotal = 0 }) => {
   return (
@@ -14,7 +15,7 @@ const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal, overdueTotal = 0 
         <div className="text-center">
           <div className="text-xl font-bold text-orange-300 mb-1">
             <PrivacyWrapper>
-              ${payThisWeekTotal.toFixed(2)}
+              {formatCurrency(payThisWeekTotal)}
             </PrivacyWrapper>
           </div>
           <div className="text-xs text-secondary">Pay This Week</div>
@@ -23,7 +24,7 @@ const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal, overdueTotal = 0 
         <div className="text-center">
           <div className="text-xl font-bold text-blue-300 mb-1">
             <PrivacyWrapper>
-              ${payNextCheckTotal.toFixed(2)}
+              {formatCurrency(payNextCheckTotal)}
             </PrivacyWrapper>
           </div>
           <div className="text-xs text-secondary">Pay with Next Check</div>
@@ -32,7 +33,7 @@ const PaySummaryCard = ({ payThisWeekTotal, payNextCheckTotal, overdueTotal = 0 
         <div className="text-center">
           <div className="text-xl font-bold text-red-300 mb-1">
             <PrivacyWrapper>
-              ${overdueTotal.toFixed(2)}
+              {formatCurrency(overdueTotal)}
             </PrivacyWrapper>
           </div>
           <div className="text-xs text-secondary">Overdue</div>

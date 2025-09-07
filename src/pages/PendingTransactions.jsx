@@ -4,6 +4,7 @@ import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react';
 import { dbHelpers } from '../db/database';
 import { useFinanceCalculations } from '../services/financeService';
 import PrivacyWrapper from '../components/PrivacyWrapper';
+import { formatCurrency } from '../utils/accountUtils';
 
 const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) => {
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
@@ -136,7 +137,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
       }
       return type === 'number' ? (
         <PrivacyWrapper>
-          ${parseFloat(value).toFixed(2)}
+          {formatCurrency(parseFloat(value))}
         </PrivacyWrapper>
       ) : value;
     };
@@ -418,7 +419,7 @@ const PendingTransactions = ({ pendingTransactions, accounts, onDataChange }) =>
                         projectedBalance < (account?.currentBalance || 0) ? 'text-yellow-400' : 'text-primary'
                       }`}>
                         <PrivacyWrapper>
-                          ${projectedBalance.toFixed(2)}
+                          {formatCurrency(projectedBalance)}
                         </PrivacyWrapper>
                       </span>
                     </td>
