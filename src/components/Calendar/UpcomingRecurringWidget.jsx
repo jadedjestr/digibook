@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Clock, Calendar, AlertCircle } from 'lucide-react';
-import PropTypes from 'prop-types';
 
 import { recurringExpenseService } from '../../services/recurringExpenseService';
 import { DateUtils } from '../../utils/dateUtils';
@@ -129,10 +128,6 @@ const UpcomingRecurringWidget = () => {
       </div>
     </div>
   );
-};
-
-UpcomingRecurringWidget.propTypes = {
-  // No props needed - component manages its own state
 };
 
 export default UpcomingRecurringWidget;

@@ -1,5 +1,5 @@
-import PropTypes from 'prop-types';
 import { useState } from 'react';
+import PropTypes from 'prop-types';
 
 import QuickActions from './QuickActions';
 
@@ -11,12 +11,10 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
 
   // Calculate status using PaycheckService
   const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
-  const statusColor = paycheckService.getStatusColor(status);
 
   // Format expense display text
   const formatExpenseText = expense => {
     const { name, amount, paidAmount } = expense;
-    const remainingAmount = amount - (paidAmount || 0);
 
     // Truncate long names
     const displayName = name.length > 12 ? `${name.substring(0, 12)}...` : name;
@@ -32,20 +30,20 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   // Get status class for styling
   const getStatusClass = status => {
     switch (status) {
-      case 'Paid':
-        return 'expense-badge--paid';
-      case 'Partially Paid':
-        return 'expense-badge--partially-paid';
-      case 'Overdue':
-        return 'expense-badge--overdue';
-      case 'Pay This Week':
-        return 'expense-badge--pay-this-week';
-      case 'Pay with Next Check':
-        return 'expense-badge--pay-next-check';
-      case 'Pay with Following Check':
-        return 'expense-badge--pay-following-check';
-      default:
-        return 'expense-badge--unknown';
+    case 'Paid':
+      return 'expense-badge--paid';
+    case 'Partially Paid':
+      return 'expense-badge--partially-paid';
+    case 'Overdue':
+      return 'expense-badge--overdue';
+    case 'Pay This Week':
+      return 'expense-badge--pay-this-week';
+    case 'Pay with Next Check':
+      return 'expense-badge--pay-next-check';
+    case 'Pay with Following Check':
+      return 'expense-badge--pay-following-check';
+    default:
+      return 'expense-badge--unknown';
     }
   };
 
@@ -90,6 +88,21 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
       )}
     </>
   );
+};
+
+ExpenseBadge.propTypes = {
+  expense: PropTypes.shape({
+    id: PropTypes.number.isRequired,
+    name: PropTypes.string.isRequired,
+    amount: PropTypes.number.isRequired,
+    paidAmount: PropTypes.number,
+    recurringTemplateId: PropTypes.number,
+  }).isRequired,
+  paycheckService: PropTypes.shape({
+    calculateExpenseStatus: PropTypes.func.isRequired,
+    getStatusColor: PropTypes.func.isRequired,
+  }).isRequired,
+  paycheckDates: PropTypes.object.isRequired,
 };
 
 export default ExpenseBadge;
