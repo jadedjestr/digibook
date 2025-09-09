@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describe, it, expect, vi } from 'vitest';
+
 import ErrorBoundary from '../ErrorBoundary';
 
 // Component that throws an error for testing
@@ -33,7 +34,11 @@ describe('ErrorBoundary', () => {
     );
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByText('We encountered an unexpected error. Your data is safe, but the app needs to restart.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'We encountered an unexpected error. Your data is safe, but the app needs to restart.'
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText('Try Again')).toBeInTheDocument();
     expect(screen.getByText('Reload Page')).toBeInTheDocument();
 
@@ -56,7 +61,7 @@ describe('ErrorBoundary', () => {
     // Try Again button should be clickable
     const tryAgainButton = screen.getByText('Try Again');
     expect(tryAgainButton).toBeInTheDocument();
-    
+
     // Should be able to click it without errors
     await user.click(tryAgainButton);
 

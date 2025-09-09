@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
 import { Check, X } from 'lucide-react';
-import { logger } from '../utils/logger';
-import { DateUtils } from '../utils/dateUtils';
-import PrivacyWrapper from './PrivacyWrapper';
+import React, { useState, useEffect, useRef } from 'react';
+
 import { formatCurrency } from '../utils/accountUtils';
+import { DateUtils } from '../utils/dateUtils';
+import { logger } from '../utils/logger';
+
+import PrivacyWrapper from './PrivacyWrapper';
 
 const InlineEdit = ({ value, onSave, type = 'text' }) => {
   const [editValue, setEditValue] = useState(value);
@@ -17,7 +19,8 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
 
   const handleSave = () => {
     // Parse number values properly for decimal amounts
-    const valueToSave = type === 'number' ? parseFloat(editValue) || 0 : editValue;
+    const valueToSave =
+      type === 'number' ? parseFloat(editValue) || 0 : editValue;
     onSave(valueToSave);
     setIsEditing(false);
   };
@@ -27,7 +30,7 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
     setIsEditing(false);
   };
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = e => {
     if (e.key === 'Enter') {
       e.preventDefault();
       handleSave();
@@ -49,57 +52,58 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
 
   if (isEditing) {
     return (
-      <div className="flex items-center space-x-2">
+      <div className='flex items-center space-x-2'>
         {type === 'number' ? (
           <input
             ref={inputRef}
-            type="number"
+            type='number'
             value={editValue}
-            onChange={(e) => {
+            onChange={e => {
               const value = e.target.value;
+
               // Allow empty string and valid numbers, including incomplete decimals
               if (value === '' || /^\d*\.?\d*$/.test(value)) {
                 setEditValue(value);
               }
             }}
             onKeyDown={handleKeyDown}
-            className="glass-input text-sm w-20"
-            step="0.01"
-            min="0"
+            className='glass-input text-sm w-20'
+            step='0.01'
+            min='0'
           />
         ) : type === 'date' ? (
           <input
             ref={inputRef}
-            type="date"
+            type='date'
             value={editValue}
-            onChange={(e) => {
+            onChange={e => {
               logger.debug('Date input changed:', e.target.value);
               setEditValue(e.target.value);
             }}
             onKeyDown={handleKeyDown}
-            className="glass-input text-sm w-32"
+            className='glass-input text-sm w-32'
           />
         ) : (
           <input
             ref={inputRef}
-            type="text"
+            type='text'
             value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
+            onChange={e => setEditValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="glass-input text-sm w-full"
+            className='glass-input text-sm w-full'
           />
         )}
         <button
           onClick={handleSave}
-          className="p-1 text-green-300 hover:text-green-200"
-          title="Save (Enter)"
+          className='p-1 text-green-300 hover:text-green-200'
+          title='Save (Enter)'
         >
           <Check size={14} />
         </button>
         <button
           onClick={handleCancel}
-          className="p-1 text-red-300 hover:text-red-200"
-          title="Cancel (Esc)"
+          className='p-1 text-red-300 hover:text-red-200'
+          title='Cancel (Esc)'
         >
           <X size={14} />
         </button>
@@ -109,11 +113,7 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
 
   const formatDisplayValue = (val, type) => {
     if (type === 'number') {
-      return (
-        <PrivacyWrapper>
-          {formatCurrency(parseFloat(val))}
-        </PrivacyWrapper>
-      );
+      return <PrivacyWrapper>{formatCurrency(parseFloat(val))}</PrivacyWrapper>;
     } else if (type === 'date') {
       if (!val) return '';
       return DateUtils.formatDisplayDate(val);
@@ -123,7 +123,7 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
 
   return (
     <div
-      className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors"
+      className='cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors'
       onClick={() => setIsEditing(true)}
     >
       {formatDisplayValue(value, type)}

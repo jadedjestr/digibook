@@ -9,7 +9,7 @@ class Logger {
   /**
    * Debug logging - only in development
    */
-  debug (message, data = null) {
+  debug(message, data = null) {
     if (isDevelopment) {
       if (data) {
         console.log(`[DEBUG] ${message}`, data);
@@ -22,7 +22,7 @@ class Logger {
   /**
    * Info logging - always logged
    */
-  info (message, data = null) {
+  info(message, data = null) {
     if (data) {
       console.info(`[INFO] ${message}`, data);
     } else {
@@ -33,7 +33,7 @@ class Logger {
   /**
    * Warning logging - always logged
    */
-  warn (message, data = null) {
+  warn(message, data = null) {
     if (data) {
       console.warn(`[WARN] ${message}`, data);
     } else {
@@ -44,7 +44,7 @@ class Logger {
   /**
    * Error logging - always logged, could be sent to error tracking service
    */
-  error (message, error = null) {
+  error(message, error = null) {
     if (error) {
       console.error(`[ERROR] ${message}`, error);
     } else {
@@ -60,7 +60,7 @@ class Logger {
   /**
    * Success logging - only in development
    */
-  success (message, data = null) {
+  success(message, data = null) {
     if (isDevelopment) {
       if (data) {
         console.log(`[SUCCESS] ${message}`, data);
@@ -73,7 +73,7 @@ class Logger {
   /**
    * Database operations logging - only in development
    */
-  db (operation, details = null) {
+  db(operation, details = null) {
     if (isDevelopment) {
       if (details) {
         console.log(`[DB] ${operation}`, details);
@@ -86,7 +86,7 @@ class Logger {
   /**
    * Component lifecycle logging - only in development
    */
-  component (componentName, action, data = null) {
+  component(componentName, action, data = null) {
     if (isDevelopment) {
       if (data) {
         console.log(`[${componentName}] ${action}`, data);

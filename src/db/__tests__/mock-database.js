@@ -1,6 +1,6 @@
 /**
  * Mock Database for Testing
- * 
+ *
  * Provides a simple in-memory database implementation for testing
  * without the complexity of IndexedDB constraints.
  */
@@ -16,7 +16,7 @@ export class MockDatabase {
       paycheckSettings: new Map(),
       userPreferences: new Map(),
       monthlyExpenseHistory: new Map(),
-      auditLogs: new Map()
+      auditLogs: new Map(),
     };
     this.nextId = 1;
   }
@@ -37,7 +37,7 @@ export class MockDatabase {
     if (!account || !account.name) {
       throw new Error('Account data is required');
     }
-    
+
     const id = this.generateId();
     const accountData = {
       ...account,
@@ -51,7 +51,7 @@ export class MockDatabase {
 
   async getAccounts() {
     const accounts = Array.from(this.data.accounts.values());
-    
+
     // Ensure there's always a default account if accounts exist
     if (accounts.length > 0) {
       const hasDefault = accounts.some(account => account.isDefault);
@@ -80,10 +80,11 @@ export class MockDatabase {
     if (!account) {
       throw new Error('Account not found');
     }
-    
-    const pendingCount = Array.from(this.data.pendingTransactions.values())
-      .filter(transaction => transaction.accountId === id).length;
-    
+
+    const pendingCount = Array.from(
+      this.data.pendingTransactions.values()
+    ).filter(transaction => transaction.accountId === id).length;
+
     if (pendingCount > 0) {
       throw new Error('Cannot delete account with pending transactions');
     }
@@ -138,10 +139,10 @@ export class MockDatabase {
 
     // Check for duplicate names (case insensitive)
     const existingCategories = Array.from(this.data.categories.values());
-    const nameExists = existingCategories.some(cat => 
-      cat.nameLower === trimmedName.toLowerCase()
+    const nameExists = existingCategories.some(
+      cat => cat.nameLower === trimmedName.toLowerCase()
     );
-    
+
     if (nameExists) {
       throw new Error('Category with this name already exists');
     }
@@ -169,13 +170,13 @@ export class MockDatabase {
       throw new Error('Category not found');
     }
 
-    let payload = { ...updates };
+    const payload = { ...updates };
     if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
       const trimmedName = (updates.name || '').trim();
       payload.name = trimmedName;
       payload.nameLower = trimmedName.toLowerCase();
     }
-    
+
     const updatedCategory = { ...category, ...payload };
     this.data.categories.set(id, updatedCategory);
   }
@@ -186,13 +187,15 @@ export class MockDatabase {
       throw new Error('Category not found');
     }
 
-    const affectedFixedExpenses = Array.from(this.data.fixedExpenses.values())
-      .filter(expense => expense.category === category.name);
-    const affectedPendingTransactions = Array.from(this.data.pendingTransactions.values())
-      .filter(transaction => transaction.category === category.name);
+    const affectedFixedExpenses = Array.from(
+      this.data.fixedExpenses.values()
+    ).filter(expense => expense.category === category.name);
+    const affectedPendingTransactions = Array.from(
+      this.data.pendingTransactions.values()
+    ).filter(transaction => transaction.category === category.name);
 
     this.data.categories.delete(id);
-    
+
     return {
       affectedFixedExpenses,
       affectedPendingTransactions,
@@ -201,7 +204,9 @@ export class MockDatabase {
 
   async initializeDefaultCategories() {
     const existingCategories = Array.from(this.data.categories.values());
-    const existingCategoryNames = existingCategories.map(cat => cat.name.toLowerCase());
+    const existingCategoryNames = existingCategories.map(cat =>
+      cat.name.toLowerCase()
+    );
 
     const defaultCategories = [
       { name: 'Housing', color: '#3B82F6', icon: '🏠', isDefault: true },
@@ -209,14 +214,15 @@ export class MockDatabase {
       { name: 'Insurance', color: '#F59E0B', icon: '🛡️', isDefault: true },
       { name: 'Transportation', color: '#8B5CF6', icon: '🚗', isDefault: true },
       { name: 'Subscriptions', color: '#EC4899', icon: '📱', isDefault: true },
-      { name: 'Debt', color: '#EF4444', icon: '💳', isDefault: true },
+      { name: 'Credit Card', color: '#F97316', icon: '💳', isDefault: true },
+      { name: 'Debt', color: '#EF4444', icon: '📊', isDefault: true },
       { name: 'Healthcare', color: '#06B6D4', icon: '🏥', isDefault: true },
       { name: 'Education', color: '#84CC16', icon: '🎓', isDefault: true },
       { name: 'Other', color: '#6B7280', icon: '📦', isDefault: true },
     ];
 
-    const categoriesToAdd = defaultCategories.filter(category =>
-      !existingCategoryNames.includes(category.name.toLowerCase()),
+    const categoriesToAdd = defaultCategories.filter(
+      category => !existingCategoryNames.includes(category.name.toLowerCase())
     );
 
     for (const category of categoriesToAdd) {
@@ -239,8 +245,9 @@ export class MockDatabase {
   }
 
   async getAuditLogs() {
-    return Array.from(this.data.auditLogs.values())
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    return Array.from(this.data.auditLogs.values()).sort(
+      (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+    );
   }
 
   // Database schema operations
@@ -287,47 +294,59 @@ export class MockDatabase {
   // Direct table access for tests
   get accounts() {
     return {
-      add: (data) => this.addAccount(data),
-      get: (id) => this.data.accounts.get(id),
+      add: data => this.addAccount(data),
+      get: id => this.data.accounts.get(id),
       update: (id, updates) => this.updateAccount(id, updates),
-      delete: (id) => this.deleteAccount(id),
+      delete: id => this.deleteAccount(id),
       toArray: () => Array.from(this.data.accounts.values()),
       count: () => this.data.accounts.size,
-      where: (field) => ({
-        equals: (value) => ({
-          count: () => Array.from(this.data.accounts.values())
-            .filter(account => account[field] === value).length
-        })
-      })
+      where: field => ({
+        equals: value => ({
+          count: () =>
+            Array.from(this.data.accounts.values()).filter(
+              account => account[field] === value
+            ).length,
+        }),
+      }),
     };
   }
 
   get pendingTransactions() {
     return {
-      add: (data) => {
+      add: data => {
         const id = this.generateId();
-        const transactionData = { ...data, id, createdAt: new Date().toISOString() };
+        const transactionData = {
+          ...data,
+          id,
+          createdAt: new Date().toISOString(),
+        };
         this.data.pendingTransactions.set(id, transactionData);
         return id;
       },
-      where: (field) => ({
-        equals: (value) => ({
-          count: () => Array.from(this.data.pendingTransactions.values())
-            .filter(transaction => transaction[field] === value).length
-        })
-      })
+      where: field => ({
+        equals: value => ({
+          count: () =>
+            Array.from(this.data.pendingTransactions.values()).filter(
+              transaction => transaction[field] === value
+            ).length,
+        }),
+      }),
     };
   }
 
   get fixedExpenses() {
     return {
-      add: (data) => {
+      add: data => {
         const id = this.generateId();
-        const expenseData = { ...data, id, createdAt: new Date().toISOString() };
+        const expenseData = {
+          ...data,
+          id,
+          createdAt: new Date().toISOString(),
+        };
         this.data.fixedExpenses.set(id, expenseData);
         return id;
       },
-      get: (id) => this.data.fixedExpenses.get(id),
+      get: id => this.data.fixedExpenses.get(id),
       update: (id, updates) => {
         const expense = this.data.fixedExpenses.get(id);
         if (!expense) {
@@ -336,88 +355,98 @@ export class MockDatabase {
         const updatedExpense = { ...expense, ...updates };
         this.data.fixedExpenses.set(id, updatedExpense);
       },
-      where: (field) => ({
-        equals: (value) => ({
-          toArray: () => Array.from(this.data.fixedExpenses.values())
-            .filter(expense => expense[field] === value)
-        })
-      })
+      where: field => ({
+        equals: value => ({
+          toArray: () =>
+            Array.from(this.data.fixedExpenses.values()).filter(
+              expense => expense[field] === value
+            ),
+        }),
+      }),
     };
   }
 
   get categories() {
     return {
-      add: (data) => this.addCategory(data),
-      get: (id) => this.data.categories.get(id),
+      add: data => this.addCategory(data),
+      get: id => this.data.categories.get(id),
       update: (id, updates) => this.updateCategory(id, updates),
-      delete: (id) => this.deleteCategory(id),
+      delete: id => this.deleteCategory(id),
       toArray: () => Array.from(this.data.categories.values()),
-      count: () => this.data.categories.size
+      count: () => this.data.categories.size,
     };
   }
 
   get creditCards() {
     return {
-      add: (data) => {
+      add: data => {
         const id = this.generateId();
         const cardData = { ...data, id, createdAt: new Date().toISOString() };
         this.data.creditCards.set(id, cardData);
         return id;
       },
-      get: (id) => this.data.creditCards.get(id),
-      count: () => this.data.creditCards.size
+      get: id => this.data.creditCards.get(id),
+      count: () => this.data.creditCards.size,
     };
   }
 
   get paycheckSettings() {
     return {
-      add: (data) => {
+      add: data => {
         const id = this.generateId();
-        const settingsData = { ...data, id, createdAt: new Date().toISOString() };
+        const settingsData = {
+          ...data,
+          id,
+          createdAt: new Date().toISOString(),
+        };
         this.data.paycheckSettings.set(id, settingsData);
         return id;
       },
-      count: () => this.data.paycheckSettings.size
+      count: () => this.data.paycheckSettings.size,
     };
   }
 
   get userPreferences() {
     return {
-      add: (data) => {
+      add: data => {
         const id = this.generateId();
         const prefsData = { ...data, id, createdAt: new Date().toISOString() };
         this.data.userPreferences.set(id, prefsData);
         return id;
       },
-      count: () => this.data.userPreferences.size
+      count: () => this.data.userPreferences.size,
     };
   }
 
   get monthlyExpenseHistory() {
     return {
-      add: (data) => {
+      add: data => {
         const id = this.generateId();
-        const historyData = { ...data, id, createdAt: new Date().toISOString() };
+        const historyData = {
+          ...data,
+          id,
+          createdAt: new Date().toISOString(),
+        };
         this.data.monthlyExpenseHistory.set(id, historyData);
         return id;
       },
-      count: () => this.data.monthlyExpenseHistory.size
+      count: () => this.data.monthlyExpenseHistory.size,
     };
   }
 
   get auditLogs() {
     return {
-      add: (data) => {
+      add: data => {
         const id = this.generateId();
         const logData = { ...data, id };
         this.data.auditLogs.set(id, logData);
         return id;
       },
-      orderBy: (field) => ({
+      orderBy: field => ({
         reverse: () => ({
-          toArray: () => this.getAuditLogs()
-        })
-      })
+          toArray: () => this.getAuditLogs(),
+        }),
+      }),
     };
   }
 }

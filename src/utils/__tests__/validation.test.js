@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import {
   validateAccountName,
   validateAmount,
@@ -64,7 +65,7 @@ describe('Validation Utils', () => {
     it('should validate correct amounts', () => {
       const result = validateAmount('100.50');
       expect(result.isValid).toBe(true);
-      expect(result.value).toBe(100.50);
+      expect(result.value).toBe(100.5);
     });
 
     it('should handle currency symbols', () => {
@@ -179,14 +180,18 @@ describe('Validation Utils', () => {
       const oldDate = '2010-01-01';
       const result = validateDate(oldDate);
       expect(result.isValid).toBe(false);
-      expect(result.error).toBe('Date cannot be more than 10 years in the past');
+      expect(result.error).toBe(
+        'Date cannot be more than 10 years in the past'
+      );
     });
 
     it('should reject dates too far in the future', () => {
       const futureDate = '2040-01-01';
       const result = validateDate(futureDate);
       expect(result.isValid).toBe(false);
-      expect(result.error).toBe('Date cannot be more than 10 years in the future');
+      expect(result.error).toBe(
+        'Date cannot be more than 10 years in the future'
+      );
     });
   });
 
@@ -224,7 +229,9 @@ describe('Validation Utils', () => {
       const longName = 'A'.repeat(35);
       const result = validateCategoryName(longName, existingCategories);
       expect(result.isValid).toBe(false);
-      expect(result.error).toBe('Category name must be less than 30 characters');
+      expect(result.error).toBe(
+        'Category name must be less than 30 characters'
+      );
     });
   });
 });

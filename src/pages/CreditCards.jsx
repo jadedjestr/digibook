@@ -2,12 +2,12 @@ import { Plus, CreditCard } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
+import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
+import EnhancedCreditCard from '../components/EnhancedCreditCard';
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
-import EnhancedCreditCard from '../components/EnhancedCreditCard';
 import PrivacyWrapper from '../components/PrivacyWrapper';
-import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
 import CreditCardMigrationModal from '../components/CreditCardMigrationModal';
 
 const CreditCards = ({
@@ -112,6 +112,20 @@ const CreditCards = ({
       } else {
         await dbHelpers.addCreditCard(cardData);
         notify.success('Credit card added successfully');
+
+        // Automatically create a minimum payment expense for new credit cards
+        try {
+          const createdCount =
+            await dbHelpers.createMissingCreditCardExpenses();
+          if (createdCount > 0) {
+            notify.success(
+              `Created ${createdCount} minimum payment expense(s)`
+            );
+          }
+        } catch (error) {
+          logger.error('Error creating automatic credit card expenses:', error);
+          // Don't show error to user as the credit card was still added successfully
+        }
       }
 
       setIsAddModalOpen(false);
@@ -271,13 +285,16 @@ const CreditCards = ({
               <span>Smart Link Expenses</span>
             </button>
           )}
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className='glass-button flex items-center space-x-2 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
-          >
-            <Plus size={16} />
-            <span>Add Credit Card</span>
-          </button>
+          {/* Only show Add Credit Card button when credit cards exist */}
+          {creditCards.length > 0 && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className='glass-button flex items-center space-x-2 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
+            >
+              <Plus size={16} />
+              <span>Add Credit Card</span>
+            </button>
+          )}
         </div>
       </div>
 

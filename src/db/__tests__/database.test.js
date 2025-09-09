@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
 import MockDatabase from './mock-database';
 
 // Mock logger to reduce noise in tests
@@ -8,8 +9,8 @@ vi.mock('../../utils/logger', () => ({
     success: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
-    debug: vi.fn()
-  }
+    debug: vi.fn(),
+  },
 }));
 
 describe('Database Operations', () => {
@@ -38,7 +39,7 @@ describe('Database Operations', () => {
           const id = await mockDb.addAccount(accountData);
           return id;
         } catch (error) {
-          throw new Error('Failed to add account: ' + error.message);
+          throw new Error(`Failed to add account: ${error.message}`);
         }
       },
 
@@ -78,7 +79,7 @@ describe('Database Operations', () => {
         try {
           return await mockDb.addCategory(category);
         } catch (error) {
-          throw new Error('Failed to add category: ' + error.message);
+          throw new Error(`Failed to add category: ${error.message}`);
         }
       },
 
@@ -120,7 +121,7 @@ describe('Database Operations', () => {
 
       async ensureDefaultAccount() {
         await mockDb.ensureDefaultAccount();
-      }
+      },
     };
     await dbHelpers.clearDatabase();
   });
@@ -137,7 +138,7 @@ describe('Database Operations', () => {
       const accountData = {
         name: 'Test Checking Account',
         type: 'checking',
-        currentBalance: 1000.50
+        currentBalance: 1000.5,
       };
 
       const accountId = await dbHelpers.addAccount(accountData);
@@ -148,8 +149,8 @@ describe('Database Operations', () => {
       expect(accounts[0]).toMatchObject({
         name: 'Test Checking Account',
         type: 'checking',
-        currentBalance: 1000.50,
-        isDefault: true // First account should be default
+        currentBalance: 1000.5,
+        isDefault: true, // First account should be default
       });
     });
 
@@ -157,13 +158,13 @@ describe('Database Operations', () => {
       const account1 = {
         name: 'First Account',
         type: 'checking',
-        currentBalance: 1000
+        currentBalance: 1000,
       };
 
       const account2 = {
         name: 'Second Account',
         type: 'savings',
-        currentBalance: 2000
+        currentBalance: 2000,
       };
 
       await dbHelpers.addAccount(account1);
@@ -178,20 +179,20 @@ describe('Database Operations', () => {
       const accountData = {
         name: 'Test Account',
         type: 'checking',
-        currentBalance: 1000
+        currentBalance: 1000,
       };
 
       const accountId = await dbHelpers.addAccount(accountData);
-      
+
       await dbHelpers.updateAccount(accountId, {
         name: 'Updated Account',
-        currentBalance: 1500
+        currentBalance: 1500,
       });
 
       const accounts = await dbHelpers.getAccounts();
       expect(accounts[0]).toMatchObject({
         name: 'Updated Account',
-        currentBalance: 1500
+        currentBalance: 1500,
       });
     });
 
@@ -199,11 +200,11 @@ describe('Database Operations', () => {
       const accountData = {
         name: 'Test Account',
         type: 'checking',
-        currentBalance: 1000
+        currentBalance: 1000,
       };
 
       const accountId = await dbHelpers.addAccount(accountData);
-      
+
       await dbHelpers.deleteAccount(accountId);
 
       const accounts = await dbHelpers.getAccounts();
@@ -214,15 +215,15 @@ describe('Database Operations', () => {
       const accountData = {
         name: 'Default Account',
         type: 'checking',
-        currentBalance: 1000
+        currentBalance: 1000,
       };
 
       await dbHelpers.addAccount(accountData);
-      
+
       const defaultAccount = await dbHelpers.getDefaultAccount();
       expect(defaultAccount).toMatchObject({
         name: 'Default Account',
-        isDefault: true
+        isDefault: true,
       });
     });
 
@@ -230,13 +231,13 @@ describe('Database Operations', () => {
       const account1 = {
         name: 'First Account',
         type: 'checking',
-        currentBalance: 1000
+        currentBalance: 1000,
       };
 
       const account2 = {
         name: 'Second Account',
         type: 'savings',
-        currentBalance: 2000
+        currentBalance: 2000,
       };
 
       const id1 = await dbHelpers.addAccount(account1);
@@ -255,7 +256,7 @@ describe('Database Operations', () => {
       const categoryData = {
         name: 'Test Category',
         color: '#FF0000',
-        icon: '🏠'
+        icon: '🏠',
       };
 
       const categoryId = await dbHelpers.addCategory(categoryData);
@@ -268,7 +269,7 @@ describe('Database Operations', () => {
         nameLower: 'test category',
         color: '#FF0000',
         icon: '🏠',
-        isDefault: false
+        isDefault: false,
       });
     });
 
@@ -276,21 +277,21 @@ describe('Database Operations', () => {
       const categoryData = {
         name: 'Test Category',
         color: '#FF0000',
-        icon: '🏠'
+        icon: '🏠',
       };
 
       const categoryId = await dbHelpers.addCategory(categoryData);
-      
+
       await dbHelpers.updateCategory(categoryId, {
         name: 'Updated Category',
-        color: '#00FF00'
+        color: '#00FF00',
       });
 
       const categories = await dbHelpers.getCategories();
       expect(categories[0]).toMatchObject({
         name: 'Updated Category',
         nameLower: 'updated category',
-        color: '#00FF00'
+        color: '#00FF00',
       });
     });
 
@@ -298,11 +299,11 @@ describe('Database Operations', () => {
       const categoryData = {
         name: 'Test Category',
         color: '#FF0000',
-        icon: '🏠'
+        icon: '🏠',
       };
 
       const categoryId = await dbHelpers.addCategory(categoryData);
-      
+
       const result = await dbHelpers.deleteCategory(categoryId);
       expect(result.affectedFixedExpenses).toHaveLength(0);
       expect(result.affectedPendingTransactions).toHaveLength(0);
@@ -313,10 +314,10 @@ describe('Database Operations', () => {
 
     it('should initialize default categories', async () => {
       await dbHelpers.initializeDefaultCategories();
-      
+
       const categories = await dbHelpers.getCategories();
       expect(categories.length).toBeGreaterThan(0);
-      
+
       const categoryNames = categories.map(c => c.name);
       expect(categoryNames).toContain('Housing');
       expect(categoryNames).toContain('Utilities');
@@ -326,10 +327,10 @@ describe('Database Operations', () => {
     it('should not create duplicate default categories', async () => {
       await dbHelpers.initializeDefaultCategories();
       const firstCount = (await dbHelpers.getCategories()).length;
-      
+
       await dbHelpers.initializeDefaultCategories();
       const secondCount = (await dbHelpers.getCategories()).length;
-      
+
       expect(firstCount).toBe(secondCount);
     });
   });
@@ -340,7 +341,7 @@ describe('Database Operations', () => {
       await mockDb.accounts.add({
         name: 'Test Account',
         type: 'checking',
-        currentBalance: 1000
+        currentBalance: 1000,
       });
 
       await dbHelpers.fixDatabaseSchema();
@@ -355,14 +356,14 @@ describe('Database Operations', () => {
         name: 'Account 1',
         type: 'checking',
         currentBalance: 1000,
-        isDefault: false
+        isDefault: false,
       });
 
       await mockDb.accounts.add({
         name: 'Account 2',
         type: 'savings',
         currentBalance: 2000,
-        isDefault: false
+        isDefault: false,
       });
 
       await dbHelpers.ensureDefaultAccount();
@@ -377,7 +378,7 @@ describe('Database Operations', () => {
     it('should add audit log', async () => {
       await dbHelpers.addAuditLog('CREATE', 'account', 1, {
         name: 'Test Account',
-        type: 'checking'
+        type: 'checking',
       });
 
       const logs = await dbHelpers.getAuditLogs();
@@ -385,16 +386,16 @@ describe('Database Operations', () => {
       expect(logs[0]).toMatchObject({
         actionType: 'CREATE',
         entityType: 'account',
-        entityId: 1
+        entityId: 1,
       });
     });
 
     it('should get audit logs in reverse chronological order', async () => {
       await dbHelpers.addAuditLog('CREATE', 'account', 1, {});
-      
+
       // Add a small delay to ensure different timestamps
       await new Promise(resolve => setTimeout(resolve, 10));
-      
+
       await dbHelpers.addAuditLog('UPDATE', 'account', 1, {});
 
       const logs = await dbHelpers.getAuditLogs();
@@ -407,9 +408,9 @@ describe('Database Operations', () => {
   describe('Error Handling', () => {
     it('should handle database errors gracefully', async () => {
       // Try to add account with invalid data
-      await expect(
-        dbHelpers.addAccount(null)
-      ).rejects.toThrow('Failed to add account');
+      await expect(dbHelpers.addAccount(null)).rejects.toThrow(
+        'Failed to add account'
+      );
     });
 
     it('should handle missing account in update', async () => {
@@ -419,9 +420,9 @@ describe('Database Operations', () => {
     });
 
     it('should handle missing account in delete', async () => {
-      await expect(
-        dbHelpers.deleteAccount(999)
-      ).rejects.toThrow('Failed to delete account');
+      await expect(dbHelpers.deleteAccount(999)).rejects.toThrow(
+        'Failed to delete account'
+      );
     });
   });
 
@@ -430,31 +431,31 @@ describe('Database Operations', () => {
       const accountData = {
         name: 'Test Account',
         type: 'checking',
-        currentBalance: 1000
+        currentBalance: 1000,
       };
 
       const accountId = await dbHelpers.addAccount(accountData);
 
       // Add a pending transaction linked to the account
       await mockDb.pendingTransactions.add({
-        accountId: accountId,
+        accountId,
         amount: -100,
         description: 'Test transaction',
         category: 'Test',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       });
 
       // Try to delete account with linked transaction
-      await expect(
-        dbHelpers.deleteAccount(accountId)
-      ).rejects.toThrow('Failed to delete account');
+      await expect(dbHelpers.deleteAccount(accountId)).rejects.toThrow(
+        'Failed to delete account'
+      );
     });
 
     it('should handle category name case insensitivity', async () => {
       await dbHelpers.addCategory({
         name: 'Test Category',
         color: '#FF0000',
-        icon: '🏠'
+        icon: '🏠',
       });
 
       // Try to add category with same name but different case
@@ -462,7 +463,7 @@ describe('Database Operations', () => {
         dbHelpers.addCategory({
           name: 'test category',
           color: '#00FF00',
-          icon: '🚗'
+          icon: '🚗',
         })
       ).rejects.toThrow();
     });
@@ -476,7 +477,7 @@ describe('Database Operations', () => {
       const accounts = Array.from({ length: 100 }, (_, i) => ({
         name: `Account ${i}`,
         type: 'checking',
-        currentBalance: 1000 + i
+        currentBalance: 1000 + i,
       }));
 
       for (const account of accounts) {
@@ -500,7 +501,7 @@ describe('Database Operations', () => {
       const categories = Array.from({ length: 50 }, (_, i) => ({
         name: `Category ${i}`,
         color: `#${i.toString(16).padStart(6, '0')}`,
-        icon: '🏠'
+        icon: '🏠',
       }));
 
       for (const category of categories) {

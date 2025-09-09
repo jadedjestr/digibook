@@ -1,7 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { logger } from '../utils/logger';
 import { X, CreditCard, PiggyBank, Building2, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+
 import { dbHelpers } from '../db/database-clean';
+import { logger } from '../utils/logger';
+
 import AccountSelector from './AccountSelector';
 import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
 
@@ -24,9 +27,11 @@ const AddExpensePanel = ({
   const [isSaving, setIsSaving] = useState(false);
 
   // Smart account filtering based on expense type
-  const isCreditCardPayment = formData.name.toLowerCase().includes('payment') || 
-                             formData.category === 'Credit Card Payment';
+  const isCreditCardPayment =
+    formData.name.toLowerCase().includes('payment') ||
+    formData.category === 'Credit Card Payment';
 
+  // Debug logging removed - accounts are working correctly
 
   const panelRef = useRef(null);
   const firstInputRef = useRef(null);
@@ -56,10 +61,10 @@ const AddExpensePanel = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleTabKey = (e) => {
+    const handleTabKey = e => {
       if (e.key === 'Tab') {
         const focusableElements = panelRef.current?.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
         );
 
         if (!focusableElements?.length) return;
@@ -72,11 +77,9 @@ const AddExpensePanel = ({
             e.preventDefault();
             lastElement.focus();
           }
-        } else {
-          if (document.activeElement === lastElement) {
-            e.preventDefault();
-            firstElement.focus();
-          }
+        } else if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
         }
       }
     };
@@ -88,26 +91,49 @@ const AddExpensePanel = ({
   // Prevent body scroll when panel is open
   useEffect(() => {
     if (isOpen) {
+      // Store the current scroll position
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
       document.body.style.overflow = 'hidden';
     } else {
-      document.body.style.overflow = 'unset';
+      // Restore scroll position
+      const scrollY = document.body.style.top;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      if (scrollY) {
+        window.scrollTo(0, parseInt(scrollY || '0') * -1);
+      }
     }
     return () => {
-      document.body.style.overflow = 'unset';
+      // Cleanup on unmount
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
     };
   }, [isOpen]);
 
   // Reset form when panel opens
   useEffect(() => {
     if (isOpen) {
-      setFormData({ name: '', dueDate: '', amount: '', accountId: '', category: '' });
+      setFormData({
+        name: '',
+        dueDate: '',
+        amount: '',
+        accountId: '',
+        category: '',
+      });
       setErrors({});
     }
   }, [isOpen]);
 
   // Escape key handler
   useEffect(() => {
-    const handleEscape = (e) => {
+    const handleEscape = e => {
       if (e.key === 'Escape' && isOpen) {
         handleClose();
       }
@@ -116,18 +142,13 @@ const AddExpensePanel = ({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen]);
 
-
-
   const handleClose = () => {
     onClose();
   };
 
   const handleInputChange = (field, value) => {
-    console.log('handleInputChange:', { field, value, currentFormData: formData });
-
     // Simplified handling for amount field
     if (field === 'amount') {
-      console.log('Amount field update:', { original: value });
       setFormData(prev => ({ ...prev, [field]: value }));
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
@@ -147,13 +168,6 @@ const AddExpensePanel = ({
     const amountStr = formData.amount.toString().replace(/[$,]/g, ''); // Remove $ and commas
     const amountValue = parseFloat(amountStr);
 
-    console.log('Amount validation:', {
-      original: formData.amount,
-      cleaned: amountStr,
-      parsed: amountValue,
-      isValid: !isNaN(amountValue) && amountValue > 0,
-    });
-
     if (!formData.amount || isNaN(amountValue) || amountValue <= 0) {
       newErrors.amount = 'Amount must be greater than 0';
     }
@@ -166,7 +180,6 @@ const AddExpensePanel = ({
   };
 
   const handleSave = async () => {
-    console.log('handleSave - formData:', formData);
     if (!validateForm()) {
       return;
     }
@@ -200,37 +213,45 @@ const AddExpensePanel = ({
     }
   };
 
-  const getAccountIcon = (accountType) => {
+  const getAccountIcon = accountType => {
     switch (accountType?.toLowerCase()) {
-    case 'checking':
-      return <CreditCard size={16} className="text-blue-400" />;
-    case 'savings':
-      return <PiggyBank size={16} className="text-green-400" />;
-    default:
-      return <Building2 size={16} className="text-purple-400" />;
+      case 'checking':
+        return <CreditCard size={16} className='text-blue-400' />;
+      case 'savings':
+        return <PiggyBank size={16} className='text-green-400' />;
+      default:
+        return <Building2 size={16} className='text-purple-400' />;
     }
   };
 
-
-
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/20 backdrop-blur-[2px] transition-opacity duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
-        style={{
-          zIndex: 9999,
-          opacity: isOpen ? 1 : 0,
-          pointerEvents: isOpen ? 'auto' : 'none',
-          visibility: isOpen ? 'visible' : 'hidden',
-        }}
-        onClick={handleClose}
-      />
+      {/* Backdrop - rendered as portal to ensure full viewport coverage */}
+      {isOpen &&
+        createPortal(
+          <div
+            className='fixed bg-black/20 backdrop-blur-[2px] transition-opacity duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)]'
+            style={{
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100vw',
+              height: '100vh',
+              zIndex: 9999,
+              opacity: isOpen ? 1 : 0,
+              pointerEvents: isOpen ? 'auto' : 'none',
+              visibility: isOpen ? 'visible' : 'hidden',
+            }}
+            onClick={handleClose}
+          />,
+          document.body
+        )}
 
       {/* Panel */}
       <div
         ref={panelRef}
-        className="fixed top-0 right-0 h-full w-[450px] liquid-glass border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden"
+        className='fixed top-0 right-0 h-full w-[450px] liquid-glass border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden'
         style={{
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
           boxSizing: 'border-box',
@@ -240,81 +261,80 @@ const AddExpensePanel = ({
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-8 border-b border-white/10">
-          <h2 className="text-xl font-semibold text-white">Add New Expense</h2>
+        <div className='flex items-center justify-between p-8 border-b border-white/10'>
+          <h2 className='text-xl font-semibold text-white'>Add New Expense</h2>
           <button
             onClick={handleClose}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            className='p-2 hover:bg-white/10 rounded-lg transition-colors'
           >
-            <X size={20} className="text-white" />
+            <X size={20} className='text-white' />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-6">
+        <div className='flex-1 overflow-y-auto p-8 space-y-6'>
           {/* Expense Name */}
           <div>
-            <label className="block text-sm font-medium text-white mb-2">
+            <label className='block text-sm font-medium text-white mb-2'>
               Expense Name
             </label>
             <input
               ref={firstInputRef}
-              type="text"
+              type='text'
               value={formData.name}
-              onChange={(e) => handleInputChange('name', e.target.value)}
-              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50"
-              placeholder="Enter expense name"
+              onChange={e => handleInputChange('name', e.target.value)}
+              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50'
+              placeholder='Enter expense name'
             />
             {errors.name && (
-              <p className="mt-1 text-sm text-red-400">{errors.name}</p>
+              <p className='mt-1 text-sm text-red-400'>{errors.name}</p>
             )}
           </div>
 
           {/* Due Date */}
           <div>
-            <label className="block text-sm font-medium text-white mb-2">
+            <label className='block text-sm font-medium text-white mb-2'>
               Due Date
             </label>
             <input
-              type="date"
+              type='date'
               value={formData.dueDate}
-              onChange={(e) => handleInputChange('dueDate', e.target.value)}
-              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white"
+              onChange={e => handleInputChange('dueDate', e.target.value)}
+              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
             />
             {errors.dueDate && (
-              <p className="mt-1 text-sm text-red-400">{errors.dueDate}</p>
+              <p className='mt-1 text-sm text-red-400'>{errors.dueDate}</p>
             )}
           </div>
 
           {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-white mb-2">
+            <label className='block text-sm font-medium text-white mb-2'>
               Amount
             </label>
             <input
-              type="number"
-              step="0.01"
-              min="0"
+              type='number'
+              step='0.01'
+              min='0'
               value={formData.amount}
-              onChange={(e) => handleInputChange('amount', e.target.value)}
-              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50"
-              placeholder="0.00"
+              onChange={e => handleInputChange('amount', e.target.value)}
+              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50'
+              placeholder='0.00'
             />
             {errors.amount && (
-              <p className="mt-1 text-sm text-red-400">{errors.amount}</p>
+              <p className='mt-1 text-sm text-red-400'>{errors.amount}</p>
             )}
           </div>
 
           {/* Account Selector */}
           <div>
-            <label className="block text-sm font-medium text-white mb-2">
+            <label className='block text-sm font-medium text-white mb-2'>
               Account
             </label>
             <AccountSelectorErrorBoundary>
               <AccountSelector
                 value={formData.accountId}
-                onSave={(accountId) => {
-                  console.log(`AddExpensePanel: Account selected: ${accountId}`);
+                onSave={accountId => {
                   handleInputChange('accountId', accountId);
                 }}
                 accounts={accounts}
@@ -323,46 +343,45 @@ const AddExpensePanel = ({
               />
             </AccountSelectorErrorBoundary>
             {errors.accountId && (
-              <p className="mt-1 text-sm text-red-400">{errors.accountId}</p>
+              <p className='mt-1 text-sm text-red-400'>{errors.accountId}</p>
             )}
           </div>
 
-
           {/* Category Selector */}
           <div>
-            <label className="block text-sm font-medium text-white mb-2">
+            <label className='block text-sm font-medium text-white mb-2'>
               Category
             </label>
             <select
               value={formData.category}
-              onChange={(e) => handleInputChange('category', e.target.value)}
-              className="w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white"
+              onChange={e => handleInputChange('category', e.target.value)}
+              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
             >
-              <option value="">Select category</option>
-              {categories.map((category) => (
+              <option value=''>Select category</option>
+              {categories.map(category => (
                 <option key={category.id} value={category.name}>
                   {category.icon} {category.name}
                 </option>
               ))}
             </select>
             {errors.category && (
-              <p className="mt-1 text-sm text-red-400">{errors.category}</p>
+              <p className='mt-1 text-sm text-red-400'>{errors.category}</p>
             )}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-8 border-t border-white/10 space-y-3">
+        <div className='p-8 border-t border-white/10 space-y-3'>
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="w-full px-6 py-4 glass-button bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            className='w-full px-6 py-4 glass-button bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed'
           >
             {isSaving ? 'Saving...' : 'Save Expense'}
           </button>
           <button
             onClick={handleClose}
-            className="w-full px-6 py-4 glass-button bg-white/10 text-white/70 hover:bg-white/20"
+            className='w-full px-6 py-4 glass-button bg-white/10 text-white/70 hover:bg-white/20'
           >
             Cancel
           </button>

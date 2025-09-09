@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import PrivacyWrapper from './PrivacyWrapper';
+
 import { formatCurrency } from '../utils/accountUtils';
+
+import PrivacyWrapper from './PrivacyWrapper';
 
 const ExpenseBar = ({ expense, index, totalAmount }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -11,9 +13,12 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
     const visibilityTimer = setTimeout(() => setIsVisible(true), index * 100);
 
     // Animate bar width after visibility
-    const barTimer = setTimeout(() => {
-      setBarWidth(expense.percentage);
-    }, index * 100 + 200);
+    const barTimer = setTimeout(
+      () => {
+        setBarWidth(expense.percentage);
+      },
+      index * 100 + 200
+    );
 
     return () => {
       clearTimeout(visibilityTimer);
@@ -32,26 +37,29 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
         transform: isVisible ? 'translateX(0)' : 'translateX(-20px)',
         transition: 'opacity 0.3s ease, transform 0.3s ease',
       }}
-      role="button"
+      role='button'
       tabIndex={0}
       aria-label={`${expense.name}: ${formatCurrency(expense.amount)} (${expense.percentage.toFixed(1)}% of total expenses)`}
     >
       {/* Color indicator dot */}
       <div
-        className="w-6 h-6 rounded-full mr-3 flex-shrink-0"
+        className='w-6 h-6 rounded-full mr-3 flex-shrink-0'
         style={{ backgroundColor: expense.color }}
-        aria-hidden="true"
+        aria-hidden='true'
       />
 
       {/* Expense name */}
-      <span className="text-sm font-medium w-[180px] text-white truncate flex-shrink-0">
+      <span className='text-sm font-medium w-[180px] text-white truncate flex-shrink-0'>
         {expense.name}
       </span>
 
       {/* Progress bar container */}
-      <div className="flex-grow h-2 bg-gray-600 rounded mx-3 flex-shrink-0" style={{ minWidth: '120px' }}>
+      <div
+        className='flex-grow h-2 bg-gray-600 rounded mx-3 flex-shrink-0'
+        style={{ minWidth: '120px' }}
+      >
         <div
-          className="h-full rounded transition-all duration-800 ease-out"
+          className='h-full rounded transition-all duration-800 ease-out'
           style={{
             width: `${barWidth}%`,
             backgroundColor: expense.color,
@@ -60,14 +68,12 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
       </div>
 
       {/* Dollar amount */}
-      <span className="text-sm font-semibold text-white min-w-[80px] text-right flex-shrink-0">
-        <PrivacyWrapper>
-          {formatCurrency(expense.amount)}
-        </PrivacyWrapper>
+      <span className='text-sm font-semibold text-white min-w-[80px] text-right flex-shrink-0'>
+        <PrivacyWrapper>{formatCurrency(expense.amount)}</PrivacyWrapper>
       </span>
 
       {/* Percentage */}
-      <span className="text-xs text-gray-400 min-w-[40px] text-right flex-shrink-0">
+      <span className='text-xs text-gray-400 min-w-[40px] text-right flex-shrink-0'>
         {expense.percentage.toFixed(1)}%
       </span>
     </div>

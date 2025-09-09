@@ -27,11 +27,12 @@
 
 @layer base {
   html {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
       'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
       sans-serif;
   }
-  
+
   body {
     @apply bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900;
     @apply min-h-screen;
@@ -39,7 +40,12 @@
   }
 
   /* WCAG AA contrast improvements */
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply text-white;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
@@ -57,12 +63,12 @@
     );
     border-radius: 24px;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 
+    box-shadow:
       0 4px 20px rgba(0, 0, 0, 0.25),
       0 1px 3px rgba(255, 255, 255, 0.1);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  
+
   .liquid-glass:hover {
     backdrop-filter: blur(16px);
     background: linear-gradient(
@@ -71,15 +77,15 @@
       rgba(255, 255, 255, 0.18) 50%,
       rgba(255, 255, 255, 0.08) 100%
     );
-    box-shadow: 
+    box-shadow:
       0 8px 32px rgba(0, 0, 0, 0.3),
       0 2px 8px rgba(255, 255, 255, 0.15);
     transform: translateY(-1px);
   }
-  
+
   .liquid-glass:active {
     transform: translateY(0px) scale(0.98);
-    box-shadow: 
+    box-shadow:
       0 2px 8px rgba(0, 0, 0, 0.2),
       0 1px 3px rgba(255, 255, 255, 0.1);
   }
@@ -163,11 +169,11 @@
     @apply text-white;
     @apply text-shadow;
   }
-  
+
   .glass-button:hover {
     @apply transform scale-[1.02];
   }
-  
+
   .glass-button:active {
     @apply transform scale-[0.98];
   }
@@ -181,9 +187,15 @@
     width: 0;
     height: 0;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      rgba(255, 255, 255, 0.3) 0%,
+      transparent 70%
+    );
     transform: translate(-50%, -50%);
-    transition: width 0.4s ease-out, height 0.4s ease-out;
+    transition:
+      width 0.4s ease-out,
+      height 0.4s ease-out;
     pointer-events: none;
   }
 
@@ -202,7 +214,7 @@
     @apply text-white;
     @apply placeholder-white/50;
   }
-  
+
   .glass-input:focus {
     @apply border-white/40;
     @apply bg-white/15;
@@ -214,11 +226,11 @@
   .glass-table {
     @apply w-full;
     @apply backdrop-blur-sm bg-white/5;
-    @apply rounded-2xl overflow-hidden;
+    @apply rounded-2xl;
     @apply border border-white/20;
     @apply shadow-lg;
   }
-  
+
   .glass-table th {
     @apply bg-white/15 backdrop-blur-sm;
     @apply px-4 py-3 text-left font-semibold;
@@ -226,13 +238,13 @@
     @apply text-white;
     @apply text-shadow;
   }
-  
+
   .glass-table td {
     @apply px-4 py-3;
     @apply border-b border-white/10;
     @apply text-white/90;
   }
-  
+
   .glass-table tr:hover {
     @apply bg-white/10;
     @apply transition-colors duration-200;
@@ -285,8 +297,12 @@
   }
 
   @keyframes shimmer {
-    0% { left: -100%; }
-    100% { left: 100%; }
+    0% {
+      left: -100%;
+    }
+    100% {
+      left: 100%;
+    }
   }
 
   /* Focus Indicators */
@@ -346,7 +362,7 @@
     .liquid-glass {
       backdrop-filter: blur(8px);
     }
-    
+
     .glass-sidebar {
       @apply w-64;
     }
@@ -358,16 +374,16 @@
     .glass-button {
       @apply min-h-[44px] px-4 py-3;
     }
-    
+
     /* Mobile-optimized spacing */
     .glass-panel {
       @apply p-4;
     }
-    
+
     .glass-card {
       @apply p-4;
     }
-    
+
     /* Disable hover effects on touch devices */
     .glass-button:hover,
     .glass-card:hover,
@@ -400,27 +416,27 @@
     .glass-input {
       transition: none;
     }
-    
+
     .glass-button::after {
       display: none;
     }
   }
 
   /* Credit Card Redesign Styles */
-  
+
   /* Enhanced Status Badges */
   .badge-danger {
     @apply bg-red-500/20 text-red-300 border border-red-500/30;
   }
-  
+
   .badge-warning {
     @apply bg-yellow-500/20 text-yellow-300 border border-yellow-500/30;
   }
-  
+
   .badge-success {
     @apply bg-green-500/20 text-green-300 border border-green-500/30;
   }
-  
+
   .badge-info {
     @apply bg-blue-500/20 text-blue-300 border border-blue-500/30;
   }
@@ -626,18 +642,18 @@
     .additional-info {
       @apply grid-cols-1;
     }
-    
+
     .credit-card-header {
       @apply flex-col gap-3;
       @apply items-start;
     }
-    
+
     .credit-card-actions {
       @apply flex-row;
       @apply items-center;
       @apply gap-2;
     }
-    
+
     .credit-card-badges {
       @apply flex-row;
       @apply gap-2;
@@ -690,7 +706,7 @@
   .text-shadow {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
-  
+
   .text-shadow-lg {
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   }
@@ -700,19 +716,19 @@
   }
 
   .elevation-1 {
-    box-shadow: 
+    box-shadow:
       0 1px 3px rgba(0, 0, 0, 0.12),
       0 1px 2px rgba(0, 0, 0, 0.24);
   }
 
   .elevation-2 {
-    box-shadow: 
+    box-shadow:
       0 3px 6px rgba(0, 0, 0, 0.16),
       0 3px 6px rgba(0, 0, 0, 0.23);
   }
 
   .elevation-3 {
-    box-shadow: 
+    box-shadow:
       0 10px 20px rgba(0, 0, 0, 0.19),
       0 6px 6px rgba(0, 0, 0, 0.23);
   }
@@ -721,14 +737,18 @@
   .status-badge {
     transition: all 0.2s ease-in-out;
   }
-  
+
   .status-badge:hover {
     transform: scale(1.05);
   }
-  
+
   /* Paycheck countdown styling */
   .paycheck-countdown {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.1) 100%);
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0.1) 100%
+    );
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     padding: 16px;
@@ -783,16 +803,29 @@
   }
 
   @keyframes privacy-shimmer {
-    0% { background-position: -200% 0; }
-    50% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: -200% 0;
+    }
+    50% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 
   /* New expense animation */
   .new-expense-animation {
-    background: linear-gradient(90deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 51, 234, 0.1) 50%, rgba(59, 130, 246, 0.1) 100%);
+    background: linear-gradient(
+      90deg,
+      rgba(59, 130, 246, 0.1) 0%,
+      rgba(147, 51, 234, 0.1) 50%,
+      rgba(59, 130, 246, 0.1) 100%
+    );
     background-size: 200% 100%;
-    animation: new-expense-float 3s ease-out, new-expense-shimmer 2s ease-in-out infinite;
+    animation:
+      new-expense-float 3s ease-out,
+      new-expense-shimmer 2s ease-in-out infinite;
     border-left: 4px solid #3b82f6;
     box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
   }
@@ -824,14 +857,21 @@
   }
 
   @keyframes new-expense-shimmer {
-    0% { background-position: -200% 0; }
-    50% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: -200% 0;
+    }
+    50% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 
   /* Drag and Drop Animations */
   @keyframes float {
-    0%, 100% {
+    0%,
+    100% {
       transform: translate(-50%, -50%);
     }
     50% {
@@ -873,4 +913,4 @@
       transform: translate(-50%, -50%) scale(1);
     }
   }
-} 
+}

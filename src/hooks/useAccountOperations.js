@@ -1,8 +1,9 @@
 import { useCallback } from 'react';
-import { logger } from '../utils/logger';
-import { notify } from '../utils/notifications';
+
 import { dbHelpers } from '../db/database-clean';
 import { useAppStore } from '../stores/useAppStore';
+import { logger } from '../utils/logger';
+import { notify } from '../utils/notifications';
 
 /**
  * Custom hook for managing account operations
@@ -20,57 +21,66 @@ export const useAccountOperations = () => {
   /**
    * Update a regular account
    */
-  const updateAccount = useCallback(async (accountId, updates) => {
-    try {
-      // Optimistic update
-      updateAccountInStore(accountId, updates);
+  const updateAccount = useCallback(
+    async (accountId, updates) => {
+      try {
+        // Optimistic update
+        updateAccountInStore(accountId, updates);
 
-      // Update in database
-      await dbHelpers.updateAccount(accountId, updates);
+        // Update in database
+        await dbHelpers.updateAccount(accountId, updates);
 
-      logger.success(`Account updated successfully: ${accountId}`);
-      notify.success('Account updated successfully');
-
-    } catch (error) {
-      // Revert optimistic update on error
-      await reloadAccounts();
-      logger.error('Error updating account:', error);
-      notify.error('Failed to update account');
-      throw error;
-    }
-  }, [updateAccountInStore, reloadAccounts]);
+        logger.success(`Account updated successfully: ${accountId}`);
+        notify.success('Account updated successfully');
+      } catch (error) {
+        // Revert optimistic update on error
+        await reloadAccounts();
+        logger.error('Error updating account:', error);
+        notify.error('Failed to update account');
+        throw error;
+      }
+    },
+    [updateAccountInStore, reloadAccounts]
+  );
 
   /**
    * Update a credit card
    */
-  const updateCreditCard = useCallback(async (cardId, updates) => {
-    try {
-      // Optimistic update
-      updateCreditCardInStore(cardId, updates);
+  const updateCreditCard = useCallback(
+    async (cardId, updates) => {
+      try {
+        // Optimistic update
+        updateCreditCardInStore(cardId, updates);
 
-      // Update in database
-      await dbHelpers.updateCreditCard(cardId, updates);
+        // Update in database
+        await dbHelpers.updateCreditCard(cardId, updates);
 
-      logger.success(`Credit card updated successfully: ${cardId}`);
-      notify.success('Credit card updated successfully');
-
-    } catch (error) {
-      // Revert optimistic update on error
-      await reloadAccounts();
-      logger.error('Error updating credit card:', error);
-      notify.error('Failed to update credit card');
-      throw error;
-    }
-  }, [updateCreditCardInStore, reloadAccounts]);
+        logger.success(`Credit card updated successfully: ${cardId}`);
+        notify.success('Credit card updated successfully');
+      } catch (error) {
+        // Revert optimistic update on error
+        await reloadAccounts();
+        logger.error('Error updating credit card:', error);
+        notify.error('Failed to update credit card');
+        throw error;
+      }
+    },
+    [updateCreditCardInStore, reloadAccounts]
+  );
 
   /**
    * Find an account by ID (searches both accounts and credit cards)
    */
-  const findAccountById = useCallback((accountId) => {
-    return creditCards.find(card => card.id === accountId) ||
-           accounts.find(acc => acc.id === accountId) ||
-           null;
-  }, [accounts, creditCards]);
+  const findAccountById = useCallback(
+    accountId => {
+      return (
+        creditCards.find(card => card.id === accountId) ||
+        accounts.find(acc => acc.id === accountId) ||
+        null
+      );
+    },
+    [accounts, creditCards]
+  );
 
   /**
    * Get all valid account IDs
@@ -85,16 +95,22 @@ export const useAccountOperations = () => {
   /**
    * Check if an account ID is valid
    */
-  const isValidAccountId = useCallback((accountId) => {
-    return getAllAccountIds().has(accountId);
-  }, [getAllAccountIds]);
+  const isValidAccountId = useCallback(
+    accountId => {
+      return getAllAccountIds().has(accountId);
+    },
+    [getAllAccountIds]
+  );
 
   /**
    * Get accounts by type
    */
-  const getAccountsByType = useCallback((type) => {
-    return accounts.filter(account => account.type === type);
-  }, [accounts]);
+  const getAccountsByType = useCallback(
+    type => {
+      return accounts.filter(account => account.type === type);
+    },
+    [accounts]
+  );
 
   /**
    * Get default account
@@ -107,8 +123,14 @@ export const useAccountOperations = () => {
    * Get total balance across all accounts
    */
   const getTotalBalance = useCallback(() => {
-    const accountTotal = accounts.reduce((sum, account) => sum + (account.currentBalance || 0), 0);
-    const creditCardTotal = creditCards.reduce((sum, card) => sum + (card.balance || 0), 0);
+    const accountTotal = accounts.reduce(
+      (sum, account) => sum + (account.currentBalance || 0),
+      0
+    );
+    const creditCardTotal = creditCards.reduce(
+      (sum, card) => sum + (card.balance || 0),
+      0
+    );
     return accountTotal - creditCardTotal; // Credit card balances are debt
   }, [accounts, creditCards]);
 
@@ -133,11 +155,11 @@ export const useAccountOperations = () => {
     // Data
     accounts,
     creditCards,
-    
+
     // Actions
     updateAccount,
     updateCreditCard,
-    
+
     // Getters
     findAccountById,
     getAllAccountIds,

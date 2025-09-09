@@ -1,12 +1,27 @@
 import { useCallback } from 'react';
-import { logger } from '../utils/logger';
-import { notify } from '../utils/notifications';
+
 import { dbHelpers } from '../db/database-clean';
 import { useAppStore } from '../stores/useAppStore';
+import { logger } from '../utils/logger';
+import { notify } from '../utils/notifications';
 
 /**
- * Custom hook for managing expense operations
- * Provides a clean interface for expense CRUD operations with optimistic updates
+ * Custom hook for managing expense operations with optimistic updates
+ *
+ * Provides a clean interface for expense CRUD operations including:
+ * - Creating new expenses
+ * - Updating existing expenses
+ * - Deleting expenses
+ * - Optimistic updates for better UX
+ * - Error handling and recovery
+ *
+ * @returns {Object} Expense operations object
+ * @returns {Function} returns.createExpense - Create a new expense
+ * @returns {Function} returns.updateExpense - Update an existing expense
+ * @returns {Function} returns.deleteExpense - Delete an expense
+ * @returns {Function} returns.duplicateExpense - Duplicate an expense
+ * @returns {Function} returns.moveExpense - Move expense between accounts
+ * @returns {Function} returns.bulkUpdateExpenses - Update multiple expenses
  */
 export const useExpenseOperations = () => {
   const {
@@ -23,164 +38,303 @@ export const useExpenseOperations = () => {
   /**
    * Update an expense with optimistic updates and proper error handling
    */
-  const updateExpense = useCallback(async (expenseId, updates) => {
-    try {
-      // Get the current expense
-      const currentExpense = fixedExpenses.find(e => e.id === expenseId);
-      if (!currentExpense) {
-        throw new Error('Expense not found');
-      }
+  const updateExpense = useCallback(
+    async (expenseId, updates, showNotification = true) => {
+      try {
+        // Get the current expense
+        const currentExpense = fixedExpenses.find(e => e.id === expenseId);
+        if (!currentExpense) {
+          throw new Error('Expense not found');
+        }
 
-      // Optimistic update
-      updateExpenseInStore(expenseId, updates);
+        // Optimistic update
+        updateExpenseInStore(expenseId, updates);
 
-      // Update in database
-      await dbHelpers.updateFixedExpense(expenseId, updates);
+        // Update in database
+        await dbHelpers.updateFixedExpense(expenseId, updates);
 
-      // Handle account balance changes if paidAmount was updated
-      if (updates.paidAmount !== undefined) {
-        const oldPaidAmount = currentExpense.paidAmount || 0;
-        const newPaidAmount = updates.paidAmount;
-        const paymentDifference = newPaidAmount - oldPaidAmount;
+        // Handle account balance changes if paidAmount was updated
+        if (updates.paidAmount !== undefined) {
+          const oldPaidAmount = currentExpense.paidAmount || 0;
+          const newPaidAmount = updates.paidAmount;
+          const paymentDifference = newPaidAmount - oldPaidAmount;
 
-        if (paymentDifference !== 0) {
-          const accountId = updates.accountId || currentExpense.accountId;
-          const account = accounts.find(acc => acc.id === accountId);
-          const creditCard = creditCards.find(card => card.id === accountId);
+          if (paymentDifference !== 0) {
+            const accountId = updates.accountId || currentExpense.accountId;
+            const account = accounts.find(acc => acc.id === accountId);
+            const creditCard = creditCards.find(card => card.id === accountId);
 
-          if (account) {
-            const newBalance = account.currentBalance - paymentDifference;
-            await dbHelpers.updateAccount(accountId, { currentBalance: newBalance });
-            await reloadAccounts();
-          } else if (creditCard) {
-            const newBalance = creditCard.balance + paymentDifference;
-            await dbHelpers.updateCreditCard(accountId, { balance: newBalance });
-            await reloadAccounts();
+            // Check if this is a credit card expense (category or name contains payment)
+            const isCreditCardExpense =
+              currentExpense.category === 'Credit Card' ||
+              currentExpense.name.toLowerCase().includes('payment');
+
+            if (isCreditCardExpense) {
+              // For credit card expenses, we need to handle this differently
+              // The accountId should be the funding account (checking/savings)
+              // We need to find the target credit card from the expense name
+
+              if (account) {
+                // 1. Decrease the funding account balance (money goes out)
+                const newAccountBalance =
+                  account.currentBalance - paymentDifference;
+                await dbHelpers.updateAccount(accountId, {
+                  currentBalance: newAccountBalance,
+                });
+
+                // Log the funding account balance change
+                await dbHelpers.addAuditLog('PAYMENT', 'account', accountId, {
+                  action: 'credit_card_payment_funding',
+                  expenseId: expenseId,
+                  expenseName: currentExpense.name,
+                  amount: paymentDifference,
+                  oldBalance: account.currentBalance,
+                  newBalance: newAccountBalance,
+                  description: `Paid credit card expense from ${account.name}`,
+                });
+
+                // 2. Find and decrease the target credit card balance
+                // Extract credit card name from expense name (e.g., "Apple Card Minimum Payment" -> "Apple Card")
+                const creditCardName = currentExpense.name
+                  .replace(/\s+(minimum|payment|pay).*$/i, '')
+                  .trim();
+
+                const targetCreditCard = creditCards.find(
+                  card =>
+                    card.name.toLowerCase() === creditCardName.toLowerCase()
+                );
+
+                if (targetCreditCard) {
+                  const newCreditCardBalance =
+                    targetCreditCard.balance - paymentDifference;
+                  await dbHelpers.updateCreditCard(targetCreditCard.id, {
+                    balance: newCreditCardBalance,
+                  });
+
+                  // Log the credit card balance change
+                  await dbHelpers.addAuditLog(
+                    'PAYMENT',
+                    'creditCard',
+                    targetCreditCard.id,
+                    {
+                      action: 'credit_card_payment_received',
+                      expenseId: expenseId,
+                      expenseName: currentExpense.name,
+                      amount: paymentDifference,
+                      oldBalance: targetCreditCard.balance,
+                      newBalance: newCreditCardBalance,
+                      fundingAccount: account.name,
+                      description: `Received payment for ${currentExpense.name}`,
+                    }
+                  );
+
+                  logger.success(
+                    `Paid ${paymentDifference} to ${targetCreditCard.name} from ${account.name}`
+                  );
+                } else {
+                  logger.warn(
+                    `Could not find credit card "${creditCardName}" for payment`
+                  );
+                }
+
+                await reloadAccounts();
+              } else {
+                logger.error(
+                  'Credit card payment requires a funding account (checking/savings)'
+                );
+              }
+            } else if (account) {
+              // For regular expenses: decrease balance when paying expenses (money goes out)
+              const newBalance = account.currentBalance - paymentDifference;
+              await dbHelpers.updateAccount(accountId, {
+                currentBalance: newBalance,
+              });
+
+              // Log the regular expense payment
+              await dbHelpers.addAuditLog('PAYMENT', 'account', accountId, {
+                action: 'expense_payment',
+                expenseId: expenseId,
+                expenseName: currentExpense.name,
+                amount: paymentDifference,
+                oldBalance: account.currentBalance,
+                newBalance: newBalance,
+                description: `Paid expense ${currentExpense.name} from ${account.name}`,
+              });
+
+              await reloadAccounts();
+            } else if (creditCard) {
+              // For expenses directly linked to credit cards (not payments):
+              // This shouldn't happen with the new logic, but keeping for backward compatibility
+              const newBalance = creditCard.balance - paymentDifference;
+              await dbHelpers.updateCreditCard(accountId, {
+                balance: newBalance,
+              });
+              await reloadAccounts();
+            }
           }
         }
+
+        logger.success(`Expense updated successfully: ${expenseId}`);
+        if (showNotification) {
+          notify.success('Expense updated successfully');
+        }
+      } catch (error) {
+        // Revert optimistic update on error
+        await reloadExpenses();
+        logger.error('Error updating expense:', error);
+        notify.error('Failed to update expense');
+        throw error;
       }
-
-      logger.success(`Expense updated successfully: ${expenseId}`);
-      notify.success('Expense updated successfully');
-
-    } catch (error) {
-      // Revert optimistic update on error
-      await reloadExpenses();
-      logger.error('Error updating expense:', error);
-      notify.error('Failed to update expense');
-      throw error;
-    }
-  }, [fixedExpenses, accounts, creditCards, updateExpenseInStore, reloadAccounts, reloadExpenses]);
+    },
+    [
+      fixedExpenses,
+      accounts,
+      creditCards,
+      updateExpenseInStore,
+      reloadAccounts,
+      reloadExpenses,
+    ]
+  );
 
   /**
    * Add a new expense
    */
-  const addExpense = useCallback(async (expenseData) => {
-    try {
-      const newExpenseId = await dbHelpers.addFixedExpense(expenseData);
-      const newExpense = { ...expenseData, id: newExpenseId };
-      
-      addExpenseToStore(newExpense);
-      
-      logger.success(`Expense added successfully: ${newExpenseId}`);
-      notify.success('Expense added successfully');
-      
-      return newExpenseId;
-    } catch (error) {
-      logger.error('Error adding expense:', error);
-      notify.error('Failed to add expense');
-      throw error;
-    }
-  }, [addExpenseToStore]);
+  const addExpense = useCallback(
+    async expenseData => {
+      try {
+        const newExpenseId = await dbHelpers.addFixedExpense(expenseData);
+        const newExpense = { ...expenseData, id: newExpenseId };
+
+        addExpenseToStore(newExpense);
+
+        logger.success(`Expense added successfully: ${newExpenseId}`);
+        notify.success('Expense added successfully');
+
+        return newExpenseId;
+      } catch (error) {
+        logger.error('Error adding expense:', error);
+        notify.error('Failed to add expense');
+        throw error;
+      }
+    },
+    [addExpenseToStore]
+  );
 
   /**
    * Delete an expense
    */
-  const deleteExpense = useCallback(async (expenseId) => {
-    try {
-      await dbHelpers.deleteFixedExpense(expenseId);
-      removeExpenseFromStore(expenseId);
-      
-      logger.success(`Expense deleted successfully: ${expenseId}`);
-      notify.success('Expense deleted successfully');
-    } catch (error) {
-      logger.error('Error deleting expense:', error);
-      notify.error('Failed to delete expense');
-      throw error;
-    }
-  }, [removeExpenseFromStore]);
+  const deleteExpense = useCallback(
+    async expenseId => {
+      try {
+        await dbHelpers.deleteFixedExpense(expenseId);
+        removeExpenseFromStore(expenseId);
+
+        logger.success(`Expense deleted successfully: ${expenseId}`);
+        notify.success('Expense deleted successfully');
+      } catch (error) {
+        logger.error('Error deleting expense:', error);
+        notify.error('Failed to delete expense');
+        throw error;
+      }
+    },
+    [removeExpenseFromStore]
+  );
 
   /**
    * Duplicate an expense
    */
-  const duplicateExpense = useCallback(async (originalExpense, duplicateData) => {
-    try {
-      const newExpense = {
-        ...originalExpense,
-        ...duplicateData,
-        id: undefined, // Let database generate new ID
-        paidAmount: 0,
-        status: 'pending'
-      };
+  const duplicateExpense = useCallback(
+    async (originalExpense, duplicateData) => {
+      try {
+        const newExpense = {
+          ...originalExpense,
+          ...duplicateData,
+          id: undefined, // Let database generate new ID
+          paidAmount: 0,
+          status: 'pending',
+        };
 
-      const newExpenseId = await dbHelpers.addFixedExpense(newExpense);
-      const duplicatedExpense = { ...newExpense, id: newExpenseId };
-      
-      addExpenseToStore(duplicatedExpense);
-      
-      logger.success(`Expense duplicated successfully: ${newExpenseId}`);
-      notify.success('Expense duplicated successfully');
-      
-      return newExpenseId;
-    } catch (error) {
-      logger.error('Error duplicating expense:', error);
-      notify.error('Failed to duplicate expense');
-      throw error;
-    }
-  }, [addExpenseToStore]);
+        const newExpenseId = await dbHelpers.addFixedExpense(newExpense);
+        const duplicatedExpense = { ...newExpense, id: newExpenseId };
+
+        addExpenseToStore(duplicatedExpense);
+
+        logger.success(`Expense duplicated successfully: ${newExpenseId}`);
+        notify.success('Expense duplicated successfully');
+
+        return newExpenseId;
+      } catch (error) {
+        logger.error('Error duplicating expense:', error);
+        notify.error('Failed to duplicate expense');
+        throw error;
+      }
+    },
+    [addExpenseToStore]
+  );
 
   /**
    * Mark an expense as paid
    */
-  const markAsPaid = useCallback(async (expenseId) => {
-    const expense = fixedExpenses.find(e => e.id === expenseId);
-    if (!expense) return;
+  const markAsPaid = useCallback(
+    async expenseId => {
+      const expense = fixedExpenses.find(e => e.id === expenseId);
+      if (!expense) {
+        logger.error(`Expense not found: ${expenseId}`);
+        return;
+      }
 
-    const updates = {
-      paidAmount: expense.amount,
-      status: 'paid'
-    };
+      const updates = {
+        paidAmount: expense.amount,
+        status: 'paid',
+      };
 
-    await updateExpense(expenseId, updates);
-  }, [fixedExpenses, updateExpense]);
+      try {
+        await updateExpense(expenseId, updates, false); // Don't show generic notification
+        // Reload expenses to ensure UI is updated
+        await reloadExpenses();
+        logger.success(`Expense marked as paid: ${expenseId}`);
+        notify.success('Expense marked as paid');
+      } catch (error) {
+        logger.error('Error marking expense as paid:', error);
+        notify.error('Failed to mark expense as paid');
+      }
+    },
+    [fixedExpenses, updateExpense, reloadExpenses]
+  );
 
   /**
    * Get expense by ID
    */
-  const getExpenseById = useCallback((expenseId) => {
-    return fixedExpenses.find(expense => expense.id === expenseId);
-  }, [fixedExpenses]);
+  const getExpenseById = useCallback(
+    expenseId => {
+      return fixedExpenses.find(expense => expense.id === expenseId);
+    },
+    [fixedExpenses]
+  );
 
   /**
    * Get expenses by category
    */
-  const getExpensesByCategory = useCallback((categoryName) => {
-    return fixedExpenses.filter(expense => 
-      (expense.category || 'Uncategorized') === categoryName
-    );
-  }, [fixedExpenses]);
+  const getExpensesByCategory = useCallback(
+    categoryName => {
+      return fixedExpenses.filter(
+        expense => (expense.category || 'Uncategorized') === categoryName
+      );
+    },
+    [fixedExpenses]
+  );
 
   return {
     // Data
     expenses: fixedExpenses,
-    
+
     // Actions
     updateExpense,
     addExpense,
     deleteExpense,
     duplicateExpense,
     markAsPaid,
-    
+
     // Getters
     getExpenseById,
     getExpensesByCategory,

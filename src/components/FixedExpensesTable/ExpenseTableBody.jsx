@@ -1,5 +1,9 @@
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import React from 'react';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+
 import DraggableExpenseRow from '../DraggableExpenseRow';
 
 /**
@@ -20,8 +24,8 @@ const ExpenseTableBody = ({
   onUpdateExpense,
 }) => {
   return (
-    <div className="hidden lg:block">
-      <table className="glass-table">
+    <div className='hidden lg:block'>
+      <table className='glass-table'>
         <thead>
           <tr>
             <th>Name</th>
@@ -38,15 +42,20 @@ const ExpenseTableBody = ({
             items={categoryExpenses.map(e => e.id)}
             strategy={verticalListSortingStrategy}
           >
-            {categoryExpenses.map((expense) => {
-              const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
-              
+            {categoryExpenses.map(expense => {
+              const status = paycheckService.calculateExpenseStatus(
+                expense,
+                paycheckDates
+              );
+
               // Find account in both regular accounts and credit cards
-              let account = creditCards.find(card => card.id === expense.accountId);
+              let account = creditCards.find(
+                card => card.id === expense.accountId
+              );
               if (!account) {
                 account = accounts.find(acc => acc.id === expense.accountId);
               }
-              
+
               const isNewExpense = newExpenseId === expense.id;
 
               return (

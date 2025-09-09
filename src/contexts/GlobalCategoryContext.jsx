@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useCallback, useMemo } from 'react';
-import { categoryCache } from '../services/categoryCache';
+
 import { dbHelpers } from '../db/database-clean';
+import { categoryCache } from '../services/categoryCache';
 import { notify } from '../utils/notifications';
 
 const GlobalCategoryContext = createContext(null);
@@ -8,7 +9,9 @@ const GlobalCategoryContext = createContext(null);
 export const useGlobalCategories = () => {
   const context = useContext(GlobalCategoryContext);
   if (!context) {
-    throw new Error('useGlobalCategories must be used within a GlobalCategoryProvider');
+    throw new Error(
+      'useGlobalCategories must be used within a GlobalCategoryProvider'
+    );
   }
   return context;
 };
@@ -25,7 +28,7 @@ export const GlobalCategoryProvider = ({ children }) => {
   }, [fetchCategories]);
 
   // Add category with cache invalidation
-  const addCategory = useCallback(async (categoryData) => {
+  const addCategory = useCallback(async categoryData => {
     try {
       const id = await dbHelpers.addCategory(categoryData);
       categoryCache.invalidate(); // Invalidate cache after mutation
@@ -50,7 +53,7 @@ export const GlobalCategoryProvider = ({ children }) => {
   }, []);
 
   // Delete category with cache invalidation
-  const deleteCategory = useCallback(async (id) => {
+  const deleteCategory = useCallback(async id => {
     try {
       await dbHelpers.deleteCategory(id);
       categoryCache.invalidate(); // Invalidate cache after mutation
@@ -62,19 +65,31 @@ export const GlobalCategoryProvider = ({ children }) => {
   }, []);
 
   // Reassign category items with cache invalidation
-  const reassignCategoryItems = useCallback(async (oldCategoryName, newCategoryName, affectedItems) => {
-    try {
-      await dbHelpers.reassignCategoryItems(oldCategoryName, newCategoryName, affectedItems);
-      categoryCache.invalidate(); // Invalidate cache after mutation
-      notify.success(`Reassigned items from "${oldCategoryName}" to "${newCategoryName}"`);
-    } catch (error) {
-      notify.error('Failed to reassign category items. Please try again.', error);
-      throw error;
-    }
-  }, []);
+  const reassignCategoryItems = useCallback(
+    async (oldCategoryName, newCategoryName, affectedItems) => {
+      try {
+        await dbHelpers.reassignCategoryItems(
+          oldCategoryName,
+          newCategoryName,
+          affectedItems
+        );
+        categoryCache.invalidate(); // Invalidate cache after mutation
+        notify.success(
+          `Reassigned items from "${oldCategoryName}" to "${newCategoryName}"`
+        );
+      } catch (error) {
+        notify.error(
+          'Failed to reassign category items. Please try again.',
+          error
+        );
+        throw error;
+      }
+    },
+    []
+  );
 
   // Get category usage stats (cached)
-  const getCategoryUsageStats = useCallback(async (categoryName) => {
+  const getCategoryUsageStats = useCallback(async categoryName => {
     return await dbHelpers.getCategoryUsageStats(categoryName);
   }, []);
 
@@ -90,26 +105,29 @@ export const GlobalCategoryProvider = ({ children }) => {
   }, []);
 
   // Memoized context value
-  const value = useMemo(() => ({
-    getCategories,
-    addCategory,
-    updateCategory,
-    deleteCategory,
-    reassignCategoryItems,
-    getCategoryUsageStats,
-    refreshCategories,
-    invalidateCache,
-    cache: categoryCache,
-  }), [
-    getCategories,
-    addCategory,
-    updateCategory,
-    deleteCategory,
-    reassignCategoryItems,
-    getCategoryUsageStats,
-    refreshCategories,
-    invalidateCache,
-  ]);
+  const value = useMemo(
+    () => ({
+      getCategories,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      reassignCategoryItems,
+      getCategoryUsageStats,
+      refreshCategories,
+      invalidateCache,
+      cache: categoryCache,
+    }),
+    [
+      getCategories,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      reassignCategoryItems,
+      getCategoryUsageStats,
+      refreshCategories,
+      invalidateCache,
+    ]
+  );
 
   return (
     <GlobalCategoryContext.Provider value={value}>

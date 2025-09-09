@@ -28,25 +28,27 @@ vi.mock('../utils/logger', () => ({
     success: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
-    debug: vi.fn()
-  }
+    debug: vi.fn(),
+  },
 }));
 
 // Reset mocks and database before each test
 beforeEach(async () => {
   // Clear all mocks
   vi.clearAllMocks();
-  
+
   // Clear fake indexedDB
   const dbs = await indexedDB.databases();
-  await Promise.all(dbs.map(db => {
-    return new Promise((resolve) => {
-      const req = indexedDB.deleteDatabase(db.name);
-      req.onsuccess = resolve;
-      req.onerror = resolve;
-    });
-  }));
-  
+  await Promise.all(
+    dbs.map(db => {
+      return new Promise(resolve => {
+        const req = indexedDB.deleteDatabase(db.name);
+        req.onsuccess = resolve;
+        req.onerror = resolve;
+      });
+    })
+  );
+
   // Clear localStorage mock
   localStorageMock.clear();
 });

@@ -15,7 +15,7 @@ export const PrivacyProvider = ({ children }) => {
 
   // Keyboard shortcut handler
   useEffect(() => {
-    const handleKeyDown = (event) => {
+    const handleKeyDown = event => {
       // Cmd+H on Mac, Ctrl+H on Windows/Linux
       if ((event.metaKey || event.ctrlKey) && event.key === 'h') {
         event.preventDefault();
@@ -34,8 +34,6 @@ export const PrivacyProvider = ({ children }) => {
   };
 
   return (
-    <PrivacyContext.Provider value={value}>
-      {children}
-    </PrivacyContext.Provider>
+    <PrivacyContext.Provider value={value}>{children}</PrivacyContext.Provider>
   );
 };

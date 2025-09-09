@@ -1,6 +1,15 @@
-import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { vi, describe, test, expect, beforeEach, beforeAll, afterAll } from 'vitest';
+import React from 'react';
+import {
+  vi,
+  describe,
+  test,
+  expect,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from 'vitest';
+
 import AccountSelectorErrorBoundary from '../AccountSelectorErrorBoundary';
 
 // Component that throws an error for testing
@@ -44,7 +53,11 @@ describe('AccountSelectorErrorBoundary', () => {
     );
 
     expect(screen.getByText('Account Selection Error')).toBeInTheDocument();
-    expect(screen.getByText('Unable to load account options. This might be due to invalid data or a temporary issue.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Unable to load account options. This might be due to invalid data or a temporary issue.'
+      ),
+    ).toBeInTheDocument();
   });
 
   test('shows retry button in error state', () => {
@@ -150,7 +163,9 @@ describe('AccountSelectorErrorBoundary', () => {
 
     fireEvent.click(detailsButton);
 
-    expect(screen.getByText('Test error for error boundary')).toBeInTheDocument();
+    expect(
+      screen.getByText('Test error for error boundary')
+    ).toBeInTheDocument();
 
     process.env.NODE_ENV = originalEnv;
   });
@@ -165,7 +180,9 @@ describe('AccountSelectorErrorBoundary', () => {
       </AccountSelectorErrorBoundary>
     );
 
-    expect(screen.queryByText('Error Details (Development)')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Error Details (Development)')
+    ).not.toBeInTheDocument();
 
     process.env.NODE_ENV = originalEnv;
   });

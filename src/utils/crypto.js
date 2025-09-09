@@ -25,9 +25,9 @@ async function generateKey(password, salt) {
     const key = await crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
-        salt: salt,
+        salt,
         iterations: 100000, // OWASP recommended minimum
-        hash: 'SHA-256'
+        hash: 'SHA-256',
       },
       keyMaterial,
       { name: 'AES-GCM', length: 256 },
@@ -57,18 +57,20 @@ async function encryptData(data, password) {
     const salt = generateSalt();
     const key = await generateKey(password, salt);
     const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for GCM
-    
+
     const encryptedData = await crypto.subtle.encrypt(
       {
         name: 'AES-GCM',
-        iv: iv
+        iv,
       },
       key,
       new TextEncoder().encode(data)
     );
 
     // Combine salt, IV, and encrypted data
-    const combined = new Uint8Array(salt.length + iv.length + encryptedData.byteLength);
+    const combined = new Uint8Array(
+      salt.length + iv.length + encryptedData.byteLength
+    );
     combined.set(salt, 0);
     combined.set(iv, salt.length);
     combined.set(new Uint8Array(encryptedData), salt.length + iv.length);
@@ -88,7 +90,9 @@ async function decryptData(encryptedData, password) {
   try {
     // Convert from base64
     const combined = new Uint8Array(
-      atob(encryptedData).split('').map(char => char.charCodeAt(0))
+      atob(encryptedData)
+        .split('')
+        .map(char => char.charCodeAt(0))
     );
 
     // Extract salt, IV, and encrypted data
@@ -97,11 +101,11 @@ async function decryptData(encryptedData, password) {
     const encrypted = combined.slice(28);
 
     const key = await generateKey(password, salt);
-    
+
     const decryptedData = await crypto.subtle.decrypt(
       {
         name: 'AES-GCM',
-        iv: iv
+        iv,
       },
       key,
       encrypted
@@ -110,7 +114,9 @@ async function decryptData(encryptedData, password) {
     return new TextDecoder().decode(decryptedData);
   } catch (error) {
     console.error('Error decrypting data:', error);
-    throw new Error('Failed to decrypt data - invalid password or corrupted data');
+    throw new Error(
+      'Failed to decrypt data - invalid password or corrupted data'
+    );
   }
 }
 
@@ -124,18 +130,19 @@ export const securePINStorage = {
   async setPIN(pin) {
     try {
       if (!pin || pin.length === 0) {
-        localStorage.removeItem(STORAGE_PREFIX + 'pin');
+        localStorage.removeItem(`${STORAGE_PREFIX}pin`);
         return;
       }
 
       // Use a device-specific key for encryption
       const deviceKey = await this.getDeviceKey();
       const encryptedPIN = await encryptData(pin, deviceKey);
-      
-      localStorage.setItem(STORAGE_PREFIX + 'pin', encryptedPIN);
+
+      localStorage.setItem(`${STORAGE_PREFIX}pin`, encryptedPIN);
       return true;
     } catch (error) {
       console.error('Error storing PIN securely:', error);
+
       // Fallback to unencrypted storage with warning
       console.warn('Falling back to unencrypted PIN storage');
       localStorage.setItem('digibook_pin', pin);
@@ -148,7 +155,7 @@ export const securePINStorage = {
    */
   async getPIN() {
     try {
-      const encryptedPIN = localStorage.getItem(STORAGE_PREFIX + 'pin');
+      const encryptedPIN = localStorage.getItem(`${STORAGE_PREFIX}pin`);
       if (!encryptedPIN) {
         // Check for legacy unencrypted PIN
         return localStorage.getItem('digibook_pin') || '';
@@ -159,6 +166,7 @@ export const securePINStorage = {
       return decryptedPIN;
     } catch (error) {
       console.error('Error retrieving PIN:', error);
+
       // Fallback to unencrypted storage
       return localStorage.getItem('digibook_pin') || '';
     }
@@ -168,7 +176,7 @@ export const securePINStorage = {
    * Clear stored PIN
    */
   clearPIN() {
-    localStorage.removeItem(STORAGE_PREFIX + 'pin');
+    localStorage.removeItem(`${STORAGE_PREFIX}pin`);
     localStorage.removeItem('digibook_pin'); // Clear legacy storage too
   },
 
@@ -188,10 +196,11 @@ export const securePINStorage = {
       const deviceInfo = [
         navigator.userAgent,
         navigator.language,
-        screen.width + 'x' + screen.height,
+        `${screen.width}x${screen.height}`,
         new Date().getTimezoneOffset().toString(),
+
         // Add some randomness
-        Math.random().toString(36)
+        Math.random().toString(36),
       ].join('|');
 
       // Create a hash of the device info
@@ -199,17 +208,20 @@ export const securePINStorage = {
       const data = encoder.encode(deviceInfo);
       const hashBuffer = await crypto.subtle.digest('SHA-256', data);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const deviceKey = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      const deviceKey = hashArray
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
 
       // Store the key
       localStorage.setItem(CRYPTO_KEY_NAME, deviceKey);
       return deviceKey;
     } catch (error) {
       console.error('Error generating device key:', error);
+
       // Fallback to a simple key
-      return 'digibook_fallback_key_' + Date.now();
+      return `digibook_fallback_key_${Date.now()}`;
     }
-  }
+  },
 };
 
 /**
@@ -221,22 +233,29 @@ export const dataIntegrity = {
    */
   validateAccount(account) {
     const errors = [];
-    
-    if (!account.name || typeof account.name !== 'string' || account.name.trim().length === 0) {
+
+    if (
+      !account.name ||
+      typeof account.name !== 'string' ||
+      account.name.trim().length === 0
+    ) {
       errors.push('Account name is required and must be a non-empty string');
     }
-    
-    if (typeof account.currentBalance !== 'number' || isNaN(account.currentBalance)) {
+
+    if (
+      typeof account.currentBalance !== 'number' ||
+      isNaN(account.currentBalance)
+    ) {
       errors.push('Account balance must be a valid number');
     }
-    
+
     if (!account.type || !['checking', 'savings'].includes(account.type)) {
       errors.push('Account type must be either "checking" or "savings"');
     }
-    
+
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   },
 
@@ -245,26 +264,37 @@ export const dataIntegrity = {
    */
   validateExpense(expense) {
     const errors = [];
-    
-    if (!expense.name || typeof expense.name !== 'string' || expense.name.trim().length === 0) {
+
+    if (
+      !expense.name ||
+      typeof expense.name !== 'string' ||
+      expense.name.trim().length === 0
+    ) {
       errors.push('Expense name is required and must be a non-empty string');
     }
-    
-    if (typeof expense.amount !== 'number' || isNaN(expense.amount) || expense.amount <= 0) {
+
+    if (
+      typeof expense.amount !== 'number' ||
+      isNaN(expense.amount) ||
+      expense.amount <= 0
+    ) {
       errors.push('Expense amount must be a positive number');
     }
-    
+
     if (!expense.dueDate || isNaN(new Date(expense.dueDate).getTime())) {
       errors.push('Expense due date must be a valid date');
     }
-    
-    if (expense.accountId && (typeof expense.accountId !== 'number' || expense.accountId <= 0)) {
+
+    if (
+      expense.accountId &&
+      (typeof expense.accountId !== 'number' || expense.accountId <= 0)
+    ) {
       errors.push('Account ID must be a positive number');
     }
-    
+
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   },
 
@@ -273,22 +303,32 @@ export const dataIntegrity = {
    */
   validateTransaction(transaction) {
     const errors = [];
-    
-    if (!transaction.accountId || typeof transaction.accountId !== 'number' || transaction.accountId <= 0) {
+
+    if (
+      !transaction.accountId ||
+      typeof transaction.accountId !== 'number' ||
+      transaction.accountId <= 0
+    ) {
       errors.push('Account ID is required and must be a positive number');
     }
-    
+
     if (typeof transaction.amount !== 'number' || isNaN(transaction.amount)) {
       errors.push('Transaction amount must be a valid number');
     }
-    
-    if (!transaction.description || typeof transaction.description !== 'string' || transaction.description.trim().length === 0) {
-      errors.push('Transaction description is required and must be a non-empty string');
+
+    if (
+      !transaction.description ||
+      typeof transaction.description !== 'string' ||
+      transaction.description.trim().length === 0
+    ) {
+      errors.push(
+        'Transaction description is required and must be a non-empty string'
+      );
     }
-    
+
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   },
 
@@ -297,7 +337,7 @@ export const dataIntegrity = {
    */
   sanitizeString(input) {
     if (typeof input !== 'string') return input;
-    
+
     return input
       .replace(/[<>]/g, '') // Remove potential HTML tags
       .replace(/javascript:/gi, '') // Remove javascript: protocol
@@ -310,28 +350,36 @@ export const dataIntegrity = {
    */
   validateCategory(category) {
     const errors = [];
-    
-    if (!category.name || typeof category.name !== 'string' || category.name.trim().length === 0) {
+
+    if (
+      !category.name ||
+      typeof category.name !== 'string' ||
+      category.name.trim().length === 0
+    ) {
       errors.push('Category name is required and must be a non-empty string');
     }
-    
+
     if (category.name && category.name.length > 50) {
       errors.push('Category name must be 50 characters or less');
     }
-    
-    if (!category.color || typeof category.color !== 'string' || !/^#[0-9A-F]{6}$/i.test(category.color)) {
+
+    if (
+      !category.color ||
+      typeof category.color !== 'string' ||
+      !/^#[0-9A-F]{6}$/i.test(category.color)
+    ) {
       errors.push('Category color must be a valid hex color (e.g., #FF0000)');
     }
-    
+
     return {
       isValid: errors.length === 0,
       errors,
       sanitized: {
         ...category,
-        name: this.sanitizeString(category.name)
-      }
+        name: this.sanitizeString(category.name),
+      },
     };
-  }
+  },
 };
 
 /**
@@ -345,13 +393,13 @@ export const secureDataHandling = {
     try {
       const jsonData = JSON.stringify(data, null, 2);
       const encryptedData = await encryptData(jsonData, password);
-      
+
       return {
         version: '1.0',
         encrypted: true,
         data: encryptedData,
         timestamp: new Date().toISOString(),
-        checksum: await this.generateChecksum(jsonData)
+        checksum: await this.generateChecksum(jsonData),
       };
     } catch (error) {
       console.error('Error exporting data securely:', error);
@@ -370,19 +418,23 @@ export const secureDataHandling = {
 
       const decryptedData = await decryptData(encryptedExport.data, password);
       const data = JSON.parse(decryptedData);
-      
+
       // Verify checksum if available
       if (encryptedExport.checksum) {
         const currentChecksum = await this.generateChecksum(decryptedData);
         if (currentChecksum !== encryptedExport.checksum) {
-          throw new Error('Data integrity check failed - file may be corrupted');
+          throw new Error(
+            'Data integrity check failed - file may be corrupted'
+          );
         }
       }
-      
+
       return data;
     } catch (error) {
       console.error('Error importing data securely:', error);
-      throw new Error('Failed to import data - invalid password or corrupted file');
+      throw new Error(
+        'Failed to import data - invalid password or corrupted file'
+      );
     }
   },
 
@@ -395,7 +447,7 @@ export const secureDataHandling = {
     const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
+  },
 };
 
 export default {
@@ -403,5 +455,5 @@ export default {
   dataIntegrity,
   secureDataHandling,
   encryptData,
-  decryptData
+  decryptData,
 };

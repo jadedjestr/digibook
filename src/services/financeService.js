@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 export const useFinanceCalculations = (accounts, pendingTransactions) => {
   const calculateProjectedBalance = useMemo(() => {
-    return (accountId) => {
+    return accountId => {
       const numericAccountId = parseInt(accountId);
       const account = accounts.find(a => a.id === numericAccountId);
       if (!account) return 0;
@@ -49,7 +49,7 @@ export const useFinanceCalculations = (accounts, pendingTransactions) => {
   }, [getDefaultAccount, pendingTransactions]);
 
   const getAccountName = useMemo(() => {
-    return (accountId) => {
+    return accountId => {
       const numericAccountId = parseInt(accountId);
       const account = accounts.find(a => a.id === numericAccountId);
       return account ? account.name : `Unknown Account (${accountId})`;

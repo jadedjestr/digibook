@@ -1,9 +1,10 @@
 import React from 'react';
 import { toast } from 'react-toastify';
+
 import { logger } from './logger';
 
 export const notify = {
-  success: (message) => {
+  success: message => {
     logger.success(message);
     toast.success(message);
   },
@@ -13,29 +14,29 @@ export const notify = {
     toast.error(message);
   },
 
-  warning: (message) => {
+  warning: message => {
     logger.warn(message);
     toast.warning(message);
   },
 
-  info: (message) => {
+  info: message => {
     logger.info(message);
     toast.info(message);
   },
 };
 
-export const showConfirmation = (message) => {
-  return new Promise((resolve) => {
+export const showConfirmation = message => {
+  return new Promise(resolve => {
     toast.info(
       <div>
         <p>{message}</p>
-        <div className="mt-2 flex justify-end gap-2">
+        <div className='mt-2 flex justify-end gap-2'>
           <button
             onClick={() => {
               toast.dismiss();
               resolve(true);
             }}
-            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+            className='px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600'
           >
             Yes
           </button>
@@ -44,7 +45,7 @@ export const showConfirmation = (message) => {
               toast.dismiss();
               resolve(false);
             }}
-            className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600"
+            className='px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600'
           >
             No
           </button>
@@ -55,7 +56,7 @@ export const showConfirmation = (message) => {
         closeOnClick: false,
         draggable: false,
         closeButton: false,
-      },
+      }
     );
   });
 };

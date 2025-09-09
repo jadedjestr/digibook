@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+
 import { logger } from '../utils/logger';
 
 /**
@@ -49,7 +50,9 @@ export const usePerformanceMonitor = (componentName, options = {}) => {
 
     // Log slow renders
     if (renderTime > logThreshold) {
-      logger.warn(`Slow render detected in ${componentName}: ${renderTime.toFixed(2)}ms`);
+      logger.warn(
+        `Slow render detected in ${componentName}: ${renderTime.toFixed(2)}ms`
+      );
     }
 
     // Log performance summary every 100 renders
@@ -133,7 +136,7 @@ export const usePerformanceTimer = () => {
     startTime.current = performance.now();
   }, []);
 
-  const end = useCallback((functionName) => {
+  const end = useCallback(functionName => {
     const duration = performance.now() - startTime.current;
     logger.debug(`${functionName} execution time: ${duration.toFixed(2)}ms`);
     return duration;

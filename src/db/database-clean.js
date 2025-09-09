@@ -464,6 +464,12 @@ export const dbHelpers = {
       };
 
       const id = await db.accounts.add(accountData);
+
+      // If this is the first real account, clean up any placeholder default accounts
+      if (isFirstAccount) {
+        await this.cleanupDuplicateDefaults();
+      }
+
       logger.success(`Account added successfully: ${id}`);
       return id;
     } catch (error) {
@@ -692,7 +698,8 @@ export const dbHelpers = {
           icon: '📱',
           isDefault: true,
         },
-        { name: 'Debt', color: '#EF4444', icon: '💳', isDefault: true },
+        { name: 'Credit Card', color: '#F97316', icon: '💳', isDefault: true },
+        { name: 'Debt', color: '#EF4444', icon: '📊', isDefault: true },
         { name: 'Healthcare', color: '#06B6D4', icon: '🏥', isDefault: true },
         { name: 'Education', color: '#84CC16', icon: '🎓', isDefault: true },
         { name: 'Other', color: '#6B7280', icon: '📦', isDefault: true },
@@ -820,21 +827,15 @@ export const dbHelpers = {
 
   async ensureDefaultAccount() {
     try {
+      // First, clean up any existing placeholder default accounts
+      await this.cleanupDuplicateDefaults();
+
       const defaultAccount = await this.getDefaultAccount();
       const totalAccounts = await db.accounts.count();
 
-      // Only create a default account if there are NO accounts at all
-      if (!defaultAccount && totalAccounts === 0) {
-        const defaultAccountData = {
-          name: 'Default Account',
-          type: 'checking',
-          currentBalance: 0,
-          isDefault: true,
-          createdAt: new Date().toISOString(),
-        };
-        await db.accounts.add(defaultAccountData);
-        logger.info('Created default account (no accounts existed)');
-      } else if (totalAccounts > 0 && !defaultAccount) {
+      // Only ensure a default account exists if there are already accounts
+      // Don't create a default account if no accounts exist - let users start fresh
+      if (totalAccounts > 0 && !defaultAccount) {
         // If there are accounts but no default, make the first one the default
         const firstAccount = await db.accounts.orderBy('createdAt').first();
         if (firstAccount) {
@@ -843,10 +844,8 @@ export const dbHelpers = {
         }
       }
 
-      // Clean up any placeholder "Default Account" entries if real accounts exist
-      if (totalAccounts > 0) {
-        await this.cleanupDuplicateDefaults();
-      }
+      // Final cleanup pass to ensure no placeholder accounts remain
+      await this.cleanupDuplicateDefaults();
     } catch (error) {
       logger.error('Error ensuring default account:', error);
     }
@@ -877,9 +876,9 @@ export const dbHelpers = {
       );
 
       if (realAccounts.length > 0) {
+        // Remove ALL "Default Account" entries when real accounts exist
         const defaultAccountPlaceholders = allAccounts.filter(
-          account =>
-            account.name === 'Default Account' && account.currentBalance === 0
+          account => account.name === 'Default Account'
         );
 
         for (const placeholder of defaultAccountPlaceholders) {
@@ -940,18 +939,37 @@ export const dbHelpers = {
   async applyExpenseMappings(mappings) {
     try {
       let appliedCount = 0;
+      const results = [];
+
       for (const mapping of mappings) {
-        await db.fixedExpenses.update(mapping.expenseId, {
-          accountId: mapping.creditCardId,
-          isManuallyMapped: true,
-          mappingConfidence: mapping.confidence,
-          mappedAt: new Date().toISOString(),
-        });
-        appliedCount++;
+        try {
+          await db.fixedExpenses.update(mapping.expenseId, {
+            accountId: mapping.creditCardId,
+            isManuallyMapped: true,
+            mappingConfidence: mapping.confidence,
+            mappedAt: new Date().toISOString(),
+          });
+          appliedCount++;
+          results.push({
+            expenseId: mapping.expenseId,
+            expenseName: mapping.expenseName,
+            creditCardName: mapping.creditCardName,
+            success: true,
+          });
+        } catch (error) {
+          logger.error(`Failed to update expense ${mapping.expenseId}:`, error);
+          results.push({
+            expenseId: mapping.expenseId,
+            expenseName: mapping.expenseName,
+            creditCardName: mapping.creditCardName,
+            success: false,
+            error: error.message,
+          });
+        }
       }
 
       logger.success(`Applied ${appliedCount} expense mappings`);
-      return appliedCount;
+      return { appliedCount, results };
     } catch (error) {
       logger.error('Error applying expense mappings:', error);
       throw new Error('Failed to apply expense mappings');
@@ -982,10 +1000,10 @@ export const dbHelpers = {
       logger.success(
         `Cleaned up ${duplicates.length} duplicate credit card expenses`
       );
-      return duplicates.length;
+      return duplicates;
     } catch (error) {
       logger.error('Error cleaning up duplicate credit card expenses:', error);
-      return 0;
+      return [];
     }
   },
 
@@ -1001,14 +1019,19 @@ export const dbHelpers = {
           expense => expense.accountId === card.id
         );
 
-        if (!hasExpense && card.balance > 0) {
-          // Create a minimum payment expense
+        if (!hasExpense) {
+          // Create a minimum payment expense for any card without an existing expense
+          // Use minimum payment if specified, otherwise calculate based on balance or use $25 default
+          const expenseAmount =
+            card.minimumPayment ||
+            (card.balance > 0 ? Math.max(card.balance * 0.02, 25) : 25);
+
           await db.fixedExpenses.add({
             name: `${card.name} Minimum Payment`,
             dueDate: card.dueDate || new Date().toISOString().split('T')[0],
-            amount: card.minimumPayment || Math.max(card.balance * 0.02, 25), // 2% or $25 minimum
+            amount: expenseAmount,
             accountId: card.id,
-            category: 'Debt',
+            category: 'Credit Card',
             paidAmount: 0,
             status: 'pending',
             isAutoCreated: true,

@@ -1,19 +1,23 @@
 import React, { useState, useCallback } from 'react';
+
 import CollapsibleCard from './CollapsibleCard';
 
-const CollapsibleCardGroup = ({ 
-  cards, 
+const CollapsibleCardGroup = ({
+  cards,
   defaultExpanded = null,
   className = '',
-  exclusive = true 
+  exclusive = true,
 }) => {
   const [expandedCard, setExpandedCard] = useState(defaultExpanded);
 
-  const handleExclusiveToggle = useCallback((cardTitle) => {
-    if (exclusive) {
-      setExpandedCard(cardTitle);
-    }
-  }, [exclusive]);
+  const handleExclusiveToggle = useCallback(
+    cardTitle => {
+      if (exclusive) {
+        setExpandedCard(cardTitle);
+      }
+    },
+    [exclusive]
+  );
 
   return (
     <div className={`space-y-6 ${className}`}>

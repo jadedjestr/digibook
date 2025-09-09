@@ -1,17 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
 
-const CollapsibleCard = ({ 
-  title, 
-  icon: Icon, 
-  children, 
+const CollapsibleCard = ({
+  title,
+  icon: Icon,
+  children,
   defaultExpanded = false,
   onToggle,
   className = '',
   headerClassName = '',
   contentClassName = '',
   exclusive = false,
-  onExclusiveToggle
+  onExclusiveToggle,
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [contentHeight, setContentHeight] = useState(0);
@@ -27,19 +27,19 @@ const CollapsibleCard = ({
   const handleToggle = () => {
     const newExpanded = !isExpanded;
     setIsExpanded(newExpanded);
-    
+
     // Call onToggle callback if provided
     if (onToggle) {
       onToggle(newExpanded);
     }
-    
+
     // Handle exclusive expansion
     if (exclusive && onExclusiveToggle) {
       onExclusiveToggle(newExpanded ? title : null);
     }
   };
 
-  const handleKeyDown = (event) => {
+  const handleKeyDown = event => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       handleToggle();
@@ -60,22 +60,22 @@ const CollapsibleCard = ({
         onClick={handleToggle}
         onKeyDown={handleKeyDown}
         tabIndex={0}
-        role="button"
+        role='button'
         aria-expanded={isExpanded}
         aria-controls={`collapsible-content-${title.replace(/\s+/g, '-').toLowerCase()}`}
       >
-        <div className="flex items-center space-x-3">
-          {Icon && <Icon size={20} className="text-primary" />}
-          <h3 className="text-lg font-semibold text-primary">{title}</h3>
+        <div className='flex items-center space-x-3'>
+          {Icon && <Icon size={20} className='text-primary' />}
+          <h3 className='text-lg font-semibold text-primary'>{title}</h3>
         </div>
-        
+
         <ChevronDown
           size={20}
           className={`
             collapsible-card-chevron text-primary
             ${isExpanded ? 'expanded' : 'collapsed'}
           `}
-          aria-hidden="true"
+          aria-hidden='true'
         />
       </div>
 
@@ -92,7 +92,7 @@ const CollapsibleCard = ({
           marginTop: isExpanded ? '1rem' : '0px',
         }}
       >
-        <div ref={contentRef} className="space-y-4">
+        <div ref={contentRef} className='space-y-4'>
           {children}
         </div>
       </div>

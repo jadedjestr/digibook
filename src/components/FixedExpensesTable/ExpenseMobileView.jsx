@@ -1,4 +1,5 @@
 import React from 'react';
+
 import MobileExpenseCard from '../MobileExpenseCard';
 
 /**
@@ -19,16 +20,19 @@ const ExpenseMobileView = ({
   onUpdateExpense,
 }) => {
   return (
-    <div className="lg:hidden space-y-4 p-4">
-      {categoryExpenses.map((expense) => {
-        const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
-        
+    <div className='lg:hidden space-y-4 p-4'>
+      {categoryExpenses.map(expense => {
+        const status = paycheckService.calculateExpenseStatus(
+          expense,
+          paycheckDates
+        );
+
         // Find account in both regular accounts and credit cards
         let account = creditCards.find(card => card.id === expense.accountId);
         if (!account) {
           account = accounts.find(acc => acc.id === expense.accountId);
         }
-        
+
         const isNewExpense = newExpenseId === expense.id;
 
         return (

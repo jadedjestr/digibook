@@ -1,12 +1,12 @@
-import { logger } from '../utils/logger';
 import { dbHelpers } from '../db/database-clean';
 import { secureDataHandling } from '../utils/crypto';
+import { logger } from '../utils/logger';
 
 // Current data format version
 const CURRENT_DATA_VERSION = 1;
 
 class DataManager {
-  constructor () {
+  constructor() {
     this.backupManager = new BackupManager();
     this.initializeBackupSystem();
   }
@@ -14,11 +14,11 @@ class DataManager {
   /**
    * Initialize the backup system with automatic scheduling
    */
-  initializeBackupSystem () {
+  initializeBackupSystem() {
     try {
       // Schedule automatic backups
       this.backupManager.scheduleAutomaticBackups();
-      
+
       // Run backup testing on app startup (in development)
       if (process.env.NODE_ENV === 'development') {
         setTimeout(async () => {
@@ -29,7 +29,7 @@ class DataManager {
           }
         }, 5000); // Wait 5 seconds after app startup
       }
-      
+
       logger.info('Backup system initialized successfully');
     } catch (error) {
       logger.error('Failed to initialize backup system:', error);
@@ -37,7 +37,7 @@ class DataManager {
   }
 
   // Database Management
-  async deleteDatabase () {
+  async deleteDatabase() {
     try {
       await dbHelpers.deleteDatabase();
       logger.success('Database deleted successfully');
@@ -47,7 +47,7 @@ class DataManager {
     }
   }
 
-  async clearAllData (createBackup = true) {
+  async clearAllData(createBackup = true) {
     try {
       if (createBackup) {
         await this.backupManager.createBackup('pre_clear_all');
@@ -64,7 +64,7 @@ class DataManager {
   }
 
   // Audit Log Management
-  async getAuditLogs () {
+  async getAuditLogs() {
     try {
       return await dbHelpers.getAuditLogs();
     } catch (error) {
@@ -73,7 +73,7 @@ class DataManager {
     }
   }
 
-  async clearAuditLogs () {
+  async clearAuditLogs() {
     try {
       await dbHelpers.clearAuditLogs();
       logger.success('Audit logs cleared successfully');
@@ -84,10 +84,12 @@ class DataManager {
   }
 
   // File Reading and Validation
-  async readImportFile (file) {
+  async readImportFile(file) {
     try {
       const text = await file.text();
-      const fileType = file.name.toLowerCase().endsWith('.json') ? 'json' : 'csv';
+      const fileType = file.name.toLowerCase().endsWith('.json')
+        ? 'json'
+        : 'csv';
 
       let data;
       if (fileType === 'json') {
@@ -103,13 +105,15 @@ class DataManager {
     }
   }
 
-  async parseAndValidateJSON (text) {
+  async parseAndValidateJSON(text) {
     try {
       const data = JSON.parse(text);
 
       // Check data format version
       if (data.version && data.version > CURRENT_DATA_VERSION) {
-        throw new Error(`Data format version ${data.version} is not supported. Current version: ${CURRENT_DATA_VERSION}`);
+        throw new Error(
+          `Data format version ${data.version} is not supported. Current version: ${CURRENT_DATA_VERSION}`
+        );
       }
 
       // Validate data structure
@@ -123,13 +127,15 @@ class DataManager {
     }
   }
 
-  async parseAndValidateCSV (text) {
+  async parseAndValidateCSV(text) {
     try {
       const Papa = await import('papaparse');
       const result = Papa.parse(text, { header: true });
 
       if (result.errors && result.errors.length > 0) {
-        throw new Error(`CSV parsing errors: ${result.errors.map(e => e.message).join(', ')}`);
+        throw new Error(
+          `CSV parsing errors: ${result.errors.map(e => e.message).join(', ')}`
+        );
       }
 
       if (!result.data || result.data.length === 0) {
@@ -142,56 +148,95 @@ class DataManager {
     }
   }
 
-  detectAndConvertCSVData (csvData) {
+  detectAndConvertCSVData(csvData) {
     const firstRow = csvData[0] || {};
     const headers = Object.keys(firstRow);
 
     // Detect data type from headers
-    if (headers.includes('name') && headers.includes('type') && headers.includes('currentBalance')) {
+    if (
+      headers.includes('name') &&
+      headers.includes('type') &&
+      headers.includes('currentBalance')
+    ) {
       return { accounts: this.convertCSVData(csvData, 'accounts') };
     }
-    if (headers.includes('accountId') && headers.includes('amount') && headers.includes('description')) {
-      return { pendingTransactions: this.convertCSVData(csvData, 'pendingTransactions') };
+    if (
+      headers.includes('accountId') &&
+      headers.includes('amount') &&
+      headers.includes('description')
+    ) {
+      return {
+        pendingTransactions: this.convertCSVData(
+          csvData,
+          'pendingTransactions'
+        ),
+      };
     }
-    if (headers.includes('dueDate') && headers.includes('amount') && headers.includes('name')) {
+    if (
+      headers.includes('dueDate') &&
+      headers.includes('amount') &&
+      headers.includes('name')
+    ) {
       return { fixedExpenses: this.convertCSVData(csvData, 'fixedExpenses') };
     }
     if (headers.includes('name') && headers.includes('color')) {
       return { categories: this.convertCSVData(csvData, 'categories') };
     }
     if (headers.includes('lastPaycheckDate') && headers.includes('frequency')) {
-      return { paycheckSettings: this.convertCSVData(csvData, 'paycheckSettings') };
+      return {
+        paycheckSettings: this.convertCSVData(csvData, 'paycheckSettings'),
+      };
     }
 
     throw new Error('Could not detect CSV data type from headers');
   }
 
-  convertCSVData (csvData, dataType) {
+  convertCSVData(csvData, dataType) {
     return csvData.map(row => {
       const converted = { ...row };
 
       switch (dataType) {
-      case 'accounts':
-        converted.currentBalance = parseFloat(row.currentBalance) || 0;
-        converted.isDefault = row.isDefault === 'true' || row.isDefault === '1' || row.isDefault === 'Yes';
-        break;
-      case 'pendingTransactions':
-        converted.accountId = parseInt(row.accountId) || 0;
-        converted.amount = parseFloat(row.amount) || 0;
-        converted.createdAt = row.createdAt ? new Date(row.createdAt).toISOString() : new Date().toISOString();
-        break;
-      case 'fixedExpenses':
-        converted.amount = parseFloat(row.amount) || 0;
-        converted.paidAmount = parseFloat(row.paidAmount) || 0;
-        converted.accountId = parseInt(row.accountId) || 0;
-        converted.dueDate = row.dueDate ? new Date(row.dueDate).toISOString() : '';
-        break;
-      case 'categories':
-        converted.isDefault = row.isDefault === 'true' || row.isDefault === '1' || row.isDefault === 'Yes';
-        break;
-      case 'paycheckSettings':
-        converted.lastPaycheckDate = row.lastPaycheckDate ? new Date(row.lastPaycheckDate).toISOString() : '';
-        break;
+        case 'accounts':
+          converted.currentBalance = parseFloat(row.currentBalance) || 0;
+          converted.isDefault =
+            row.isDefault === 'true' ||
+            row.isDefault === '1' ||
+            row.isDefault === 'Yes';
+          break;
+        case 'pendingTransactions':
+          converted.accountId = parseInt(row.accountId) || 0;
+          converted.amount = parseFloat(row.amount) || 0;
+          converted.createdAt = row.createdAt
+            ? new Date(row.createdAt).toISOString()
+            : new Date().toISOString();
+          break;
+        case 'fixedExpenses':
+          converted.amount = parseFloat(row.amount) || 0;
+          converted.paidAmount = parseFloat(row.paidAmount) || 0;
+          converted.accountId = parseInt(row.accountId) || 0;
+          converted.dueDate = row.dueDate
+            ? new Date(row.dueDate).toISOString()
+            : '';
+          break;
+        case 'categories':
+          converted.isDefault =
+            row.isDefault === 'true' ||
+            row.isDefault === '1' ||
+            row.isDefault === 'Yes';
+          break;
+        case 'paycheckSettings':
+          // Ensure date is in YYYY-MM-DD format
+          if (row.lastPaycheckDate) {
+            const date = new Date(row.lastPaycheckDate);
+            if (!isNaN(date.getTime())) {
+              converted.lastPaycheckDate = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+            } else {
+              converted.lastPaycheckDate = '';
+            }
+          } else {
+            converted.lastPaycheckDate = '';
+          }
+          break;
       }
 
       return converted;
@@ -199,7 +244,7 @@ class DataManager {
   }
 
   // Import Process
-  async importData (file, onProgress = () => {}) {
+  async importData(file, onProgress = () => {}) {
     try {
       onProgress('Reading file...');
       const { data, fileType } = await this.readImportFile(file);
@@ -210,7 +255,9 @@ class DataManager {
       onProgress('Validating data...');
       const validationResult = await this.validateImportData(data);
       if (!validationResult.isValid) {
-        throw new Error(`Import validation failed: ${validationResult.errors.join(', ')}`);
+        throw new Error(
+          `Import validation failed: ${validationResult.errors.join(', ')}`
+        );
       }
 
       onProgress('Importing data...');
@@ -225,14 +272,16 @@ class DataManager {
   }
 
   // Secure Import Process with decryption
-  async importDataSecure (file, password, onProgress = () => {}) {
+  async importDataSecure(file, password, onProgress = () => {}) {
     try {
       onProgress('Reading encrypted file...');
       const { data, fileType } = await this.readImportFile(file);
 
       // Check if it's an encrypted export
       if (!data.encrypted) {
-        throw new Error('File is not encrypted. Use regular import for unencrypted files.');
+        throw new Error(
+          'File is not encrypted. Use regular import for unencrypted files.'
+        );
       }
 
       onProgress('Creating backup...');
@@ -244,14 +293,18 @@ class DataManager {
       onProgress('Validating decrypted data...');
       const validationResult = await this.validateImportData(decryptedData);
       if (!validationResult.isValid) {
-        throw new Error(`Import validation failed: ${validationResult.errors.join(', ')}`);
+        throw new Error(
+          `Import validation failed: ${validationResult.errors.join(', ')}`
+        );
       }
 
       onProgress('Importing data...');
       await dbHelpers.importData(decryptedData);
 
       onProgress('Secure import completed successfully!');
-      logger.success(`Encrypted data imported successfully from ${fileType} file`);
+      logger.success(
+        `Encrypted data imported successfully from ${fileType} file`
+      );
     } catch (error) {
       logger.error('Secure import failed:', error);
       throw new Error(`Secure import failed: ${error.message}`);
@@ -259,7 +312,7 @@ class DataManager {
   }
 
   // Export Process
-  async exportData (format = 'json', onProgress = () => {}) {
+  async exportData(format = 'json', onProgress = () => {}) {
     try {
       onProgress('Preparing data...');
       const data = await dbHelpers.exportData();
@@ -281,7 +334,7 @@ class DataManager {
   }
 
   // Secure Export Process with encryption
-  async exportDataSecure (password, onProgress = () => {}) {
+  async exportDataSecure(password, onProgress = () => {}) {
     try {
       onProgress('Preparing data...');
       const data = await dbHelpers.exportData();
@@ -291,17 +344,20 @@ class DataManager {
       data.exportedAt = new Date().toISOString();
 
       onProgress('Encrypting data...');
-      const encryptedExport = await secureDataHandling.exportData(data, password);
+      const encryptedExport = await secureDataHandling.exportData(
+        data,
+        password
+      );
 
       onProgress('Creating secure file...');
-      const blob = new Blob([JSON.stringify(encryptedExport, null, 2)], { 
-        type: 'application/json' 
+      const blob = new Blob([JSON.stringify(encryptedExport, null, 2)], {
+        type: 'application/json',
       });
-      
+
       return {
         blob,
         filename: `digibook_secure_backup_${new Date().toISOString().split('T')[0]}.json`,
-        encrypted: true
+        encrypted: true,
       };
     } catch (error) {
       logger.error('Secure export failed:', error);
@@ -309,15 +365,17 @@ class DataManager {
     }
   }
 
-  async createJSONExport (data) {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  async createJSONExport(data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json',
+    });
     return {
       blob,
       filename: `digibook_backup_${new Date().toISOString().split('T')[0]}.json`,
     };
   }
 
-  async createCSVExport (data) {
+  async createCSVExport(data) {
     const Papa = await import('papaparse');
     const files = [];
 
@@ -337,27 +395,27 @@ class DataManager {
   }
 
   // Data Validation
-  async validateImportData (data) {
+  async validateImportData(data) {
     return dbHelpers.validateImportData(data);
   }
 }
 
 class BackupManager {
-  constructor () {
+  constructor() {
     this.BACKUP_PREFIX = 'digibook_backup_';
     this.MAX_BACKUPS = 5;
   }
 
-  async createBackup (reason) {
+  async createBackup(reason) {
     try {
       const data = await dbHelpers.exportData();
-      
+
       // Generate integrity checksum
       const checksum = await this.generateChecksum(data);
-      
+
       // Compress backup data
       const compressedData = await this.compressData(data);
-      
+
       const backup = {
         data: compressedData,
         checksum,
@@ -366,13 +424,15 @@ class BackupManager {
         version: CURRENT_DATA_VERSION,
         compressed: true,
         size: JSON.stringify(compressedData).length,
-        originalSize: JSON.stringify(data).length
+        originalSize: JSON.stringify(data).length,
       };
 
       // Verify backup integrity before storing
       const verificationResult = await this.verifyBackupIntegrity(backup);
       if (!verificationResult.isValid) {
-        throw new Error(`Backup integrity verification failed: ${verificationResult.errors.join(', ')}`);
+        throw new Error(
+          `Backup integrity verification failed: ${verificationResult.errors.join(', ')}`
+        );
       }
 
       // Store backup
@@ -382,7 +442,9 @@ class BackupManager {
       // Rotate old backups
       await this.rotateBackups();
 
-      logger.success(`Backup created successfully (${backup.size} bytes, ${Math.round((1 - backup.size / backup.originalSize) * 100)}% compressed)`);
+      logger.success(
+        `Backup created successfully (${backup.size} bytes, ${Math.round((1 - backup.size / backup.originalSize) * 100)}% compressed)`
+      );
       return key;
     } catch (error) {
       logger.error('Failed to create backup:', error);
@@ -390,7 +452,7 @@ class BackupManager {
     }
   }
 
-  async rotateBackups () {
+  async rotateBackups() {
     try {
       const backups = this.listBackups();
       if (backups.length > this.MAX_BACKUPS) {
@@ -405,7 +467,7 @@ class BackupManager {
     }
   }
 
-  listBackups () {
+  listBackups() {
     const backups = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -421,7 +483,7 @@ class BackupManager {
     return backups;
   }
 
-  async restoreBackup (key) {
+  async restoreBackup(key) {
     try {
       const backupJson = localStorage.getItem(key);
       if (!backupJson) {
@@ -433,16 +495,18 @@ class BackupManager {
       // Verify backup integrity
       const integrityResult = await this.verifyBackupIntegrity(backup);
       if (!integrityResult.isValid) {
-        throw new Error(`Backup integrity check failed: ${integrityResult.errors.join(', ')}`);
+        throw new Error(
+          `Backup integrity check failed: ${integrityResult.errors.join(', ')}`
+        );
       }
 
       // Create safety backup before restore
       await this.createBackup('pre_restore');
 
       // Decompress data if needed
-      const dataToRestore = backup.compressed ? 
-        await this.decompressData(backup.data) : 
-        backup.data;
+      const dataToRestore = backup.compressed
+        ? await this.decompressData(backup.data)
+        : backup.data;
 
       // Restore data
       await dbHelpers.importData(dataToRestore);
@@ -454,16 +518,18 @@ class BackupManager {
     }
   }
 
-  async getLatestBackup () {
+  async getLatestBackup() {
     const backups = this.listBackups();
     if (backups.length === 0) {
       return null;
     }
 
-    return backups.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+    return backups.sort(
+      (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+    )[0];
   }
 
-  clearBackups () {
+  clearBackups() {
     const backups = this.listBackups();
     backups.forEach(backup => localStorage.removeItem(backup.key));
     logger.success('All backups cleared');
@@ -474,7 +540,7 @@ class BackupManager {
   /**
    * Generate checksum for data integrity verification
    */
-  async generateChecksum (data) {
+  async generateChecksum(data) {
     try {
       const jsonString = JSON.stringify(data);
       const encoder = new TextEncoder();
@@ -491,24 +557,32 @@ class BackupManager {
   /**
    * Compress backup data using simple compression techniques
    */
-  async compressData (data) {
+  async compressData(data) {
     try {
       // Simple compression by removing unnecessary whitespace and null values
-      const compressed = JSON.parse(JSON.stringify(data, (key, value) => {
-        // Remove null/undefined values
-        if (value === null || value === undefined) return undefined;
-        // Remove empty strings
-        if (typeof value === 'string' && value.trim() === '') return undefined;
-        // Remove empty arrays
-        if (Array.isArray(value) && value.length === 0) return undefined;
-        // Remove empty objects
-        if (typeof value === 'object' && Object.keys(value).length === 0) return undefined;
-        return value;
-      }));
-      
+      const compressed = JSON.parse(
+        JSON.stringify(data, (key, value) => {
+          // Remove null/undefined values
+          if (value === null || value === undefined) return undefined;
+
+          // Remove empty strings
+          if (typeof value === 'string' && value.trim() === '')
+            return undefined;
+
+          // Remove empty arrays
+          if (Array.isArray(value) && value.length === 0) return undefined;
+
+          // Remove empty objects
+          if (typeof value === 'object' && Object.keys(value).length === 0)
+            return undefined;
+          return value;
+        })
+      );
+
       return compressed;
     } catch (error) {
       logger.error('Error compressing data:', error);
+
       // Return original data if compression fails
       return data;
     }
@@ -517,7 +591,7 @@ class BackupManager {
   /**
    * Decompress backup data
    */
-  async decompressData (compressedData) {
+  async decompressData(compressedData) {
     try {
       // For now, compression is just cleanup, so no decompression needed
       return compressedData;
@@ -530,16 +604,16 @@ class BackupManager {
   /**
    * Verify backup integrity
    */
-  async verifyBackupIntegrity (backup) {
+  async verifyBackupIntegrity(backup) {
     const errors = [];
-    
+
     try {
       // Check required fields
       if (!backup.data) errors.push('Missing backup data');
       if (!backup.checksum) errors.push('Missing checksum');
       if (!backup.timestamp) errors.push('Missing timestamp');
       if (!backup.version) errors.push('Missing version');
-      
+
       // Verify checksum if data exists
       if (backup.data && backup.checksum) {
         const currentChecksum = await this.generateChecksum(backup.data);
@@ -547,26 +621,28 @@ class BackupManager {
           errors.push('Checksum mismatch - data may be corrupted');
         }
       }
-      
+
       // Verify timestamp format
       if (backup.timestamp && isNaN(new Date(backup.timestamp).getTime())) {
         errors.push('Invalid timestamp format');
       }
-      
+
       // Verify version compatibility
       if (backup.version && backup.version > CURRENT_DATA_VERSION) {
-        errors.push(`Backup version ${backup.version} is newer than current version ${CURRENT_DATA_VERSION}`);
+        errors.push(
+          `Backup version ${backup.version} is newer than current version ${CURRENT_DATA_VERSION}`
+        );
       }
-      
+
       return {
         isValid: errors.length === 0,
-        errors
+        errors,
       };
     } catch (error) {
       logger.error('Error verifying backup integrity:', error);
       return {
         isValid: false,
-        errors: ['Integrity verification failed: ' + error.message]
+        errors: [`Integrity verification failed: ${error.message}`],
       };
     }
   }
@@ -574,43 +650,47 @@ class BackupManager {
   /**
    * Test backup restore functionality
    */
-  async testBackupRestore (backupKey) {
+  async testBackupRestore(backupKey) {
     try {
       logger.info(`Testing backup restore for: ${backupKey}`);
-      
+
       // Get the backup
       const backupJson = localStorage.getItem(backupKey);
       if (!backupJson) {
         throw new Error('Backup not found');
       }
-      
+
       const backup = JSON.parse(backupJson);
-      
+
       // Verify integrity
       const integrityResult = await this.verifyBackupIntegrity(backup);
       if (!integrityResult.isValid) {
-        throw new Error(`Backup integrity check failed: ${integrityResult.errors.join(', ')}`);
+        throw new Error(
+          `Backup integrity check failed: ${integrityResult.errors.join(', ')}`
+        );
       }
-      
+
       // Decompress data
       const decompressedData = await this.decompressData(backup.data);
-      
+
       // Validate data structure
       const validationResult = await this.validateImportData(decompressedData);
       if (!validationResult.isValid) {
-        throw new Error(`Data validation failed: ${validationResult.errors.join(', ')}`);
+        throw new Error(
+          `Data validation failed: ${validationResult.errors.join(', ')}`
+        );
       }
-      
+
       logger.success(`Backup restore test passed for: ${backupKey}`);
       return {
         success: true,
-        message: 'Backup restore test completed successfully'
+        message: 'Backup restore test completed successfully',
       };
     } catch (error) {
       logger.error(`Backup restore test failed for ${backupKey}:`, error);
       return {
         success: false,
-        error: error.message
+        error: error.message,
       };
     }
   }
@@ -618,32 +698,34 @@ class BackupManager {
   /**
    * Run automated backup testing on all backups
    */
-  async runAutomatedBackupTesting () {
+  async runAutomatedBackupTesting() {
     try {
       logger.info('Running automated backup testing...');
       const backups = this.listBackups();
       const results = [];
-      
+
       for (const backup of backups) {
         const testResult = await this.testBackupRestore(backup.key);
         results.push({
           key: backup.key,
           timestamp: backup.timestamp,
           reason: backup.reason,
-          ...testResult
+          ...testResult,
         });
       }
-      
+
       const successCount = results.filter(r => r.success).length;
       const totalCount = results.length;
-      
-      logger.info(`Automated backup testing completed: ${successCount}/${totalCount} backups passed`);
-      
+
+      logger.info(
+        `Automated backup testing completed: ${successCount}/${totalCount} backups passed`
+      );
+
       return {
         total: totalCount,
         passed: successCount,
         failed: totalCount - successCount,
-        results
+        results,
       };
     } catch (error) {
       logger.error('Automated backup testing failed:', error);
@@ -654,25 +736,25 @@ class BackupManager {
   /**
    * Schedule automatic backups
    */
-  scheduleAutomaticBackups () {
+  scheduleAutomaticBackups() {
     try {
       // Clear any existing schedule
       if (this.backupInterval) {
         clearInterval(this.backupInterval);
       }
-      
+
       // Create daily backup at 2 AM
       const now = new Date();
       const nextBackup = new Date();
       nextBackup.setHours(2, 0, 0, 0);
-      
+
       // If it's already past 2 AM today, schedule for tomorrow
       if (now.getHours() >= 2) {
         nextBackup.setDate(nextBackup.getDate() + 1);
       }
-      
+
       const timeUntilBackup = nextBackup.getTime() - now.getTime();
-      
+
       // Schedule the first backup
       setTimeout(async () => {
         try {
@@ -682,18 +764,23 @@ class BackupManager {
           logger.error('Scheduled daily backup failed:', error);
         }
       }, timeUntilBackup);
-      
+
       // Schedule recurring backups every 24 hours
-      this.backupInterval = setInterval(async () => {
-        try {
-          await this.createBackup('scheduled_daily');
-          logger.success('Scheduled daily backup completed');
-        } catch (error) {
-          logger.error('Scheduled daily backup failed:', error);
-        }
-      }, 24 * 60 * 60 * 1000); // 24 hours
-      
-      logger.info(`Automatic backups scheduled. Next backup at: ${nextBackup.toISOString()}`);
+      this.backupInterval = setInterval(
+        async () => {
+          try {
+            await this.createBackup('scheduled_daily');
+            logger.success('Scheduled daily backup completed');
+          } catch (error) {
+            logger.error('Scheduled daily backup failed:', error);
+          }
+        },
+        24 * 60 * 60 * 1000
+      ); // 24 hours
+
+      logger.info(
+        `Automatic backups scheduled. Next backup at: ${nextBackup.toISOString()}`
+      );
     } catch (error) {
       logger.error('Failed to schedule automatic backups:', error);
     }
@@ -702,7 +789,7 @@ class BackupManager {
   /**
    * Stop automatic backup scheduling
    */
-  stopAutomaticBackups () {
+  stopAutomaticBackups() {
     if (this.backupInterval) {
       clearInterval(this.backupInterval);
       this.backupInterval = null;

@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { logger } from '../utils/logger';
 
 /**
@@ -41,6 +42,7 @@ class CategoryCache {
       return freshData;
     } catch (error) {
       logger.error('Failed to fetch fresh category data:', error);
+
       // Return stale data if available, otherwise throw
       if (this.cache.data) {
         logger.warn('Returning stale category data due to fetch error');
@@ -119,7 +121,7 @@ export const useCategoryCache = () => {
     return unsubscribe;
   }, []);
 
-  const refresh = React.useCallback(async (fetchFunction) => {
+  const refresh = React.useCallback(async fetchFunction => {
     setIsLoading(true);
     setError(null);
     try {

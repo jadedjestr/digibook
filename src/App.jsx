@@ -1,15 +1,24 @@
 import { logger } from './utils/logger';
+
 import { useState, useEffect, Suspense, lazy } from 'react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { Wallet, Clock, Calendar, Settings, CreditCard, BarChart3 } from 'lucide-react';
-import Sidebar from './components/Sidebar';
-import PINLock from './components/PINLock';
+import {
+  Wallet,
+  Clock,
+  Calendar,
+  Settings,
+  CreditCard,
+  BarChart3,
+} from 'lucide-react';
+
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSpinner from './components/LoadingSpinner';
 import PerformanceDashboard from './components/PerformanceDashboard';
-import { PrivacyProvider } from './contexts/PrivacyContext';
+import PINLock from './components/PINLock';
+import Sidebar from './components/Sidebar';
 import { GlobalCategoryProvider } from './contexts/GlobalCategoryContext';
+import { PrivacyProvider } from './contexts/PrivacyContext';
 import { useAppStore } from './stores/useAppStore';
 import { securePINStorage } from './utils/crypto';
 
@@ -23,11 +32,10 @@ const Insights = lazy(() => import('./pages/Insights'));
 // Import Settings directly to avoid context issues with lazy loading
 import SettingsPage from './pages/Settings';
 
-function App () {
+function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [pin, setPin] = useState('');
   const [isLoadingPIN, setIsLoadingPIN] = useState(true);
-
 
   // Use Zustand store for global state
   const {
@@ -39,6 +47,7 @@ function App () {
     isLoading,
     error,
     loadData,
+    reloadPaycheckSettings,
     setCurrentPage,
     setPanelOpen,
     clearError,
@@ -57,7 +66,7 @@ function App () {
         setIsLoadingPIN(false);
       }
     };
-    
+
     loadPIN();
   }, []);
 
@@ -68,13 +77,14 @@ function App () {
     }
   }, [loadData, isLoadingPIN]);
 
-  const handlePINChange = async (newPin) => {
+  const handlePINChange = async newPin => {
     try {
       await securePINStorage.setPIN(newPin);
       setPin(newPin);
       logger.success('PIN updated securely');
     } catch (error) {
       logger.error('Error updating PIN:', error);
+
       // Still update the state for UI consistency
       setPin(newPin);
     }
@@ -95,39 +105,45 @@ function App () {
 
   const renderPage = () => {
     switch (currentPage) {
-    case 'accounts':
-      return <Accounts />;
-    case 'pending':
-      return <PendingTransactions 
-        pendingTransactions={pendingTransactions}
-        accounts={accounts}
-        onDataChange={loadData}
-      />;
-    case 'expenses':
-      return <FixedExpenses />;
-    case 'creditCards':
-      return <CreditCards 
-        accounts={accounts}
-        creditCards={creditCards}
-        onDataChange={loadData}
-      />;
-    case 'insights':
-      return <Insights 
-        accounts={accounts}
-        creditCards={creditCards}
-        onDataChange={loadData}
-      />;
-    case 'settings':
-      return <SettingsPage />;
-    default:
-      return <Accounts />;
+      case 'accounts':
+        return <Accounts />;
+      case 'pending':
+        return (
+          <PendingTransactions
+            pendingTransactions={pendingTransactions}
+            accounts={accounts}
+            onDataChange={loadData}
+          />
+        );
+      case 'expenses':
+        return <FixedExpenses />;
+      case 'creditCards':
+        return (
+          <CreditCards
+            accounts={accounts}
+            creditCards={creditCards}
+            onDataChange={loadData}
+          />
+        );
+      case 'insights':
+        return (
+          <Insights
+            accounts={accounts}
+            creditCards={creditCards}
+            onDataChange={loadData}
+          />
+        );
+      case 'settings':
+        return <SettingsPage onDataChange={reloadPaycheckSettings} />;
+      default:
+        return <Accounts />;
     }
   };
 
   // Show loading spinner while PIN is being loaded
   if (isLoadingPIN) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+      <div className='flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800'>
         <LoadingSpinner />
       </div>
     );
@@ -148,35 +164,35 @@ function App () {
     <ErrorBoundary>
       <PrivacyProvider>
         <GlobalCategoryProvider>
-          <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-          <ToastContainer
-            position="top-right"
-            autoClose={3000}
-            hideProgressBar={false}
-            newestOnTop
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-            theme="dark"
-          />
-          <Sidebar
-            navigation={navigation}
-            onToggleLock={toggleLock}
-            isLocked={isLocked}
-          />
-          <main className="flex-1 overflow-auto lg:ml-0">
-            <div className="p-4 lg:p-6 pt-16 lg:pt-6">
-              <Suspense fallback={<LoadingSpinner />}>
-                {renderPage()}
-              </Suspense>
-            </div>
-          </main>
-        </div>
+          <div className='flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800'>
+            <ToastContainer
+              position='top-right'
+              autoClose={3000}
+              hideProgressBar={false}
+              newestOnTop
+              closeOnClick
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme='dark'
+            />
+            <Sidebar
+              navigation={navigation}
+              onToggleLock={toggleLock}
+              isLocked={isLocked}
+            />
+            <main className='flex-1 overflow-auto lg:ml-0'>
+              <div className='p-4 lg:p-6 pt-16 lg:pt-6'>
+                <Suspense fallback={<LoadingSpinner />}>
+                  {renderPage()}
+                </Suspense>
+              </div>
+            </main>
+          </div>
         </GlobalCategoryProvider>
       </PrivacyProvider>
-      
+
       {/* Performance Dashboard (Development Only) */}
       <PerformanceDashboard />
     </ErrorBoundary>

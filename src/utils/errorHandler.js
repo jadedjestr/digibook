@@ -3,7 +3,7 @@ import { notify } from './notifications';
 
 /**
  * Centralized Error Handling Utility
- * 
+ *
  * Provides consistent error handling across the application with:
  * - Standardized error logging
  * - User-friendly error messages
@@ -18,49 +18,69 @@ export class ErrorHandler {
       NETWORK: 'network',
       DATABASE: 'database',
       PERMISSION: 'permission',
-      UNKNOWN: 'unknown'
+      UNKNOWN: 'unknown',
     };
 
     this.severityLevels = {
       LOW: 'low',
       MEDIUM: 'medium',
       HIGH: 'high',
-      CRITICAL: 'critical'
+      CRITICAL: 'critical',
     };
   }
 
   /**
-   * Handle and categorize errors
+   * Handle and categorize errors with comprehensive logging and user notification
    * @param {Error} error - The error to handle
    * @param {Object} context - Additional context about where the error occurred
+   * @param {Object} context.componentName - Name of the component where error occurred
+   * @param {Object} context.action - Action being performed when error occurred
+   * @param {Object} context.userId - ID of the user (if applicable)
    * @param {Object} options - Handling options
+   * @param {boolean} options.showNotification - Whether to show user notification (default: true)
+   * @param {boolean} options.attemptRecovery - Whether to attempt automatic recovery (default: false)
+   * @returns {Object} Error information object with categorization and severity
    */
   handle(error, context = {}, options = {}) {
     const errorInfo = this.categorizeError(error, context);
     const severity = this.determineSeverity(errorInfo);
-    
+
     // Log the error
     this.logError(errorInfo, severity);
-    
+
     // Show user notification if appropriate
     if (options.showNotification !== false) {
       this.showUserNotification(errorInfo, severity);
     }
-    
+
     // Attempt recovery if possible
     if (options.attemptRecovery !== false) {
       this.attemptRecovery(errorInfo, context);
     }
-    
+
     return {
       errorInfo,
       severity,
-      handled: true
+      handled: true,
     };
   }
 
   /**
-   * Categorize error based on type and context
+   * Categorize error based on type and context for proper handling
+   * @param {Error} error - The error to categorize
+   * @param {Object} context - Additional context about the error
+   * @param {string} context.component - Name of the component where error occurred
+   * @param {string} context.action - Action being performed when error occurred
+   * @param {string} context.userId - ID of the user (if applicable)
+   * @param {string} context.sessionId - Session ID (if applicable)
+   * @returns {Object} Categorized error information
+   * @returns {string} returns.type - Error type (validation, network, database, etc.)
+   * @returns {string} returns.message - User-friendly error message
+   * @returns {string} returns.stack - Error stack trace
+   * @returns {string} returns.category - Error category
+   * @returns {string} returns.timestamp - ISO timestamp of when error occurred
+   * @returns {Object} returns.context - Error context information
+   * @returns {Error} returns.originalError - Original error object
    */
   categorizeError(error, context) {
     const errorInfo = {
@@ -73,9 +93,9 @@ export class ErrorHandler {
         component: context.component || 'unknown',
         action: context.action || 'unknown',
         userId: context.userId || null,
-        sessionId: context.sessionId || null
+        sessionId: context.sessionId || null,
       },
-      originalError: error
+      originalError: error,
     };
 
     // Categorize based on error message and context
@@ -108,12 +128,18 @@ export class ErrorHandler {
     }
 
     // High severity errors
-    if (type === this.errorTypes.DATABASE || type === this.errorTypes.PERMISSION) {
+    if (
+      type === this.errorTypes.DATABASE ||
+      type === this.errorTypes.PERMISSION
+    ) {
       return this.severityLevels.HIGH;
     }
 
     // Medium severity errors
-    if (type === this.errorTypes.NETWORK || type === this.errorTypes.VALIDATION) {
+    if (
+      type === this.errorTypes.NETWORK ||
+      type === this.errorTypes.VALIDATION
+    ) {
       return this.severityLevels.MEDIUM;
     }
 
@@ -129,7 +155,7 @@ export class ErrorHandler {
       type: errorInfo.type,
       category: errorInfo.category,
       context: errorInfo.context,
-      timestamp: errorInfo.timestamp
+      timestamp: errorInfo.timestamp,
     };
 
     switch (severity) {
@@ -155,7 +181,7 @@ export class ErrorHandler {
    */
   showUserNotification(errorInfo, severity) {
     const userMessage = this.getUserFriendlyMessage(errorInfo, severity);
-    
+
     switch (severity) {
       case this.severityLevels.CRITICAL:
         notify.error(userMessage, { duration: 0 }); // Don't auto-dismiss
@@ -260,6 +286,7 @@ export class ErrorHandler {
   async attemptDatabaseReconnection() {
     try {
       logger.info('Attempting database reconnection...');
+
       // Implementation would depend on your database setup
       // For IndexedDB, this might involve checking if the database is still accessible
       logger.success('Database reconnection successful');
@@ -274,6 +301,7 @@ export class ErrorHandler {
   async attemptDataRestore() {
     try {
       logger.info('Attempting data restore from backup...');
+
       // Implementation would involve restoring from localStorage backup
       // or prompting user to restore from exported data
       logger.success('Data restore successful');
@@ -287,40 +315,65 @@ export class ErrorHandler {
    */
   isValidationError(error) {
     const validationKeywords = [
-      'required', 'invalid', 'validation', 'format', 'length',
-      'minimum', 'maximum', 'pattern', 'constraint'
+      'required',
+      'invalid',
+      'validation',
+      'format',
+      'length',
+      'minimum',
+      'maximum',
+      'pattern',
+      'constraint',
     ];
-    return validationKeywords.some(keyword => 
+    return validationKeywords.some(keyword =>
       error.message.toLowerCase().includes(keyword)
     );
   }
 
   isNetworkError(error) {
     const networkKeywords = [
-      'network', 'connection', 'timeout', 'fetch', 'request',
-      'offline', 'unreachable', 'dns', 'cors'
+      'network',
+      'connection',
+      'timeout',
+      'fetch',
+      'request',
+      'offline',
+      'unreachable',
+      'dns',
+      'cors',
     ];
-    return networkKeywords.some(keyword => 
+    return networkKeywords.some(keyword =>
       error.message.toLowerCase().includes(keyword)
     );
   }
 
   isDatabaseError(error) {
     const databaseKeywords = [
-      'database', 'indexeddb', 'dexie', 'constraint', 'transaction',
-      'not found', 'already exists', 'corruption', 'locked'
+      'database',
+      'indexeddb',
+      'dexie',
+      'constraint',
+      'transaction',
+      'not found',
+      'already exists',
+      'corruption',
+      'locked',
     ];
-    return databaseKeywords.some(keyword => 
+    return databaseKeywords.some(keyword =>
       error.message.toLowerCase().includes(keyword)
     );
   }
 
   isPermissionError(error) {
     const permissionKeywords = [
-      'permission', 'unauthorized', 'forbidden', 'access denied',
-      'not allowed', 'insufficient'
+      'permission',
+      'unauthorized',
+      'forbidden',
+      'access denied',
+      'not allowed',
+      'insufficient',
     ];
-    return permissionKeywords.some(keyword => 
+    return permissionKeywords.some(keyword =>
       error.message.toLowerCase().includes(keyword)
     );
   }
@@ -330,14 +383,18 @@ export class ErrorHandler {
    */
   createErrorBoundaryHandler(componentName) {
     return (error, errorInfo) => {
-      this.handle(error, {
-        component: componentName,
-        action: 'render',
-        errorInfo: errorInfo
-      }, {
-        showNotification: true,
-        attemptRecovery: false
-      });
+      this.handle(
+        error,
+        {
+          component: componentName,
+          action: 'render',
+          errorInfo,
+        },
+        {
+          showNotification: true,
+          attemptRecovery: false,
+        }
+      );
     };
   }
 
@@ -345,14 +402,14 @@ export class ErrorHandler {
    * Create async operation handler
    */
   createAsyncHandler(operationName, context = {}) {
-    return async (asyncFunction) => {
+    return async asyncFunction => {
       try {
         return await asyncFunction();
       } catch (error) {
         this.handle(error, {
           component: context.component || 'unknown',
           action: operationName,
-          ...context
+          ...context,
         });
         throw error; // Re-throw to allow caller to handle if needed
       }
@@ -363,16 +420,22 @@ export class ErrorHandler {
    * Create form validation handler
    */
   createValidationHandler(formName) {
-    return (validationErrors) => {
-      const error = new Error(`Validation failed for ${formName}: ${Object.keys(validationErrors).join(', ')}`);
-      this.handle(error, {
-        component: formName,
-        action: 'validation',
-        validationErrors
-      }, {
-        showNotification: true,
-        attemptRecovery: false
-      });
+    return validationErrors => {
+      const error = new Error(
+        `Validation failed for ${formName}: ${Object.keys(validationErrors).join(', ')}`
+      );
+      this.handle(
+        error,
+        {
+          component: formName,
+          action: 'validation',
+          validationErrors,
+        },
+        {
+          showNotification: true,
+          attemptRecovery: false,
+        }
+      );
     };
   }
 }
@@ -381,9 +444,13 @@ export class ErrorHandler {
 export const errorHandler = new ErrorHandler();
 
 // Export convenience functions
-export const handleError = (error, context, options) => errorHandler.handle(error, context, options);
-export const createErrorBoundary = (componentName) => errorHandler.createErrorBoundaryHandler(componentName);
-export const createAsyncHandler = (operationName, context) => errorHandler.createAsyncHandler(operationName, context);
-export const createValidationHandler = (formName) => errorHandler.createValidationHandler(formName);
+export const handleError = (error, context, options) =>
+  errorHandler.handle(error, context, options);
+export const createErrorBoundary = componentName =>
+  errorHandler.createErrorBoundaryHandler(componentName);
+export const createAsyncHandler = (operationName, context) =>
+  errorHandler.createAsyncHandler(operationName, context);
+export const createValidationHandler = formName =>
+  errorHandler.createValidationHandler(formName);
 
 export default errorHandler;

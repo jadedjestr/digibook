@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import React, { useMemo } from 'react';
+
 import MobileExpenseCard from '../MobileExpenseCard';
 
 /**
@@ -29,13 +30,13 @@ const VirtualizedMobileView = ({
   });
 
   // Memoize the virtual items to prevent unnecessary recalculations
-  const virtualItems = useMemo(() => virtualizer.getVirtualItems(), [
-    virtualizer,
-    categoryExpenses.length,
-  ]);
+  const virtualItems = useMemo(
+    () => virtualizer.getVirtualItems(),
+    [virtualizer, categoryExpenses.length]
+  );
 
   return (
-    <div className="lg:hidden">
+    <div className='lg:hidden'>
       {/* Virtual container */}
       <div
         style={{
@@ -44,16 +45,19 @@ const VirtualizedMobileView = ({
           position: 'relative',
         }}
       >
-        {virtualItems.map((virtualItem) => {
+        {virtualItems.map(virtualItem => {
           const expense = categoryExpenses[virtualItem.index];
-          const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
-          
+          const status = paycheckService.calculateExpenseStatus(
+            expense,
+            paycheckDates
+          );
+
           // Find account in both regular accounts and credit cards
           let account = creditCards.find(card => card.id === expense.accountId);
           if (!account) {
             account = accounts.find(acc => acc.id === expense.accountId);
           }
-          
+
           const isNewExpense = newExpenseId === expense.id;
 
           return (

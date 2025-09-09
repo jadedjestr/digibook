@@ -9,7 +9,7 @@ export class DateUtils {
    * @param {string} dateString - Date in YYYY-MM-DD format
    * @returns {Date} Date object in local time
    */
-  static parseDate (dateString) {
+  static parseDate(dateString) {
     if (!dateString) return null;
     const [year, month, day] = dateString.split('-').map(Number);
     return new Date(year, month - 1, day); // month is 0-indexed
@@ -20,7 +20,7 @@ export class DateUtils {
    * @param {Date} date - Date object
    * @returns {string} Date in YYYY-MM-DD format
    */
-  static formatDate (date) {
+  static formatDate(date) {
     if (!date) return '';
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -33,7 +33,7 @@ export class DateUtils {
    * @param {string} dateString - Date in YYYY-MM-DD format
    * @returns {string} Formatted date string
    */
-  static formatDisplayDate (dateString) {
+  static formatDisplayDate(dateString) {
     if (!dateString) return 'Not set';
     const date = this.parseDate(dateString);
     if (!date) return 'Invalid date';
@@ -51,7 +51,7 @@ export class DateUtils {
    * @param {string} dateString - Date in YYYY-MM-DD format
    * @returns {string} Short formatted date string
    */
-  static formatShortDate (dateString) {
+  static formatShortDate(dateString) {
     if (!dateString) return 'Not set';
     const date = this.parseDate(dateString);
     if (!date) return 'Invalid date';
@@ -69,7 +69,7 @@ export class DateUtils {
    * @param {number} days - Number of days to add
    * @returns {string} New date in YYYY-MM-DD format
    */
-  static addDays (dateString, days) {
+  static addDays(dateString, days) {
     const date = this.parseDate(dateString);
     if (!date) return null;
 
@@ -83,7 +83,7 @@ export class DateUtils {
    * @param {string} endDate - End date in YYYY-MM-DD format
    * @returns {number} Number of days between dates
    */
-  static daysBetween (startDate, endDate) {
+  static daysBetween(startDate, endDate) {
     const start = this.parseDate(startDate);
     const end = this.parseDate(endDate);
 
@@ -101,7 +101,7 @@ export class DateUtils {
    * Get today's date as YYYY-MM-DD string
    * @returns {string} Today's date
    */
-  static today () {
+  static today() {
     return this.formatDate(new Date());
   }
 
@@ -110,7 +110,7 @@ export class DateUtils {
    * @param {string} dateString - Date in YYYY-MM-DD format
    * @returns {boolean} True if date is in the past
    */
-  static isPast (dateString) {
+  static isPast(dateString) {
     const date = this.parseDate(dateString);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -123,7 +123,7 @@ export class DateUtils {
    * @param {string} dateString - Date in YYYY-MM-DD format
    * @returns {boolean} True if date is today
    */
-  static isToday (dateString) {
+  static isToday(dateString) {
     const date = this.parseDate(dateString);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -136,7 +136,7 @@ export class DateUtils {
    * @param {string} dateString - Date string to validate
    * @returns {boolean} True if valid date
    */
-  static isValidDate (dateString) {
+  static isValidDate(dateString) {
     if (!dateString || typeof dateString !== 'string') return false;
 
     const date = this.parseDate(dateString);

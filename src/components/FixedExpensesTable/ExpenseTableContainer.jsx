@@ -1,6 +1,3 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { logger } from '../../utils/logger';
-import { useCollapsedCategories, useSortPreference, useAutoCollapsePreference, useShowOnlyUnpaidPreference } from '../../hooks/usePersistedState';
 import {
   DndContext,
   closestCenter,
@@ -10,19 +7,39 @@ import {
   DragOverlay,
   defaultDropAnimationSideEffects,
 } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { PaycheckService } from '../../services/paycheckService';
-import ExpenseTableHeader from './ExpenseTableHeader';
-import ExpenseCategoryGroup from './ExpenseCategoryGroup';
-import VirtualizedExpenseTable from './VirtualizedExpenseTable';
-import VirtualizedMobileView from './VirtualizedMobileView';
-import DuplicateExpenseModal from '../DuplicateExpenseModal';
-import AddExpensePanel from '../AddExpensePanel';
-import AccountValidationAlert from '../AccountValidationAlert';
-import { useAppStore } from '../../stores/useAppStore';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from 'react';
+
 import { useExpenseOperations } from '../../hooks/useExpenseOperations';
 import { useMemoizedCalculations } from '../../hooks/useMemoizedCalculations';
 import { usePerformanceMonitor } from '../../hooks/usePerformanceMonitor';
+import {
+  useCollapsedCategories,
+  useSortPreference,
+  useAutoCollapsePreference,
+  useShowOnlyUnpaidPreference,
+} from '../../hooks/usePersistedState';
+import { PaycheckService } from '../../services/paycheckService';
+import { useAppStore } from '../../stores/useAppStore';
+import { logger } from '../../utils/logger';
+import AddExpensePanel from '../AddExpensePanel';
+import DuplicateExpenseModal from '../DuplicateExpenseModal';
+
+import ExpenseCategoryGroup from './ExpenseCategoryGroup';
+import ExpenseTableHeader from './ExpenseTableHeader';
+import VirtualizedExpenseTable from './VirtualizedExpenseTable';
+import VirtualizedMobileView from './VirtualizedMobileView';
+
+import AccountValidationAlert from '../AccountValidationAlert';
 
 // Initialization State Machine
 const INIT_STATES = {
@@ -51,20 +68,39 @@ const ExpenseTableContainer = () => {
   const [invalidExpenses, setInvalidExpenses] = useState([]);
 
   // Performance monitoring
-  const { startRender, endRender, getPerformanceData } = usePerformanceMonitor('ExpenseTableContainer', {
-    trackRenders: true,
-    trackMemory: true,
-    logThreshold: 16,
-  });
+  const { startRender, endRender, getPerformanceData } = usePerformanceMonitor(
+    'ExpenseTableContainer',
+    {
+      trackRenders: true,
+      trackMemory: true,
+      logThreshold: 16,
+    }
+  );
 
   // Virtual scrolling refs
   const scrollRefs = useRef({});
 
   // 🔧 SIMPLIFIED PERSISTED STATE - No complex manual overrides
-  const { value: collapsedCategories, setValue: setCollapsedCategories, isLoaded: collapsedLoaded } = useCollapsedCategories();
-  const { value: sortBy, setValue: setSortBy, isLoaded: sortLoaded } = useSortPreference();
-  const { value: autoCollapseEnabled, setValue: setAutoCollapseEnabled, isLoaded: autoCollapseLoaded } = useAutoCollapsePreference();
-  const { value: showOnlyUnpaid, setValue: setShowOnlyUnpaid, isLoaded: showOnlyUnpaidLoaded } = useShowOnlyUnpaidPreference();
+  const {
+    value: collapsedCategories,
+    setValue: setCollapsedCategories,
+    isLoaded: collapsedLoaded,
+  } = useCollapsedCategories();
+  const {
+    value: sortBy,
+    setValue: setSortBy,
+    isLoaded: sortLoaded,
+  } = useSortPreference();
+  const {
+    value: autoCollapseEnabled,
+    setValue: setAutoCollapseEnabled,
+    isLoaded: autoCollapseLoaded,
+  } = useAutoCollapsePreference();
+  const {
+    value: showOnlyUnpaid,
+    setValue: setShowOnlyUnpaid,
+    isLoaded: showOnlyUnpaidLoaded,
+  } = useShowOnlyUnpaidPreference();
 
   const [dropAnimation, setDropAnimation] = useState({
     duration: 250,
@@ -83,7 +119,7 @@ const ExpenseTableContainer = () => {
       activationConstraint: {
         distance: 8, // 8px movement required before drag starts
       },
-    }),
+    })
   );
 
   // Use Zustand store for data
@@ -96,15 +132,12 @@ const ExpenseTableContainer = () => {
     isPanelOpen,
     isLoading,
     setPanelOpen,
+    reloadExpenses,
   } = useAppStore();
 
   // Use custom hooks for operations
-  const {
-    updateExpense,
-    deleteExpense,
-    duplicateExpense,
-    markAsPaid,
-  } = useExpenseOperations();
+  const { updateExpense, deleteExpense, duplicateExpense, markAsPaid } =
+    useExpenseOperations();
 
   // Use memoized calculations for performance
   const {
@@ -113,7 +146,12 @@ const ExpenseTableContainer = () => {
     categoryTotals,
     getFilteredExpenses,
     getSortedExpenses,
-  } = useMemoizedCalculations(fixedExpenses, accounts, creditCards, paycheckSettings);
+  } = useMemoizedCalculations(
+    fixedExpenses,
+    accounts,
+    creditCards,
+    paycheckSettings
+  );
 
   const paycheckService = new PaycheckService(paycheckSettings);
   const paycheckDates = paycheckService.calculatePaycheckDates();
@@ -127,7 +165,12 @@ const ExpenseTableContainer = () => {
 
         // Wait for persisted preferences to load
         const checkPreferencesLoaded = () => {
-          return collapsedLoaded && sortLoaded && autoCollapseLoaded && showOnlyUnpaidLoaded;
+          return (
+            collapsedLoaded &&
+            sortLoaded &&
+            autoCollapseLoaded &&
+            showOnlyUnpaidLoaded
+          );
         };
 
         // Wait for preferences with timeout
@@ -145,7 +188,6 @@ const ExpenseTableContainer = () => {
 
         // Step 3: Mark as ready
         setInitState(INIT_STATES.READY);
-
       } catch (error) {
         setInitError(error.message);
         setInitState(INIT_STATES.ERROR);
@@ -160,9 +202,10 @@ const ExpenseTableContainer = () => {
     if (!a.dueDate && !b.dueDate) return 0;
     if (!a.dueDate) return 1;
     if (!b.dueDate) return -1;
+
     // Parse as local dates to avoid timezone shifts
-    const dateA = new Date(a.dueDate + 'T00:00:00');
-    const dateB = new Date(b.dueDate + 'T00:00:00');
+    const dateA = new Date(`${a.dueDate}T00:00:00`);
+    const dateB = new Date(`${b.dueDate}T00:00:00`);
     return dateA - dateB;
   };
 
@@ -197,8 +240,9 @@ const ExpenseTableContainer = () => {
         ...creditCards.map(card => card.id),
       ]);
 
-      const invalid = fixedExpenses.filter(expense => 
-        expense.accountId && !allValidAccountIds.has(expense.accountId)
+      const invalid = fixedExpenses.filter(
+        expense =>
+          expense.accountId && !allValidAccountIds.has(expense.accountId)
       );
 
       setInvalidExpenses(invalid);
@@ -206,7 +250,7 @@ const ExpenseTableContainer = () => {
   }, [fixedExpenses, accounts, creditCards]);
 
   // Calculate total for a category
-  const getCategoryTotal = (categoryExpenses) => {
+  const getCategoryTotal = categoryExpenses => {
     return categoryExpenses.reduce((total, expense) => {
       const remaining = expense.amount - (expense.paidAmount || 0);
       return total + (remaining > 0 ? remaining : 0);
@@ -214,52 +258,65 @@ const ExpenseTableContainer = () => {
   };
 
   // Handle expense updates using the custom hook
-  const handleUpdateExpense = useCallback(async (id, updates) => {
-    if (updateInProgress.has(id)) {
-      console.log(`FixedExpensesTable: Update already in progress for expense ${id}, skipping`);
-      return;
-    }
+  const handleUpdateExpense = useCallback(
+    async (id, updates) => {
+      if (updateInProgress.has(id)) {
+        console.log(
+          `FixedExpensesTable: Update already in progress for expense ${id}, skipping`
+        );
+        return;
+      }
 
-    try {
-      setUpdateInProgress(prev => new Set(prev).add(id));
-      setUpdatingExpenseId(id);
+      try {
+        setUpdateInProgress(prev => new Set(prev).add(id));
+        setUpdatingExpenseId(id);
 
-      await updateExpense(id, updates);
-
-    } catch (error) {
-      logger.error('Error updating expense:', error);
-    } finally {
-      setUpdateInProgress(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(id);
-        return newSet;
-      });
-      setUpdatingExpenseId(null);
-    }
-  }, [updateExpense, updateInProgress]);
+        await updateExpense(id, updates);
+      } catch (error) {
+        logger.error('Error updating expense:', error);
+      } finally {
+        setUpdateInProgress(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(id);
+          return newSet;
+        });
+        setUpdatingExpenseId(null);
+      }
+    },
+    [updateExpense, updateInProgress]
+  );
 
   // Handle marking expense as paid
-  const handleMarkAsPaid = useCallback(async (expenseId) => {
-    await markAsPaid(expenseId);
-  }, [markAsPaid]);
+  const handleMarkAsPaid = useCallback(
+    async expenseId => {
+      await markAsPaid(expenseId);
+    },
+    [markAsPaid]
+  );
 
   // Handle expense deletion
-  const handleDeleteExpense = useCallback(async (expenseId) => {
-    await deleteExpense(expenseId);
-  }, [deleteExpense]);
+  const handleDeleteExpense = useCallback(
+    async expenseId => {
+      await deleteExpense(expenseId);
+    },
+    [deleteExpense]
+  );
 
   // Handle expense duplication
-  const handleDuplicate = useCallback(async (originalExpense, duplicateData) => {
-    const newId = await duplicateExpense(originalExpense, duplicateData);
-    setNewExpenseId(newId);
-  }, [duplicateExpense]);
+  const handleDuplicate = useCallback(
+    async (originalExpense, duplicateData) => {
+      const newId = await duplicateExpense(originalExpense, duplicateData);
+      setNewExpenseId(newId);
+    },
+    [duplicateExpense]
+  );
 
   // Handle drag and drop
-  const handleDragStart = (event) => {
+  const handleDragStart = event => {
     setActiveId(event.active.id);
   };
 
-  const handleDragEnd = async (event) => {
+  const handleDragEnd = async event => {
     const { active, over } = event;
     setActiveId(null);
 
@@ -279,8 +336,8 @@ const ExpenseTableContainer = () => {
   // Loading state
   if (initState === INIT_STATES.LOADING || isLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-white/70">Loading expenses...</div>
+      <div className='flex items-center justify-center p-8'>
+        <div className='text-white/70'>Loading expenses...</div>
       </div>
     );
   }
@@ -288,15 +345,15 @@ const ExpenseTableContainer = () => {
   // Error state
   if (initState === INIT_STATES.ERROR) {
     return (
-      <div className="text-center p-8">
-        <div className="text-red-400 mb-4">Error loading expenses</div>
-        <div className="text-white/70 text-sm">{initError}</div>
+      <div className='text-center p-8'>
+        <div className='text-red-400 mb-4'>Error loading expenses</div>
+        <div className='text-white/70 text-sm'>{initError}</div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className='space-y-6'>
       {/* Account Validation Alert */}
       {invalidExpenses.length > 0 && (
         <AccountValidationAlert
@@ -326,38 +383,37 @@ const ExpenseTableContainer = () => {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="space-y-6">
-            {Object.entries(groupedExpenses).map(([categoryName, categoryExpenses]) => (
-              <ExpenseCategoryGroup
-                key={categoryName}
-                categoryName={categoryName}
-                categoryExpenses={categoryExpenses}
-                categories={categories}
-                collapsedCategories={collapsedCategories}
-                setCollapsedCategories={setCollapsedCategories}
-                getCategoryTotal={getCategoryTotal}
-                paycheckService={paycheckService}
-                paycheckDates={paycheckDates}
-                accounts={accounts}
-                creditCards={creditCards}
-                newExpenseId={newExpenseId}
-                updatingExpenseId={updatingExpenseId}
-                onMarkAsPaid={handleMarkAsPaid}
-                onDuplicate={setDuplicatingExpense}
-                onDelete={handleDeleteExpense}
-                onUpdateExpense={handleUpdateExpense}
-                activeId={activeId}
-              />
-            ))}
+          <div className='space-y-6'>
+            {Object.entries(groupedExpenses).map(
+              ([categoryName, categoryExpenses]) => (
+                <ExpenseCategoryGroup
+                  key={categoryName}
+                  categoryName={categoryName}
+                  categoryExpenses={categoryExpenses}
+                  categories={categories}
+                  collapsedCategories={collapsedCategories}
+                  setCollapsedCategories={setCollapsedCategories}
+                  getCategoryTotal={getCategoryTotal}
+                  paycheckService={paycheckService}
+                  paycheckDates={paycheckDates}
+                  accounts={accounts}
+                  creditCards={creditCards}
+                  newExpenseId={newExpenseId}
+                  updatingExpenseId={updatingExpenseId}
+                  onMarkAsPaid={handleMarkAsPaid}
+                  onDuplicate={setDuplicatingExpense}
+                  onDelete={handleDeleteExpense}
+                  onUpdateExpense={handleUpdateExpense}
+                  activeId={activeId}
+                />
+              )
+            )}
           </div>
         </DndContext>
       ) : (
-        <div className="text-center p-8">
-          <div className="text-white/70 mb-4">No expenses found</div>
-          <button
-            onClick={() => setPanelOpen(true)}
-            className="glass-button"
-          >
+        <div className='text-center p-8'>
+          <div className='text-white/70 mb-4'>No expenses found</div>
+          <button onClick={() => setPanelOpen(true)} className='glass-button'>
             Add Your First Expense
           </button>
         </div>
@@ -378,9 +434,12 @@ const ExpenseTableContainer = () => {
         onClose={() => setPanelOpen(false)}
         accounts={accounts}
         creditCards={creditCards}
-        onDataChange={(newExpenseId) => {
+        onDataChange={async newExpenseId => {
           if (newExpenseId) {
             setNewExpenseId(newExpenseId);
+
+            // Reload expenses from database to show the new expense
+            await reloadExpenses();
           }
         }}
       />

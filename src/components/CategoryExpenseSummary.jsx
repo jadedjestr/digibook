@@ -1,7 +1,9 @@
 import React from 'react';
-import PrivacyWrapper from './PrivacyWrapper';
+
 import { formatCurrency } from '../utils/accountUtils';
+
 import ExpenseBar from './ExpenseBar';
+import PrivacyWrapper from './PrivacyWrapper';
 
 const calculateTotals = (expenses, categories) => {
   return expenses.reduce((totals, expense) => {
@@ -24,16 +26,21 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
   // Use shared calculation logic
   const categoryTotals = calculateTotals(expenses, categories);
 
-  const totalAmount = Object.values(categoryTotals).reduce((sum, cat) => sum + cat.total, 0);
+  const totalAmount = Object.values(categoryTotals).reduce(
+    (sum, cat) => sum + cat.total,
+    0
+  );
 
   // Calculate percentages and prepare for visualization
-  const categoryData = Object.entries(categoryTotals).map(([name, data]) => ({
-    name,
-    total: data.total,
-    count: data.count,
-    percentage: (data.total / totalAmount) * 100,
-    color: data.color,
-  })).sort((a, b) => b.total - a.total); // Sort by total amount descending
+  const categoryData = Object.entries(categoryTotals)
+    .map(([name, data]) => ({
+      name,
+      total: data.total,
+      count: data.count,
+      percentage: (data.total / totalAmount) * 100,
+      color: data.color,
+    }))
+    .sort((a, b) => b.total - a.total); // Sort by total amount descending
 
   // Prepare expense data for bar chart
   const expenseData = categoryData.map(category => ({
@@ -44,11 +51,13 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
   }));
 
   return (
-    <div className="glass-panel">
-      <h3 className="text-lg font-semibold text-primary mb-4">Expense Distribution</h3>
+    <div className='glass-panel'>
+      <h3 className='text-lg font-semibold text-primary mb-4'>
+        Expense Distribution
+      </h3>
 
       {/* Horizontal Bar Chart Layout */}
-      <div className="space-y-0">
+      <div className='space-y-0'>
         {expenseData.map((expense, index) => (
           <ExpenseBar
             key={expense.name}
@@ -60,11 +69,13 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
       </div>
 
       {/* Total Section */}
-      <div className="mt-5 pt-4 border-t border-white/10">
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-white/70">Total Fixed Expenses</span>
+      <div className='mt-5 pt-4 border-t border-white/10'>
+        <div className='flex justify-between items-center'>
+          <span className='text-sm text-white/70'>Total Fixed Expenses</span>
           <PrivacyWrapper>
-            <span className="text-lg font-bold text-white">{formatCurrency(totalAmount)}</span>
+            <span className='text-lg font-bold text-white'>
+              {formatCurrency(totalAmount)}
+            </span>
           </PrivacyWrapper>
         </div>
       </div>
@@ -72,11 +83,20 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
   );
 };
 
-const CategoryExpenseSummary = React.memo(CategoryExpenseSummaryBase, (prevProps, nextProps) => {
-  // Only re-render if the totals or categories actually changed
-  const prevTotals = calculateTotals(prevProps.expenses, prevProps.categories);
-  const nextTotals = calculateTotals(nextProps.expenses, nextProps.categories);
-  return JSON.stringify(prevTotals) === JSON.stringify(nextTotals);
-});
+const CategoryExpenseSummary = React.memo(
+  CategoryExpenseSummaryBase,
+  (prevProps, nextProps) => {
+    // Only re-render if the totals or categories actually changed
+    const prevTotals = calculateTotals(
+      prevProps.expenses,
+      prevProps.categories
+    );
+    const nextTotals = calculateTotals(
+      nextProps.expenses,
+      nextProps.categories
+    );
+    return JSON.stringify(prevTotals) === JSON.stringify(nextTotals);
+  }
+);
 
 export default CategoryExpenseSummary;

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { logger } from '../utils/logger';
+
 import { dbHelpers, initializeDatabase } from '../db/database-clean';
+import { logger } from '../utils/logger';
 
 /**
  * Global application state store using Zustand
@@ -26,19 +27,22 @@ export const useAppStore = create(
       error: null,
 
       // === ACTIONS ===
-      
+
       /**
        * Load all application data from the database
        */
       loadData: async () => {
         try {
           set({ isLoading: true, error: null });
-          
+
           // Initialize database first
           await initializeDatabase();
-          
+
           // Initialize default data
           await dbHelpers.initializeDefaultData();
+
+          // Ensure there's a default account BEFORE loading data
+          await dbHelpers.ensureDefaultAccount();
 
           const [
             accountsData,
@@ -47,7 +51,7 @@ export const useAppStore = create(
             expensesData,
             categoriesData,
             paycheckSettingsData,
-            defaultAccountData
+            defaultAccountData,
           ] = await Promise.all([
             dbHelpers.getAccounts(),
             dbHelpers.getCreditCards(),
@@ -57,9 +61,6 @@ export const useAppStore = create(
             dbHelpers.getPaycheckSettings(),
             dbHelpers.getDefaultAccount(),
           ]);
-
-          // Ensure there's a default account
-          await dbHelpers.ensureDefaultAccount();
 
           set({
             accounts: accountsData,
@@ -78,6 +79,7 @@ export const useAppStore = create(
           set({
             error: error.message,
             isLoading: false,
+
             // Set empty arrays on error
             accounts: [],
             creditCards: [],
@@ -95,11 +97,12 @@ export const useAppStore = create(
        */
       reloadAccounts: async () => {
         try {
-          const [accountsData, creditCardsData, defaultAccountData] = await Promise.all([
-            dbHelpers.getAccounts(),
-            dbHelpers.getCreditCards(),
-            dbHelpers.getDefaultAccount(),
-          ]);
+          const [accountsData, creditCardsData, defaultAccountData] =
+            await Promise.all([
+              dbHelpers.getAccounts(),
+              dbHelpers.getCreditCards(),
+              dbHelpers.getDefaultAccount(),
+            ]);
 
           set({
             accounts: accountsData,
@@ -141,11 +144,21 @@ export const useAppStore = create(
         }
       },
 
+      reloadPaycheckSettings: async () => {
+        try {
+          const paycheckSettingsData = await dbHelpers.getPaycheckSettings();
+          set({ paycheckSettings: paycheckSettingsData });
+          logger.debug('Paycheck settings data reloaded');
+        } catch (error) {
+          logger.error('Error reloading paycheck settings:', error);
+        }
+      },
+
       /**
        * Update a specific expense in the store
        */
       updateExpense: (expenseId, updates) => {
-        set((state) => ({
+        set(state => ({
           fixedExpenses: state.fixedExpenses.map(expense =>
             expense.id === expenseId ? { ...expense, ...updates } : expense
           ),
@@ -155,8 +168,8 @@ export const useAppStore = create(
       /**
        * Add a new expense to the store
        */
-      addExpense: (newExpense) => {
-        set((state) => ({
+      addExpense: newExpense => {
+        set(state => ({
           fixedExpenses: [...state.fixedExpenses, newExpense],
         }));
       },
@@ -164,9 +177,11 @@ export const useAppStore = create(
       /**
        * Remove an expense from the store
        */
-      removeExpense: (expenseId) => {
-        set((state) => ({
-          fixedExpenses: state.fixedExpenses.filter(expense => expense.id !== expenseId),
+      removeExpense: expenseId => {
+        set(state => ({
+          fixedExpenses: state.fixedExpenses.filter(
+            expense => expense.id !== expenseId
+          ),
         }));
       },
 
@@ -174,7 +189,7 @@ export const useAppStore = create(
        * Update account data
        */
       updateAccount: (accountId, updates) => {
-        set((state) => ({
+        set(state => ({
           accounts: state.accounts.map(account =>
             account.id === accountId ? { ...account, ...updates } : account
           ),
@@ -185,7 +200,7 @@ export const useAppStore = create(
        * Update credit card data
        */
       updateCreditCard: (cardId, updates) => {
-        set((state) => ({
+        set(state => ({
           creditCards: state.creditCards.map(card =>
             card.id === cardId ? { ...card, ...updates } : card
           ),
@@ -195,8 +210,8 @@ export const useAppStore = create(
       /**
        * Add a new transaction
        */
-      addTransaction: (newTransaction) => {
-        set((state) => ({
+      addTransaction: newTransaction => {
+        set(state => ({
           pendingTransactions: [...state.pendingTransactions, newTransaction],
         }));
       },
@@ -204,8 +219,8 @@ export const useAppStore = create(
       /**
        * Remove a transaction
        */
-      removeTransaction: (transactionId) => {
-        set((state) => ({
+      removeTransaction: transactionId => {
+        set(state => ({
           pendingTransactions: state.pendingTransactions.filter(
             transaction => transaction.id !== transactionId
           ),
@@ -213,11 +228,11 @@ export const useAppStore = create(
       },
 
       // === UI ACTIONS ===
-      
+
       /**
        * Set the current page
        */
-      setCurrentPage: (page) => {
+      setCurrentPage: page => {
         set({ currentPage: page });
       },
 
@@ -225,13 +240,13 @@ export const useAppStore = create(
        * Toggle the add expense panel
        */
       togglePanel: () => {
-        set((state) => ({ isPanelOpen: !state.isPanelOpen }));
+        set(state => ({ isPanelOpen: !state.isPanelOpen }));
       },
 
       /**
        * Set panel open state
        */
-      setPanelOpen: (isOpen) => {
+      setPanelOpen: isOpen => {
         set({ isPanelOpen: isOpen });
       },
 
@@ -243,7 +258,7 @@ export const useAppStore = create(
       },
 
       // === COMPUTED VALUES ===
-      
+
       /**
        * Get all valid account IDs (accounts + credit cards)
        */
@@ -258,11 +273,13 @@ export const useAppStore = create(
       /**
        * Find an account by ID (searches both accounts and credit cards)
        */
-      findAccountById: (accountId) => {
+      findAccountById: accountId => {
         const state = get();
-        return state.creditCards.find(card => card.id === accountId) ||
-               state.accounts.find(acc => acc.id === accountId) ||
-               null;
+        return (
+          state.creditCards.find(card => card.id === accountId) ||
+          state.accounts.find(acc => acc.id === accountId) ||
+          null
+        );
       },
 
       /**
@@ -296,8 +313,9 @@ export const useAppStore = create(
     }),
     {
       name: 'digibook-app-store',
+
       // Only persist UI state, not data (data comes from database)
-      partialize: (state) => ({
+      partialize: state => ({
         currentPage: state.currentPage,
         isPanelOpen: state.isPanelOpen,
       }),
@@ -306,40 +324,44 @@ export const useAppStore = create(
 );
 
 // Export individual selectors for better performance
-export const useAccounts = () => useAppStore((state) => state.accounts);
-export const useCreditCards = () => useAppStore((state) => state.creditCards);
-export const usePendingTransactions = () => useAppStore((state) => state.pendingTransactions);
-export const useFixedExpenses = () => useAppStore((state) => state.fixedExpenses);
-export const useCategories = () => useAppStore((state) => state.categories);
-export const usePaycheckSettings = () => useAppStore((state) => state.paycheckSettings);
-export const useCurrentPage = () => useAppStore((state) => state.currentPage);
-export const useIsPanelOpen = () => useAppStore((state) => state.isPanelOpen);
-export const useIsLoading = () => useAppStore((state) => state.isLoading);
-export const useError = () => useAppStore((state) => state.error);
+export const useAccounts = () => useAppStore(state => state.accounts);
+export const useCreditCards = () => useAppStore(state => state.creditCards);
+export const usePendingTransactions = () =>
+  useAppStore(state => state.pendingTransactions);
+export const useFixedExpenses = () => useAppStore(state => state.fixedExpenses);
+export const useCategories = () => useAppStore(state => state.categories);
+export const usePaycheckSettings = () =>
+  useAppStore(state => state.paycheckSettings);
+export const useCurrentPage = () => useAppStore(state => state.currentPage);
+export const useIsPanelOpen = () => useAppStore(state => state.isPanelOpen);
+export const useIsLoading = () => useAppStore(state => state.isLoading);
+export const useError = () => useAppStore(state => state.error);
 
 // Export action selectors
-export const useAppActions = () => useAppStore((state) => ({
-  loadData: state.loadData,
-  reloadAccounts: state.reloadAccounts,
-  reloadExpenses: state.reloadExpenses,
-  reloadTransactions: state.reloadTransactions,
-  updateExpense: state.updateExpense,
-  addExpense: state.addExpense,
-  removeExpense: state.removeExpense,
-  updateAccount: state.updateAccount,
-  updateCreditCard: state.updateCreditCard,
-  addTransaction: state.addTransaction,
-  removeTransaction: state.removeTransaction,
-  setCurrentPage: state.setCurrentPage,
-  togglePanel: state.togglePanel,
-  setPanelOpen: state.setPanelOpen,
-  clearError: state.clearError,
-}));
+export const useAppActions = () =>
+  useAppStore(state => ({
+    loadData: state.loadData,
+    reloadAccounts: state.reloadAccounts,
+    reloadExpenses: state.reloadExpenses,
+    reloadTransactions: state.reloadTransactions,
+    updateExpense: state.updateExpense,
+    addExpense: state.addExpense,
+    removeExpense: state.removeExpense,
+    updateAccount: state.updateAccount,
+    updateCreditCard: state.updateCreditCard,
+    addTransaction: state.addTransaction,
+    removeTransaction: state.removeTransaction,
+    setCurrentPage: state.setCurrentPage,
+    togglePanel: state.togglePanel,
+    setPanelOpen: state.setPanelOpen,
+    clearError: state.clearError,
+  }));
 
 // Export computed selectors
-export const useAppComputed = () => useAppStore((state) => ({
-  getAllAccountIds: state.getAllAccountIds,
-  findAccountById: state.findAccountById,
-  getExpensesByCategory: state.getExpensesByCategory,
-  getTotalRemaining: state.getTotalRemaining,
-}));
+export const useAppComputed = () =>
+  useAppStore(state => ({
+    getAllAccountIds: state.getAllAccountIds,
+    findAccountById: state.findAccountById,
+    getExpensesByCategory: state.getExpensesByCategory,
+    getTotalRemaining: state.getTotalRemaining,
+  }));

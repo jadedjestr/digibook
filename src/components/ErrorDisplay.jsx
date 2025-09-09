@@ -1,9 +1,9 @@
-import React from 'react';
 import { AlertTriangle, RefreshCw, Home, Bug, X } from 'lucide-react';
+import React from 'react';
 
 /**
  * Consistent Error Display Components
- * 
+ *
  * Provides standardized error UI components for different error scenarios
  * with consistent styling and user-friendly messaging.
  */
@@ -13,7 +13,7 @@ export const ERROR_SEVERITY = {
   LOW: 'low',
   MEDIUM: 'medium',
   HIGH: 'high',
-  CRITICAL: 'critical'
+  CRITICAL: 'critical',
 };
 
 // Error types
@@ -22,22 +22,22 @@ export const ERROR_TYPE = {
   NETWORK: 'network',
   DATABASE: 'database',
   PERMISSION: 'permission',
-  UNKNOWN: 'unknown'
+  UNKNOWN: 'unknown',
 };
 
 /**
  * Base Error Display Component
  */
-export const ErrorDisplay = ({ 
-  title, 
-  message, 
-  severity = ERROR_SEVERITY.MEDIUM, 
+export const ErrorDisplay = ({
+  title,
+  message,
+  severity = ERROR_SEVERITY.MEDIUM,
   type = ERROR_TYPE.UNKNOWN,
   onRetry,
   onDismiss,
   showDetails = false,
   details,
-  className = ''
+  className = '',
 }) => {
   const getSeverityStyles = () => {
     switch (severity) {
@@ -46,35 +46,35 @@ export const ErrorDisplay = ({
           container: 'bg-red-500/10 border-red-500/30 text-red-300',
           icon: 'text-red-400',
           title: 'text-red-200',
-          message: 'text-red-300/80'
+          message: 'text-red-300/80',
         };
       case ERROR_SEVERITY.HIGH:
         return {
           container: 'bg-orange-500/10 border-orange-500/30 text-orange-300',
           icon: 'text-orange-400',
           title: 'text-orange-200',
-          message: 'text-orange-300/80'
+          message: 'text-orange-300/80',
         };
       case ERROR_SEVERITY.MEDIUM:
         return {
           container: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-300',
           icon: 'text-yellow-400',
           title: 'text-yellow-200',
-          message: 'text-yellow-300/80'
+          message: 'text-yellow-300/80',
         };
       case ERROR_SEVERITY.LOW:
         return {
           container: 'bg-blue-500/10 border-blue-500/30 text-blue-300',
           icon: 'text-blue-400',
           title: 'text-blue-200',
-          message: 'text-blue-300/80'
+          message: 'text-blue-300/80',
         };
       default:
         return {
           container: 'bg-gray-500/10 border-gray-500/30 text-gray-300',
           icon: 'text-gray-400',
           title: 'text-gray-200',
-          message: 'text-gray-300/80'
+          message: 'text-gray-300/80',
         };
     }
   };
@@ -82,7 +82,7 @@ export const ErrorDisplay = ({
   const getIcon = () => {
     switch (type) {
       case ERROR_TYPE.NETWORK:
-        return <RefreshCw size={20} className="animate-spin" />;
+        return <RefreshCw size={20} className='animate-spin' />;
       case ERROR_TYPE.DATABASE:
         return <Bug size={20} />;
       case ERROR_TYPE.VALIDATION:
@@ -96,45 +96,41 @@ export const ErrorDisplay = ({
 
   return (
     <div className={`glass-panel border ${styles.container} ${className}`}>
-      <div className="flex items-start space-x-3">
-        <div className={`flex-shrink-0 ${styles.icon}`}>
-          {getIcon()}
-        </div>
-        
-        <div className="flex-1 min-w-0">
-          <h3 className={`text-sm font-medium ${styles.title}`}>
-            {title}
-          </h3>
-          <p className={`mt-1 text-sm ${styles.message}`}>
-            {message}
-          </p>
-          
+      <div className='flex items-start space-x-3'>
+        <div className={`flex-shrink-0 ${styles.icon}`}>{getIcon()}</div>
+
+        <div className='flex-1 min-w-0'>
+          <h3 className={`text-sm font-medium ${styles.title}`}>{title}</h3>
+          <p className={`mt-1 text-sm ${styles.message}`}>{message}</p>
+
           {showDetails && details && (
-            <details className="mt-3">
-              <summary className="cursor-pointer text-xs opacity-75 hover:opacity-100">
+            <details className='mt-3'>
+              <summary className='cursor-pointer text-xs opacity-75 hover:opacity-100'>
                 Technical Details
               </summary>
-              <pre className="mt-2 text-xs bg-black/20 p-2 rounded overflow-auto max-h-32">
-                {typeof details === 'string' ? details : JSON.stringify(details, null, 2)}
+              <pre className='mt-2 text-xs bg-black/20 p-2 rounded overflow-auto max-h-32'>
+                {typeof details === 'string'
+                  ? details
+                  : JSON.stringify(details, null, 2)}
               </pre>
             </details>
           )}
-          
+
           {(onRetry || onDismiss) && (
-            <div className="mt-3 flex space-x-2">
+            <div className='mt-3 flex space-x-2'>
               {onRetry && (
                 <button
                   onClick={onRetry}
-                  className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-white/10 hover:bg-white/20 transition-colors"
+                  className='inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-white/10 hover:bg-white/20 transition-colors'
                 >
-                  <RefreshCw size={12} className="mr-1" />
+                  <RefreshCw size={12} className='mr-1' />
                   Try Again
                 </button>
               )}
               {onDismiss && (
                 <button
                   onClick={onDismiss}
-                  className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-white/5 hover:bg-white/10 transition-colors"
+                  className='inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-white/5 hover:bg-white/10 transition-colors'
                 >
                   Dismiss
                 </button>
@@ -142,11 +138,11 @@ export const ErrorDisplay = ({
             </div>
           )}
         </div>
-        
+
         {onDismiss && (
           <button
             onClick={onDismiss}
-            className="flex-shrink-0 p-1 hover:bg-white/10 rounded transition-colors"
+            className='flex-shrink-0 p-1 hover:bg-white/10 rounded transition-colors'
           >
             <X size={16} />
           </button>
@@ -159,19 +155,23 @@ export const ErrorDisplay = ({
 /**
  * Validation Error Display
  */
-export const ValidationError = ({ 
-  errors, 
-  onRetry, 
+export const ValidationError = ({
+  errors,
+  onRetry,
   onDismiss,
-  className = '' 
+  className = '',
 }) => {
   const errorCount = Object.keys(errors).length;
   const errorMessages = Object.values(errors).filter(Boolean);
 
   return (
     <ErrorDisplay
-      title="Please fix the following errors:"
-      message={errorMessages.length > 0 ? errorMessages.join(', ') : 'Please check your input and try again.'}
+      title='Please fix the following errors:'
+      message={
+        errorMessages.length > 0
+          ? errorMessages.join(', ')
+          : 'Please check your input and try again.'
+      }
       severity={ERROR_SEVERITY.MEDIUM}
       type={ERROR_TYPE.VALIDATION}
       onRetry={onRetry}
@@ -186,15 +186,15 @@ export const ValidationError = ({
 /**
  * Network Error Display
  */
-export const NetworkError = ({ 
+export const NetworkError = ({
   message = 'Unable to connect. Please check your internet connection.',
   onRetry,
   onDismiss,
-  className = '' 
+  className = '',
 }) => {
   return (
     <ErrorDisplay
-      title="Connection Error"
+      title='Connection Error'
       message={message}
       severity={ERROR_SEVERITY.MEDIUM}
       type={ERROR_TYPE.NETWORK}
@@ -208,17 +208,17 @@ export const NetworkError = ({
 /**
  * Database Error Display
  */
-export const DatabaseError = ({ 
+export const DatabaseError = ({
   message = 'There was a problem accessing your data.',
   onRetry,
   onDismiss,
   showDetails = false,
   details,
-  className = '' 
+  className = '',
 }) => {
   return (
     <ErrorDisplay
-      title="Data Error"
+      title='Data Error'
       message={message}
       severity={ERROR_SEVERITY.HIGH}
       type={ERROR_TYPE.DATABASE}
@@ -234,15 +234,15 @@ export const DatabaseError = ({
 /**
  * Permission Error Display
  */
-export const PermissionError = ({ 
+export const PermissionError = ({
   message = 'You do not have permission to perform this action.',
   onRetry,
   onDismiss,
-  className = '' 
+  className = '',
 }) => {
   return (
     <ErrorDisplay
-      title="Access Denied"
+      title='Access Denied'
       message={message}
       severity={ERROR_SEVERITY.HIGH}
       type={ERROR_TYPE.PERMISSION}
@@ -256,14 +256,14 @@ export const PermissionError = ({
 /**
  * Critical Error Display
  */
-export const CriticalError = ({ 
-  title = "Critical Error",
-  message = "A critical error occurred. Please refresh the page and try again.",
+export const CriticalError = ({
+  title = 'Critical Error',
+  message = 'A critical error occurred. Please refresh the page and try again.',
   onRetry,
   onDismiss,
   showDetails = true,
   details,
-  className = '' 
+  className = '',
 }) => {
   return (
     <ErrorDisplay
@@ -283,15 +283,15 @@ export const CriticalError = ({
 /**
  * Loading Error Display
  */
-export const LoadingError = ({ 
-  message = "Failed to load data. Please try again.",
+export const LoadingError = ({
+  message = 'Failed to load data. Please try again.',
   onRetry,
   onDismiss,
-  className = '' 
+  className = '',
 }) => {
   return (
     <ErrorDisplay
-      title="Loading Error"
+      title='Loading Error'
       message={message}
       severity={ERROR_SEVERITY.MEDIUM}
       type={ERROR_TYPE.UNKNOWN}
@@ -305,12 +305,7 @@ export const LoadingError = ({
 /**
  * Form Error Display
  */
-export const FormError = ({ 
-  errors,
-  onRetry,
-  onDismiss,
-  className = '' 
-}) => {
+export const FormError = ({ errors, onRetry, onDismiss, className = '' }) => {
   if (!errors || Object.keys(errors).length === 0) {
     return null;
   }
@@ -328,33 +323,28 @@ export const FormError = ({
 /**
  * Inline Error Display (for form fields)
  */
-export const InlineError = ({ 
-  message, 
-  className = '' 
-}) => {
+export const InlineError = ({ message, className = '' }) => {
   if (!message) return null;
 
-  return (
-    <p className={`mt-1 text-sm text-red-400 ${className}`}>
-      {message}
-    </p>
-  );
+  return <p className={`mt-1 text-sm text-red-400 ${className}`}>{message}</p>;
 };
 
 /**
  * Error Summary Component
  */
-export const ErrorSummary = ({ 
+export const ErrorSummary = ({
   errors,
   onRetry,
   onDismiss,
-  className = '' 
+  className = '',
 }) => {
   if (!errors || errors.length === 0) {
     return null;
   }
 
-  const criticalErrors = errors.filter(e => e.severity === ERROR_SEVERITY.CRITICAL);
+  const criticalErrors = errors.filter(
+    e => e.severity === ERROR_SEVERITY.CRITICAL
+  );
   const highErrors = errors.filter(e => e.severity === ERROR_SEVERITY.HIGH);
   const mediumErrors = errors.filter(e => e.severity === ERROR_SEVERITY.MEDIUM);
   const lowErrors = errors.filter(e => e.severity === ERROR_SEVERITY.LOW);
@@ -371,7 +361,7 @@ export const ErrorSummary = ({
           details={error.details}
         />
       ))}
-      
+
       {highErrors.map((error, index) => (
         <DatabaseError
           key={`high-${index}`}
@@ -381,7 +371,7 @@ export const ErrorSummary = ({
           details={error.details}
         />
       ))}
-      
+
       {mediumErrors.map((error, index) => (
         <ErrorDisplay
           key={`medium-${index}`}
@@ -392,7 +382,7 @@ export const ErrorSummary = ({
           onDismiss={onDismiss}
         />
       ))}
-      
+
       {lowErrors.map((error, index) => (
         <ErrorDisplay
           key={`low-${index}`}

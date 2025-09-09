@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { logger } from '../utils/logger';
+
 import { dbHelpers } from '../db/database-clean';
+import { logger } from '../utils/logger';
 
 /**
  * Enhanced hook for persisting UI state with hybrid localStorage + IndexedDB approach
@@ -10,7 +11,11 @@ import { dbHelpers } from '../db/database-clean';
  * 2. Save: State → localStorage (immediate) → IndexedDB (async backup)
  * 3. Sync: IndexedDB wins on conflicts, localStorage for speed
  */
-export const usePersistedState = (key, defaultValue, component = 'fixedExpenses') => {
+export const usePersistedState = (
+  key,
+  defaultValue,
+  component = 'fixedExpenses'
+) => {
   const [state, setState] = useState(defaultValue);
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState(null);
@@ -42,7 +47,10 @@ export const usePersistedState = (key, defaultValue, component = 'fixedExpenses'
 
             // Sync localStorage with IndexedDB value
             try {
-              localStorage.setItem(`ui_${component}_${key}`, JSON.stringify(value));
+              localStorage.setItem(
+                `ui_${component}_${key}`,
+                JSON.stringify(value)
+              );
             } catch (syncError) {
               console.warn('⚠️ localStorage sync failed:', syncError);
             }
@@ -52,14 +60,16 @@ export const usePersistedState = (key, defaultValue, component = 'fixedExpenses'
         }
 
         // Handle special types (Set, Date, etc.)
-        if ((key === 'collapsedCategories' || key === 'manualOverrides') && Array.isArray(value)) {
+        if (
+          (key === 'collapsedCategories' || key === 'manualOverrides') &&
+          Array.isArray(value)
+        ) {
           value = new Set(value);
         }
 
         setState(value);
         setIsLoaded(true);
         console.log(`✅ Preferences loaded for ${key}:`, value);
-
       } catch (error) {
         console.error(`❌ Failed to load preferences for ${key}:`, error);
         setError(error.message);
@@ -72,55 +82,63 @@ export const usePersistedState = (key, defaultValue, component = 'fixedExpenses'
   }, [key, component, defaultValue]);
 
   // Save preferences with hybrid approach
-  const updateState = useCallback(async (newValue) => {
-    try {
-      console.log(`💾 Saving preference ${key}:`, newValue);
-
-      // Update local state immediately
-      setState(newValue);
-
-      // Step 1: Save to localStorage immediately (for fast retrieval)
+  const updateState = useCallback(
+    async newValue => {
       try {
-        let valueToStore = newValue;
+        console.log(`💾 Saving preference ${key}:`, newValue);
 
-        // Handle special types
-        if (newValue instanceof Set) {
-          valueToStore = Array.from(newValue);
+        // Update local state immediately
+        setState(newValue);
+
+        // Step 1: Save to localStorage immediately (for fast retrieval)
+        try {
+          let valueToStore = newValue;
+
+          // Handle special types
+          if (newValue instanceof Set) {
+            valueToStore = Array.from(newValue);
+          }
+
+          localStorage.setItem(
+            `ui_${component}_${key}`,
+            JSON.stringify(valueToStore)
+          );
+          console.log('📦 Saved to localStorage successfully');
+        } catch (localError) {
+          console.warn(`⚠️ localStorage save failed for ${key}:`, localError);
         }
 
-        localStorage.setItem(`ui_${component}_${key}`, JSON.stringify(valueToStore));
-        console.log('📦 Saved to localStorage successfully');
-      } catch (localError) {
-        console.warn(`⚠️ localStorage save failed for ${key}:`, localError);
-      }
+        // Step 2: Save to IndexedDB asynchronously (for persistence)
+        try {
+          const currentPrefs =
+            (await dbHelpers.getUserPreferences(component)) || {};
 
-      // Step 2: Save to IndexedDB asynchronously (for persistence)
-      try {
-        const currentPrefs = await dbHelpers.getUserPreferences(component) || {};
+          let valueForDB = newValue;
+          if (newValue instanceof Set) {
+            valueForDB = Array.from(newValue);
+          }
 
-        let valueForDB = newValue;
-        if (newValue instanceof Set) {
-          valueForDB = Array.from(newValue);
+          const updatedPrefs = {
+            ...currentPrefs,
+            [key]: valueForDB,
+          };
+
+          await dbHelpers.updateUserPreferences(updatedPrefs, component);
+          console.log('🗄️ Saved to IndexedDB successfully');
+        } catch (dbError) {
+          console.warn(`⚠️ IndexedDB save failed for ${key}:`, dbError);
+
+          // Don't throw - localStorage save already succeeded
         }
+      } catch (error) {
+        console.error(`❌ Failed to save preference ${key}:`, error);
+        setError(error.message);
 
-        const updatedPrefs = {
-          ...currentPrefs,
-          [key]: valueForDB,
-        };
-
-        await dbHelpers.updateUserPreferences(updatedPrefs, component);
-        console.log('🗄️ Saved to IndexedDB successfully');
-      } catch (dbError) {
-        console.warn(`⚠️ IndexedDB save failed for ${key}:`, dbError);
-        // Don't throw - localStorage save already succeeded
+        // Don't revert state - user action should still take effect locally
       }
-
-    } catch (error) {
-      console.error(`❌ Failed to save preference ${key}:`, error);
-      setError(error.message);
-      // Don't revert state - user action should still take effect locally
-    }
-  }, [key, component]);
+    },
+    [key, component]
+  );
 
   // Clear preferences (useful for testing/reset)
   const clearState = useCallback(async () => {
@@ -128,7 +146,8 @@ export const usePersistedState = (key, defaultValue, component = 'fixedExpenses'
       setState(defaultValue);
       localStorage.removeItem(`ui_${component}_${key}`);
 
-      const currentPrefs = await dbHelpers.getUserPreferences(component) || {};
+      const currentPrefs =
+        (await dbHelpers.getUserPreferences(component)) || {};
       delete currentPrefs[key];
       await dbHelpers.updateUserPreferences(currentPrefs, component);
 
@@ -160,10 +179,18 @@ export const useSortPreference = () => {
 
 export const useAutoCollapsePreference = () => {
   const defaultAutoCollapse = useMemo(() => true, []);
-  return usePersistedState('autoCollapseEnabled', defaultAutoCollapse, 'fixedExpenses');
+  return usePersistedState(
+    'autoCollapseEnabled',
+    defaultAutoCollapse,
+    'fixedExpenses'
+  );
 };
 
 export const useShowOnlyUnpaidPreference = () => {
   const defaultShowOnlyUnpaid = useMemo(() => false, []);
-  return usePersistedState('showOnlyUnpaid', defaultShowOnlyUnpaid, 'fixedExpenses');
+  return usePersistedState(
+    'showOnlyUnpaid',
+    defaultShowOnlyUnpaid,
+    'fixedExpenses'
+  );
 };
