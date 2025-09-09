@@ -107,7 +107,11 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
   };
 
   const getPayoffColor = () => {
-    if (!payoffResult || payoffResult.payoffMonths === -1)
+    if (
+      !payoffResult ||
+      !payoffResult.success ||
+      payoffResult.payoffMonths === -1
+    )
       return 'text-red-400';
     if (payoffResult.payoffMonths <= 12) return 'text-green-400';
     if (payoffResult.payoffMonths <= 24) return 'text-yellow-400';
@@ -334,10 +338,14 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                       <p className='text-sm text-white/70'>Payoff Time</p>
                     </div>
                     <p className={`text-xl font-bold ${getPayoffColor()}`}>
-                      {payoffResult.payoffMonths} months
+                      {payoffResult.success && payoffResult.payoffMonths > 0
+                        ? `${payoffResult.payoffMonths} months`
+                        : 'N/A'}
                     </p>
                     <p className='text-sm text-white/50'>
-                      {formatDate(payoffResult.payoffDate)}
+                      {payoffResult.success && payoffResult.payoffDate
+                        ? formatDate(payoffResult.payoffDate)
+                        : 'Unable to calculate'}
                     </p>
                   </div>
 
@@ -362,9 +370,12 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                     </div>
                     <PrivacyWrapper>
                       <p className='text-xl font-bold text-purple-400'>
-                        {formatCurrency(
-                          calculatorData.balance + payoffResult.totalInterest
-                        )}
+                        {payoffResult.success
+                          ? formatCurrency(
+                              calculatorData.balance +
+                                payoffResult.totalInterest
+                            )
+                          : 'N/A'}
                       </p>
                     </PrivacyWrapper>
                   </div>

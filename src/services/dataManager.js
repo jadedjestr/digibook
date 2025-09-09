@@ -410,11 +410,11 @@ class BackupManager {
     try {
       const data = await dbHelpers.exportData();
 
-      // Generate integrity checksum
-      const checksum = await this.generateChecksum(data);
-
-      // Compress backup data
+      // Compress backup data first
       const compressedData = await this.compressData(data);
+
+      // Generate integrity checksum from compressed data (what we're actually storing)
+      const checksum = await this.generateChecksum(compressedData);
 
       const backup = {
         data: compressedData,

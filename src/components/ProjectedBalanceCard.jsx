@@ -9,35 +9,31 @@ const ProjectedBalanceCard = ({
   creditCards = [],
   summaryTotals = {},
 }) => {
-  // Calculate total balance from all accounts and credit cards
-  const totalAccountBalance = accounts.reduce(
-    (sum, account) => sum + (account.balance || 0),
-    0
-  );
-  const totalCreditCardBalance = creditCards.reduce(
-    (sum, card) => sum + (card.balance || 0),
-    0
-  );
-  const projectedBalance = totalAccountBalance - totalCreditCardBalance;
+  // Find the default account (the one marked as default or first account)
+  const defaultAccount =
+    accounts.find(account => account.isDefault === true) || accounts[0];
+  const defaultAccountBalance = defaultAccount
+    ? defaultAccount.currentBalance || defaultAccount.balance || 0
+    : 0;
 
   const { payThisWeekTotal = 0 } = summaryTotals;
-  const balanceAfterExpenses = projectedBalance - payThisWeekTotal;
+  const balanceAfterExpenses = defaultAccountBalance - payThisWeekTotal;
 
   // Debug logging
   console.log('ProjectedBalanceCard Debug:', {
-    accounts: accounts.map(acc => ({ name: acc.name, balance: acc.balance })),
-    creditCards: creditCards.map(card => ({ name: card.name, balance: card.balance })),
-    totalAccountBalance,
-    totalCreditCardBalance,
-    projectedBalance,
+    defaultAccount: defaultAccount
+      ? { name: defaultAccount.name, balance: defaultAccountBalance }
+      : null,
     payThisWeekTotal,
-    balanceAfterExpenses
+    balanceAfterExpenses,
+    calculation: `${defaultAccountBalance} - ${payThisWeekTotal} = ${balanceAfterExpenses}`,
   });
   const isPositive = balanceAfterExpenses >= 0;
 
-  // Get the primary account name (first account or 'Primary Account')
-  const defaultAccountName =
-    accounts.length > 0 ? accounts[0].name : 'Primary Account';
+  // Get the default account name
+  const defaultAccountName = defaultAccount
+    ? defaultAccount.name
+    : 'No Account';
 
   return (
     <div className='glass-card'>

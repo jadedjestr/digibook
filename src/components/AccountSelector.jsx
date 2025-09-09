@@ -112,12 +112,17 @@ const AccountSelector = ({
 
   // Memoize selected account lookup
   const selectedAccount = useMemo(() => {
-    const found = findSelectedAccount(allAccounts, editValue);
+    const found = findSelectedAccount(
+      allAccounts,
+      editValue,
+      isCreditCardPayment
+    );
 
-    // Debug logging for Spotify expense
+    // Debug logging for account selection
     if (editValue === 1) {
       console.log('🔍 AccountSelector debug for value 1:', {
         editValue,
+        isCreditCardPayment,
         allAccounts: allAccounts.map(acc => ({
           id: acc.id,
           originalId: acc.originalId,
@@ -137,7 +142,7 @@ const AccountSelector = ({
     }
 
     return found;
-  }, [allAccounts, editValue]);
+  }, [allAccounts, editValue, isCreditCardPayment]);
 
   // Get account icon based on type
   const getAccountIcon = accountType => {
@@ -160,7 +165,7 @@ const AccountSelector = ({
   const handleAccountClick = useCallback(
     account => {
       // Prevent clicking on already selected account
-      if (isAccountSelected(account, editValue)) {
+      if (isAccountSelected(account, editValue, isCreditCardPayment)) {
         return;
       }
 
@@ -174,7 +179,7 @@ const AccountSelector = ({
       }
       setIsOpen(false);
     },
-    [editValue, onSave]
+    [editValue, onSave, isCreditCardPayment]
   );
 
   if (isEditing) {

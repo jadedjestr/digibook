@@ -269,6 +269,10 @@ const CreditCardDeletionModal = ({
                                 handleReassignmentChange(expense.id, accountId)
                               }
                               showSaveCancel={false}
+                              isCreditCardPayment={
+                                expense.category === 'Credit Card' ||
+                                expense.name.toLowerCase().includes('payment')
+                              }
                             />
                           </div>
                           <ArrowRight size={16} className='text-white/40' />

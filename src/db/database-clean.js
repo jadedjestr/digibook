@@ -1289,6 +1289,7 @@ export const dbHelpers = {
       let remainingBalance = balance;
       let totalInterest = 0;
       let months = 0;
+      const startDate = new Date();
 
       while (remainingBalance > 0.01 && months < 600) {
         // Max 50 years
@@ -1308,19 +1309,27 @@ export const dbHelpers = {
             success: false,
             message:
               'Payment amount is less than monthly interest. Debt will never be paid off.',
+            payoffMonths: -1,
             totalInterest,
             months,
             finalBalance: remainingBalance,
+            payoffDate: null,
           };
         }
       }
 
+      // Calculate payoff date
+      const payoffDate = new Date(startDate);
+      payoffDate.setMonth(payoffDate.getMonth() + months);
+
       return {
         success: true,
-        months,
+        payoffMonths: months,
+        months, // Keep for backward compatibility
         totalInterest,
         totalPaid: balance + totalInterest,
         finalBalance: Math.max(0, remainingBalance),
+        payoffDate: payoffDate.toISOString(),
       };
     } catch (error) {
       logger.error('Error calculating debt payoff:', error);
