@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 import Calendar from '../components/Calendar/Calendar';
 import CategoryExpenseSummary from '../components/CategoryExpenseSummary';
@@ -9,6 +9,7 @@ import ProjectedBalanceCard from '../components/ProjectedBalanceCard';
 import { dbHelpers } from '../db/database-clean';
 import { PaycheckService } from '../services/paycheckService';
 import { useAppStore } from '../stores/useAppStore';
+import { logger } from '../utils/logger';
 
 const FixedExpenses = () => {
   const [showResetPrompt, setShowResetPrompt] = useState(false);
@@ -17,15 +18,11 @@ const FixedExpenses = () => {
   const {
     accounts,
     creditCards,
-    pendingTransactions,
     fixedExpenses,
     paycheckSettings,
     categories,
-    isPanelOpen,
     isLoading,
-    setPanelOpen,
     updateExpense,
-    reloadExpenses,
     reloadPaycheckSettings,
   } = useAppStore();
 
@@ -34,12 +31,12 @@ const FixedExpenses = () => {
   const paycheckDates = paycheckService.calculatePaycheckDates();
   const summaryTotals = paycheckService.calculateSummaryTotals(
     fixedExpenses,
-    paycheckDates
+    paycheckDates,
   );
 
   // Debug logging
-  console.log('FixedExpenses - paycheckSettings:', paycheckSettings);
-  console.log('FixedExpenses - paycheckDates:', paycheckDates);
+  logger.debug('FixedExpenses - paycheckSettings:', paycheckSettings);
+  logger.debug('FixedExpenses - paycheckDates:', paycheckDates);
 
   if (isLoading) {
     return (
@@ -121,7 +118,8 @@ const FixedExpenses = () => {
                       updateExpense(expense.id, { paidAmount: 0 });
                     });
 
-                    // Update last paycheck date to the current next paycheck date
+                    // Update last paycheck date to the current next paycheck
+                    // date
                     // This effectively moves the cycle forward
                     if (paycheckDates.nextPayDate) {
                       await dbHelpers.updatePaycheckSettings({
@@ -135,7 +133,7 @@ const FixedExpenses = () => {
 
                     setShowResetPrompt(false);
                   } catch (error) {
-                    console.error('Error resetting cycle:', error);
+                    logger.error('Error resetting cycle:', error);
                     setShowResetPrompt(false);
                   }
                 }}

@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useMemo, useEffect, useRef } from 'react';
 
 import { PaycheckService } from '../../services/paycheckService';
 import { useAppStore } from '../../stores/useAppStore';
@@ -206,6 +207,10 @@ const Calendar = ({ onReset }) => {
       </div>
     </div>
   );
+};
+
+Calendar.propTypes = {
+  onReset: PropTypes.func.isRequired,
 };
 
 export default Calendar;

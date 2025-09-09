@@ -1,6 +1,5 @@
-import React from 'react';
-
-import { DateUtils } from '../../utils/dateUtils';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import PropTypes from 'prop-types';
 
 /**
  * Calendar Header with month navigation and status legend
@@ -25,16 +24,7 @@ const CalendarHeader = ({
           className='calendar-nav-button glass-button glass-button--sm'
           aria-label='Previous month'
         >
-          <svg
-            width='16'
-            height='16'
-            viewBox='0 0 24 24'
-            fill='none'
-            stroke='currentColor'
-            strokeWidth='2'
-          >
-            <polyline points='15,18 9,12 15,6' />
-          </svg>
+          <ChevronLeft size={16} />
         </button>
 
         <h2 className='calendar-month-title'>{monthYear}</h2>
@@ -44,16 +34,7 @@ const CalendarHeader = ({
           className='calendar-nav-button glass-button glass-button--sm'
           aria-label='Next month'
         >
-          <svg
-            width='16'
-            height='16'
-            viewBox='0 0 24 24'
-            fill='none'
-            stroke='currentColor'
-            strokeWidth='2'
-          >
-            <polyline points='9,18 15,12 9,6' />
-          </svg>
+          <ChevronRight size={16} />
         </button>
 
         <button
@@ -109,6 +90,13 @@ const CalendarHeader = ({
       </div>
     </div>
   );
+};
+
+CalendarHeader.propTypes = {
+  currentMonth: PropTypes.instanceOf(Date).isRequired,
+  onPreviousMonth: PropTypes.func.isRequired,
+  onNextMonth: PropTypes.func.isRequired,
+  onToday: PropTypes.func.isRequired,
 };
 
 export default CalendarHeader;

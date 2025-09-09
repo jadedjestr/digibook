@@ -1,4 +1,4 @@
-import React from 'react';
+import PropTypes from 'prop-types';
 
 /**
  * Calendar Cycle Button - Integrated into calendar design
@@ -27,6 +27,10 @@ const CalendarCycleButton = ({ onReset }) => {
       New Cycle
     </button>
   );
+};
+
+CalendarCycleButton.propTypes = {
+  onReset: PropTypes.func.isRequired,
 };
 
 export default CalendarCycleButton;
