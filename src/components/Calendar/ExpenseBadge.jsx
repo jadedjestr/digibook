@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+
 import QuickActions from './QuickActions';
 
 /**
@@ -6,6 +7,7 @@ import QuickActions from './QuickActions';
  */
 const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   const [showQuickActions, setShowQuickActions] = useState(false);
+
   // Calculate status using PaycheckService
   const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
   const statusColor = paycheckService.getStatusColor(status);

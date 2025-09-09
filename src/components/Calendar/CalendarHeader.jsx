@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { DateUtils } from '../../utils/dateUtils';
 
 /**
@@ -32,7 +33,7 @@ const CalendarHeader = ({
             stroke='currentColor'
             strokeWidth='2'
           >
-            <polyline points='15,18 9,12 15,6'></polyline>
+            <polyline points='15,18 9,12 15,6' />
           </svg>
         </button>
 
@@ -51,7 +52,7 @@ const CalendarHeader = ({
             stroke='currentColor'
             strokeWidth='2'
           >
-            <polyline points='9,18 15,12 9,6'></polyline>
+            <polyline points='9,18 15,12 9,6' />
           </svg>
         </button>
 
@@ -69,27 +70,27 @@ const CalendarHeader = ({
         <div className='legend-title'>Status Legend:</div>
         <div className='legend-items'>
           <div className='legend-item'>
-            <div className='legend-badge legend-badge--paid'></div>
+            <div className='legend-badge legend-badge--paid' />
             <span>Paid</span>
           </div>
           <div className='legend-item'>
-            <div className='legend-badge legend-badge--partially-paid'></div>
+            <div className='legend-badge legend-badge--partially-paid' />
             <span>Partially Paid</span>
           </div>
           <div className='legend-item'>
-            <div className='legend-badge legend-badge--overdue'></div>
+            <div className='legend-badge legend-badge--overdue' />
             <span>Overdue</span>
           </div>
           <div className='legend-item'>
-            <div className='legend-badge legend-badge--pay-this-week'></div>
+            <div className='legend-badge legend-badge--pay-this-week' />
             <span>Pay This Week</span>
           </div>
           <div className='legend-item'>
-            <div className='legend-badge legend-badge--pay-next-check'></div>
+            <div className='legend-badge legend-badge--pay-next-check' />
             <span>Pay with Next Check</span>
           </div>
           <div className='legend-item'>
-            <div className='legend-badge legend-badge--pay-following-check'></div>
+            <div className='legend-badge legend-badge--pay-following-check' />
             <span>Pay with Following Check</span>
           </div>
         </div>
@@ -97,11 +98,11 @@ const CalendarHeader = ({
         {/* Paycheck Date Legend */}
         <div className='legend-items'>
           <div className='legend-item'>
-            <div className='legend-badge legend-badge--paycheck-next'></div>
+            <div className='legend-badge legend-badge--paycheck-next' />
             <span>Next Paycheck</span>
           </div>
           <div className='legend-item'>
-            <div className='legend-badge legend-badge--paycheck-following'></div>
+            <div className='legend-badge legend-badge--paycheck-following' />
             <span>Following Paycheck</span>
           </div>
         </div>

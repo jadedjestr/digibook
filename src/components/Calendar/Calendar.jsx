@@ -1,10 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { DateUtils } from '../../utils/dateUtils';
+
 import { PaycheckService } from '../../services/paycheckService';
 import { useAppStore } from '../../stores/useAppStore';
-import CalendarHeader from './CalendarHeader';
-import CalendarGrid from './CalendarGrid';
+import { DateUtils } from '../../utils/dateUtils';
+
 import CalendarCycleButton from './CalendarCycleButton';
+import CalendarGrid from './CalendarGrid';
+import CalendarHeader from './CalendarHeader';
 import './calendar.css';
 
 /**
@@ -129,7 +131,7 @@ const Calendar = ({ onReset }) => {
           e.preventDefault();
           setFocusedDayIndex(
             Math.min(calendarData.length - 1, currentIndex + 1)
-          );
+        );
           break;
         case 'ArrowUp':
           e.preventDefault();
@@ -139,7 +141,7 @@ const Calendar = ({ onReset }) => {
           e.preventDefault();
           setFocusedDayIndex(
             Math.min(calendarData.length - 1, currentIndex + 7)
-          );
+        );
           break;
         case 'Enter':
         case ' ':

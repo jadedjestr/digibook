@@ -62,7 +62,7 @@ A modern, privacy-focused finance tracker built with React and IndexedDB for loc
 
 ### Prerequisites
 
-- Node.js 16+ 
+- Node.js 16+
 - npm or yarn
 
 ### Installation
@@ -231,4 +231,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Vitest** for fast, modern testing
 - **Storybook** for component documentation and development
 - **PapaParse** for robust CSV processing
-- **Husky** for git hooks and code quality 
+- **Husky** for git hooks and code quality

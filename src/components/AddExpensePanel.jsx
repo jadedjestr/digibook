@@ -251,7 +251,7 @@ const AddExpensePanel = ({
       {/* Panel */}
       <div
         ref={panelRef}
-        className='fixed top-0 right-0 h-full w-[450px] liquid-glass border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden'
+        className='fixed top-0 right-0 h-full w-[450px] glass-panel glass-panel--elevated border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden'
         style={{
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
           boxSizing: 'border-box',

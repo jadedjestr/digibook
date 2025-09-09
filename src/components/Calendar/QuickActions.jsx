@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { useAppStore } from '../../stores/useAppStore';
 
 /**
@@ -52,8 +53,8 @@ const QuickActions = ({ selectedExpense, onClose }) => {
               stroke='currentColor'
               strokeWidth='2'
             >
-              <line x1='18' y1='6' x2='6' y2='18'></line>
-              <line x1='6' y1='6' x2='18' y2='18'></line>
+              <line x1='18' y1='6' x2='6' y2='18' />
+              <line x1='6' y1='6' x2='18' y2='18' />
             </svg>
           </button>
         </div>
@@ -87,7 +88,7 @@ const QuickActions = ({ selectedExpense, onClose }) => {
                 stroke='currentColor'
                 strokeWidth='2'
               >
-                <polyline points='20,6 9,17 4,12'></polyline>
+                <polyline points='20,6 9,17 4,12' />
               </svg>
               Mark as Paid
             </button>
@@ -104,8 +105,8 @@ const QuickActions = ({ selectedExpense, onClose }) => {
                 stroke='currentColor'
                 strokeWidth='2'
               >
-                <circle cx='12' cy='12' r='10'></circle>
-                <polyline points='12,6 12,12 16,14'></polyline>
+                <circle cx='12' cy='12' r='10' />
+                <polyline points='12,6 12,12 16,14' />
               </svg>
               Mark 50% Paid
             </button>
@@ -122,8 +123,8 @@ const QuickActions = ({ selectedExpense, onClose }) => {
                 stroke='currentColor'
                 strokeWidth='2'
               >
-                <polyline points='1,4 1,10 7,10'></polyline>
-                <path d='M3.51,15a9,9,0,1,0,2.13-9.36L1,10'></path>
+                <polyline points='1,4 1,10 7,10' />
+                <path d='M3.51,15a9,9,0,1,0,2.13-9.36L1,10' />
               </svg>
               Reset Payment
             </button>
