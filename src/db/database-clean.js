@@ -15,8 +15,25 @@ export class DigibookDBClean extends Dexie {
   constructor(dbName = 'DigibookDB_Fresh') {
     super(dbName);
 
-    // Single version with all features - simplified schema to avoid index conflicts
+    // Version 1: Original schema
     this.version(1).stores({
+      accounts: '++id, name, type, currentBalance, isDefault, createdAt',
+      pendingTransactions:
+        '++id, accountId, amount, category, description, createdAt',
+      fixedExpenses:
+        '++id, name, dueDate, amount, accountId, paidAmount, status, category, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, createdAt',
+      categories: '++id, name, color, icon, isDefault, createdAt',
+      creditCards:
+        '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
+      paycheckSettings: '++id, lastPaycheckDate, frequency, createdAt',
+      userPreferences: '++id, component, preferences, createdAt',
+      monthlyExpenseHistory:
+        '++id, expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
+      auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
+    });
+
+    // Version 2: Add recurring expenses functionality
+    this.version(2).stores({
       accounts: '++id, name, type, currentBalance, isDefault, createdAt',
       pendingTransactions:
         '++id, accountId, amount, category, description, createdAt',

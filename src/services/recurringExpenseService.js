@@ -39,7 +39,13 @@ export class RecurringExpenseService {
   async createTemplate(templateData) {
     try {
       // Validate required fields
-      const requiredFields = ['name', 'baseAmount', 'frequency', 'startDate', 'category'];
+      const requiredFields = [
+        'name',
+        'baseAmount',
+        'frequency',
+        'startDate',
+        'category',
+      ];
       for (const field of requiredFields) {
         if (!templateData[field]) {
           throw new Error(`Missing required field: ${field}`);
@@ -71,8 +77,11 @@ export class RecurringExpenseService {
         }
       }
 
-      const templateId = await dbHelpers.addRecurringExpenseTemplate(templateData);
-      logger.success(`Created recurring expense template: ${templateData.name}`);
+      const templateId =
+        await dbHelpers.addRecurringExpenseTemplate(templateData);
+      logger.success(
+        `Created recurring expense template: ${templateData.name}`
+      );
       return templateId;
     } catch (error) {
       logger.error('Error creating recurring expense template:', error);
@@ -138,7 +147,7 @@ export class RecurringExpenseService {
     try {
       const templates = await this.getActiveTemplates();
       const today = DateUtils.today();
-      
+
       return templates.filter(template => {
         if (!template.nextDueDate) return false;
         return DateUtils.daysBetween(template.nextDueDate, today) >= 0;
@@ -155,7 +164,7 @@ export class RecurringExpenseService {
   async getUpcomingRecurringExpenses() {
     try {
       const templates = await this.getActiveTemplates();
-      
+
       return templates.map(template => ({
         id: template.id,
         name: template.name,
@@ -250,7 +259,9 @@ export class RecurringExpenseService {
         recurringTemplateId: templateId,
       });
 
-      logger.success(`Converted expense to recurring template: ${expense.name}`);
+      logger.success(
+        `Converted expense to recurring template: ${expense.name}`
+      );
       return templateId;
     } catch (error) {
       logger.error('Error converting expense to recurring:', error);

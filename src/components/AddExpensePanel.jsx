@@ -160,12 +160,31 @@ const AddExpensePanel = ({
     onClose();
   };
 
-  const handleSaveRecurring = async (recurringData) => {
+  const handleSaveRecurring = async recurringData => {
     try {
+      // First save the regular expense
+      if (!validateForm()) {
+        throw new Error('Please fix form errors before creating recurring template');
+      }
+
+      // Save the expense first
+      const expenseData = {
+        name: formData.name,
+        dueDate: formData.dueDate,
+        amount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
+        accountId: formData.accountId,
+        category: formData.category,
+        status: 'Unpaid',
+        paidAmount: 0,
+        createdAt: new Date().toISOString(),
+      };
+
+      const expenseId = await dbHelpers.addFixedExpense(expenseData);
+      
       // Create the recurring template
       const templateData = {
         name: recurringData.name,
-        baseAmount: parseFloat(formData.amount),
+        baseAmount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
         frequency: recurringData.frequency,
         intervalValue: recurringData.intervalValue,
         startDate: recurringData.startDate,
@@ -176,10 +195,19 @@ const AddExpensePanel = ({
       };
 
       const templateId = await recurringExpenseService.createTemplate(templateData);
-      logger.success('Recurring expense template created successfully');
       
-      // Store template ID for when we save the expense
-      return templateId;
+      // Link the expense to the template
+      await dbHelpers.updateFixedExpense(expenseId, {
+        recurringTemplateId: templateId,
+      });
+
+      logger.success('Recurring expense and template created successfully');
+      
+      // Close modal and refresh data
+      setShowRecurringModal(false);
+      setMakeRecurring(false);
+      handleClose();
+      if (onDataChange) onDataChange();
     } catch (error) {
       logger.error('Error creating recurring expense:', error);
       throw error;
@@ -221,6 +249,11 @@ const AddExpensePanel = ({
 
   const handleSave = async () => {
     if (!validateForm()) {
+      return;
+    }
+
+    // If recurring is checked, don't save here - wait for modal
+    if (makeRecurring) {
       return;
     }
 
@@ -418,7 +451,7 @@ const AddExpensePanel = ({
               type='checkbox'
               id='makeRecurring'
               checked={makeRecurring}
-              onChange={(e) => {
+              onChange={e => {
                 setMakeRecurring(e.target.checked);
                 if (e.target.checked) {
                   // Validate form first before showing modal
@@ -443,10 +476,10 @@ const AddExpensePanel = ({
 
           <button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || makeRecurring}
             className='w-full px-6 py-4 glass-button bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed'
           >
-            {isSaving ? 'Saving...' : 'Save Expense'}
+            {isSaving ? 'Saving...' : makeRecurring ? 'Configure recurring settings above' : 'Save Expense'}
           </button>
           <button
             onClick={handleClose}

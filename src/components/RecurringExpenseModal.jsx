@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Clock, Calendar, DollarSign } from 'lucide-react';
 import PropTypes from 'prop-types';
 
@@ -8,12 +9,7 @@ import { DateUtils } from '../utils/dateUtils';
 /**
  * Modal for configuring recurring expense settings
  */
-const RecurringExpenseModal = ({
-  isOpen,
-  onClose,
-  expenseData,
-  onSave,
-}) => {
+const RecurringExpenseModal = ({ isOpen, onClose, expenseData, onSave }) => {
   const [recurringData, setRecurringData] = useState({
     name: '',
     frequency: 'monthly',
@@ -133,10 +129,10 @@ const RecurringExpenseModal = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className='fixed inset-0 z-50 flex items-center justify-center p-4'>
+  return createPortal(
+    <div className='fixed inset-0 z-[9999] flex items-center justify-center p-4'>
       {/* Backdrop */}
-      <div 
+      <div
         className='absolute inset-0 bg-black/60 backdrop-blur-sm'
         onClick={handleClose}
       />
@@ -149,9 +145,7 @@ const RecurringExpenseModal = ({
             <div className='p-2 rounded-lg bg-amber-500/20 text-amber-300'>
               <Clock size={20} />
             </div>
-            <h2 className='text-xl font-semibold text-white'>
-              Make Recurring
-            </h2>
+            <h2 className='text-xl font-semibold text-white'>Make Recurring</h2>
           </div>
           <button
             onClick={handleClose}
@@ -169,14 +163,14 @@ const RecurringExpenseModal = ({
               Template Name
             </label>
             <div className='relative'>
-              <DollarSign 
-                size={18} 
-                className='absolute left-3 top-1/2 -translate-y-1/2 text-white/40' 
+              <DollarSign
+                size={18}
+                className='absolute left-3 top-1/2 -translate-y-1/2 text-white/40'
               />
               <input
                 type='text'
                 value={recurringData.name}
-                onChange={(e) => updateRecurringData('name', e.target.value)}
+                onChange={e => updateRecurringData('name', e.target.value)}
                 className='w-full pl-10 pr-4 py-3 glass-input'
                 placeholder='e.g., Car Insurance Premium'
               />
@@ -193,7 +187,7 @@ const RecurringExpenseModal = ({
             </label>
             <select
               value={recurringData.frequency}
-              onChange={(e) => updateRecurringData('frequency', e.target.value)}
+              onChange={e => updateRecurringData('frequency', e.target.value)}
               className='w-full px-4 py-3 glass-input'
             >
               {frequencyOptions.map(option => (
@@ -218,12 +212,16 @@ const RecurringExpenseModal = ({
                 min='1'
                 max='60'
                 value={recurringData.intervalValue}
-                onChange={(e) => updateRecurringData('intervalValue', parseInt(e.target.value))}
+                onChange={e =>
+                  updateRecurringData('intervalValue', parseInt(e.target.value))
+                }
                 className='w-full px-4 py-3 glass-input'
                 placeholder='Number of months'
               />
               {errors.intervalValue && (
-                <p className='mt-1 text-sm text-red-400'>{errors.intervalValue}</p>
+                <p className='mt-1 text-sm text-red-400'>
+                  {errors.intervalValue}
+                </p>
               )}
             </div>
           )}
@@ -234,14 +232,14 @@ const RecurringExpenseModal = ({
               Start Date
             </label>
             <div className='relative'>
-              <Calendar 
-                size={18} 
-                className='absolute left-3 top-1/2 -translate-y-1/2 text-white/40' 
+              <Calendar
+                size={18}
+                className='absolute left-3 top-1/2 -translate-y-1/2 text-white/40'
               />
               <input
                 type='date'
                 value={recurringData.startDate}
-                onChange={(e) => updateRecurringData('startDate', e.target.value)}
+                onChange={e => updateRecurringData('startDate', e.target.value)}
                 className='w-full pl-10 pr-4 py-3 glass-input'
               />
             </div>
@@ -256,10 +254,15 @@ const RecurringExpenseModal = ({
               type='checkbox'
               id='variableAmount'
               checked={recurringData.isVariableAmount}
-              onChange={(e) => updateRecurringData('isVariableAmount', e.target.checked)}
+              onChange={e =>
+                updateRecurringData('isVariableAmount', e.target.checked)
+              }
               className='rounded border-white/30 bg-white/10 text-amber-500 focus:ring-amber-500/30'
             />
-            <label htmlFor='variableAmount' className='text-white/90 font-medium cursor-pointer'>
+            <label
+              htmlFor='variableAmount'
+              className='text-white/90 font-medium cursor-pointer'
+            >
               Variable amount (amount may change)
             </label>
           </div>
@@ -271,7 +274,7 @@ const RecurringExpenseModal = ({
             </label>
             <textarea
               value={recurringData.notes}
-              onChange={(e) => updateRecurringData('notes', e.target.value)}
+              onChange={e => updateRecurringData('notes', e.target.value)}
               className='w-full px-4 py-3 glass-input resize-none'
               rows='2'
               placeholder='Additional notes about this recurring expense...'
@@ -310,7 +313,8 @@ const RecurringExpenseModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
