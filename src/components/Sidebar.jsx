@@ -10,10 +10,10 @@ import PrivacyWrapper from './PrivacyWrapper';
 
 const Sidebar = ({ navigation, onToggleLock, isLocked }) => {
   // Use Zustand store for data
-  const { currentPage, accounts, pendingTransactions, setCurrentPage } =
+  const { currentPage, accounts, pendingTransactions, creditCards, setCurrentPage } =
     useAppStore();
   const { getDefaultAccount, getDefaultAccountProjectedBalance } =
-    useFinanceCalculations(accounts, pendingTransactions);
+    useFinanceCalculations(accounts, pendingTransactions, creditCards);
   const { isHidden, toggleHidden } = usePrivacy();
 
   const defaultAccount = getDefaultAccount;

@@ -181,8 +181,7 @@ const DraggableExpenseRow = ({
                 accounts={accounts}
                 creditCards={creditCards}
                 isCreditCardPayment={
-                  expense.category === 'Credit Card' ||
-                  expense.name.toLowerCase().includes('payment')
+                  expense.category === 'Credit Card Payment'
                 }
               />
               {/* Debug logging for Spotify expense */}

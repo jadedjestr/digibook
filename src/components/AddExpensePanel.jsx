@@ -31,9 +31,7 @@ const AddExpensePanel = ({
   const [showRecurringModal, setShowRecurringModal] = useState(false);
 
   // Smart account filtering based on expense type
-  const isCreditCardPayment =
-    formData.name.toLowerCase().includes('payment') ||
-    formData.category === 'Credit Card Payment';
+  const isCreditCardPayment = formData.category === 'Credit Card Payment';
 
   // Debug logging removed - accounts are working correctly
 

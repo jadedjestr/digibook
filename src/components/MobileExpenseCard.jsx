@@ -227,8 +227,7 @@ const MobileExpenseCard = ({
                     accounts={accounts}
                     creditCards={creditCards}
                     isCreditCardPayment={
-                      expense.category === 'Credit Card Payment' ||
-                      expense.name.toLowerCase().includes('payment')
+                      expense.category === 'Credit Card Payment'
                     }
                   />
                 </AccountSelectorErrorBoundary>
