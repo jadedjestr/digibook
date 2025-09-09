@@ -74,6 +74,10 @@ const CalendarHeader = ({
             <div className='legend-badge legend-badge--pay-following-check' />
             <span>Pay with Following Check</span>
           </div>
+          <div className='legend-item'>
+            <div className='legend-badge legend-badge--recurring' />
+            <span>Recurring Expense</span>
+          </div>
         </div>
 
         {/* Paycheck Date Legend */}

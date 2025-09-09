@@ -8,6 +8,7 @@ import { DateUtils } from '../../utils/dateUtils';
 import CalendarCycleButton from './CalendarCycleButton';
 import CalendarGrid from './CalendarGrid';
 import CalendarHeader from './CalendarHeader';
+import UpcomingRecurringWidget from './UpcomingRecurringWidget';
 import './calendar.css';
 
 /**
@@ -200,8 +201,9 @@ const Calendar = ({ onReset }) => {
           onFocusChange={setFocusedDayIndex}
         />
 
-        {/* Start Cycle Button - Bottom right of calendar */}
+        {/* Calendar Actions - Upcoming Widget + New Cycle Button */}
         <div className='calendar-actions'>
+          <UpcomingRecurringWidget />
           <CalendarCycleButton onReset={onReset} />
         </div>
       </div>

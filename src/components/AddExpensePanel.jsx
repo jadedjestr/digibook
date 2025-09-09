@@ -164,7 +164,9 @@ const AddExpensePanel = ({
     try {
       // First save the regular expense
       if (!validateForm()) {
-        throw new Error('Please fix form errors before creating recurring template');
+        throw new Error(
+          'Please fix form errors before creating recurring template'
+        );
       }
 
       // Save the expense first
@@ -180,7 +182,7 @@ const AddExpensePanel = ({
       };
 
       const expenseId = await dbHelpers.addFixedExpense(expenseData);
-      
+
       // Create the recurring template
       const templateData = {
         name: recurringData.name,
@@ -194,15 +196,16 @@ const AddExpensePanel = ({
         isVariableAmount: recurringData.isVariableAmount,
       };
 
-      const templateId = await recurringExpenseService.createTemplate(templateData);
-      
+      const templateId =
+        await recurringExpenseService.createTemplate(templateData);
+
       // Link the expense to the template
       await dbHelpers.updateFixedExpense(expenseId, {
         recurringTemplateId: templateId,
       });
 
       logger.success('Recurring expense and template created successfully');
-      
+
       // Close modal and refresh data
       setShowRecurringModal(false);
       setMakeRecurring(false);
@@ -479,7 +482,11 @@ const AddExpensePanel = ({
             disabled={isSaving || makeRecurring}
             className='w-full px-6 py-4 glass-button bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed'
           >
-            {isSaving ? 'Saving...' : makeRecurring ? 'Configure recurring settings above' : 'Save Expense'}
+            {isSaving
+              ? 'Saving...'
+              : makeRecurring
+                ? 'Configure recurring settings above'
+                : 'Save Expense'}
           </button>
           <button
             onClick={handleClose}

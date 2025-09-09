@@ -52,12 +52,16 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   const expenseText = formatExpenseText(expense);
   const statusClass = getStatusClass(status);
   const remainingAmount = expense.amount - (expense.paidAmount || 0);
+  
+  // Check if this is a recurring expense
+  const isRecurring = expense.recurringTemplateId !== null && expense.recurringTemplateId !== undefined;
+  const recurringClass = isRecurring ? 'expense-badge--recurring' : '';
 
   return (
     <>
       <div
-        className={`expense-badge ${statusClass}`}
-        title={`${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${status}\nRemaining: $${remainingAmount.toLocaleString()}`}
+        className={`expense-badge ${statusClass} ${recurringClass}`.trim()}
+        title={`${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${status}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : ''}`}
         role='button'
         tabIndex={0}
         onClick={e => {
