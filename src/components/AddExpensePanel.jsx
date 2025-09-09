@@ -3,10 +3,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 import { dbHelpers } from '../db/database-clean';
+import { recurringExpenseService } from '../services/recurringExpenseService';
 import { logger } from '../utils/logger';
 
 import AccountSelector from './AccountSelector';
 import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
+import RecurringExpenseModal from './RecurringExpenseModal';
 
 const AddExpensePanel = ({
   isOpen,
@@ -25,6 +27,8 @@ const AddExpensePanel = ({
   const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+  const [makeRecurring, setMakeRecurring] = useState(false);
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
 
   // Smart account filtering based on expense type
   const isCreditCardPayment =
@@ -143,7 +147,43 @@ const AddExpensePanel = ({
   }, [isOpen]);
 
   const handleClose = () => {
+    setFormData({
+      name: '',
+      dueDate: '',
+      amount: '',
+      accountId: '',
+      category: '',
+    });
+    setErrors({});
+    setMakeRecurring(false);
+    setShowRecurringModal(false);
     onClose();
+  };
+
+  const handleSaveRecurring = async (recurringData) => {
+    try {
+      // Create the recurring template
+      const templateData = {
+        name: recurringData.name,
+        baseAmount: parseFloat(formData.amount),
+        frequency: recurringData.frequency,
+        intervalValue: recurringData.intervalValue,
+        startDate: recurringData.startDate,
+        category: formData.category,
+        accountId: formData.accountId,
+        notes: recurringData.notes,
+        isVariableAmount: recurringData.isVariableAmount,
+      };
+
+      const templateId = await recurringExpenseService.createTemplate(templateData);
+      logger.success('Recurring expense template created successfully');
+      
+      // Store template ID for when we save the expense
+      return templateId;
+    } catch (error) {
+      logger.error('Error creating recurring expense:', error);
+      throw error;
+    }
   };
 
   const handleInputChange = (field, value) => {
@@ -372,6 +412,35 @@ const AddExpensePanel = ({
 
         {/* Footer */}
         <div className='p-8 border-t border-white/10 space-y-3'>
+          {/* Make Recurring Checkbox */}
+          <div className='flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10'>
+            <input
+              type='checkbox'
+              id='makeRecurring'
+              checked={makeRecurring}
+              onChange={(e) => {
+                setMakeRecurring(e.target.checked);
+                if (e.target.checked) {
+                  // Validate form first before showing modal
+                  const tempErrors = validateForm();
+                  if (Object.keys(tempErrors).length === 0) {
+                    setShowRecurringModal(true);
+                  } else {
+                    setErrors(tempErrors);
+                    setMakeRecurring(false);
+                  }
+                }
+              }}
+              className='rounded border-white/30 bg-white/10 text-blue-500 focus:ring-blue-500/30'
+            />
+            <label
+              htmlFor='makeRecurring'
+              className='text-white/90 font-medium cursor-pointer'
+            >
+              Make this expense recurring
+            </label>
+          </div>
+
           <button
             onClick={handleSave}
             disabled={isSaving}
@@ -387,6 +456,17 @@ const AddExpensePanel = ({
           </button>
         </div>
       </div>
+
+      {/* Recurring Expense Modal */}
+      <RecurringExpenseModal
+        isOpen={showRecurringModal}
+        onClose={() => {
+          setShowRecurringModal(false);
+          setMakeRecurring(false);
+        }}
+        expenseData={formData}
+        onSave={handleSaveRecurring}
+      />
     </>
   );
 };

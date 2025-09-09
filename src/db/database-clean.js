@@ -21,7 +21,7 @@ export class DigibookDBClean extends Dexie {
       pendingTransactions:
         '++id, accountId, amount, category, description, createdAt',
       fixedExpenses:
-        '++id, name, dueDate, amount, accountId, paidAmount, status, category, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, createdAt',
+        '++id, name, dueDate, amount, accountId, paidAmount, status, category, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, recurringTemplateId, createdAt',
       categories: '++id, name, color, icon, isDefault, createdAt',
       creditCards:
         '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
@@ -29,6 +29,8 @@ export class DigibookDBClean extends Dexie {
       userPreferences: '++id, component, preferences, createdAt',
       monthlyExpenseHistory:
         '++id, expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
+      recurringExpenseTemplates:
+        '++id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
     });
   }
@@ -388,6 +390,173 @@ export const dbHelpers = {
     } catch (error) {
       logger.error('Error deleting fixed expense:', error);
       throw new Error('Failed to delete fixed expense');
+    }
+  },
+
+  // Recurring Expense Template Operations
+  async addRecurringExpenseTemplate(template) {
+    try {
+      // Validate template data
+      if (
+        !template.name ||
+        !template.baseAmount ||
+        !template.frequency ||
+        !template.startDate ||
+        !template.category
+      ) {
+        throw new Error('Missing required recurring template fields');
+      }
+
+      // Calculate next due date based on frequency and start date
+      const nextDueDate = this.calculateNextDueDate(
+        template.startDate,
+        template.frequency,
+        template.intervalValue || 1
+      );
+
+      const templateData = {
+        ...template,
+        nextDueDate,
+        lastGenerated: null,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const id = await db.recurringExpenseTemplates.add(templateData);
+      logger.success(`Recurring expense template created: ${template.name}`);
+      return id;
+    } catch (error) {
+      logger.error('Error adding recurring expense template:', error);
+      throw new Error(`Failed to add recurring expense template: ${error.message}`);
+    }
+  },
+
+  async updateRecurringExpenseTemplate(id, updates) {
+    try {
+      const updateData = {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+
+      // If frequency or start date changed, recalculate next due date
+      if (updates.frequency || updates.startDate || updates.intervalValue) {
+        const template = await db.recurringExpenseTemplates.get(id);
+        if (template) {
+          updateData.nextDueDate = this.calculateNextDueDate(
+            updates.startDate || template.startDate,
+            updates.frequency || template.frequency,
+            updates.intervalValue || template.intervalValue || 1
+          );
+        }
+      }
+
+      await db.recurringExpenseTemplates.update(id, updateData);
+      logger.success(`Recurring expense template updated: ${id}`);
+    } catch (error) {
+      logger.error('Error updating recurring expense template:', error);
+      throw new Error('Failed to update recurring expense template');
+    }
+  },
+
+  async deleteRecurringExpenseTemplate(id) {
+    try {
+      await db.recurringExpenseTemplates.delete(id);
+      logger.success(`Recurring expense template deleted: ${id}`);
+    } catch (error) {
+      logger.error('Error deleting recurring expense template:', error);
+      throw new Error('Failed to delete recurring expense template');
+    }
+  },
+
+  async getRecurringExpenseTemplates() {
+    try {
+      return await db.recurringExpenseTemplates.where('isActive').equals(true).toArray();
+    } catch (error) {
+      logger.error('Error fetching recurring expense templates:', error);
+      throw new Error('Failed to fetch recurring expense templates');
+    }
+  },
+
+  async getRecurringExpenseTemplate(id) {
+    try {
+      return await db.recurringExpenseTemplates.get(id);
+    } catch (error) {
+      logger.error('Error fetching recurring expense template:', error);
+      throw new Error('Failed to fetch recurring expense template');
+    }
+  },
+
+  // Helper function to calculate next due date based on frequency
+  calculateNextDueDate(startDate, frequency, intervalValue = 1) {
+    const date = DateUtils.parseDate(startDate);
+    if (!date) {
+      throw new Error('Invalid start date for recurring expense');
+    }
+
+    switch (frequency) {
+      case 'monthly':
+        date.setMonth(date.getMonth() + intervalValue);
+        break;
+      case 'quarterly':
+        date.setMonth(date.getMonth() + (3 * intervalValue));
+        break;
+      case 'biannually':
+        date.setMonth(date.getMonth() + (6 * intervalValue));
+        break;
+      case 'annually':
+        date.setFullYear(date.getFullYear() + intervalValue);
+        break;
+      case 'custom':
+        // For custom, intervalValue represents months
+        date.setMonth(date.getMonth() + intervalValue);
+        break;
+      default:
+        throw new Error(`Unsupported frequency: ${frequency}`);
+    }
+
+    return DateUtils.formatDate(date);
+  },
+
+  // Generate next occurrence from template
+  async generateRecurringExpense(templateId) {
+    try {
+      const template = await db.recurringExpenseTemplates.get(templateId);
+      if (!template || !template.isActive) {
+        throw new Error('Template not found or inactive');
+      }
+
+      // Create new fixed expense from template
+      const newExpense = {
+        name: template.name,
+        dueDate: template.nextDueDate,
+        amount: template.baseAmount,
+        accountId: template.accountId,
+        category: template.category,
+        paidAmount: 0,
+        recurringTemplateId: templateId,
+        createdAt: new Date().toISOString(),
+      };
+
+      const expenseId = await this.addFixedExpense(newExpense);
+
+      // Update template with new next due date
+      const newNextDueDate = this.calculateNextDueDate(
+        template.nextDueDate,
+        template.frequency,
+        template.intervalValue || 1
+      );
+
+      await this.updateRecurringExpenseTemplate(templateId, {
+        lastGenerated: template.nextDueDate,
+        nextDueDate: newNextDueDate,
+      });
+
+      logger.success(`Generated recurring expense: ${template.name}`);
+      return expenseId;
+    } catch (error) {
+      logger.error('Error generating recurring expense:', error);
+      throw new Error('Failed to generate recurring expense');
     }
   },
 

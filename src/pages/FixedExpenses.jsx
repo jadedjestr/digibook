@@ -31,7 +31,7 @@ const FixedExpenses = () => {
   const paycheckDates = paycheckService.calculatePaycheckDates();
   const summaryTotals = paycheckService.calculateSummaryTotals(
     fixedExpenses,
-    paycheckDates,
+    paycheckDates
   );
 
   // Debug logging
