@@ -3,7 +3,7 @@ import { secureDataHandling } from '../utils/crypto';
 import { logger } from '../utils/logger';
 
 // Current data format version
-const CURRENT_DATA_VERSION = 1;
+const CURRENT_DATA_VERSION = 2; // Updated to support recurring expense templates
 
 class DataManager {
   constructor() {
@@ -187,6 +187,19 @@ class DataManager {
         paycheckSettings: this.convertCSVData(csvData, 'paycheckSettings'),
       };
     }
+    if (
+      headers.includes('name') &&
+      headers.includes('baseAmount') &&
+      headers.includes('frequency') &&
+      headers.includes('startDate')
+    ) {
+      return {
+        recurringExpenseTemplates: this.convertCSVData(
+          csvData,
+          'recurringExpenseTemplates'
+        ),
+      };
+    }
 
     throw new Error('Could not detect CSV data type from headers');
   }
@@ -235,6 +248,52 @@ class DataManager {
             }
           } else {
             converted.lastPaycheckDate = '';
+          }
+          break;
+        case 'recurringExpenseTemplates':
+          converted.baseAmount = parseFloat(row.baseAmount) || 0;
+          converted.intervalValue = parseInt(row.intervalValue) || 1;
+          converted.accountId = row.accountId ? parseInt(row.accountId) : null;
+          converted.isActive =
+            row.isActive === 'true' ||
+            row.isActive === '1' ||
+            row.isActive === 'Yes' ||
+            row.isActive === true;
+          converted.isVariableAmount =
+            row.isVariableAmount === 'true' ||
+            row.isVariableAmount === '1' ||
+            row.isVariableAmount === 'Yes' ||
+            row.isVariableAmount === true;
+          // Convert dates to ISO strings
+          if (row.startDate) {
+            const startDate = new Date(row.startDate);
+            converted.startDate = !isNaN(startDate.getTime())
+              ? startDate.toISOString()
+              : '';
+          }
+          if (row.lastGenerated) {
+            const lastGenerated = new Date(row.lastGenerated);
+            converted.lastGenerated = !isNaN(lastGenerated.getTime())
+              ? lastGenerated.toISOString()
+              : null;
+          }
+          if (row.nextDueDate) {
+            const nextDueDate = new Date(row.nextDueDate);
+            converted.nextDueDate = !isNaN(nextDueDate.getTime())
+              ? nextDueDate.toISOString()
+              : '';
+          }
+          if (row.createdAt) {
+            const createdAt = new Date(row.createdAt);
+            converted.createdAt = !isNaN(createdAt.getTime())
+              ? createdAt.toISOString()
+              : new Date().toISOString();
+          }
+          if (row.updatedAt) {
+            const updatedAt = new Date(row.updatedAt);
+            converted.updatedAt = !isNaN(updatedAt.getTime())
+              ? updatedAt.toISOString()
+              : new Date().toISOString();
           }
           break;
       }

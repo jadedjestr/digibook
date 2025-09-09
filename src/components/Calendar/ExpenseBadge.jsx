@@ -52,9 +52,11 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   const expenseText = formatExpenseText(expense);
   const statusClass = getStatusClass(status);
   const remainingAmount = expense.amount - (expense.paidAmount || 0);
-  
+
   // Check if this is a recurring expense
-  const isRecurring = expense.recurringTemplateId !== null && expense.recurringTemplateId !== undefined;
+  const isRecurring =
+    expense.recurringTemplateId !== null &&
+    expense.recurringTemplateId !== undefined;
   const recurringClass = isRecurring ? 'expense-badge--recurring' : '';
 
   return (

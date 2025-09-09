@@ -1371,8 +1371,9 @@ export const dbHelpers = {
         userPreferences: await db.userPreferences.toArray(),
         monthlyExpenseHistory: await db.monthlyExpenseHistory.toArray(),
         auditLogs: await db.auditLogs.toArray(),
+        recurringExpenseTemplates: await db.recurringExpenseTemplates.toArray(),
         exportDate: new Date().toISOString(),
-        version: '1.0',
+        version: '2.0', // Updated version to reflect recurring templates support
       };
 
       logger.success('Data exported successfully');
@@ -1388,18 +1389,27 @@ export const dbHelpers = {
       // Clear existing data
       await this.clearDatabase();
 
-      // Import new data
+      // Import core data first (order matters for foreign key relationships)
       if (data.accounts) await db.accounts.bulkAdd(data.accounts);
-      if (data.creditCards) await db.creditCards.bulkAdd(data.creditCards);
-      if (data.pendingTransactions)
-        await db.pendingTransactions.bulkAdd(data.pendingTransactions);
-      if (data.fixedExpenses)
-        await db.fixedExpenses.bulkAdd(data.fixedExpenses);
       if (data.categories) await db.categories.bulkAdd(data.categories);
       if (data.paycheckSettings)
         await db.paycheckSettings.bulkAdd(data.paycheckSettings);
       if (data.userPreferences)
         await db.userPreferences.bulkAdd(data.userPreferences);
+
+      // Import recurring templates before fixed expenses (they may reference templates)
+      if (data.recurringExpenseTemplates) {
+        await db.recurringExpenseTemplates.bulkAdd(data.recurringExpenseTemplates);
+      }
+
+      // Import expenses and transactions
+      if (data.creditCards) await db.creditCards.bulkAdd(data.creditCards);
+      if (data.pendingTransactions)
+        await db.pendingTransactions.bulkAdd(data.pendingTransactions);
+      if (data.fixedExpenses)
+        await db.fixedExpenses.bulkAdd(data.fixedExpenses);
+
+      // Import historical and audit data
       if (data.monthlyExpenseHistory)
         await db.monthlyExpenseHistory.bulkAdd(data.monthlyExpenseHistory);
       if (data.auditLogs) await db.auditLogs.bulkAdd(data.auditLogs);

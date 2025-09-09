@@ -19,14 +19,15 @@ const UpcomingRecurringWidget = () => {
     const loadNextRecurring = async () => {
       try {
         setLoading(true);
-        const upcomingExpenses = await recurringExpenseService.getUpcomingRecurringExpenses();
-        
+        const upcomingExpenses =
+          await recurringExpenseService.getUpcomingRecurringExpenses();
+
         if (upcomingExpenses.length > 0) {
           // Sort by next due date and get the closest one
           const sortedExpenses = upcomingExpenses
             .filter(expense => expense.nextDueDate)
             .sort((a, b) => new Date(a.nextDueDate) - new Date(b.nextDueDate));
-          
+
           if (sortedExpenses.length > 0) {
             setNextRecurring(sortedExpenses[0]);
           }
@@ -42,14 +43,14 @@ const UpcomingRecurringWidget = () => {
   }, []);
 
   // Calculate days until next recurring expense
-  const getDaysUntil = (dateString) => {
+  const getDaysUntil = dateString => {
     const today = DateUtils.today();
     const days = DateUtils.daysBetween(today, dateString);
     return days;
   };
 
   // Format the time until display
-  const formatTimeUntil = (days) => {
+  const formatTimeUntil = days => {
     if (days < 0) return 'Overdue';
     if (days === 0) return 'Today';
     if (days === 1) return 'Tomorrow';
@@ -63,7 +64,7 @@ const UpcomingRecurringWidget = () => {
   };
 
   // Get urgency styling based on days until
-  const getUrgencyClass = (days) => {
+  const getUrgencyClass = days => {
     if (days < 0) return 'upcoming-urgent'; // Overdue
     if (days <= 3) return 'upcoming-soon'; // Very soon
     if (days <= 7) return 'upcoming-week'; // This week
@@ -106,23 +107,21 @@ const UpcomingRecurringWidget = () => {
       <div className='upcoming-icon'>
         <Clock size={16} />
       </div>
-      
+
       <div className='upcoming-content'>
         <div className='upcoming-header'>
           <span className='upcoming-label'>Next Recurring:</span>
           <span className='upcoming-time'>{timeUntilText}</span>
         </div>
-        
+
         <div className='upcoming-details'>
-          <span className='upcoming-name'>
-            {nextRecurring.name}
-          </span>
+          <span className='upcoming-name'>{nextRecurring.name}</span>
           <span className='upcoming-amount'>
             ${nextRecurring.amount?.toLocaleString()}
             {nextRecurring.isVariableAmount && ' ~'}
           </span>
         </div>
-        
+
         <div className='upcoming-date'>
           <Calendar size={12} />
           <span>{DateUtils.formatShortDate(nextRecurring.nextDueDate)}</span>
