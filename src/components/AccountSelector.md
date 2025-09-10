@@ -76,15 +76,28 @@ interface CreditCard {
 />
 ```
 
-### Credit Card Payment (Restricted to Regular Accounts)
+### Credit Card Payment (Two-Field System Integration)
 ```jsx
+{/* Funding Source Selector (Pay FROM) */}
 <AccountSelector
-  value={paymentAccountId}
-  onSave={setPaymentAccountId}
+  value={formData.accountId}
+  onSave={accountId => setFormData({...formData, accountId})}
   accounts={accounts}
-  creditCards={[]} // Not needed for credit card payments
-  isCreditCardPayment={true}
+  creditCards={[]} // Not needed for funding source
+  isCreditCardPayment={true} // Restricts to checking/savings only
 />
+
+{/* Target Credit Card (Pay TO) - Separate dropdown */}
+<select 
+  value={formData.targetCreditCardId}
+  onChange={e => setFormData({...formData, targetCreditCardId: e.target.value})}
+>
+  {creditCards.map(card => (
+    <option key={card.id} value={card.id}>
+      {card.name} - Debt: ${card.balance?.toLocaleString()}
+    </option>
+  ))}
+</select>
 ```
 
 ## ID Mapping
@@ -105,6 +118,45 @@ The component uses utility functions from `../utils/accountUtils`:
 - `getAccountIdToSave()` - Gets correct ID for database
 - `isAccountSelected()` - Checks if account is selected
 - `formatAccountBalance()` - Formats balance for display
+
+## Two-Field Credit Card Payment System
+
+The AccountSelector now integrates with the sophisticated two-field credit card payment system:
+
+### System Overview
+- **Credit Card Payments**: Use two separate fields for complete transaction tracking
+- **Funding Source**: AccountSelector with `isCreditCardPayment={true}` (checking/savings only)
+- **Payment Target**: Separate dropdown for credit cards (`targetCreditCardId`)
+
+### Implementation Pattern
+```jsx
+// In AddExpensePanel for Credit Card Payment category
+{isCreditCardPayment && (
+  <>
+    {/* Pay FROM field */}
+    <label>Pay FROM (Funding Account)</label>
+    <AccountSelector
+      value={formData.accountId}
+      onSave={accountId => handleInputChange('accountId', accountId)}
+      accounts={accounts}
+      creditCards={[]}
+      isCreditCardPayment={true}
+    />
+    
+    {/* Pay TO field */}
+    <label>Pay TO (Target Credit Card)</label>
+    <select value={formData.targetCreditCardId}>
+      {/* Credit card options */}
+    </select>
+  </>
+)}
+```
+
+### Integration Benefits
+- **Clear Money Flow**: Explicit source and destination
+- **Prevent Errors**: Automatic account type restrictions
+- **Accurate Tracking**: Both funding and target recorded
+- **User-Friendly**: Intuitive "Pay FROM" and "Pay TO" labels
 
 ## Migration Guide
 

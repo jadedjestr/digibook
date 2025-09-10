@@ -58,16 +58,19 @@ await dbHelpers.deleteAccount(accountId);
 #### **Expense Operations**
 ```javascript
 /**
- * Create a new expense
+ * Create a new expense (supports two-field credit card payments)
  * @param {Object} expenseData - Expense information
- * @param {string} expenseData.description - Expense description
+ * @param {string} expenseData.name - Expense name
  * @param {number} expenseData.amount - Expense amount
  * @param {string} expenseData.category - Expense category
- * @param {Date} expenseData.date - Expense date
- * @param {number} expenseData.accountId - Associated account ID
+ * @param {Date} expenseData.dueDate - Due date
+ * @param {number} expenseData.accountId - Account ID (funding source for credit card payments)
+ * @param {number} [expenseData.targetCreditCardId] - Target credit card ID (for "Credit Card Payment" category only)
+ * @param {number} [expenseData.paidAmount=0] - Already paid amount
+ * @param {string} [expenseData.status='pending'] - Payment status
  * @returns {Promise<number>} Expense ID
  */
-await dbHelpers.createExpense(expenseData);
+await dbHelpers.addFixedExpense(expenseData);
 
 /**
  * Get expenses with filtering and pagination
@@ -109,6 +112,7 @@ await dbHelpers.deleteExpense(expenseId);
  * @param {number} cardData.minPayment - Minimum payment
  * @param {Date} cardData.dueDate - Due date
  * @returns {Promise<number>} Credit card ID
+ * @note Automatically creates a credit card payment expense using two-field system
  */
 await dbHelpers.createCreditCard(cardData);
 
@@ -132,6 +136,14 @@ await dbHelpers.updateCreditCard(cardId, updates);
  * @returns {Promise<number>} Number of deleted records
  */
 await dbHelpers.deleteCreditCard(cardId);
+
+/**
+ * Create missing credit card payment expenses (Two-Field System)
+ * Automatically creates payment expenses for credit cards without them
+ * Uses accountId for funding source and targetCreditCardId for target
+ * @returns {Promise<number>} Number of payment expenses created
+ */
+await dbHelpers.createMissingCreditCardExpenses();
 ```
 
 ## 🎣 **Custom Hooks API**

@@ -11,7 +11,7 @@ The Digibook app implements a sophisticated two-field credit card payment system
 The system handles three distinct payment scenarios:
 
 1. **Credit Card Payments** - Transfers from checking/savings to pay down credit card debt
-2. **Regular Expenses (Cash)** - Payments from checking/savings accounts  
+2. **Regular Expenses (Cash)** - Payments from checking/savings accounts
 3. **Regular Expenses (Credit)** - Charges to credit cards (increases debt)
 
 ### Two-Field System
@@ -94,11 +94,11 @@ if (expense.category === 'Credit Card Payment') {
   // A. Credit Card Payment: checking/savings → credit card
   decreaseAccountBalance(accountId);           // Money leaves funding account
   decreaseCreditCardBalance(targetCreditCardId); // Debt goes down
-  
+
 } else if (isCheckingSavingsAccount(accountId)) {
   // B. Regular expense from checking/savings
   decreaseAccountBalance(accountId);           // Money leaves account
-  
+
 } else if (isCreditCardAccount(accountId)) {
   // C. Regular expense charged to credit card
   increaseCreditCardBalance(accountId);        // Debt increases
@@ -120,7 +120,7 @@ if (expense.category === 'Credit Card Payment') {
 - **Smart Labels**: "Pay FROM" vs "Pay TO" for credit card payments
 - **Validation**: Ensures both fields are filled for credit card payments
 
-### AccountSelector.jsx  
+### AccountSelector.jsx
 - **Intelligent Filtering**: Restricts options based on `isCreditCardPayment` prop
 - **Consistent Logic**: Same behavior in desktop tables and mobile cards
 
@@ -135,14 +135,14 @@ if (expense.category === 'Credit Card Payment') {
 ```javascript
 async createMissingCreditCardExpenses() {
   // Find default checking account as funding source
-  const defaultAccount = accounts.find(acc => acc.isDefault) || 
-                        accounts.find(acc => acc.type === 'checking') || 
+  const defaultAccount = accounts.find(acc => acc.isDefault) ||
+                        accounts.find(acc => acc.type === 'checking') ||
                         accounts[0];
 
   for (const card of creditCards) {
     // Check if payment expense already exists
     const hasPaymentExpense = expenses.some(
-      expense => expense.category === 'Credit Card Payment' && 
+      expense => expense.category === 'Credit Card Payment' &&
                 expense.targetCreditCardId === card.id
     );
 
@@ -196,7 +196,7 @@ if (isCreditCardPayment && !formData.targetCreditCardId) {
 
 ### Critical Test Cases
 1. **Create Credit Card Payment** - Verify two-field UI appears
-2. **Create Regular Subscription** - Verify single-field UI  
+2. **Create Regular Subscription** - Verify single-field UI
 3. **Payment Processing** - Verify correct balance updates
 4. **Auto-Creation** - Verify new credit cards create payment expenses
 5. **Backward Compatibility** - Verify existing expenses continue working
