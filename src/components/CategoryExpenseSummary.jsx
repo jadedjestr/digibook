@@ -58,13 +58,15 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
 
       {/* Show congratulations message if all expenses are paid */}
       {totalAmount === 0 ? (
-        <div className='text-center py-8'>
-          <div className='text-6xl mb-4'>🎉</div>
-          <h4 className='text-xl font-semibold text-green-400 mb-2'>
-            All Fixed Expenses Paid!
-          </h4>
-          <p className='text-sm text-white/70'>
-            Congratulations! You've paid all your fixed expenses for this period.
+        <div className='text-center py-4'>
+          <div className='flex items-center justify-center space-x-3 mb-2'>
+            <span className='text-2xl'>🎉</span>
+            <h4 className='text-lg font-semibold text-green-400'>
+              All Fixed Expenses Paid!
+            </h4>
+          </div>
+          <p className='text-xs text-white/60'>
+            You've paid all your fixed expenses for this period.
           </p>
         </div>
       ) : (
