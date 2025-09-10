@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 
-export const useFinanceCalculations = (accounts, pendingTransactions, creditCards = []) => {
+export const useFinanceCalculations = (
+  accounts,
+  pendingTransactions,
+  creditCards = []
+) => {
   const calculateProjectedBalance = useMemo(() => {
     return accountId => {
       const numericAccountId = parseInt(accountId);
@@ -51,19 +55,19 @@ export const useFinanceCalculations = (accounts, pendingTransactions, creditCard
   const getAccountName = useMemo(() => {
     return accountId => {
       const numericAccountId = parseInt(accountId);
-      
+
       // First, look in regular accounts
       const account = accounts.find(a => a.id === numericAccountId);
       if (account) {
         return account.name;
       }
-      
+
       // If not found, look in credit cards
       const creditCard = creditCards.find(cc => cc.id === numericAccountId);
       if (creditCard) {
         return creditCard.name;
       }
-      
+
       return `Unknown Account (${accountId})`;
     };
   }, [accounts, creditCards]);

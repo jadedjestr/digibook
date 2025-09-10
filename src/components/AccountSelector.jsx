@@ -222,11 +222,11 @@ const AccountSelector = ({
                 key={`${account.type}-${account.id}`}
                 onClick={() => handleAccountClick(account)}
                 className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-all duration-150 first:rounded-t-lg last:rounded-b-lg border-b border-white/10 last:border-b-0 ${
-                  isAccountSelected(account, editValue)
+                  isAccountSelected(account, editValue, isCreditCardPayment)
                     ? 'bg-blue-500/20 text-blue-300 cursor-default'
                     : 'text-white hover:bg-white/20 cursor-pointer'
                 }`}
-                disabled={isAccountSelected(account, editValue)}
+                disabled={isAccountSelected(account, editValue, isCreditCardPayment)}
               >
                 <div className='flex items-center space-x-3'>
                   {getAccountIcon(account.type)}
@@ -362,11 +362,11 @@ const AccountSelector = ({
                 key={`${account.type}-${account.id}`}
                 onClick={() => handleAccountClick(account)}
                 className={`w-full flex items-center justify-between px-4 py-3 text-sm transition-all duration-150 first:rounded-t-lg last:rounded-b-lg border-b border-white/10 last:border-b-0 ${
-                  isAccountSelected(account, editValue)
+                  isAccountSelected(account, editValue, isCreditCardPayment)
                     ? 'bg-blue-500/20 text-blue-300 cursor-default'
                     : 'text-white hover:bg-white/20 cursor-pointer'
                 }`}
-                disabled={isAccountSelected(account, editValue)}
+                disabled={isAccountSelected(account, editValue, isCreditCardPayment)}
               >
                 <div className='flex items-center space-x-3'>
                   {getAccountIcon(account.type)}
