@@ -130,6 +130,7 @@ export const dbHelpers = {
       await db.paycheckSettings.clear();
       await db.userPreferences.clear();
       await db.monthlyExpenseHistory.clear();
+      await db.recurringExpenseTemplates.clear();
       await db.auditLogs.clear();
       logger.success('Database cleared successfully');
     } catch (error) {
