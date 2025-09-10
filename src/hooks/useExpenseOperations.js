@@ -64,17 +64,13 @@ export const useExpenseOperations = () => {
             const account = accounts.find(acc => acc.id === accountId);
             const creditCard = creditCards.find(card => card.id === accountId);
 
-            // Check if this is a credit card expense (category or name contains payment)
-            const isCreditCardExpense =
-              currentExpense.category === 'Credit Card' ||
-              currentExpense.name.toLowerCase().includes('payment');
-
-            if (isCreditCardExpense) {
-              // For credit card expenses, we need to handle this differently
-              // The accountId should be the funding account (checking/savings)
-              // We need to find the target credit card from the expense name
-
-              if (account) {
+            // Handle payment based on expense category and account type
+            if (currentExpense.category === 'Credit Card Payment') {
+              // A. Credit Card Payment: Transfer money from checking/savings to credit card
+              // accountId = funding source (checking/savings)
+              // targetCreditCardId = target credit card to pay down
+              
+              if (account && currentExpense.targetCreditCardId) {
                 // 1. Decrease the funding account balance (money goes out)
                 const newAccountBalance =
                   account.currentBalance - paymentDifference;
@@ -90,18 +86,12 @@ export const useExpenseOperations = () => {
                   amount: paymentDifference,
                   oldBalance: account.currentBalance,
                   newBalance: newAccountBalance,
-                  description: `Paid credit card expense from ${account.name}`,
+                  description: `Paid credit card from ${account.name}`,
                 });
 
-                // 2. Find and decrease the target credit card balance
-                // Extract credit card name from expense name (e.g., "Apple Card Minimum Payment" -> "Apple Card")
-                const creditCardName = currentExpense.name
-                  .replace(/\s+(minimum|payment|pay).*$/i, '')
-                  .trim();
-
+                // 2. Find target credit card and decrease its balance
                 const targetCreditCard = creditCards.find(
-                  card =>
-                    card.name.toLowerCase() === creditCardName.toLowerCase()
+                  card => card.id === currentExpense.targetCreditCardId
                 );
 
                 if (targetCreditCard) {
@@ -132,19 +122,19 @@ export const useExpenseOperations = () => {
                     `Paid ${paymentDifference} to ${targetCreditCard.name} from ${account.name}`
                   );
                 } else {
-                  logger.warn(
-                    `Could not find credit card "${creditCardName}" for payment`
+                  logger.error(
+                    `Could not find target credit card with ID: ${currentExpense.targetCreditCardId}`
                   );
                 }
 
                 await reloadAccounts();
               } else {
                 logger.error(
-                  'Credit card payment requires a funding account (checking/savings)'
+                  'Credit card payment requires both funding account and target credit card'
                 );
               }
             } else if (account) {
-              // For regular expenses: decrease balance when paying expenses (money goes out)
+              // B. Regular expense paid from checking/savings account
               const newBalance = account.currentBalance - paymentDifference;
               await dbHelpers.updateAccount(accountId, {
                 currentBalance: newBalance,
@@ -163,12 +153,23 @@ export const useExpenseOperations = () => {
 
               await reloadAccounts();
             } else if (creditCard) {
-              // For expenses directly linked to credit cards (not payments):
-              // This shouldn't happen with the new logic, but keeping for backward compatibility
-              const newBalance = creditCard.balance - paymentDifference;
+              // C. Regular expense paid with credit card (increases debt)
+              const newBalance = creditCard.balance + paymentDifference; // ← INCREASE debt
               await dbHelpers.updateCreditCard(accountId, {
                 balance: newBalance,
               });
+
+              // Log the credit card expense charge
+              await dbHelpers.addAuditLog('PAYMENT', 'creditCard', accountId, {
+                action: 'credit_card_expense_charge',
+                expenseId: expenseId,
+                expenseName: currentExpense.name,
+                amount: paymentDifference,
+                oldBalance: creditCard.balance,
+                newBalance: newBalance,
+                description: `Charged expense ${currentExpense.name} to ${creditCard.name}`,
+              });
+
               await reloadAccounts();
             }
           }

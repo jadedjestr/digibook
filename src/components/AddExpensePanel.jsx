@@ -23,6 +23,7 @@ const AddExpensePanel = ({
     amount: '',
     accountId: '',
     category: '',
+    targetCreditCardId: '', // For credit card payments only
   });
   const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
@@ -151,6 +152,7 @@ const AddExpensePanel = ({
       amount: '',
       accountId: '',
       category: '',
+      targetCreditCardId: '',
     });
     setErrors({});
     setMakeRecurring(false);
@@ -243,6 +245,11 @@ const AddExpensePanel = ({
 
     if (!formData.accountId) newErrors.accountId = 'Account is required';
     if (!formData.category) newErrors.category = 'Category is required';
+    
+    // For credit card payments, validate target credit card
+    if (isCreditCardPayment && !formData.targetCreditCardId) {
+      newErrors.targetCreditCardId = 'Target credit card is required';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -268,6 +275,7 @@ const AddExpensePanel = ({
         category: formData.category,
         paidAmount: 0,
         status: 'pending',
+        ...(isCreditCardPayment && { targetCreditCardId: formData.targetCreditCardId }),
       };
 
       const newExpenseId = await dbHelpers.addFixedExpense(expenseData);
@@ -400,10 +408,10 @@ const AddExpensePanel = ({
             )}
           </div>
 
-          {/* Account Selector */}
+          {/* Account Selector - Conditional labels based on payment type */}
           <div>
             <label className='block text-sm font-medium text-white mb-2'>
-              Account
+              {isCreditCardPayment ? 'Pay FROM (Funding Account)' : 'Account'}
             </label>
             <AccountSelectorErrorBoundary>
               <AccountSelector
@@ -420,6 +428,30 @@ const AddExpensePanel = ({
               <p className='mt-1 text-sm text-red-400'>{errors.accountId}</p>
             )}
           </div>
+
+          {/* Target Credit Card Selector - Only for Credit Card Payments */}
+          {isCreditCardPayment && (
+            <div>
+              <label className='block text-sm font-medium text-white mb-2'>
+                Pay TO (Target Credit Card)
+              </label>
+              <select
+                value={formData.targetCreditCardId}
+                onChange={e => handleInputChange('targetCreditCardId', e.target.value)}
+                className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
+              >
+                <option value=''>Select credit card</option>
+                {creditCards.map(card => (
+                  <option key={card.id} value={card.id}>
+                    {card.name} - Debt: ${card.balance?.toLocaleString() || '0.00'}
+                  </option>
+                ))}
+              </select>
+              {errors.targetCreditCardId && (
+                <p className='mt-1 text-sm text-red-400'>{errors.targetCreditCardId}</p>
+              )}
+            </div>
+          )}
 
           {/* Category Selector */}
           <div>
