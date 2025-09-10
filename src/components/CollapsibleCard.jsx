@@ -1,5 +1,6 @@
 import { ChevronDown } from 'lucide-react';
-import React, { useState, useRef, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useRef, useEffect } from 'react';
 
 const CollapsibleCard = ({
   title,
@@ -19,8 +20,19 @@ const CollapsibleCard = ({
 
   // Update content height when children change
   useEffect(() => {
-    if (contentRef.current) {
+    if (contentRef.current && isExpanded) {
+      const observer = new ResizeObserver(entries => {
+        for (let entry of entries) {
+          setContentHeight(entry.target.scrollHeight);
+        }
+      });
+
+      observer.observe(contentRef.current);
+
+      // Initial height setting
       setContentHeight(contentRef.current.scrollHeight);
+
+      return () => observer.disconnect();
     }
   }, [children, isExpanded]);
 
@@ -88,8 +100,13 @@ const CollapsibleCard = ({
           ${contentClassName}
         `}
         style={{
-          maxHeight: isExpanded ? `${contentHeight}px` : '0px',
+          maxHeight: isExpanded
+            ? contentHeight > 0
+              ? `${contentHeight}px`
+              : 'none'
+            : '0px',
           marginTop: isExpanded ? '1rem' : '0px',
+          overflow: isExpanded ? 'visible' : 'hidden',
         }}
       >
         <div ref={contentRef} className='space-y-4'>
@@ -98,6 +115,19 @@ const CollapsibleCard = ({
       </div>
     </div>
   );
+};
+
+CollapsibleCard.propTypes = {
+  title: PropTypes.string.isRequired,
+  icon: PropTypes.elementType,
+  children: PropTypes.node.isRequired,
+  defaultExpanded: PropTypes.bool,
+  onToggle: PropTypes.func,
+  className: PropTypes.string,
+  headerClassName: PropTypes.string,
+  contentClassName: PropTypes.string,
+  exclusive: PropTypes.bool,
+  onExclusiveToggle: PropTypes.func,
 };
 
 export default CollapsibleCard;
