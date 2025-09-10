@@ -88,7 +88,7 @@ interface CreditCard {
 />
 
 {/* Target Credit Card (Pay TO) - Separate dropdown */}
-<select 
+<select
   value={formData.targetCreditCardId}
   onChange={e => setFormData({...formData, targetCreditCardId: e.target.value})}
 >
@@ -105,7 +105,7 @@ interface CreditCard {
 The component handles ID mapping automatically:
 
 - **Regular Accounts**: Use their database ID directly
-- **Credit Cards**: 
+- **Credit Cards**:
   - Display ID: `cc-{originalId}` (e.g., `"cc-3"`)
   - Database ID: `originalId` (e.g., `3`)
 
@@ -142,7 +142,7 @@ The AccountSelector now integrates with the sophisticated two-field credit card 
       creditCards={[]}
       isCreditCardPayment={true}
     />
-    
+
     {/* Pay TO field */}
     <label>Pay TO (Target Credit Card)</label>
     <select value={formData.targetCreditCardId}>

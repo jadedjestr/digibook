@@ -37,7 +37,7 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
       name,
       total: data.total,
       count: data.count,
-      percentage: (data.total / totalAmount) * 100,
+      percentage: totalAmount > 0 ? (data.total / totalAmount) * 100 : 0,
       color: data.color,
     }))
     .sort((a, b) => b.total - a.total); // Sort by total amount descending
@@ -56,24 +56,39 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
         Expense Distribution
       </h3>
 
-      {/* Horizontal Bar Chart Layout */}
-      <div className='space-y-0'>
-        {expenseData.map((expense, index) => (
-          <ExpenseBar
-            key={expense.name}
-            expense={expense}
-            index={index}
-            totalAmount={totalAmount}
-          />
-        ))}
-      </div>
+      {/* Show congratulations message if all expenses are paid */}
+      {totalAmount === 0 ? (
+        <div className='text-center py-8'>
+          <div className='text-6xl mb-4'>🎉</div>
+          <h4 className='text-xl font-semibold text-green-400 mb-2'>
+            All Fixed Expenses Paid!
+          </h4>
+          <p className='text-sm text-white/70'>
+            Congratulations! You've paid all your fixed expenses for this period.
+          </p>
+        </div>
+      ) : (
+        /* Horizontal Bar Chart Layout */
+        <div className='space-y-0'>
+          {expenseData.map((expense, index) => (
+            <ExpenseBar
+              key={expense.name}
+              expense={expense}
+              index={index}
+              totalAmount={totalAmount}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Total Section */}
       <div className='mt-5 pt-4 border-t border-white/10'>
         <div className='flex justify-between items-center'>
-          <span className='text-sm text-white/70'>Total Fixed Expenses</span>
+          <span className='text-sm text-white/70'>
+            {totalAmount === 0 ? 'Outstanding Fixed Expenses' : 'Total Fixed Expenses'}
+          </span>
           <PrivacyWrapper>
-            <span className='text-lg font-bold text-white'>
+            <span className={`text-lg font-bold ${totalAmount === 0 ? 'text-green-400' : 'text-white'}`}>
               {formatCurrency(totalAmount)}
             </span>
           </PrivacyWrapper>
