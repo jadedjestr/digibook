@@ -17,8 +17,17 @@ import './calendar.css';
  * Integrates with PaycheckService for status calculations
  */
 const Calendar = ({ onReset }) => {
+  console.log('Calendar: COMPONENT MOUNTING');
+
   // Get data from Zustand store
   const { fixedExpenses, paycheckSettings } = useAppStore();
+
+  console.log(
+    'Calendar: Got store data - fixedExpenses:',
+    fixedExpenses?.length,
+    'paycheckSettings:',
+    paycheckSettings
+  );
 
   // Calendar state
   const [currentMonth, setCurrentMonth] = useState(new Date());

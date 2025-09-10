@@ -3,12 +3,18 @@
  * Handles recurring expense template management and generation
  */
 
+console.log('RecurringExpenseService: MODULE LOADING...');
+
 import { dbHelpers } from '../db/database-clean';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 
+console.log('RecurringExpenseService: IMPORTS COMPLETED');
+
 export class RecurringExpenseService {
   constructor() {
+    console.log('RecurringExpenseService: CONSTRUCTOR CALLED');
+
     this.frequencyOptions = [
       { value: 'monthly', label: 'Every month', months: 1 },
       { value: 'quarterly', label: 'Every 3 months', months: 3 },
@@ -16,6 +22,8 @@ export class RecurringExpenseService {
       { value: 'annually', label: 'Every year', months: 12 },
       { value: 'custom', label: 'Custom interval', months: null },
     ];
+
+    console.log('RecurringExpenseService: CONSTRUCTOR COMPLETED');
   }
 
   /**
@@ -99,8 +107,22 @@ export class RecurringExpenseService {
    */
   async getActiveTemplates() {
     try {
-      return await dbHelpers.getRecurringExpenseTemplates();
+      console.log('RecurringExpenseService: Starting getActiveTemplates...');
+      console.log('RecurringExpenseService: dbHelpers =', dbHelpers);
+
+      const result = await dbHelpers.getRecurringExpenseTemplates();
+      console.log(
+        'RecurringExpenseService: dbHelpers.getRecurringExpenseTemplates result:',
+        result
+      );
+
+      return result;
     } catch (error) {
+      console.error(
+        'RecurringExpenseService: ERROR in getActiveTemplates:',
+        error
+      );
+      console.error('RecurringExpenseService: Error stack:', error.stack);
       logger.error('Error fetching recurring expense templates:', error);
       throw error;
     }
@@ -141,9 +163,15 @@ export class RecurringExpenseService {
    */
   async getUpcomingRecurringExpenses() {
     try {
-      const templates = await this.getActiveTemplates();
+      console.log(
+        'RecurringExpenseService: Starting getUpcomingRecurringExpenses...'
+      );
 
-      return templates.map(template => ({
+      console.log('RecurringExpenseService: Calling getActiveTemplates...');
+      const templates = await this.getActiveTemplates();
+      console.log('RecurringExpenseService: Got templates:', templates);
+
+      const result = templates.map(template => ({
         id: template.id,
         name: template.name,
         amount: template.baseAmount,
@@ -153,7 +181,15 @@ export class RecurringExpenseService {
         isVariableAmount: template.isVariableAmount,
         category: template.category,
       }));
+
+      console.log('RecurringExpenseService: Mapped result:', result);
+      return result;
     } catch (error) {
+      console.error(
+        'RecurringExpenseService: ERROR in getUpcomingRecurringExpenses:',
+        error
+      );
+      console.error('RecurringExpenseService: Error stack:', error.stack);
       logger.error('Error fetching upcoming recurring expenses:', error);
       throw error;
     }
@@ -285,4 +321,9 @@ export class RecurringExpenseService {
 }
 
 // Create singleton instance
+console.log('RecurringExpenseService: CREATING SINGLETON INSTANCE...');
 export const recurringExpenseService = new RecurringExpenseService();
+console.log(
+  'RecurringExpenseService: SINGLETON INSTANCE CREATED:',
+  recurringExpenseService
+);

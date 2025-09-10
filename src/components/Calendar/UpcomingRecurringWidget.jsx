@@ -9,17 +9,41 @@ import { DateUtils } from '../../utils/dateUtils';
  * Displayed on the same line as the New Cycle button
  */
 const UpcomingRecurringWidget = () => {
+  console.log('UpcomingRecurringWidget: COMPONENT MOUNTING');
+
   const [nextRecurring, setNextRecurring] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  console.log(
+    'UpcomingRecurringWidget: STATE INITIALIZED - loading:',
+    loading,
+    'error:',
+    error
+  );
 
   // Load the next upcoming recurring expense
   useEffect(() => {
     const loadNextRecurring = async () => {
       try {
         setLoading(true);
+        console.log(
+          'UpcomingRecurringWidget: Starting to load recurring expenses...'
+        );
+
+        // Debug: Test if service exists
+        console.log(
+          'UpcomingRecurringWidget: recurringExpenseService =',
+          recurringExpenseService
+        );
+
         const upcomingExpenses =
           await recurringExpenseService.getUpcomingRecurringExpenses();
+
+        console.log(
+          'UpcomingRecurringWidget: Got upcoming expenses:',
+          upcomingExpenses
+        );
 
         if (upcomingExpenses.length > 0) {
           // Sort by next due date and get the closest one
@@ -29,9 +53,19 @@ const UpcomingRecurringWidget = () => {
 
           if (sortedExpenses.length > 0) {
             setNextRecurring(sortedExpenses[0]);
+            console.log(
+              'UpcomingRecurringWidget: Set next recurring:',
+              sortedExpenses[0]
+            );
           }
+        } else {
+          console.log('UpcomingRecurringWidget: No upcoming expenses found');
         }
       } catch (err) {
+        console.error('UpcomingRecurringWidget: ERROR CAUGHT:', err);
+        console.error('UpcomingRecurringWidget: Error stack:', err.stack);
+        console.error('UpcomingRecurringWidget: Error name:', err.name);
+        console.error('UpcomingRecurringWidget: Error message:', err.message);
         setError(err.message);
       } finally {
         setLoading(false);

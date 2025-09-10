@@ -78,10 +78,39 @@ export const db = new DigibookDBClean();
 // Initialize database with error handling
 export async function initializeDatabase() {
   try {
+    console.log('Database: Starting initialization...');
+    console.log('Database: db object =', db);
+    console.log('Database: db.name =', db.name);
+    console.log('Database: db.verno =', db.verno);
+
     await db.open();
+
+    console.log('Database: After opening...');
+    console.log('Database: db.isOpen() =', db.isOpen());
+    console.log(
+      'Database: db.tables =',
+      db.tables.map(t => t.name)
+    );
+    console.log('Database: Looking for recurringExpenseTemplates table...');
+    const recurringTable = db.tables.find(
+      t => t.name === 'recurringExpenseTemplates'
+    );
+    console.log(
+      'Database: recurringExpenseTemplates table found:',
+      !!recurringTable
+    );
+
+    if (recurringTable) {
+      console.log(
+        'Database: recurringExpenseTemplates table schema:',
+        recurringTable.schema
+      );
+    }
+
     logger.success('Database initialized successfully');
     return true;
   } catch (error) {
+    console.error('Database: Initialization error:', error);
     logger.error('Database initialization failed:', error);
 
     // If initialization fails, try to force reset all databases
@@ -510,11 +539,44 @@ export const dbHelpers = {
 
   async getRecurringExpenseTemplates() {
     try {
-      return await db.recurringExpenseTemplates
-        .where('isActive')
-        .equals(true)
-        .toArray();
+      console.log('dbHelpers: Starting getRecurringExpenseTemplates...');
+      console.log('dbHelpers: db object =', db);
+      console.log(
+        'dbHelpers: db.recurringExpenseTemplates =',
+        db.recurringExpenseTemplates
+      );
+
+      // Test if the table exists
+      console.log('dbHelpers: Testing table existence...');
+      const tableExists = db.tables.find(
+        table => table.name === 'recurringExpenseTemplates'
+      );
+      console.log(
+        'dbHelpers: recurringExpenseTemplates table exists:',
+        !!tableExists
+      );
+
+      if (!tableExists) {
+        console.error(
+          'dbHelpers: recurringExpenseTemplates table does not exist!'
+        );
+        throw new Error('recurringExpenseTemplates table does not exist');
+      }
+
+      console.log('dbHelpers: Performing query...');
+      // Use toArray() and filter instead of indexed where query to avoid DataError
+      const allTemplates = await db.recurringExpenseTemplates.toArray();
+      console.log('dbHelpers: Got all templates:', allTemplates);
+      
+      const result = allTemplates.filter(template => template.isActive === true);
+      console.log('dbHelpers: Filtered active templates:', result);
+
+      console.log('dbHelpers: Query result:', result);
+      return result;
     } catch (error) {
+      console.error('dbHelpers: ERROR in getRecurringExpenseTemplates:', error);
+      console.error('dbHelpers: Error stack:', error.stack);
+      console.error('dbHelpers: Error name:', error.name);
       logger.error('Error fetching recurring expense templates:', error);
       throw new Error('Failed to fetch recurring expense templates');
     }
