@@ -12,9 +12,10 @@ A modern, privacy-focused finance tracker built with React and IndexedDB for loc
 
 ### 💳 **Credit Card Management**
 - **Credit Card Tracking**: Monitor balances, limits, and utilization
-- **Smart Link Expenses**: Automatically create fixed expenses for credit card payments
+- **Automatic Payment Creation**: Auto-creates payment expenses when adding new credit cards
+- **Two-Field Payment System**: Explicit "Pay FROM" (funding account) and "Pay TO" (credit card) fields
 - **Debt Payoff Calculator**: Calculate payoff time and total interest
-- **Payment Logic**: Proper money movement simulation (funding account → credit card)
+- **Smart Payment Logic**: Distinguishes between credit card payments and regular expenses charged to cards
 
 ### 📊 **Expense Management**
 - **Fixed Expenses**: Track recurring bills and payments
@@ -207,6 +208,7 @@ npm run storybook
 - **Development Guide**: See [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)
 - **Code Style Guide**: See [CODE_STYLE_GUIDE.md](CODE_STYLE_GUIDE.md)
 - **Testing Guide**: See [TESTING_GUIDE_PHASE_3.md](TESTING_GUIDE_PHASE_3.md)
+- **Credit Card Payment System**: See [CREDIT_CARD_PAYMENT_SYSTEM.md](CREDIT_CARD_PAYMENT_SYSTEM.md)
 
 ## Contributing
 

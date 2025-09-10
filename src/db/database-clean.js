@@ -464,7 +464,9 @@ export const dbHelpers = {
       return id;
     } catch (error) {
       logger.error('Error adding recurring expense template:', error);
-      throw new Error(`Failed to add recurring expense template: ${error.message}`);
+      throw new Error(
+        `Failed to add recurring expense template: ${error.message}`
+      );
     }
   },
 
@@ -507,7 +509,10 @@ export const dbHelpers = {
 
   async getRecurringExpenseTemplates() {
     try {
-      return await db.recurringExpenseTemplates.where('isActive').equals(true).toArray();
+      return await db.recurringExpenseTemplates
+        .where('isActive')
+        .equals(true)
+        .toArray();
     } catch (error) {
       logger.error('Error fetching recurring expense templates:', error);
       throw new Error('Failed to fetch recurring expense templates');
@@ -535,10 +540,10 @@ export const dbHelpers = {
         date.setMonth(date.getMonth() + intervalValue);
         break;
       case 'quarterly':
-        date.setMonth(date.getMonth() + (3 * intervalValue));
+        date.setMonth(date.getMonth() + 3 * intervalValue);
         break;
       case 'biannually':
-        date.setMonth(date.getMonth() + (6 * intervalValue));
+        date.setMonth(date.getMonth() + 6 * intervalValue);
         break;
       case 'annually':
         date.setFullYear(date.getFullYear() + intervalValue);
@@ -1220,17 +1225,24 @@ export const dbHelpers = {
       let createdCount = 0;
 
       // Find the default checking account to use as funding source
-      const defaultAccount = accounts.find(acc => acc.isDefault) || accounts.find(acc => acc.type === 'checking') || accounts[0];
-      
+      const defaultAccount =
+        accounts.find(acc => acc.isDefault) ||
+        accounts.find(acc => acc.type === 'checking') ||
+        accounts[0];
+
       if (!defaultAccount) {
-        logger.warn('No checking/savings account found. Cannot create credit card payment expenses.');
+        logger.warn(
+          'No checking/savings account found. Cannot create credit card payment expenses.'
+        );
         return 0;
       }
 
       for (const card of creditCards) {
         // Check if there's already a credit card payment expense for this card
         const hasPaymentExpense = expenses.some(
-          expense => expense.category === 'Credit Card Payment' && expense.targetCreditCardId === card.id
+          expense =>
+            expense.category === 'Credit Card Payment' &&
+            expense.targetCreditCardId === card.id
         );
 
         if (!hasPaymentExpense) {
@@ -1244,9 +1256,9 @@ export const dbHelpers = {
             name: `${card.name} Payment`,
             dueDate: card.dueDate || new Date().toISOString().split('T')[0],
             amount: expenseAmount,
-            accountId: defaultAccount.id,        // ← Funding source (checking/savings)
-            targetCreditCardId: card.id,         // ← Target credit card to pay
-            category: 'Credit Card Payment',     // ← Proper category for two-field system
+            accountId: defaultAccount.id, // ← Funding source (checking/savings)
+            targetCreditCardId: card.id, // ← Target credit card to pay
+            category: 'Credit Card Payment', // ← Proper category for two-field system
             paidAmount: 0,
             status: 'pending',
             isAutoCreated: true,
@@ -1428,7 +1440,9 @@ export const dbHelpers = {
 
       // Import recurring templates before fixed expenses (they may reference templates)
       if (data.recurringExpenseTemplates) {
-        await db.recurringExpenseTemplates.bulkAdd(data.recurringExpenseTemplates);
+        await db.recurringExpenseTemplates.bulkAdd(
+          data.recurringExpenseTemplates
+        );
       }
 
       // Import expenses and transactions
