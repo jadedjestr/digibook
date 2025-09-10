@@ -245,7 +245,7 @@ const AddExpensePanel = ({
 
     if (!formData.accountId) newErrors.accountId = 'Account is required';
     if (!formData.category) newErrors.category = 'Category is required';
-    
+
     // For credit card payments, validate target credit card
     if (isCreditCardPayment && !formData.targetCreditCardId) {
       newErrors.targetCreditCardId = 'Target credit card is required';
@@ -275,7 +275,9 @@ const AddExpensePanel = ({
         category: formData.category,
         paidAmount: 0,
         status: 'pending',
-        ...(isCreditCardPayment && { targetCreditCardId: formData.targetCreditCardId }),
+        ...(isCreditCardPayment && {
+          targetCreditCardId: formData.targetCreditCardId,
+        }),
       };
 
       const newExpenseId = await dbHelpers.addFixedExpense(expenseData);
@@ -437,18 +439,23 @@ const AddExpensePanel = ({
               </label>
               <select
                 value={formData.targetCreditCardId}
-                onChange={e => handleInputChange('targetCreditCardId', e.target.value)}
+                onChange={e =>
+                  handleInputChange('targetCreditCardId', e.target.value)
+                }
                 className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
               >
                 <option value=''>Select credit card</option>
                 {creditCards.map(card => (
                   <option key={card.id} value={card.id}>
-                    {card.name} - Debt: ${card.balance?.toLocaleString() || '0.00'}
+                    {card.name} - Debt: $
+                    {card.balance?.toLocaleString() || '0.00'}
                   </option>
                 ))}
               </select>
               {errors.targetCreditCardId && (
-                <p className='mt-1 text-sm text-red-400'>{errors.targetCreditCardId}</p>
+                <p className='mt-1 text-sm text-red-400'>
+                  {errors.targetCreditCardId}
+                </p>
               )}
             </div>
           )}

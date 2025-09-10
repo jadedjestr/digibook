@@ -69,7 +69,7 @@ export const useExpenseOperations = () => {
               // A. Credit Card Payment: Transfer money from checking/savings to credit card
               // accountId = funding source (checking/savings)
               // targetCreditCardId = target credit card to pay down
-              
+
               if (account && currentExpense.targetCreditCardId) {
                 // 1. Decrease the funding account balance (money goes out)
                 const newAccountBalance =

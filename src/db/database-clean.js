@@ -1216,27 +1216,37 @@ export const dbHelpers = {
     try {
       const creditCards = await db.creditCards.toArray();
       const expenses = await db.fixedExpenses.toArray();
+      const accounts = await db.accounts.toArray();
       let createdCount = 0;
 
+      // Find the default checking account to use as funding source
+      const defaultAccount = accounts.find(acc => acc.isDefault) || accounts.find(acc => acc.type === 'checking') || accounts[0];
+      
+      if (!defaultAccount) {
+        logger.warn('No checking/savings account found. Cannot create credit card payment expenses.');
+        return 0;
+      }
+
       for (const card of creditCards) {
-        // Check if there's already an expense for this card
-        const hasExpense = expenses.some(
-          expense => expense.accountId === card.id
+        // Check if there's already a credit card payment expense for this card
+        const hasPaymentExpense = expenses.some(
+          expense => expense.category === 'Credit Card Payment' && expense.targetCreditCardId === card.id
         );
 
-        if (!hasExpense) {
-          // Create a minimum payment expense for any card without an existing expense
+        if (!hasPaymentExpense) {
+          // Create a minimum payment expense using the new two-field system
           // Use minimum payment if specified, otherwise calculate based on balance or use $25 default
           const expenseAmount =
             card.minimumPayment ||
             (card.balance > 0 ? Math.max(card.balance * 0.02, 25) : 25);
 
           await db.fixedExpenses.add({
-            name: `${card.name} Minimum Payment`,
+            name: `${card.name} Payment`,
             dueDate: card.dueDate || new Date().toISOString().split('T')[0],
             amount: expenseAmount,
-            accountId: card.id,
-            category: 'Credit Card',
+            accountId: defaultAccount.id,        // ← Funding source (checking/savings)
+            targetCreditCardId: card.id,         // ← Target credit card to pay
+            category: 'Credit Card Payment',     // ← Proper category for two-field system
             paidAmount: 0,
             status: 'pending',
             isAutoCreated: true,
@@ -1246,7 +1256,7 @@ export const dbHelpers = {
         }
       }
 
-      logger.success(`Created ${createdCount} missing credit card expenses`);
+      logger.success(`Created ${createdCount} credit card payment expenses`);
       return createdCount;
     } catch (error) {
       logger.error('Error creating missing credit card expenses:', error);
