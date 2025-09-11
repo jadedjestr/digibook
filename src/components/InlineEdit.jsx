@@ -26,15 +26,7 @@ const InlineEdit = ({
     fieldName === 'paidAmount' &&
     type === 'number';
 
-  // Debug logging to see what's happening
-  console.log('InlineEdit Debug - ALL CASES:', {
-    expenseCategory: expense?.category,
-    fieldName,
-    type,
-    isCreditCardPaymentAmount,
-    hasExpense: !!expense,
-    expense: expense,
-  });
+  // Debug logging removed to reduce console noise
 
   // Update editValue when value prop changes
   useEffect(() => {

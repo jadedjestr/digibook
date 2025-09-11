@@ -89,20 +89,112 @@ const CreditCardPaymentInput = ({
     onChange?.(suggestion.amount);
   };
 
-  const getInputBorderClass = () => {
-    if (!validationResult) return 'border-white/20';
-    if (!validationResult.isValid) return 'border-red-400';
-    if (validationResult.warnings.length > 0) return 'border-yellow-400';
-    return 'border-green-400';
+  // Enhanced styling function for Priority 1 improvements
+  const getEnhancedInputClass = () => {
+    let baseClass = `
+      glass-input w-full pl-10 pr-10
+      transition-all duration-300 ease-out
+      hover:border-white/30
+      hover:bg-gradient-to-r hover:from-white/5 hover:via-white/10 hover:to-white/5
+      focus:transform focus:-translate-y-0.5
+      focus:shadow-[0_10px_25px_rgba(0,0,0,0.2),0_0_0_3px_rgba(59,130,246,0.4),0_0_20px_rgba(59,130,246,0.2)]
+      focus:border-blue-400/60
+      ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+    `;
+
+    // Add contextual color coding based on validation state
+    if (validationResult) {
+      if (!validationResult.isValid) {
+        // Insufficient funds - red with pulse animation
+        baseClass +=
+          ' border-red-400 border-l-4 border-l-red-500 animate-pulse';
+      } else if (validationResult.warnings.length > 0) {
+        // Overpayment warning - yellow with subtle pulse
+        const isOverpayment = validationResult.warnings.some(
+          w =>
+            w.toLowerCase().includes('overpay') ||
+            w.toLowerCase().includes('more than')
+        );
+        if (isOverpayment) {
+          baseClass += ' border-yellow-400 border-l-4 border-l-yellow-500';
+        } else {
+          baseClass += ' border-yellow-400 border-l-4 border-l-yellow-500';
+        }
+      } else {
+        // Valid payment - green
+        baseClass += ' border-green-400 border-l-4 border-l-green-500';
+      }
+    } else {
+      baseClass += ' border-white/20';
+    }
+
+    return baseClass.trim().replace(/\s+/g, ' ');
   };
 
   const getIconComponent = () => {
     if (!validationResult) return null;
     if (!validationResult.isValid)
-      return <AlertTriangle className='text-red-400' size={16} />;
+      return <AlertTriangle className='text-red-400 animate-pulse' size={16} />;
     if (validationResult.warnings.length > 0)
       return <AlertTriangle className='text-yellow-400' size={16} />;
     return <CheckCircle className='text-green-400' size={16} />;
+  };
+
+  // Enhanced suggestion button styling for Priority 1 improvements
+  const getEnhancedSuggestionClass = suggestion => {
+    const isSelected =
+      suggestion.amount.toFixed(2) === parseFloat(inputValue || 0).toFixed(2);
+
+    let baseClass = `
+      px-4 py-2.5 rounded-xl text-sm font-medium
+      transition-all duration-200 ease-out
+      border border-transparent relative overflow-hidden
+      transform hover:scale-105 active:scale-98
+      hover:shadow-lg
+      before:content-[''] before:absolute before:top-0 before:left-[-100%]
+      before:w-full before:h-full before:bg-gradient-to-r
+      before:from-transparent before:via-white/10 before:to-transparent
+      before:transition-all before:duration-500
+      hover:before:left-[100%]
+    `;
+
+    if (suggestion.type === 'info') {
+      baseClass += ' bg-white/10 text-white/50 cursor-not-allowed';
+    } else {
+      // Enhanced button styling based on suggestion type
+      switch (suggestion.type) {
+        case 'minimum':
+          baseClass += `
+            bg-gradient-to-r from-yellow-500/20 to-yellow-600/20
+            text-yellow-300 border-yellow-500/30
+            hover:from-yellow-500/30 hover:to-yellow-600/30
+            hover:border-yellow-400/50 hover:shadow-yellow-500/20
+          `;
+          break;
+        case 'full':
+          baseClass += `
+            bg-gradient-to-r from-green-500/20 to-green-600/20
+            text-green-300 border-green-500/30
+            hover:from-green-500/30 hover:to-green-600/30
+            hover:border-green-400/50 hover:shadow-green-500/20
+          `;
+          break;
+        default:
+          baseClass += `
+            bg-gradient-to-r from-blue-500/20 to-blue-600/20
+            text-blue-300 border-blue-500/30
+            hover:from-blue-500/30 hover:to-blue-600/30
+            hover:border-blue-400/50 hover:shadow-blue-500/20
+          `;
+      }
+    }
+
+    if (isSelected) {
+      baseClass +=
+        ' ring-2 ring-blue-400/60 ring-offset-1 ring-offset-gray-900';
+    }
+
+    return baseClass.trim().replace(/\s+/g, ' ');
   };
 
   return (
@@ -123,11 +215,7 @@ const CreditCardPaymentInput = ({
             disabled={disabled}
             autoFocus={autoFocus}
             placeholder='0.00'
-            className={`
-              glass-input w-full pl-10 pr-10
-              ${getInputBorderClass()}
-              ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-            `}
+            className={getEnhancedInputClass()}
           />
           <div className='absolute right-3 top-1/2 transform -translate-y-1/2'>
             {getIconComponent()}
@@ -141,9 +229,12 @@ const CreditCardPaymentInput = ({
             {validationResult.errors.map((error, index) => (
               <div
                 key={`error-${index}`}
-                className='flex items-start space-x-2 text-red-400 text-sm'
+                className='flex items-start space-x-2 text-red-400 text-sm animate-in slide-in-from-left-2 duration-300'
               >
-                <AlertTriangle size={14} className='mt-0.5 flex-shrink-0' />
+                <AlertTriangle
+                  size={14}
+                  className='mt-0.5 flex-shrink-0 animate-pulse'
+                />
                 <span>{error}</span>
               </div>
             ))}
@@ -152,7 +243,7 @@ const CreditCardPaymentInput = ({
             {validationResult.warnings.map((warning, index) => (
               <div
                 key={`warning-${index}`}
-                className='flex items-start space-x-2 text-yellow-400 text-sm'
+                className='flex items-start space-x-2 text-yellow-400 text-sm animate-in slide-in-from-left-2 duration-300'
               >
                 <AlertTriangle size={14} className='mt-0.5 flex-shrink-0' />
                 <span>{warning}</span>
@@ -163,7 +254,7 @@ const CreditCardPaymentInput = ({
             {validationResult.paymentInfo && validationResult.isValid && (
               <button
                 onClick={() => setShowDetails(!showDetails)}
-                className='flex items-center space-x-2 text-blue-400 text-sm hover:text-blue-300 transition-colors'
+                className='flex items-center space-x-2 text-blue-400 text-sm hover:text-blue-300 transition-colors duration-200 hover:scale-105 transform'
               >
                 <Info size={14} />
                 <span>{showDetails ? 'Hide' : 'Show'} payment details</span>
@@ -174,7 +265,7 @@ const CreditCardPaymentInput = ({
 
         {/* Payment Details */}
         {showDetails && validationResult?.paymentInfo && (
-          <div className='mt-3 glass-card p-3 text-sm space-y-2'>
+          <div className='mt-3 glass-card p-3 text-sm space-y-2 animate-in slide-in-from-top-2 duration-300'>
             <div className='grid grid-cols-2 gap-2 text-white/70'>
               <div>Current Debt:</div>
               <div className='text-right font-medium text-white'>
@@ -218,20 +309,7 @@ const CreditCardPaymentInput = ({
                 key={index}
                 onClick={() => handleSuggestionClick(suggestion)}
                 disabled={suggestion.type === 'info'}
-                className={`
-                  px-3 py-2 rounded-lg text-sm font-medium transition-all
-                  ${
-                    suggestion.type === 'info'
-                      ? 'bg-white/10 text-white/50 cursor-not-allowed'
-                      : getSuggestionButtonClass(suggestion.type)
-                  }
-                  ${
-                    suggestion.amount.toFixed(2) ===
-                    parseFloat(inputValue || 0).toFixed(2)
-                      ? 'ring-2 ring-blue-400'
-                      : ''
-                  }
-                `}
+                className={getEnhancedSuggestionClass(suggestion)}
                 title={suggestion.description}
               >
                 {suggestion.label}
@@ -243,7 +321,7 @@ const CreditCardPaymentInput = ({
           {suggestions.find(
             s => s.amount.toFixed(2) === parseFloat(inputValue || 0).toFixed(2)
           ) && (
-            <div className='text-sm text-white/70 italic'>
+            <div className='text-sm text-white/70 italic animate-in fade-in duration-300'>
               {
                 suggestions.find(
                   s =>
