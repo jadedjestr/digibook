@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, DollarSign, CheckCircle, Info } from 'lucide-react';
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { logger } from '../utils/logger';
@@ -213,7 +213,6 @@ const CreditCardPaymentInput = ({
             value={inputValue}
             onChange={handleInputChange}
             disabled={disabled}
-            autoFocus={autoFocus}
             placeholder='0.00'
             className={getEnhancedInputClass()}
           />

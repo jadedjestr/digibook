@@ -44,7 +44,12 @@ export const useMemoizedCalculations = (
       (sum, expense) => sum + (expense.paidAmount || 0),
       0
     );
-    const totalRemaining = totalAmount - totalPaid;
+    // Fix: Calculate remaining per expense, not as total difference
+    // This prevents overpayments on one card from reducing remaining on other cards
+    const totalRemaining = expenses.reduce((total, expense) => {
+      const remaining = expense.amount - (expense.paidAmount || 0);
+      return total + (remaining > 0 ? remaining : 0);
+    }, 0);
 
     const result = {
       totalAmount,
