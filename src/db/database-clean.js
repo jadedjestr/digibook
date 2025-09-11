@@ -69,6 +69,25 @@ export class DigibookDBClean extends Dexie {
         '++id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
     });
+
+    // Version 4: Dual Foreign Key Architecture - Separate accountId and creditCardId
+    this.version(4).stores({
+      accounts: '++id, name, type, currentBalance, isDefault, createdAt',
+      pendingTransactions:
+        '++id, accountId, amount, category, description, createdAt',
+      fixedExpenses:
+        '++id, name, dueDate, amount, accountId, creditCardId, targetCreditCardId, category, paidAmount, status, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, recurringTemplateId, createdAt',
+      categories: '++id, name, color, icon, isDefault, createdAt',
+      creditCards:
+        '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
+      paycheckSettings: '++id, lastPaycheckDate, frequency, createdAt',
+      userPreferences: '++id, component, preferences, createdAt',
+      monthlyExpenseHistory:
+        '++id, expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
+      recurringExpenseTemplates:
+        '++id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt',
+      auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
+    });
   }
 }
 
@@ -567,8 +586,10 @@ export const dbHelpers = {
       // Use toArray() and filter instead of indexed where query to avoid DataError
       const allTemplates = await db.recurringExpenseTemplates.toArray();
       console.log('dbHelpers: Got all templates:', allTemplates);
-      
-      const result = allTemplates.filter(template => template.isActive === true);
+
+      const result = allTemplates.filter(
+        template => template.isActive === true
+      );
       console.log('dbHelpers: Filtered active templates:', result);
 
       console.log('dbHelpers: Query result:', result);
@@ -1667,6 +1688,199 @@ export const dbHelpers = {
       logger.success('Default data initialized');
     } catch (error) {
       logger.error('Error initializing default data:', error);
+    }
+  },
+
+  // ===== VERSION 4 DATABASE OPERATIONS =====
+  // New operations for dual foreign key architecture
+
+  /**
+   * Add fixed expense with V4 validation (dual foreign key)
+   */
+  async addFixedExpenseV4(expenseData) {
+    try {
+      // Import validation functions
+      const { validateExpense, sanitizeExpenseData } = await import(
+        '../utils/expenseValidation'
+      );
+
+      // Sanitize and validate the expense data
+      const sanitizedData = sanitizeExpenseData(expenseData);
+      validateExpense(sanitizedData);
+
+      const id = await db.fixedExpenses.add({
+        ...sanitizedData,
+        createdAt: new Date().toISOString(),
+      });
+
+      logger.success(`Added V4 expense: ${sanitizedData.name}`);
+      return id;
+    } catch (error) {
+      logger.error('Error adding V4 expense:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update fixed expense with V4 validation (dual foreign key)
+   */
+  async updateFixedExpenseV4(id, updates) {
+    try {
+      // Import validation functions
+      const { validateExpense, sanitizeExpenseData } = await import(
+        '../utils/expenseValidation'
+      );
+
+      // Get current expense to merge with updates
+      const currentExpense = await db.fixedExpenses.get(id);
+      if (!currentExpense) {
+        throw new Error(`Expense with ID ${id} not found`);
+      }
+
+      // Merge current data with updates and validate
+      const updatedExpense = { ...currentExpense, ...updates };
+      const sanitizedData = sanitizeExpenseData(updatedExpense);
+      validateExpense(sanitizedData);
+
+      // Only update the fields that were actually changed
+      const sanitizedUpdates = sanitizeExpenseData(updates);
+      await db.fixedExpenses.update(id, sanitizedUpdates);
+
+      logger.success(`Updated V4 expense ID: ${id}`);
+    } catch (error) {
+      logger.error('Error updating V4 expense:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get fixed expense by ID (V4 compatible)
+   */
+  async getFixedExpenseV4(id) {
+    try {
+      const expense = await db.fixedExpenses.get(id);
+      if (!expense) {
+        logger.warn(`Expense with ID ${id} not found`);
+        return null;
+      }
+
+      return expense;
+    } catch (error) {
+      logger.error('Error getting V4 expense:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get all fixed expenses (V4 compatible)
+   */
+  async getFixedExpensesV4() {
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+      return expenses;
+    } catch (error) {
+      logger.error('Error getting V4 expenses:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Validate expense payment source references
+   * Ensures that accountId and creditCardId reference valid records
+   */
+  async validateExpenseReferences(expense) {
+    try {
+      if (expense.accountId) {
+        const account = await db.accounts.get(expense.accountId);
+        if (!account) {
+          throw new Error(`Account with ID ${expense.accountId} not found`);
+        }
+      }
+
+      if (expense.creditCardId) {
+        const creditCard = await db.creditCards.get(expense.creditCardId);
+        if (!creditCard) {
+          throw new Error(
+            `Credit card with ID ${expense.creditCardId} not found`
+          );
+        }
+      }
+
+      if (expense.targetCreditCardId) {
+        const targetCreditCard = await db.creditCards.get(
+          expense.targetCreditCardId
+        );
+        if (!targetCreditCard) {
+          throw new Error(
+            `Target credit card with ID ${expense.targetCreditCardId} not found`
+          );
+        }
+      }
+
+      return true;
+    } catch (error) {
+      logger.error('Error validating expense references:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Migrate V3 expense to V4 format
+   * Converts old accountId format to new dual foreign key format
+   */
+  async migrateExpenseToV4(expenseId) {
+    try {
+      const expense = await db.fixedExpenses.get(expenseId);
+      if (!expense) {
+        throw new Error(`Expense with ID ${expenseId} not found`);
+      }
+
+      // Check if accountId is in old format (string with cc- prefix)
+      if (
+        typeof expense.accountId === 'string' &&
+        expense.accountId.startsWith('cc-')
+      ) {
+        // Convert to new format
+        const creditCardId = parseInt(expense.accountId.slice(3));
+
+        await this.updateFixedExpenseV4(expenseId, {
+          accountId: null,
+          creditCardId: creditCardId,
+        });
+
+        logger.success(`Migrated expense ${expenseId} from V3 to V4 format`);
+      }
+
+      return true;
+    } catch (error) {
+      logger.error('Error migrating expense to V4:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Bulk migrate all expenses from V3 to V4 format
+   */
+  async migrateAllExpensesToV4() {
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+      let migratedCount = 0;
+
+      for (const expense of expenses) {
+        if (
+          typeof expense.accountId === 'string' &&
+          expense.accountId.startsWith('cc-')
+        ) {
+          await this.migrateExpenseToV4(expense.id);
+          migratedCount++;
+        }
+      }
+
+      logger.success(`Migrated ${migratedCount} expenses from V3 to V4 format`);
+      return migratedCount;
+    } catch (error) {
+      logger.error('Error bulk migrating expenses to V4:', error);
+      throw error;
     }
   },
 };

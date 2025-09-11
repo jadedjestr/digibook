@@ -24,10 +24,10 @@ For all other expenses, only `accountId` is used (can be checking, savings, or c
 
 ## Database Schema
 
-### Version 3 Schema Changes
+### Version 4 Schema Changes (Current)
 
 ```sql
--- Fixed Expenses Table (Version 3)
+-- Fixed Expenses Table (Version 4 - Dual Foreign Key Architecture)
 fixedExpenses: {
   id: auto-increment,
   name: string,
@@ -120,9 +120,15 @@ if (expense.category === 'Credit Card Payment') {
 - **Smart Labels**: "Pay FROM" vs "Pay TO" for credit card payments
 - **Validation**: Ensures both fields are filled for credit card payments
 
-### AccountSelector.jsx
+### PaymentSourceSelector.jsx (New V4 Architecture)
+- **Unified Interface**: Single component for all payment source selection
+- **Type Safety**: Uses payment source objects with proper validation
+- **Smart Filtering**: Automatically restricts options based on expense type
+- **Glass Design**: Consistent with app's modern design system
+
+### AccountSelector.jsx (Legacy)
 - **Intelligent Filtering**: Restricts options based on `isCreditCardPayment` prop
-- **Consistent Logic**: Same behavior in desktop tables and mobile cards
+- **Status**: Still used in CreditCardDeletionModal, will be migrated in future updates
 
 ### DraggableExpenseRow.jsx & MobileExpenseCard.jsx
 - **Category Detection**: `isCreditCardPayment={expense.category === 'Credit Card Payment'}`

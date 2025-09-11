@@ -1,12 +1,12 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Check, Copy, Trash2, RotateCcw } from 'lucide-react';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
-import AccountSelector from './AccountSelector';
-import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
+import { createPaymentSource } from '../types/paymentSource';
 import InlineEdit from './InlineEdit';
+import PaymentSourceSelector from './PaymentSourceSelector';
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
 
@@ -23,6 +23,19 @@ const DraggableExpenseRow = ({
   accounts,
   creditCards = [],
 }) => {
+  // Create payment source from expense for display
+  const currentPaymentSource = useMemo(() => {
+    return createPaymentSource.fromExpense(expense);
+  }, [expense]);
+
+  // Handle payment source changes
+  const handlePaymentSourceChange = newPaymentSource => {
+    onUpdateExpense(expense.id, {
+      accountId: newPaymentSource.accountId,
+      creditCardId: newPaymentSource.creditCardId,
+    });
+  };
+
   const {
     attributes,
     listeners,
@@ -166,30 +179,14 @@ const DraggableExpenseRow = ({
         </td>
         <td>
           <div className='relative'>
-            <AccountSelectorErrorBoundary>
-              <AccountSelector
-                value={expense.accountId}
-                onSave={accountId => {
-                  console.log(
-                    `DraggableExpenseRow: Account changed for expense ${expense.id} from ${expense.accountId} to ${accountId}`
-                  );
-                  console.log(
-                    `DraggableExpenseRow: Calling onUpdateExpense with accountId: ${accountId}`
-                  );
-                  onUpdateExpense(expense.id, { accountId });
-                }}
-                accounts={accounts}
-                creditCards={creditCards}
-                isCreditCardPayment={
-                  expense.category === 'Credit Card Payment'
-                }
-              />
-              {/* Debug logging for Spotify expense */}
-              {expense.name === 'Spotify' &&
-                console.log(
-                  `🔍 DraggableExpenseRow: Passing value ${expense.accountId} to AccountSelector for Spotify expense`
-                )}
-            </AccountSelectorErrorBoundary>
+            <PaymentSourceSelector
+              value={currentPaymentSource}
+              onChange={handlePaymentSourceChange}
+              accounts={accounts}
+              creditCards={creditCards}
+              isCreditCardPayment={expense.category === 'Credit Card Payment'}
+              placeholder='Select payment source'
+            />
             {isUpdating && (
               <div className='absolute inset-0 flex items-center justify-center bg-blue-500/20 rounded'>
                 <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400' />

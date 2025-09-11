@@ -8,15 +8,16 @@ import {
   DollarSign,
   Building2,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 
 import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
+import { createPaymentSource } from '../types/paymentSource';
 
-import AccountSelector from './AccountSelector';
-import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
+import PaymentSourceSelector from './PaymentSourceSelector';
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
+import CreditCardPaymentInput from './CreditCardPaymentInput';
 
 const MobileExpenseCard = ({
   expense,
@@ -33,17 +34,61 @@ const MobileExpenseCard = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState(null);
+
+  // Create payment source from expense for display
+  const currentPaymentSource = useMemo(() => {
+    return createPaymentSource.fromExpense(expense);
+  }, [expense]);
+
+  // Get payment source display info
+  const paymentSourceInfo = useMemo(() => {
+    if (expense.accountId) {
+      const account = accounts.find(acc => acc.id === expense.accountId);
+      return {
+        name: account?.name || 'Unknown Account',
+        type: 'account',
+      };
+    } else if (expense.creditCardId) {
+      const creditCard = creditCards.find(
+        card => card.id === expense.creditCardId
+      );
+      return {
+        name: creditCard?.name || 'Unknown Card',
+        type: 'creditCard',
+      };
+    }
+    return {
+      name: 'No Payment Source',
+      type: 'none',
+    };
+  }, [expense, accounts, creditCards]);
   const [editValue, setEditValue] = useState('');
 
   const handleEdit = (field, currentValue) => {
     setEditingField(field);
-    setEditValue(currentValue);
+    if (field === 'paymentSource') {
+      setEditValue(currentPaymentSource);
+    } else {
+      setEditValue(currentValue);
+    }
     setIsEditing(true);
   };
 
   const handleSave = async () => {
     if (editingField && editValue !== undefined) {
-      const updateData = { [editingField]: editValue };
+      let updateData;
+
+      if (editingField === 'paymentSource') {
+        // Handle payment source updates
+        updateData = {
+          accountId: editValue.accountId,
+          creditCardId: editValue.creditCardId,
+        };
+      } else {
+        // Handle regular field updates
+        updateData = { [editingField]: editValue };
+      }
+
       await onUpdateExpense(expense.id, updateData);
     }
     setIsEditing(false);
@@ -211,26 +256,29 @@ const MobileExpenseCard = ({
           </div>
         </div>
 
-        {/* Account */}
+        {/* Payment Source */}
         <div className='flex items-center justify-between p-3 bg-white/5 rounded-lg'>
           <div className='flex items-center space-x-2'>
             <Building2 size={16} className='text-primary' />
-            <span className='text-sm font-medium text-secondary'>Account</span>
+            <span className='text-sm font-medium text-secondary'>
+              Payment Source
+            </span>
           </div>
           <div className='text-right'>
-            {isEditing && editingField === 'accountId' ? (
+            {isEditing && editingField === 'paymentSource' ? (
               <div className='flex items-center space-x-2'>
-                <AccountSelectorErrorBoundary>
-                  <AccountSelector
+                <div className='min-w-40'>
+                  <PaymentSourceSelector
                     value={editValue}
-                    onSave={setEditValue}
+                    onChange={setEditValue}
                     accounts={accounts}
                     creditCards={creditCards}
                     isCreditCardPayment={
                       expense.category === 'Credit Card Payment'
                     }
+                    placeholder='Select payment source'
                   />
-                </AccountSelectorErrorBoundary>
+                </div>
                 <button
                   onClick={handleSave}
                   className='p-1 text-green-400 hover:text-green-300'
@@ -246,10 +294,12 @@ const MobileExpenseCard = ({
               </div>
             ) : (
               <button
-                onClick={() => handleEdit('accountId', expense.accountId)}
+                onClick={() =>
+                  handleEdit('paymentSource', currentPaymentSource)
+                }
                 className='text-sm font-medium text-primary hover:text-white transition-colors'
               >
-                {account?.name || 'No Account'}
+                {paymentSourceInfo.name}
               </button>
             )}
           </div>
@@ -265,28 +315,68 @@ const MobileExpenseCard = ({
           </div>
           <div className='text-right'>
             {isEditing && editingField === 'paidAmount' ? (
-              <div className='flex items-center space-x-2'>
-                <input
-                  type='number'
-                  step='0.01'
-                  value={editValue}
-                  onChange={e => setEditValue(e.target.value)}
-                  className='glass-input w-24 text-right'
-                  autoFocus
-                />
-                <button
-                  onClick={handleSave}
-                  className='p-1 text-green-400 hover:text-green-300'
-                >
-                  <Check size={14} />
-                </button>
-                <button
-                  onClick={handleCancel}
-                  className='p-1 text-red-400 hover:text-red-300'
-                >
-                  <X size={14} />
-                </button>
-              </div>
+              (() => {
+                console.log('MobileExpenseCard Debug:', {
+                  expenseCategory: expense.category,
+                  editingField,
+                  isCreditCardPayment:
+                    expense.category === 'Credit Card Payment',
+                });
+                return expense.category === 'Credit Card Payment';
+              })() ? (
+                <div className='w-full max-w-md'>
+                  <CreditCardPaymentInput
+                    expense={expense}
+                    value={parseFloat(editValue) || 0}
+                    onChange={value => setEditValue(value.toString())}
+                    onValidationChange={result => {
+                      // Store validation result for save button state
+                      if (result && !result.isValid) {
+                        // Visual feedback could be added here
+                      }
+                    }}
+                    className='w-full'
+                    autoFocus={true}
+                  />
+                  <div className='flex items-center justify-end space-x-2 mt-2'>
+                    <button
+                      onClick={handleSave}
+                      className='p-1 text-green-400 hover:text-green-300'
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      onClick={handleCancel}
+                      className='p-1 text-red-400 hover:text-red-300'
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className='flex items-center space-x-2'>
+                  <input
+                    type='number'
+                    step='0.01'
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    className='glass-input w-24 text-right'
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSave}
+                    className='p-1 text-green-400 hover:text-green-300'
+                  >
+                    <Check size={14} />
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    className='p-1 text-red-400 hover:text-red-300'
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )
             ) : (
               <button
                 onClick={() => handleEdit('paidAmount', expense.paidAmount)}

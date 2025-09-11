@@ -41,15 +41,8 @@ const AccountSelector = ({
   useEffect(() => {
     if (!isOpen) {
       setEditValue(value);
-
-      // Debug logging for Spotify expense
-      if (value === 1) {
-        console.log(
-          `🔍 AccountSelector useEffect: value prop changed to ${value}, setting editValue to ${value}`
-        );
-      }
     }
-  }, [value, isOpen]);
+  }, [value, isOpen, editValue, isCreditCardPayment, accounts, creditCards]);
 
   // Cleanup event listeners and portal on unmount
   useEffect(() => {
@@ -117,29 +110,6 @@ const AccountSelector = ({
       editValue,
       isCreditCardPayment
     );
-
-    // Debug logging for account selection
-    if (editValue === 1) {
-      console.log('🔍 AccountSelector debug for value 1:', {
-        editValue,
-        isCreditCardPayment,
-        allAccounts: allAccounts.map(acc => ({
-          id: acc.id,
-          originalId: acc.originalId,
-          name: acc.name,
-          type: acc.type,
-        })),
-        found: found
-          ? {
-              id: found.id,
-              originalId: found.originalId,
-              name: found.name,
-              type: found.type,
-            }
-          : null,
-        foundAccountName: found ? found.name : 'NOT FOUND',
-      });
-    }
 
     return found;
   }, [allAccounts, editValue, isCreditCardPayment]);
@@ -226,7 +196,11 @@ const AccountSelector = ({
                     ? 'bg-blue-500/20 text-blue-300 cursor-default'
                     : 'text-white hover:bg-white/20 cursor-pointer'
                 }`}
-                disabled={isAccountSelected(account, editValue, isCreditCardPayment)}
+                disabled={isAccountSelected(
+                  account,
+                  editValue,
+                  isCreditCardPayment
+                )}
               >
                 <div className='flex items-center space-x-3'>
                   {getAccountIcon(account.type)}
@@ -366,7 +340,11 @@ const AccountSelector = ({
                     ? 'bg-blue-500/20 text-blue-300 cursor-default'
                     : 'text-white hover:bg-white/20 cursor-pointer'
                 }`}
-                disabled={isAccountSelected(account, editValue, isCreditCardPayment)}
+                disabled={isAccountSelected(
+                  account,
+                  editValue,
+                  isCreditCardPayment
+                )}
               >
                 <div className='flex items-center space-x-3'>
                   {getAccountIcon(account.type)}

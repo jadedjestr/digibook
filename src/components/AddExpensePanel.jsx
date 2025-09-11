@@ -5,9 +5,13 @@ import { createPortal } from 'react-dom';
 import { dbHelpers } from '../db/database-clean';
 import { recurringExpenseService } from '../services/recurringExpenseService';
 import { logger } from '../utils/logger';
+import { createPaymentSource } from '../types/paymentSource';
+import {
+  validatePaymentSource,
+  validateCreditCardPayment,
+} from '../utils/expenseValidation';
 
-import AccountSelector from './AccountSelector';
-import AccountSelectorErrorBoundary from './AccountSelectorErrorBoundary';
+import PaymentSourceSelector from './PaymentSourceSelector';
 import RecurringExpenseModal from './RecurringExpenseModal';
 
 const AddExpensePanel = ({
@@ -21,7 +25,7 @@ const AddExpensePanel = ({
     name: '',
     dueDate: '',
     amount: '',
-    accountId: '',
+    paymentSource: null, // New structure: { type, accountId, creditCardId }
     category: '',
     targetCreditCardId: '', // For credit card payments only
   });
@@ -127,7 +131,7 @@ const AddExpensePanel = ({
         name: '',
         dueDate: '',
         amount: '',
-        accountId: '',
+        paymentSource: null,
         category: '',
       });
       setErrors({});
@@ -150,7 +154,7 @@ const AddExpensePanel = ({
       name: '',
       dueDate: '',
       amount: '',
-      accountId: '',
+      paymentSource: null,
       category: '',
       targetCreditCardId: '',
     });
@@ -174,7 +178,9 @@ const AddExpensePanel = ({
         name: formData.name,
         dueDate: formData.dueDate,
         amount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
-        accountId: formData.accountId,
+        // New payment source structure
+        accountId: formData.paymentSource?.accountId || null,
+        creditCardId: formData.paymentSource?.creditCardId || null,
         category: formData.category,
         status: 'Unpaid',
         paidAmount: 0,
@@ -191,7 +197,7 @@ const AddExpensePanel = ({
         intervalValue: recurringData.intervalValue,
         startDate: recurringData.startDate,
         category: formData.category,
-        accountId: formData.accountId,
+        accountId: formData.paymentSource?.accountId || null,
         notes: recurringData.notes,
         isVariableAmount: recurringData.isVariableAmount,
       };
@@ -218,16 +224,38 @@ const AddExpensePanel = ({
   };
 
   const handleInputChange = (field, value) => {
-    // Simplified handling for amount field
-    if (field === 'amount') {
-      setFormData(prev => ({ ...prev, [field]: value }));
+    // Handle category change specially - need to reset payment source if switching TO credit card payment
+    if (field === 'category') {
+      const wasCreditCardPayment = formData.category === 'Credit Card Payment';
+      const willBeCreditCardPayment = value === 'Credit Card Payment';
+
+      // Only reset payment source when switching TO "Credit Card Payment"
+      // When switching away from it, keep the existing selection since it's now valid for regular expenses
+      if (!wasCreditCardPayment && willBeCreditCardPayment) {
+        // Switching TO credit card payment - reset payment source because current selection might be invalid
+        setFormData(prev => ({
+          ...prev,
+          [field]: value,
+          paymentSource: null, // Reset payment source - need to pick funding account
+          targetCreditCardId: '', // Reset target credit card
+        }));
+      } else {
+        // Regular category change or switching away from credit card payment - keep selection
+        setFormData(prev => ({ ...prev, [field]: value }));
+      }
     } else {
+      // Simplified handling for other fields
       setFormData(prev => ({ ...prev, [field]: value }));
     }
 
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
+  };
+
+  // Handle payment source changes
+  const handlePaymentSourceChange = paymentSource => {
+    setFormData(prev => ({ ...prev, paymentSource }));
   };
 
   const validateForm = () => {
@@ -243,12 +271,22 @@ const AddExpensePanel = ({
       newErrors.amount = 'Amount must be greater than 0';
     }
 
-    if (!formData.accountId) newErrors.accountId = 'Account is required';
+    // Payment source validation
+    if (!formData.paymentSource) {
+      newErrors.paymentSource = 'Payment source is required';
+    }
+
     if (!formData.category) newErrors.category = 'Category is required';
 
-    // For credit card payments, validate target credit card
-    if (isCreditCardPayment && !formData.targetCreditCardId) {
-      newErrors.targetCreditCardId = 'Target credit card is required';
+    // For credit card payments, validate target credit card and funding source
+    if (isCreditCardPayment) {
+      if (!formData.targetCreditCardId) {
+        newErrors.targetCreditCardId = 'Target credit card is required';
+      }
+      if (formData.paymentSource && formData.paymentSource.type !== 'account') {
+        newErrors.paymentSource =
+          'Credit card payments must be funded from checking/savings account';
+      }
     }
 
     setErrors(newErrors);
@@ -271,7 +309,9 @@ const AddExpensePanel = ({
         name: formData.name,
         dueDate: formData.dueDate,
         amount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
-        accountId: formData.accountId, // Keep as-is since it's already the correct ID
+        // New payment source structure
+        accountId: formData.paymentSource?.accountId || null,
+        creditCardId: formData.paymentSource?.creditCardId || null,
         category: formData.category,
         paidAmount: 0,
         status: 'pending',
@@ -280,7 +320,13 @@ const AddExpensePanel = ({
         }),
       };
 
-      const newExpenseId = await dbHelpers.addFixedExpense(expenseData);
+      // Validate the expense data with our new validation functions
+      validatePaymentSource(expenseData);
+      if (isCreditCardPayment) {
+        validateCreditCardPayment(expenseData);
+      }
+
+      const newExpenseId = await dbHelpers.addFixedExpenseV4(expenseData);
 
       // Note: We don't update credit card balances when creating expenses
       // Credit card balances should only be updated when expenses are actually marked as paid
@@ -296,6 +342,23 @@ const AddExpensePanel = ({
       setIsSaving(false);
     }
   };
+
+  // Debug logging for account selection issues
+  if (formData.name === 'Claude') {
+    console.log('🔍 AddExpensePanel Debug for Claude expense:', {
+      category: formData.category,
+      isCreditCardPayment,
+      accountId: formData.accountId,
+      targetCreditCardId: formData.targetCreditCardId,
+      accountsCount: accounts?.length,
+      creditCardsCount: creditCards?.length,
+      shouldShowCreditCardSelector: isCreditCardPayment,
+      accountSelectorMode: isCreditCardPayment
+        ? 'checking/savings only'
+        : 'all accounts',
+      resetBehavior: 'Only reset when switching TO Credit Card Payment',
+    });
+  }
 
   const getAccountIcon = accountType => {
     switch (accountType?.toLowerCase()) {
@@ -410,26 +473,44 @@ const AddExpensePanel = ({
             )}
           </div>
 
-          {/* Account Selector - Conditional labels based on payment type */}
+          {/* Category Selection - REQUIRED FIRST */}
           <div>
             <label className='block text-sm font-medium text-white mb-2'>
-              {isCreditCardPayment ? 'Pay FROM (Funding Account)' : 'Account'}
+              Category <span className='text-red-400'>*</span>
             </label>
-            <AccountSelectorErrorBoundary>
-              <AccountSelector
-                value={formData.accountId}
-                onSave={accountId => {
-                  handleInputChange('accountId', accountId);
-                }}
-                accounts={accounts}
-                creditCards={creditCards}
-                isCreditCardPayment={isCreditCardPayment}
-              />
-            </AccountSelectorErrorBoundary>
-            {errors.accountId && (
-              <p className='mt-1 text-sm text-red-400'>{errors.accountId}</p>
+            <select
+              value={formData.category}
+              onChange={e => handleInputChange('category', e.target.value)}
+              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
+            >
+              <option value=''>Select category first...</option>
+              {categories.map(category => (
+                <option key={category.id} value={category.name}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            {errors.category && (
+              <p className='mt-1 text-sm text-red-400'>{errors.category}</p>
             )}
           </div>
+
+          {/* Payment Source Selector - Only show after category is selected */}
+          {formData.category && (
+            <PaymentSourceSelector
+              value={formData.paymentSource}
+              onChange={handlePaymentSourceChange}
+              accounts={accounts}
+              creditCards={creditCards}
+              isCreditCardPayment={isCreditCardPayment}
+              label={
+                isCreditCardPayment
+                  ? 'Pay FROM (Funding Account)'
+                  : 'Payment Source'
+              }
+              error={errors.paymentSource}
+            />
+          )}
 
           {/* Target Credit Card Selector - Only for Credit Card Payments */}
           {isCreditCardPayment && (
@@ -459,28 +540,6 @@ const AddExpensePanel = ({
               )}
             </div>
           )}
-
-          {/* Category Selector */}
-          <div>
-            <label className='block text-sm font-medium text-white mb-2'>
-              Category
-            </label>
-            <select
-              value={formData.category}
-              onChange={e => handleInputChange('category', e.target.value)}
-              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
-            >
-              <option value=''>Select category</option>
-              {categories.map(category => (
-                <option key={category.id} value={category.name}>
-                  {category.icon} {category.name}
-                </option>
-              ))}
-            </select>
-            {errors.category && (
-              <p className='mt-1 text-sm text-red-400'>{errors.category}</p>
-            )}
-          </div>
         </div>
 
         {/* Footer */}

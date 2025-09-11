@@ -1,5 +1,11 @@
-import { Edit, Trash2, AlertTriangle } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import { Edit, Trash2, AlertTriangle, Plus, Minus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+
+import {
+  formatCreditCardBalance,
+  calculateAvailableCredit,
+  getMinimumPaymentStatus,
+} from '../utils/creditCardUtils';
 
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
@@ -14,6 +20,20 @@ const EnhancedCreditCard = ({
   const [isVisible, setIsVisible] = useState(false);
   const [utilizationWidth, setUtilizationWidth] = useState(0);
 
+  // Calculate derived values using new utilities
+  const balanceInfo = formatCreditCardBalance(card.balance);
+  const creditInfo = calculateAvailableCredit(card.balance, card.creditLimit);
+  const minimumPaymentInfo = getMinimumPaymentStatus(
+    card.balance,
+    card.minimumPayment || 0
+  );
+  const monthlyInterest =
+    (Math.max(card.balance, 0) * (card.interestRate / 100)) / 12;
+  const daysUntilDue = card.daysUntilDue || 0;
+
+  // Use creditInfo.utilization instead of undefined utilization variable
+  const utilization = creditInfo.utilization;
+
   useEffect(() => {
     // Staggered animation for card entry
     const visibilityTimer = setTimeout(() => setIsVisible(true), index * 100);
@@ -21,7 +41,7 @@ const EnhancedCreditCard = ({
     // Animate utilization bar after card is visible
     const barTimer = setTimeout(
       () => {
-        setUtilizationWidth(card.utilization);
+        setUtilizationWidth(creditInfo.utilization);
       },
       index * 100 + 500
     );
@@ -30,14 +50,7 @@ const EnhancedCreditCard = ({
       clearTimeout(visibilityTimer);
       clearTimeout(barTimer);
     };
-  }, [index, card.utilization]);
-
-  // Calculate derived values
-  const utilization =
-    card.utilization || (card.balance / card.creditLimit) * 100;
-  const availableCredit = card.creditLimit - card.balance;
-  const monthlyInterest = (card.balance * (card.interestRate / 100)) / 12;
-  const daysUntilDue = card.daysUntilDue || 0;
+  }, [index, creditInfo.utilization]);
 
   // Status badge logic
   const getUtilizationStatus = percentage => {
@@ -97,24 +110,52 @@ const EnhancedCreditCard = ({
         isVisible ? 'slide-in-up' : 'opacity-0'
       }`}
       style={{
-        '--utilization-percentage': `${utilization}%`,
+        '--utilization-percentage': `${creditInfo.utilization}%`,
       }}
     >
       {/* Header Section */}
       <div className='credit-card-header'>
         <div>
           <h3 className='credit-card-title'>{card.name}</h3>
-          <p className='credit-card-balance'>
-            <PrivacyWrapper>{formatCurrency(card.balance)}</PrivacyWrapper>
-          </p>
+          <div className='credit-card-balance'>
+            <div
+              className={`flex items-center space-x-2 ${balanceInfo.className}`}
+            >
+              {balanceInfo.isCredit ? (
+                <Plus size={16} className='text-blue-400' />
+              ) : balanceInfo.isZero ? null : (
+                <Minus size={16} className='text-yellow-400' />
+              )}
+              <PrivacyWrapper>
+                <span className='font-bold'>{balanceInfo.formattedAmount}</span>
+              </PrivacyWrapper>
+              <span className='text-sm opacity-75'>
+                {balanceInfo.isCredit
+                  ? 'Credit'
+                  : balanceInfo.isZero
+                    ? 'Paid Off'
+                    : 'Debt'}
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className='credit-card-actions'>
           <div className='credit-card-badges'>
             <StatusBadge
-              status={getUtilizationStatus(utilization)}
+              status={
+                creditInfo.utilizationLevel === 'none'
+                  ? 'No Usage'
+                  : getUtilizationStatus(creditInfo.utilization)
+              }
               variant='credit-card'
             />
+            {balanceInfo.isCredit && (
+              <StatusBadge
+                status={balanceInfo.statusText}
+                variant='credit-card'
+              />
+            )}
             {getDueDateStatus(daysUntilDue) && (
               <StatusBadge
                 status={getDueDateStatus(daysUntilDue)}
@@ -153,7 +194,7 @@ const EnhancedCreditCard = ({
         <div className='credit-info-item'>
           <div className='credit-info-label'>Available Credit</div>
           <div className='credit-info-value'>
-            <PrivacyWrapper>{formatCurrency(availableCredit)}</PrivacyWrapper>
+            <PrivacyWrapper>{creditInfo.formattedAvailable}</PrivacyWrapper>
           </div>
         </div>
         <div className='credit-info-item'>

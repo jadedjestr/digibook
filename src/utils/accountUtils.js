@@ -29,13 +29,8 @@ export const createAccountMapping = (
       currentBalance: card.balance || 0,
       name: card.name || 'Unknown Card',
 
-      // Create unique ID by prefixing with 'cc-' to avoid conflicts with regular accounts
-      uniqueId: `cc-${card.id}`,
-
-      // Override the id to use the unique ID to prevent conflicts
-      id: `cc-${card.id}`,
-
-      // Store the original ID for database operations
+      // FIXED: Keep original ID for proper database operations
+      // Don't override the ID - let credit cards keep their real IDs
       originalId: card.id,
     })),
   ];
@@ -67,34 +62,22 @@ export const findSelectedAccount = (
     );
   }
 
-  // For regular expenses: prioritize regular accounts over credit cards
-  // This prevents credit cards from being selected when user wants a regular account
-  const regularAccount = allAccounts.find(
-    account => account.type === 'account' && String(account.id) === valueStr
-  );
-
-  if (regularAccount) {
-    return regularAccount;
-  }
-
-  // If no regular account found, look for credit card
-  return allAccounts.find(
-    account =>
-      account.type === 'creditCard' && String(account.originalId) === valueStr
-  );
+  // For regular expenses: find account by ID (works for both regular accounts and credit cards)
+  return allAccounts.find(account => String(account.id) === valueStr);
 };
 
 /**
  * Gets the correct account ID to save to the database
  * @param {Object} account - The account object
- * @returns {number|string} The ID to save (originalId for credit cards, id for regular accounts)
+ * @returns {number|string} The ID to save (account.id for both regular accounts and credit cards)
  */
 export const getAccountIdToSave = account => {
   if (!account) {
     return null;
   }
 
-  return account.type === 'creditCard' ? account.originalId : account.id;
+  // FIXED: Since we no longer override credit card IDs, just use account.id for all types
+  return account.id;
 };
 
 /**
@@ -121,9 +104,7 @@ export const isAccountSelected = (
     return account.type === 'account' && String(account.id) === currentValueStr;
   }
 
-  if (account.type === 'creditCard') {
-    return String(account.originalId) === currentValueStr;
-  }
+  // FIXED: Use account.id for all account types (both regular accounts and credit cards)
   return String(account.id) === currentValueStr;
 };
 

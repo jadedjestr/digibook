@@ -1,9 +1,14 @@
 import { dbHelpers } from '../db/database-clean';
 import { secureDataHandling } from '../utils/crypto';
 import { logger } from '../utils/logger';
+import {
+  validatePaymentSource,
+  validateCreditCardPayment,
+  sanitizeExpenseData,
+} from '../utils/expenseValidation';
 
 // Current data format version
-const CURRENT_DATA_VERSION = 2; // Updated to support recurring expense templates
+const CURRENT_DATA_VERSION = 4; // Updated to support dual foreign key architecture
 
 class DataManager {
   constructor() {
@@ -856,5 +861,192 @@ class BackupManager {
     }
   }
 }
+
+/**
+ * Validation and conversion utilities for Version 4 data format
+ * These functions ensure data integrity during import/export operations
+ */
+
+/**
+ * Validate and sanitize expense data for V4 format
+ * Ensures expenses follow dual foreign key architecture constraints
+ *
+ * @param {Object} expense - Raw expense data
+ * @returns {Object} Validated and sanitized expense data
+ */
+export const validateExpenseDataV4 = expense => {
+  try {
+    // Sanitize the data first (handles type conversions, null values)
+    const sanitizedExpense = sanitizeExpenseData(expense);
+
+    // Validate payment source constraints
+    validatePaymentSource(sanitizedExpense);
+
+    // Validate credit card payment specific rules
+    if (sanitizedExpense.category === 'Credit Card Payment') {
+      validateCreditCardPayment(sanitizedExpense);
+    }
+
+    logger.debug(`Validated expense: ${sanitizedExpense.name}`);
+    return sanitizedExpense;
+  } catch (error) {
+    logger.warn(
+      `Expense validation failed for "${expense.name || 'Unknown'}": ${error.message}`
+    );
+
+    // Attempt to fix common issues
+    return fixCommonExpenseIssues(expense);
+  }
+};
+
+/**
+ * Convert V3 expense format to V4 format
+ * Handles migration from old accountId string format to new dual foreign key format
+ *
+ * @param {Object} v3Expense - Expense in V3 format
+ * @returns {Object} Expense in V4 format
+ */
+export const convertV3ToV4Expense = v3Expense => {
+  const v4Expense = { ...v3Expense };
+
+  // Check if accountId is in old V3 format (string with cc- prefix)
+  if (
+    typeof v3Expense.accountId === 'string' &&
+    v3Expense.accountId.startsWith('cc-')
+  ) {
+    // Convert cc-1 → creditCardId: 1, accountId: null
+    v4Expense.creditCardId = parseInt(v3Expense.accountId.slice(3));
+    v4Expense.accountId = null;
+
+    logger.debug(
+      `Converted V3 expense "${v4Expense.name}" from credit card format`
+    );
+  }
+
+  // Ensure V4 format compliance
+  return validateExpenseDataV4(v4Expense);
+};
+
+/**
+ * Fix common expense data issues during import
+ * Attempts to repair expenses that don't meet V4 constraints
+ *
+ * @param {Object} expense - Problematic expense data
+ * @returns {Object} Fixed expense data
+ */
+export const fixCommonExpenseIssues = expense => {
+  const fixedExpense = { ...expense };
+
+  // Issue 1: Both accountId and creditCardId are set
+  if (fixedExpense.accountId && fixedExpense.creditCardId) {
+    logger.warn(
+      `Expense "${fixedExpense.name}" has both payment sources - keeping accountId, removing creditCardId`
+    );
+    fixedExpense.creditCardId = null;
+  }
+
+  // Issue 2: No payment source specified
+  if (!fixedExpense.accountId && !fixedExpense.creditCardId) {
+    logger.warn(
+      `Expense "${fixedExpense.name}" has no payment source - setting default account`
+    );
+    fixedExpense.accountId = 1; // Default to first account
+    fixedExpense.creditCardId = null;
+  }
+
+  // Issue 3: Credit card payment missing required fields
+  if (fixedExpense.category === 'Credit Card Payment') {
+    if (!fixedExpense.accountId) {
+      logger.warn(
+        `Credit card payment "${fixedExpense.name}" missing funding account - setting default`
+      );
+      fixedExpense.accountId = 1;
+    }
+    if (!fixedExpense.targetCreditCardId) {
+      logger.warn(
+        `Credit card payment "${fixedExpense.name}" missing target credit card - setting default`
+      );
+      fixedExpense.targetCreditCardId = 1;
+    }
+    if (fixedExpense.creditCardId) {
+      logger.warn(
+        `Credit card payment "${fixedExpense.name}" has creditCardId - removing (use targetCreditCardId)`
+      );
+      fixedExpense.creditCardId = null;
+    }
+  }
+
+  // Issue 4: Invalid ID types
+  if (fixedExpense.accountId && typeof fixedExpense.accountId !== 'number') {
+    fixedExpense.accountId = parseInt(fixedExpense.accountId) || null;
+  }
+  if (
+    fixedExpense.creditCardId &&
+    typeof fixedExpense.creditCardId !== 'number'
+  ) {
+    fixedExpense.creditCardId = parseInt(fixedExpense.creditCardId) || null;
+  }
+  if (
+    fixedExpense.targetCreditCardId &&
+    typeof fixedExpense.targetCreditCardId !== 'number'
+  ) {
+    fixedExpense.targetCreditCardId =
+      parseInt(fixedExpense.targetCreditCardId) || null;
+  }
+
+  logger.debug(`Fixed expense data issues for: ${fixedExpense.name}`);
+  return fixedExpense;
+};
+
+/**
+ * Validate imported data for V4 format compliance
+ * Checks all data types and applies fixes as needed
+ *
+ * @param {Object} importedData - Full imported data object
+ * @returns {Object} Validated and fixed data
+ */
+export const validateImportedDataV4 = importedData => {
+  const validatedData = { ...importedData };
+
+  // Validate and fix expenses
+  if (
+    validatedData.fixedExpenses &&
+    Array.isArray(validatedData.fixedExpenses)
+  ) {
+    validatedData.fixedExpenses = validatedData.fixedExpenses.map(
+      (expense, index) => {
+        try {
+          // Try V4 validation first
+          return validateExpenseDataV4(expense);
+        } catch (error) {
+          logger.warn(
+            `Expense ${index + 1} failed V4 validation, attempting V3→V4 conversion`
+          );
+          try {
+            // Try V3→V4 conversion
+            return convertV3ToV4Expense(expense);
+          } catch (conversionError) {
+            logger.error(
+              `Failed to convert expense ${index + 1}:`,
+              conversionError
+            );
+            // Return the expense with basic fixes applied
+            return fixCommonExpenseIssues(expense);
+          }
+        }
+      }
+    );
+
+    logger.success(
+      `Validated ${validatedData.fixedExpenses.length} expenses for V4 format`
+    );
+  }
+
+  // Version stamping
+  validatedData.version = CURRENT_DATA_VERSION;
+  validatedData.migratedAt = new Date().toISOString();
+
+  return validatedData;
+};
 
 export const dataManager = new DataManager();

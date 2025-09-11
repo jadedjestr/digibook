@@ -6,11 +6,35 @@ import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 
 import PrivacyWrapper from './PrivacyWrapper';
+import CreditCardPaymentInput from './CreditCardPaymentInput';
 
-const InlineEdit = ({ value, onSave, type = 'text' }) => {
+const InlineEdit = ({
+  value,
+  onSave,
+  type = 'text',
+  expense = null,
+  fieldName = null,
+}) => {
   const [editValue, setEditValue] = useState(value);
   const [isEditing, setIsEditing] = useState(false);
+  const [validationResult, setValidationResult] = useState(null);
   const inputRef = useRef(null);
+
+  // Check if this is a credit card payment amount field
+  const isCreditCardPaymentAmount =
+    expense?.category === 'Credit Card Payment' &&
+    fieldName === 'paidAmount' &&
+    type === 'number';
+
+  // Debug logging to see what's happening
+  console.log('InlineEdit Debug - ALL CASES:', {
+    expenseCategory: expense?.category,
+    fieldName,
+    type,
+    isCreditCardPaymentAmount,
+    hasExpense: !!expense,
+    expense: expense,
+  });
 
   // Update editValue when value prop changes
   useEffect(() => {
@@ -18,6 +42,16 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
   }, [value]);
 
   const handleSave = () => {
+    // For credit card payments, check validation before saving
+    if (
+      isCreditCardPaymentAmount &&
+      validationResult &&
+      !validationResult.isValid
+    ) {
+      logger.warn('Cannot save invalid credit card payment amount');
+      return;
+    }
+
     // Parse number values properly for decimal amounts
     const valueToSave =
       type === 'number' ? parseFloat(editValue) || 0 : editValue;
@@ -51,6 +85,50 @@ const InlineEdit = ({ value, onSave, type = 'text' }) => {
   }, [isEditing, type]);
 
   if (isEditing) {
+    // Use enhanced credit card payment input for credit card payment amounts
+    if (isCreditCardPaymentAmount) {
+      return (
+        <div className='space-y-2'>
+          <div className='flex items-center space-x-2'>
+            <div className='flex-1'>
+              <CreditCardPaymentInput
+                expense={expense}
+                value={parseFloat(editValue) || 0}
+                onChange={setEditValue}
+                onValidationChange={setValidationResult}
+                className='w-full'
+                autoFocus={true}
+              />
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={validationResult && !validationResult.isValid}
+              className={`p-1 transition-colors ${
+                validationResult && !validationResult.isValid
+                  ? 'text-gray-500 cursor-not-allowed'
+                  : 'text-green-300 hover:text-green-200'
+              }`}
+              title={
+                validationResult && !validationResult.isValid
+                  ? 'Fix errors before saving'
+                  : 'Save (Enter)'
+              }
+            >
+              <Check size={14} />
+            </button>
+            <button
+              onClick={handleCancel}
+              className='p-1 text-red-300 hover:text-red-200'
+              title='Cancel (Esc)'
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Regular inline editing for other fields
     return (
       <div className='flex items-center space-x-2'>
         {type === 'number' ? (
