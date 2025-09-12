@@ -10,14 +10,16 @@ import {
   Stethoscope,
   GraduationCap,
   Package,
+  Plus,
 } from 'lucide-react';
-import React from 'react';
+import React, { useState } from 'react';
 
 import { formatCurrency } from '../../utils/accountUtils';
 import CategoryDropZone from '../CategoryDropZone';
 
 import ExpenseMobileView from './ExpenseMobileView';
 import ExpenseTableBody from './ExpenseTableBody';
+import QuickAddRow from './QuickAddRow';
 
 /**
  * Component that displays a group of expenses for a specific category
@@ -40,8 +42,12 @@ const ExpenseCategoryGroup = ({
   onDuplicate,
   onDelete,
   onUpdateExpense,
+  onExpenseAdded,
   activeId,
 }) => {
+  // State for quick add functionality
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
   // Get category icon
   const getCategoryIcon = categoryName => {
     switch (categoryName) {
@@ -96,12 +102,37 @@ const ExpenseCategoryGroup = ({
     setCollapsedCategories(newCollapsed);
   };
 
+  const handleShowQuickAdd = e => {
+    e.stopPropagation(); // Prevent triggering collapse
+    setShowQuickAdd(true);
+    // Expand category if it's collapsed
+    if (isCollapsed) {
+      const newCollapsed = new Set(collapsedCategories);
+      newCollapsed.delete(categoryName);
+      setCollapsedCategories(newCollapsed);
+    }
+  };
+
+  const handleCloseQuickAdd = () => {
+    setShowQuickAdd(false);
+  };
+
+  const handleExpenseAdded = newExpenseId => {
+    // Call parent callback to refresh data
+    if (onExpenseAdded) {
+      onExpenseAdded(newExpenseId);
+    }
+    // Keep the quick add row open for adding more expenses
+  };
+
   return (
     <div className='glass-panel'>
       {/* Category Header */}
       <div
-        className='flex items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors'
+        className='flex items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors relative'
         onClick={toggleCollapse}
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
       >
         <div className='flex items-center gap-3'>
           <div className='flex items-center gap-2'>
@@ -147,6 +178,21 @@ const ExpenseCategoryGroup = ({
             className='w-4 h-4 rounded-full border border-white/20'
             style={{ backgroundColor: getCategoryColor(categoryName) }}
           />
+
+          {/* Quick Add Button - appears on hover */}
+          <button
+            onClick={handleShowQuickAdd}
+            className={`p-2 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300
+              hover:bg-blue-500/30 hover:text-blue-200 transition-all duration-300 ease-out
+              ${
+                isHovering
+                  ? 'opacity-100 scale-100 translate-x-0'
+                  : 'opacity-0 scale-95 translate-x-2 pointer-events-none'
+              }`}
+            title={`Add new ${categoryName} expense`}
+          >
+            <Plus size={16} />
+          </button>
         </div>
       </div>
 
@@ -166,6 +212,11 @@ const ExpenseCategoryGroup = ({
             onDuplicate={onDuplicate}
             onDelete={onDelete}
             onUpdateExpense={onUpdateExpense}
+            // Quick add props
+            categoryName={categoryName}
+            showQuickAdd={showQuickAdd}
+            onQuickAddClose={handleCloseQuickAdd}
+            onExpenseAdded={handleExpenseAdded}
           />
 
           {/* Mobile Card View */}

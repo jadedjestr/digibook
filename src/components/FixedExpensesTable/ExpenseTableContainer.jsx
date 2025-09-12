@@ -404,6 +404,12 @@ const ExpenseTableContainer = () => {
                   onDuplicate={setDuplicatingExpense}
                   onDelete={handleDeleteExpense}
                   onUpdateExpense={handleUpdateExpense}
+                  onExpenseAdded={async newExpenseId => {
+                    if (newExpenseId) {
+                      setNewExpenseId(newExpenseId);
+                      await reloadExpenses();
+                    }
+                  }}
                   activeId={activeId}
                 />
               )

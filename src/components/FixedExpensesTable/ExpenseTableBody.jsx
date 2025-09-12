@@ -5,6 +5,7 @@ import {
 import React from 'react';
 
 import DraggableExpenseRow from '../DraggableExpenseRow';
+import QuickAddRow from './QuickAddRow';
 
 /**
  * Desktop table view component for displaying expenses
@@ -22,6 +23,11 @@ const ExpenseTableBody = ({
   onDuplicate,
   onDelete,
   onUpdateExpense,
+  // Quick add props
+  categoryName,
+  showQuickAdd,
+  onQuickAddClose,
+  onExpenseAdded,
 }) => {
   return (
     <div className='hidden lg:block'>
@@ -75,6 +81,16 @@ const ExpenseTableBody = ({
                 />
               );
             })}
+
+            {/* Quick Add Row */}
+            <QuickAddRow
+              categoryName={categoryName}
+              accounts={accounts}
+              creditCards={creditCards}
+              onExpenseAdded={onExpenseAdded}
+              onClose={onQuickAddClose}
+              isVisible={showQuickAdd}
+            />
           </SortableContext>
         </tbody>
       </table>

@@ -130,6 +130,16 @@ const Calendar = ({ onReset }) => {
     const handleKeyDown = e => {
       if (!calendarRef.current) return;
 
+      // Only handle keyboard events if the Calendar is focused or the event is from within the Calendar
+      const isCalendarFocused =
+        document.activeElement === calendarRef.current ||
+        calendarRef.current.contains(document.activeElement);
+
+      // For space and enter keys, only handle if Calendar is focused
+      if ((e.key === ' ' || e.key === 'Enter') && !isCalendarFocused) {
+        return; // Don't prevent default for space/enter when Calendar is not focused
+      }
+
       const { key } = e;
       const currentIndex = focusedDayIndex !== null ? focusedDayIndex : 0;
 
