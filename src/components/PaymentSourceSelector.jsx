@@ -313,7 +313,7 @@ const PaymentSourceSelector = ({
         options.length > 0 &&
         createPortal(
           <div
-            className='fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-2xl shadow-2xl backdrop-blur-md'
+            className='fixed z-[10001] bg-slate-900/95 border border-white/30 rounded-2xl shadow-2xl backdrop-blur-md'
             style={{
               top: dropdownPosition.top,
               left: dropdownPosition.left,
@@ -376,7 +376,7 @@ const PaymentSourceSelector = ({
         options.length === 0 &&
         createPortal(
           <div
-            className='fixed z-[9999] bg-slate-900/95 border border-white/30 rounded-2xl shadow-2xl backdrop-blur-md'
+            className='fixed z-[10001] bg-slate-900/95 border border-white/30 rounded-2xl shadow-2xl backdrop-blur-md'
             style={{
               top: dropdownPosition.top,
               left: dropdownPosition.left,

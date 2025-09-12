@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { PaycheckService } from '../../services/paycheckService';
 import { useAppStore } from '../../stores/useAppStore';
 import { DateUtils } from '../../utils/dateUtils';
+import { logger } from '../../utils/logger';
 
 import CalendarCycleButton from './CalendarCycleButton';
 import CalendarGrid from './CalendarGrid';
@@ -17,12 +18,12 @@ import './calendar.css';
  * Integrates with PaycheckService for status calculations
  */
 const Calendar = ({ onReset }) => {
-  console.log('Calendar: COMPONENT MOUNTING');
+  logger.debug('Calendar: COMPONENT MOUNTING');
 
   // Get data from Zustand store
   const { fixedExpenses, paycheckSettings } = useAppStore();
 
-  console.log(
+  logger.debug(
     'Calendar: Got store data - fixedExpenses:',
     fixedExpenses?.length,
     'paycheckSettings:',
