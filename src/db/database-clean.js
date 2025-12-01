@@ -583,6 +583,7 @@ export const dbHelpers = {
       }
 
       console.log('dbHelpers: Performing query...');
+
       // Use toArray() and filter instead of indexed where query to avoid DataError
       const allTemplates = await db.recurringExpenseTemplates.toArray();
       console.log('dbHelpers: Got all templates:', allTemplates);
@@ -1498,7 +1499,6 @@ export const dbHelpers = {
         auditLogs: await db.auditLogs.toArray(),
         recurringExpenseTemplates: await db.recurringExpenseTemplates.toArray(),
         exportDate: new Date().toISOString(),
-        version: '2.0', // Updated version to reflect recurring templates support
       };
 
       logger.success('Data exported successfully');
@@ -1845,7 +1845,7 @@ export const dbHelpers = {
 
         await this.updateFixedExpenseV4(expenseId, {
           accountId: null,
-          creditCardId: creditCardId,
+          creditCardId,
         });
 
         logger.success(`Migrated expense ${expenseId} from V3 to V4 format`);

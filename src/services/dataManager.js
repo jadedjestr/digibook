@@ -1,14 +1,36 @@
 import { dbHelpers } from '../db/database-clean';
 import { secureDataHandling } from '../utils/crypto';
-import { logger } from '../utils/logger';
 import {
   validatePaymentSource,
   validateCreditCardPayment,
   sanitizeExpenseData,
 } from '../utils/expenseValidation';
+import { logger } from '../utils/logger';
 
 // Current data format version
 const CURRENT_DATA_VERSION = 4; // Updated to support dual foreign key architecture
+
+/**
+ * Normalize version to number for comparison
+ * Handles both string ('2.0') and number (4) formats
+ * @param {string|number} version - Version to normalize
+ * @returns {number} Normalized version number
+ */
+function normalizeVersion(version) {
+  if (typeof version === 'number') {
+    return version;
+  }
+  if (typeof version === 'string') {
+    // Extract major version number from '2.0' format
+    const majorVersion = parseInt(version.split('.')[0], 10);
+    if (!isNaN(majorVersion)) {
+      return majorVersion;
+    }
+  }
+
+  // Default to 0 if version is invalid
+  return 0;
+}
 
 class DataManager {
   constructor() {
@@ -114,11 +136,21 @@ class DataManager {
     try {
       const data = JSON.parse(text);
 
-      // Check data format version
-      if (data.version && data.version > CURRENT_DATA_VERSION) {
-        throw new Error(
-          `Data format version ${data.version} is not supported. Current version: ${CURRENT_DATA_VERSION}`
-        );
+      // Check data format version using normalized comparison
+      if (data.version) {
+        const normalizedVersion = normalizeVersion(data.version);
+        if (normalizedVersion > CURRENT_DATA_VERSION) {
+          throw new Error(
+            `Data format version ${data.version} is not supported. Current version: ${CURRENT_DATA_VERSION}`
+          );
+        }
+
+        // Log version migration scenario
+        if (normalizedVersion < CURRENT_DATA_VERSION) {
+          logger.info(
+            `Importing data from version ${data.version}, will migrate to version ${CURRENT_DATA_VERSION}`
+          );
+        }
       }
 
       // Validate data structure
@@ -269,7 +301,8 @@ class DataManager {
             row.isVariableAmount === '1' ||
             row.isVariableAmount === 'Yes' ||
             row.isVariableAmount === true;
-          // Convert dates to ISO strings
+
+        // Convert dates to ISO strings
           if (row.startDate) {
             const startDate = new Date(row.startDate);
             converted.startDate = !isNaN(startDate.getTime())
@@ -316,8 +349,13 @@ class DataManager {
       onProgress('Creating backup...');
       await this.backupManager.createBackup('pre_import');
 
-      onProgress('Validating data...');
-      const validationResult = await this.validateImportData(data);
+      onProgress('Validating and migrating data to V4 format...');
+
+      // Validate and migrate data to V4 format
+      const validatedData = validateImportedDataV4(data);
+
+      onProgress('Validating data structure...');
+      const validationResult = await this.validateImportData(validatedData);
       if (!validationResult.isValid) {
         throw new Error(
           `Import validation failed: ${validationResult.errors.join(', ')}`
@@ -325,7 +363,7 @@ class DataManager {
       }
 
       onProgress('Importing data...');
-      await dbHelpers.importData(data);
+      await dbHelpers.importData(validatedData);
 
       onProgress('Import completed successfully!');
       logger.success(`Data imported successfully from ${fileType} file`);
@@ -354,8 +392,13 @@ class DataManager {
       onProgress('Decrypting data...');
       const decryptedData = await secureDataHandling.importData(data, password);
 
-      onProgress('Validating decrypted data...');
-      const validationResult = await this.validateImportData(decryptedData);
+      onProgress('Validating and migrating data to V4 format...');
+
+      // Validate and migrate data to V4 format
+      const validatedData = validateImportedDataV4(decryptedData);
+
+      onProgress('Validating data structure...');
+      const validationResult = await this.validateImportData(validatedData);
       if (!validationResult.isValid) {
         throw new Error(
           `Import validation failed: ${validationResult.errors.join(', ')}`
@@ -363,7 +406,7 @@ class DataManager {
       }
 
       onProgress('Importing data...');
-      await dbHelpers.importData(decryptedData);
+      await dbHelpers.importData(validatedData);
 
       onProgress('Secure import completed successfully!');
       logger.success(
@@ -691,11 +734,14 @@ class BackupManager {
         errors.push('Invalid timestamp format');
       }
 
-      // Verify version compatibility
-      if (backup.version && backup.version > CURRENT_DATA_VERSION) {
-        errors.push(
-          `Backup version ${backup.version} is newer than current version ${CURRENT_DATA_VERSION}`
-        );
+      // Verify version compatibility using normalized comparison
+      if (backup.version) {
+        const normalizedVersion = normalizeVersion(backup.version);
+        if (normalizedVersion > CURRENT_DATA_VERSION) {
+          errors.push(
+            `Backup version ${backup.version} is newer than current version ${CURRENT_DATA_VERSION}`
+          );
+        }
       }
 
       return {
@@ -1030,6 +1076,7 @@ export const validateImportedDataV4 = importedData => {
               `Failed to convert expense ${index + 1}:`,
               conversionError
             );
+
             // Return the expense with basic fixes applied
             return fixCommonExpenseIssues(expense);
           }
