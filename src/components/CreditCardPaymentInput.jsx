@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, DollarSign, CheckCircle, Info } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { logger } from '../utils/logger';
 

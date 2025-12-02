@@ -134,7 +134,7 @@ function App() {
           />
         );
       case 'settings':
-        return <SettingsPage onDataChange={reloadPaycheckSettings} />;
+        return <SettingsPage onDataChange={loadData} />;
       default:
         return <Accounts />;
     }

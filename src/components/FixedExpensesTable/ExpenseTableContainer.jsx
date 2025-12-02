@@ -31,6 +31,7 @@ import {
 import { PaycheckService } from '../../services/paycheckService';
 import { useAppStore } from '../../stores/useAppStore';
 import { logger } from '../../utils/logger';
+import AccountValidationAlert from '../AccountValidationAlert';
 import AddExpensePanel from '../AddExpensePanel';
 import DuplicateExpenseModal from '../DuplicateExpenseModal';
 
@@ -38,8 +39,6 @@ import ExpenseCategoryGroup from './ExpenseCategoryGroup';
 import ExpenseTableHeader from './ExpenseTableHeader';
 import VirtualizedExpenseTable from './VirtualizedExpenseTable';
 import VirtualizedMobileView from './VirtualizedMobileView';
-
-import AccountValidationAlert from '../AccountValidationAlert';
 
 // Initialization State Machine
 const INIT_STATES = {

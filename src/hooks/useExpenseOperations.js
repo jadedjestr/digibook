@@ -1,14 +1,14 @@
 import { useCallback } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
-import { useAppStore } from '../stores/useAppStore';
-import { logger } from '../utils/logger';
-import { notify } from '../utils/notifications';
 import { createPaymentService } from '../services/paymentService';
+import { useAppStore } from '../stores/useAppStore';
 import {
   validatePaymentSource,
   validateCreditCardPayment,
 } from '../utils/expenseValidation';
+import { logger } from '../utils/logger';
+import { notify } from '../utils/notifications';
 
 /**
  * Custom hook for managing expense operations with optimistic updates
@@ -292,6 +292,7 @@ export const useExpenseOperations = () => {
         }
       } catch (error) {
         logger.error('Error updating expense:', error);
+
         // Revert optimistic update
         await reloadExpenses();
         if (showNotification) {

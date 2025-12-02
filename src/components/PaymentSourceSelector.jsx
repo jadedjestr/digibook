@@ -13,14 +13,6 @@
  * - Glass design system styling
  */
 
-import React, {
-  useState,
-  useCallback,
-  useMemo,
-  useRef,
-  useEffect,
-} from 'react';
-import { createPortal } from 'react-dom';
 import {
   CreditCard,
   PiggyBank,
@@ -29,6 +21,14 @@ import {
   Wallet,
 } from 'lucide-react';
 import PropTypes from 'prop-types';
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useEffect,
+} from 'react';
+import { createPortal } from 'react-dom';
 
 import {
   createPaymentSource,

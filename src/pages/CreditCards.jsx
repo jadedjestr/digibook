@@ -3,12 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
+import CreditCardMigrationModal from '../components/CreditCardMigrationModal';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';
+import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
-import PrivacyWrapper from '../components/PrivacyWrapper';
-import CreditCardMigrationModal from '../components/CreditCardMigrationModal';
 
 const CreditCards = ({
   onDataChange,
@@ -124,6 +124,7 @@ const CreditCards = ({
           }
         } catch (error) {
           logger.error('Error creating automatic credit card expenses:', error);
+
           // Don't show error to user as the credit card was still added successfully
         }
       }

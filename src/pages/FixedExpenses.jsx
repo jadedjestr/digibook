@@ -7,9 +7,12 @@ import PayDateCountdownCard from '../components/PayDateCountdownCard';
 import PaySummaryCard from '../components/PaySummaryCard';
 import ProjectedBalanceCard from '../components/ProjectedBalanceCard';
 import { dbHelpers } from '../db/database-clean';
+import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { PaycheckService } from '../services/paycheckService';
 import { useAppStore } from '../stores/useAppStore';
+import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
+import { notify } from '../utils/notifications';
 
 const FixedExpenses = () => {
   const [showResetPrompt, setShowResetPrompt] = useState(false);
@@ -22,9 +25,27 @@ const FixedExpenses = () => {
     paycheckSettings,
     categories,
     isLoading,
-    updateExpense,
     reloadPaycheckSettings,
+    reloadExpenses,
   } = useAppStore();
+
+  // Add useExpenseOperations hook
+  const { updateExpenseV4 } = useExpenseOperations();
+
+  // Helper function to add one month to a due date
+  const addOneMonthToDate = dateString => {
+    if (!dateString) return null;
+    const date = DateUtils.parseDate(dateString);
+    if (!date) return null;
+
+    // Add one month
+    date.setMonth(date.getMonth() + 1);
+
+    // Handle edge case: if day doesn't exist in new month (e.g., Jan 31 -> Feb 31)
+    // JavaScript automatically adjusts to the last day of the month
+    // So Jan 31 -> Feb 28/29, which is the desired behavior
+    return DateUtils.formatDate(date);
+  };
 
   // Initialize paycheck service
   const paycheckService = new PaycheckService(paycheckSettings);
@@ -90,6 +111,7 @@ const FixedExpenses = () => {
               <p>This will:</p>
               <ul className='list-disc list-inside space-y-1 ml-4'>
                 <li>Mark all expenses as unpaid</li>
+                <li>Advance all expense due dates by one month</li>
                 <li>
                   Update your last paycheck date to{' '}
                   {paycheckDates.nextPayDate
@@ -113,13 +135,27 @@ const FixedExpenses = () => {
               <button
                 onClick={async () => {
                   try {
-                    // Reset all expenses to unpaid
-                    fixedExpenses.forEach(expense => {
-                      updateExpense(expense.id, { paidAmount: 0 });
+                    // Reset all expenses to unpaid and advance due dates by one month
+                    // Use Promise.all for parallel updates
+                    const updatePromises = fixedExpenses.map(expense => {
+                      const newDueDate = expense.dueDate
+                        ? addOneMonthToDate(expense.dueDate)
+                        : expense.dueDate;
+
+                      return updateExpenseV4(
+                        expense.id,
+                        {
+                          paidAmount: 0,
+                          status: 'pending',
+                          dueDate: newDueDate,
+                        },
+                        false // Don't show individual notifications
+                      );
                     });
 
-                    // Update last paycheck date to the current next paycheck
-                    // date
+                    await Promise.all(updatePromises);
+
+                    // Update last paycheck date to the current next paycheck date
                     // This effectively moves the cycle forward
                     if (paycheckDates.nextPayDate) {
                       await dbHelpers.updatePaycheckSettings({
@@ -131,9 +167,14 @@ const FixedExpenses = () => {
                       await reloadPaycheckSettings();
                     }
 
+                    // Reload expenses to ensure UI consistency
+                    await reloadExpenses();
+
                     setShowResetPrompt(false);
+                    notify.success('New pay cycle started successfully');
                   } catch (error) {
                     logger.error('Error resetting cycle:', error);
+                    notify.error('Failed to reset cycle. Please try again.');
                     setShowResetPrompt(false);
                   }
                 }}

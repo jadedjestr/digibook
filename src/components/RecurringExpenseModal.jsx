@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { X, Clock, Calendar, DollarSign } from 'lucide-react';
 import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 import { recurringExpenseService } from '../services/recurringExpenseService';
 import { DateUtils } from '../utils/dateUtils';
@@ -101,6 +101,7 @@ const RecurringExpenseModal = ({ isOpen, onClose, expenseData, onSave }) => {
       ...prev,
       [field]: value,
     }));
+
     // Clear error for this field
     if (errors[field]) {
       setErrors(prev => ({

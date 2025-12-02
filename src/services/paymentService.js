@@ -13,11 +13,11 @@
  */
 
 import { dbHelpers } from '../db/database-clean';
-import { logger } from '../utils/logger';
 import {
   createPaymentSource,
   PaymentSourceTypes,
 } from '../types/paymentSource';
+import { logger } from '../utils/logger';
 
 export class PaymentService {
   constructor(accounts, creditCards) {

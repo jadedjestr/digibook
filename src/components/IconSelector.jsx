@@ -16,7 +16,7 @@ const IconSelector = ({ value, onChange, categories }) => {
             icon =>
               icon.toLowerCase().includes(searchTerm.toLowerCase()) ||
               category.name.toLowerCase().includes(searchTerm.toLowerCase())
-        ),
+          ),
         }))
         .filter(category => category.icons.length > 0)
     : categories;

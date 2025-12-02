@@ -48,6 +48,7 @@ const ExpenseCategoryGroup = ({
   // State for quick add functionality
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
+
   // Get category icon
   const getCategoryIcon = categoryName => {
     switch (categoryName) {
@@ -105,6 +106,7 @@ const ExpenseCategoryGroup = ({
   const handleShowQuickAdd = e => {
     e.stopPropagation(); // Prevent triggering collapse
     setShowQuickAdd(true);
+
     // Expand category if it's collapsed
     if (isCollapsed) {
       const newCollapsed = new Set(collapsedCategories);
@@ -122,6 +124,7 @@ const ExpenseCategoryGroup = ({
     if (onExpenseAdded) {
       onExpenseAdded(newExpenseId);
     }
+
     // Keep the quick add row open for adding more expenses
   };
 

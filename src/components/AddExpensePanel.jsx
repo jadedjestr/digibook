@@ -4,12 +4,12 @@ import { createPortal } from 'react-dom';
 
 import { dbHelpers } from '../db/database-clean';
 import { recurringExpenseService } from '../services/recurringExpenseService';
-import { logger } from '../utils/logger';
 import { createPaymentSource } from '../types/paymentSource';
 import {
   validatePaymentSource,
   validateCreditCardPayment,
 } from '../utils/expenseValidation';
+import { logger } from '../utils/logger';
 
 import PaymentSourceSelector from './PaymentSourceSelector';
 import RecurringExpenseModal from './RecurringExpenseModal';
@@ -178,6 +178,7 @@ const AddExpensePanel = ({
         name: formData.name,
         dueDate: formData.dueDate,
         amount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
+
         // New payment source structure
         accountId: formData.paymentSource?.accountId || null,
         creditCardId: formData.paymentSource?.creditCardId || null,
@@ -309,6 +310,7 @@ const AddExpensePanel = ({
         name: formData.name,
         dueDate: formData.dueDate,
         amount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
+
         // New payment source structure
         accountId: formData.paymentSource?.accountId || null,
         creditCardId: formData.paymentSource?.creditCardId || null,

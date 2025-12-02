@@ -87,10 +87,14 @@ const CategoryExpenseSummaryBase = ({ expenses, categories }) => {
       <div className='mt-5 pt-4 border-t border-white/10'>
         <div className='flex justify-between items-center'>
           <span className='text-sm text-white/70'>
-            {totalAmount === 0 ? 'Outstanding Fixed Expenses' : 'Total Fixed Expenses'}
+            {totalAmount === 0 ?
+              'Outstanding Fixed Expenses' :
+              'Total Fixed Expenses'}
           </span>
           <PrivacyWrapper>
-            <span className={`text-lg font-bold ${totalAmount === 0 ? 'text-green-400' : 'text-white'}`}>
+            <span
+              className={`text-lg font-bold ${totalAmount === 0 ? 'text-green-400' : 'text-white'}`}
+            >
               {formatCurrency(totalAmount)}
             </span>
           </PrivacyWrapper>

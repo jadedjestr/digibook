@@ -111,7 +111,7 @@
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border-radius: var(--radius-sm, 8px);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
@@ -152,15 +152,15 @@
   /* Base Glass Surface Primitive */
   .glass-surface {
     /* Backdrop blur with fallback */
-    backdrop-filter: blur(var(--glass-blur-medium));
-    -webkit-backdrop-filter: blur(var(--glass-blur-medium));
+    backdrop-filter: blur(var(--glass-blur-medium, 14px));
+    -webkit-backdrop-filter: blur(var(--glass-blur-medium, 14px));
 
     /* Multi-layer gradient background */
     background: linear-gradient(
       135deg,
-      rgba(255, 255, 255, var(--glass-opacity-light)) 0%,
-      rgba(255, 255, 255, var(--glass-opacity-strong)) 50%,
-      rgba(255, 255, 255, var(--glass-opacity-light)) 100%
+      var(--glass-surface-primary) 0%,
+      var(--glass-surface-elevated) 50%,
+      var(--glass-surface-primary) 100%
     );
 
     /* Border and radius */
@@ -179,19 +179,16 @@
       transform var(--duration-normal) var(--easing-standard);
 
     /* GPU acceleration */
-    will-change: transform, backdrop-filter, box-shadow;
-    transform: translateZ(0);
+    @apply gpu-accelerated;
   }
 
   /* Browser Support Fallbacks */
   @supports not (backdrop-filter: blur(1px)) {
     .glass-surface {
-      background: linear-gradient(
-        135deg,
-        rgba(255, 255, 255, 0.12) 0%,
-        rgba(255, 255, 255, 0.25) 50%,
-        rgba(255, 255, 255, 0.12) 100%
-      );
+      background: var(--glass-surface-primary);
+      box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.15),
+        inset 0 1px 1px rgba(255, 255, 255, 0.1);
     }
   }
 
@@ -201,14 +198,14 @@
   }
 
   .glass-surface--interactive:hover {
-    backdrop-filter: blur(var(--glass-blur-heavy));
-    -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+    backdrop-filter: blur(var(--glass-blur-heavy, 20px));
+    -webkit-backdrop-filter: blur(var(--glass-blur-heavy, 20px));
 
     background: linear-gradient(
       135deg,
-      rgba(255, 255, 255, var(--glass-opacity-medium)) 0%,
+      var(--glass-surface-secondary) 0%,
       rgba(255, 255, 255, var(--glass-opacity-heavy)) 50%,
-      rgba(255, 255, 255, var(--glass-opacity-medium)) 100%
+      var(--glass-surface-secondary) 100%
     );
 
     border-color: var(--glass-border-hover);
@@ -245,13 +242,13 @@
 
   /* Blur Variants */
   .glass-surface--blur-light {
-    backdrop-filter: blur(var(--glass-blur-light));
-    -webkit-backdrop-filter: blur(var(--glass-blur-light));
+    backdrop-filter: blur(var(--glass-blur-light, 8px));
+    -webkit-backdrop-filter: blur(var(--glass-blur-light, 8px));
   }
 
   .glass-surface--blur-heavy {
-    backdrop-filter: blur(var(--glass-blur-heavy));
-    -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+    backdrop-filter: blur(var(--glass-blur-heavy, 20px));
+    -webkit-backdrop-filter: blur(var(--glass-blur-heavy, 20px));
   }
 
   /* Status Variants */
@@ -421,7 +418,13 @@
 
   /* Category Collapse Animations */
   .category-content {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+      max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      margin-top 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      margin-bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      padding-bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
   }
 
@@ -441,7 +444,9 @@
 
   /* Collapsible Card Animations */
   .collapsible-card-header {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+      background 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+      transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .collapsible-card-header:hover {
@@ -454,7 +459,9 @@
   }
 
   .collapsible-card-content {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+      max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
   }
 
@@ -573,15 +580,20 @@
     padding: var(--space-sm) var(--space-md);
     border-radius: var(--radius-md);
     outline: none;
-    transition: all var(--duration-normal) var(--easing-standard);
+    transition:
+      backdrop-filter var(--duration-normal) var(--easing-standard),
+      background var(--duration-normal) var(--easing-standard),
+      border-color var(--duration-normal) var(--easing-standard),
+      box-shadow var(--duration-normal) var(--easing-standard),
+      transform var(--duration-normal) var(--easing-standard);
     color: white;
     background: linear-gradient(
       135deg,
-      rgba(255, 255, 255, 0.08) 0%,
+      var(--glass-surface-secondary) 0%,
       rgba(255, 255, 255, 0.12) 50%,
-      rgba(255, 255, 255, 0.08) 100%
+      var(--glass-surface-secondary) 100%
     );
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid var(--glass-border-primary);
     box-shadow: var(--glass-elevation-0);
   }
 
@@ -790,10 +802,7 @@
   .glass-container,
   .glass-button,
   .glass-input {
-    will-change: transform, backdrop-filter, box-shadow;
-    transform: translateZ(0);
-    backface-visibility: hidden;
-    perspective: 1000px;
+    @apply gpu-accelerated;
   }
 
   /* CSS Containment for Performance */
@@ -897,8 +906,8 @@
 
     /* Enhanced blur for desktop */
     .glass-surface--blur-heavy {
-      backdrop-filter: blur(var(--glass-blur-heavy));
-      -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+      backdrop-filter: blur(var(--glass-blur-heavy, 20px));
+      -webkit-backdrop-filter: blur(var(--glass-blur-heavy, 20px));
     }
   }
 
@@ -934,6 +943,15 @@
 
   /* Reduced Motion Support */
   @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+
     .glass-surface,
     .glass-button,
     .glass-input,
@@ -1348,10 +1366,12 @@
 
   @keyframes progressFill {
     0% {
-      width: 0%;
+      transform: scaleX(0);
+      transform-origin: left;
     }
     100% {
-      width: var(--utilization-percentage);
+      transform: scaleX(1);
+      transform-origin: left;
     }
   }
 
@@ -1408,6 +1428,14 @@
      ENHANCED UTILITY CLASSES
      ======================================== */
 
+  /* GPU Acceleration Utility */
+  .gpu-accelerated {
+    will-change: transform, backdrop-filter, box-shadow;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+
   /* Typography Utilities */
   .text-shadow {
     text-shadow: var(--text-shadow-subtle);
@@ -1423,18 +1451,18 @@
 
   /* Glass Blur Utilities */
   .backdrop-blur-glass {
-    backdrop-filter: blur(var(--glass-blur-medium));
-    -webkit-backdrop-filter: blur(var(--glass-blur-medium));
+    backdrop-filter: blur(var(--glass-blur-medium, 14px));
+    -webkit-backdrop-filter: blur(var(--glass-blur-medium, 14px));
   }
 
   .backdrop-blur-glass-light {
-    backdrop-filter: blur(var(--glass-blur-light));
-    -webkit-backdrop-filter: blur(var(--glass-blur-light));
+    backdrop-filter: blur(var(--glass-blur-light, 8px));
+    -webkit-backdrop-filter: blur(var(--glass-blur-light, 8px));
   }
 
   .backdrop-blur-glass-heavy {
-    backdrop-filter: blur(var(--glass-blur-heavy));
-    -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+    backdrop-filter: blur(var(--glass-blur-heavy, 20px));
+    -webkit-backdrop-filter: blur(var(--glass-blur-heavy, 20px));
   }
 
   /* Elevation Utilities */
@@ -1567,7 +1595,9 @@
 
   /* Status badge animations */
   .status-badge {
-    transition: all 0.2s ease-in-out;
+    transition:
+      transform 0.2s ease-in-out,
+      box-shadow 0.2s ease-in-out;
   }
 
   .status-badge:hover {
@@ -1582,7 +1612,7 @@
       rgba(255, 255, 255, 0.1) 100%
     );
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
+    border-radius: var(--radius-md, 12px);
     padding: 16px;
   }
 
@@ -1627,7 +1657,7 @@
     background: linear-gradient(90deg, #555 0%, #777 50%, #555 100%);
     background-size: 200% 100%;
     animation: privacy-shimmer 20s ease-in-out infinite;
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 8px);
     padding: 2px 6px;
     font-family: monospace;
     letter-spacing: 2px;

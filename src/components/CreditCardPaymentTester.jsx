@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
 import { AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import React, { useState } from 'react';
+
+import { formatCreditCardBalance } from '../utils/creditCardUtils';
 
 import CreditCardPaymentInput from './CreditCardPaymentInput';
-import { formatCreditCardBalance } from '../utils/creditCardUtils';
 
 /**
  * Testing component for Credit Card Payment edge cases

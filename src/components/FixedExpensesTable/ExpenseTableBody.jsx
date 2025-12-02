@@ -5,6 +5,7 @@ import {
 import React from 'react';
 
 import DraggableExpenseRow from '../DraggableExpenseRow';
+
 import QuickAddRow from './QuickAddRow';
 
 /**
@@ -23,6 +24,7 @@ const ExpenseTableBody = ({
   onDuplicate,
   onDelete,
   onUpdateExpense,
+
   // Quick add props
   categoryName,
   showQuickAdd,

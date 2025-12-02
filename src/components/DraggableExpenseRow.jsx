@@ -5,6 +5,7 @@ import React, { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 import { createPaymentSource } from '../types/paymentSource';
+
 import InlineEdit from './InlineEdit';
 import PaymentSourceSelector from './PaymentSourceSelector';
 import PrivacyWrapper from './PrivacyWrapper';

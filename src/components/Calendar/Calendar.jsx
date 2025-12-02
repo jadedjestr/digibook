@@ -153,7 +153,7 @@ const Calendar = ({ onReset }) => {
           e.preventDefault();
           setFocusedDayIndex(
             Math.min(calendarData.length - 1, currentIndex + 1)
-          );
+        );
           break;
         case 'ArrowUp':
           e.preventDefault();
@@ -163,7 +163,7 @@ const Calendar = ({ onReset }) => {
           e.preventDefault();
           setFocusedDayIndex(
             Math.min(calendarData.length - 1, currentIndex + 7)
-          );
+        );
           break;
         case 'Enter':
         case ' ':

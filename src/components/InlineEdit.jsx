@@ -5,8 +5,8 @@ import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 
-import PrivacyWrapper from './PrivacyWrapper';
 import CreditCardPaymentInput from './CreditCardPaymentInput';
+import PrivacyWrapper from './PrivacyWrapper';
 
 const InlineEdit = ({
   value,

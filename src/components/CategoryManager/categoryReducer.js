@@ -89,7 +89,7 @@ export const categoryReducer = (state, action) => {
         ...state,
         categories: state.categories.map(cat =>
           cat.id === action.payload.id ? action.payload : cat
-      ),
+        ),
       };
 
     case ACTIONS.REVERT_CATEGORY_ADD:
@@ -123,7 +123,7 @@ export const categoryReducer = (state, action) => {
         ...state,
         categories: state.categories.map(cat =>
           cat.id === action.payload.id ? action.payload.originalData : cat
-      ),
+        ),
       };
 
     default:

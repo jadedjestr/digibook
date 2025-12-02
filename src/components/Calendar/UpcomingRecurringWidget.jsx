@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
 import { Clock, Calendar, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 import { recurringExpenseService } from '../../services/recurringExpenseService';
 import { DateUtils } from '../../utils/dateUtils';
