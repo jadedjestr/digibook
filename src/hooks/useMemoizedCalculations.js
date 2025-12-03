@@ -10,7 +10,7 @@ export const useMemoizedCalculations = (
   expenses,
   accounts,
   creditCards,
-  paycheckSettings
+  paycheckSettings // eslint-disable-line no-unused-vars
 ) => {
   const { start, end } = usePerformanceTimer();
 
@@ -46,7 +46,8 @@ export const useMemoizedCalculations = (
     );
 
     // Fix: Calculate remaining per expense, not as total difference
-    // This prevents overpayments on one card from reducing remaining on other cards
+    // This prevents overpayments on one card from reducing remaining
+    // on other cards
     const totalRemaining = expenses.reduce((total, expense) => {
       const remaining = expense.amount - (expense.paidAmount || 0);
       return total + (remaining > 0 ? remaining : 0);
@@ -78,7 +79,9 @@ export const useMemoizedCalculations = (
         totals[category] = {
           count: categoryExpenses.length,
           total: categoryTotal,
-          paid: categoryExpenses.filter(e => e.status === 'paid').length,
+          paid: categoryExpenses.filter(
+            e => (e.paidAmount || 0) >= e.amount && e.amount > 0
+          ).length,
         };
       }
     );
@@ -132,7 +135,7 @@ export const useMemoizedCalculations = (
         percentage:
           expense.amount > 0
             ? ((expense.paidAmount || 0) / expense.amount) * 100
-            : 0,
+            : 0, // eslint-disable-line operator-linebreak
       };
     });
 
@@ -212,10 +215,11 @@ export const useMemoizedCalculations = (
             return a.name.localeCompare(b.name);
           case 'amount':
             return b.amount - a.amount;
-          case 'remaining':
+          case 'remaining': {
             const remainingA = a.amount - (a.paidAmount || 0);
             const remainingB = b.amount - (b.paidAmount || 0);
             return remainingB - remainingA;
+          }
           default:
             return 0;
         }

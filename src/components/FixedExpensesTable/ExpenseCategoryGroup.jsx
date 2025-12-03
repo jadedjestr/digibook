@@ -89,7 +89,7 @@ const ExpenseCategoryGroup = ({
   const isCollapsed = collapsedCategories.has(categoryName);
   const categoryTotal = getCategoryTotal(categoryExpenses);
   const paidCount = categoryExpenses.filter(
-    expense => expense.status === 'paid'
+    expense => (expense.paidAmount || 0) >= expense.amount && expense.amount > 0
   ).length;
   const totalCount = categoryExpenses.length;
 
@@ -165,9 +165,11 @@ const ExpenseCategoryGroup = ({
           <div className='flex items-center gap-2'>
             <div className='w-16 h-2 bg-white/10 rounded-full overflow-hidden'>
               <div
-                className='h-full bg-green-400 transition-all duration-300'
+                className='h-full bg-green-400 transition-transform duration-300'
                 style={{
-                  width: `${totalCount > 0 ? (paidCount / totalCount) * 100 : 0}%`,
+                  width: '100%',
+                  transform: `scaleX(${(totalCount > 0 ? (paidCount / totalCount) * 100 : 0) / 100})`,
+                  transformOrigin: 'left',
                 }}
               />
             </div>
@@ -189,8 +191,8 @@ const ExpenseCategoryGroup = ({
               hover:bg-blue-500/30 hover:text-blue-200 transition-all duration-300 ease-out
               ${
                 isHovering
-                  ? 'opacity-100 scale-100 translate-x-0'
-                  : 'opacity-0 scale-95 translate-x-2 pointer-events-none'
+      'opacity-100 scale-100 translate-x-0' :
+      'opacity-0 scale-95 translate-x-2 pointer-events-none'
               }`}
             title={`Add new ${categoryName} expense`}
           >
