@@ -191,8 +191,8 @@ const ExpenseCategoryGroup = ({
               hover:bg-blue-500/30 hover:text-blue-200 transition-all duration-300 ease-out
               ${
                 isHovering
-      'opacity-100 scale-100 translate-x-0' :
-      'opacity-0 scale-95 translate-x-2 pointer-events-none'
+                  ? 'opacity-100 scale-100 translate-x-0'
+                  : 'opacity-0 scale-95 translate-x-2 pointer-events-none'
               }`}
             title={`Add new ${categoryName} expense`}
           >
