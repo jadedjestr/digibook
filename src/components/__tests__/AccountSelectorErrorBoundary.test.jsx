@@ -56,7 +56,7 @@ describe('AccountSelectorErrorBoundary', () => {
     expect(
       screen.getByText(
         'Unable to load account options. This might be due to invalid data or a temporary issue.'
-      )
+      ),
     ).toBeInTheDocument();
   });
 

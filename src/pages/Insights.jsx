@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 import BudgetVsActualDashboard from '../components/BudgetVsActualDashboard';
+import CreditCardDebtTable from '../components/CreditCardDebtTable';
 import DebtPayoffCalculator from '../components/DebtPayoffCalculator';
 import MonthlyTrends from '../components/MonthlyTrends';
 import OverpaymentAnalysis from '../components/OverpaymentAnalysis';
@@ -88,6 +89,9 @@ const Insights = ({ accounts = [], creditCards = [], onDataChange }) => {
 
       {/* Budget vs Actual Dashboard */}
       <BudgetVsActualDashboard summary={budgetSummary} />
+
+      {/* Credit Card Debt Table */}
+      <CreditCardDebtTable creditCards={creditCards} />
 
       {/* Row 1: Overpayment Analysis and Debt Calculator */}
       <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>

@@ -225,8 +225,11 @@ const EnhancedCreditCard = ({
         </div>
         <div className='utilization-bar'>
           <div
-            className={`utilization-fill ${getUtilizationColor(utilization)} progress-animate`}
-            style={{ width: `${utilizationWidth}%` }}
+            className={`utilization-fill ${getUtilizationColor(utilization)}`}
+            style={{
+              transform: `scaleX(${utilizationWidth / 100})`,
+              transformOrigin: 'left',
+            }}
             aria-label={`Credit utilization: ${formatPercentage(utilization)}`}
           />
         </div>

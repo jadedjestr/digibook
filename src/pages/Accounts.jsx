@@ -243,7 +243,7 @@ const Accounts = () => {
         {accounts.length > 0 && (
           <button
             onClick={() => setIsAddingAccount(true)}
-            className='glass-button flex items-center space-x-2'
+            className='glass-button glass-button--primary flex items-center space-x-2'
           >
             <Plus size={20} />
             <span>Add Account</span>
@@ -348,7 +348,7 @@ const Accounts = () => {
                   currentBalance: 0,
                 });
               }}
-              className='glass-button bg-red-500/20 hover:bg-red-500/30'
+              className='glass-button glass-button--danger'
             >
               Cancel
             </button>

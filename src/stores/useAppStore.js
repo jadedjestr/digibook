@@ -320,7 +320,7 @@ export const useAppStore = create(
         isPanelOpen: state.isPanelOpen,
       }),
     }
-  ),
+  )
 );
 
 // Export individual selectors for better performance

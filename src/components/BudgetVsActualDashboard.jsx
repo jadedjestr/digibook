@@ -137,16 +137,20 @@ const BudgetVsActualDashboard = ({ summary }) => {
             {(budgetAccuracy || 0) > 100 ? 'Over Budget' : 'Within Budget'}
           </p>
         </div>
-        <div className='w-full bg-white/10 rounded-full h-3'>
+        <div className='w-full bg-white/10 rounded-full h-3 overflow-hidden'>
           <div
-            className={`h-3 rounded-full transition-all duration-500 ${
+            className={`h-3 rounded-full transition-transform duration-500 ${
               (budgetAccuracy || 0) <= 100
                 ? 'bg-gradient-to-r from-green-500 to-green-400'
                 : (budgetAccuracy || 0) <= 120
                   ? 'bg-gradient-to-r from-yellow-500 to-orange-400'
                   : 'bg-gradient-to-r from-red-500 to-red-400'
             }`}
-            style={{ width: `${Math.min(budgetAccuracy || 0, 150)}%` }}
+            style={{
+              width: '100%',
+              transform: `scaleX(${Math.min(budgetAccuracy || 0, 150) / 100})`,
+              transformOrigin: 'left',
+            }}
           />
         </div>
         <div className='flex justify-between text-xs text-white/50 mt-1'>

@@ -187,6 +187,7 @@ const DraggableExpenseRow = ({
               creditCards={creditCards}
               isCreditCardPayment={expense.category === 'Credit Card Payment'}
               placeholder='Select payment source'
+              label={null}
             />
             {isUpdating && (
               <div className='absolute inset-0 flex items-center justify-center bg-blue-500/20 rounded'>

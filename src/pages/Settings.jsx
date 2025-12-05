@@ -112,6 +112,30 @@ const Settings = ({ onDataChange }) => {
     }
   };
 
+  const handleExportCreditCardsCSV = async () => {
+    setIsExporting(true);
+    try {
+      const { blob, filename } = await dataManager.exportCreditCardsCSV(
+        setImportProgress
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      logger.success('Credit card data exported successfully');
+    } catch (error) {
+      logger.error('Error exporting credit cards CSV:', error);
+      alert(`Error exporting credit cards: ${error.message}`);
+    } finally {
+      setIsExporting(false);
+      setImportProgress('');
+    }
+  };
+
   const handleExportJSON = async () => {
     setIsExporting(true);
     try {
@@ -334,7 +358,7 @@ const Settings = ({ onDataChange }) => {
                     <h4 className='text-primary font-medium mb-3'>
                       Export Data
                     </h4>
-                    <div className='flex space-x-3'>
+                    <div className='flex space-x-3 flex-wrap gap-2'>
                       <button
                         onClick={handleExportJSON}
                         disabled={isExporting}
@@ -366,6 +390,23 @@ const Settings = ({ onDataChange }) => {
                           <>
                             <Download size={16} />
                             <span>Export CSV</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={handleExportCreditCardsCSV}
+                        disabled={isExporting}
+                        className={`glass-button flex items-center space-x-2 ${isExporting ? 'glass-loading' : ''}`}
+                      >
+                        {isExporting ? (
+                          <>
+                            <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-white' />
+                            <span>Exporting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download size={16} />
+                            <span>Export Credit Cards CSV</span>
                           </>
                         )}
                       </button>
@@ -440,7 +481,7 @@ const Settings = ({ onDataChange }) => {
                       </p>
                       <button
                         onClick={handleClearAllData}
-                        className='glass-button bg-red-500/20 hover:bg-red-500/30 text-red-300 flex items-center space-x-2'
+                        className='glass-button glass-button--danger flex items-center space-x-2'
                       >
                         <Trash2 size={16} />
                         <span>Clear All Data</span>
@@ -460,7 +501,7 @@ const Settings = ({ onDataChange }) => {
                       </p>
                       <button
                         onClick={handleRestoreFromBackup}
-                        className='glass-button bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300'
+                        className='glass-button glass-button--secondary flex items-center space-x-2'
                       >
                         <Shield size={16} />
                         <span>Restore from Backup</span>
@@ -494,7 +535,7 @@ const Settings = ({ onDataChange }) => {
                     </button>
                     <button
                       onClick={handleClearAuditLogs}
-                      className='glass-button bg-red-500/20 hover:bg-red-500/30 flex items-center space-x-2'
+                      className='glass-button glass-button--danger flex items-center space-x-2'
                     >
                       <Trash2 size={16} />
                       <span>Clear</span>

@@ -6,6 +6,36 @@ The Enhanced Glass Design System is a comprehensive, token-driven CSS architectu
 
 ## Design Token System
 
+### 60/30/10 Color System
+
+The design system follows the 60/30/10 color rule for visual hierarchy:
+
+**60% - Dominant Color (Background)**
+- `--color-dominant-base: #0f172a` (slate-900)
+- `--color-dominant-variant: #1e293b` (slate-800)
+- Used for: Main background, base surfaces
+
+**30% - Secondary Color (Glass Surfaces)**
+- `--color-secondary-base: rgba(255, 255, 255, 0.08)`
+- `--color-secondary-elevated: rgba(255, 255, 255, 0.12)`
+- `--color-secondary-hover: rgba(255, 255, 255, 0.15)`
+- Used for: Glass cards, panels, secondary actions, inactive states
+
+**10% - Accent Color (Primary Actions)**
+- `--color-accent: #3b82f6` (blue-500)
+- `--color-accent-hover: #2563eb` (blue-600)
+- `--color-accent-light: rgba(59, 130, 246, 0.2)`
+- `--color-accent-border: rgba(59, 130, 246, 0.3)`
+- `--color-accent-text: #93c5fd` (blue-300)
+- Used for: Primary buttons, active states, key interactive elements, focus states
+
+**Semantic Colors (Status Only)**
+- `--color-success: #10b981` (green-500)
+- `--color-warning: #f59e0b` (yellow-500)
+- `--color-error: #ef4444` (red-500)
+- `--color-info: #3b82f6` (blue-500)
+- Used for: Status badges, alerts, error messages, status indicators only
+
 ### Glass System Tokens
 ```css
 --glass-blur-light: 8px;
@@ -94,19 +124,33 @@ The base primitive that all glass components extend:
 
 ### Glass Button System
 
+The button system uses the 60/30/10 color tokens for consistent styling:
+
 ```html
-<!-- Basic button -->
-<button class="glass-button">Click me</button>
+<!-- Primary button (uses accent color - 10%) -->
+<button class="glass-button glass-button--primary">Save</button>
+
+<!-- Secondary button (uses secondary color - 30%) -->
+<button class="glass-button glass-button--secondary">Cancel</button>
+
+<!-- Danger button (uses error color - semantic) -->
+<button class="glass-button glass-button--danger">Delete</button>
+
+<!-- Filter/Sort button with active state -->
+<button class="glass-button glass-button--filter">Sort</button>
+<button class="glass-button glass-button--filter active">Active Sort</button>
 
 <!-- Size variants -->
-<button class="glass-button glass-button--sm">Small</button>
-<button class="glass-button glass-button--lg">Large</button>
-
-<!-- Style variants -->
-<button class="glass-button glass-button--primary">Primary</button>
-<button class="glass-button glass-button--secondary">Secondary</button>
-<button class="glass-button glass-button--danger">Danger</button>
+<button class="glass-button glass-button--primary glass-button--sm">Small</button>
+<button class="glass-button glass-button--primary glass-button--lg">Large</button>
 ```
+
+**Button Usage Guidelines:**
+- **Primary buttons**: Main actions (Save, Add, Submit, Create)
+- **Secondary buttons**: Secondary actions (Cancel, Back, Close)
+- **Danger buttons**: Destructive actions (Delete, Remove, Clear)
+- **Filter buttons**: Sort/filter controls with active states
+- **Never use inline color classes** like `bg-blue-500/20` - always use button variants
 
 ### Glass Input System
 

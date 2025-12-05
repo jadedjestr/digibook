@@ -49,7 +49,7 @@ export const categoryReducer = (state, action) => {
         ...state,
         formMode: action.payload,
 
-      // Reset editing category if form mode is 'add' or null
+        // Reset editing category if form mode is 'add' or null
         editingCategory:
           action.payload === 'edit' ? state.editingCategory : null,
       };

@@ -29,7 +29,7 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
   return (
     <div
       className={`
-        flex items-center mb-3 p-2 rounded-lg transition-all duration-200 
+        flex items-center mb-3 p-2 rounded-lg transition-all duration-200
         hover:bg-gray-700 hover:translate-x-1 cursor-pointer
         ${isVisible ? 'opacity-100' : 'opacity-0'}
       `}
@@ -55,13 +55,15 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
 
       {/* Progress bar container */}
       <div
-        className='flex-grow h-2 bg-gray-600 rounded mx-3 flex-shrink-0'
+        className='flex-grow h-2 bg-gray-600 rounded mx-3 flex-shrink-0 overflow-hidden'
         style={{ minWidth: '120px' }}
       >
         <div
-          className='h-full rounded transition-all duration-800 ease-out'
+          className='h-full rounded transition-transform duration-800 ease-out'
           style={{
-            width: `${barWidth}%`,
+            width: '100%',
+            transform: `scaleX(${barWidth / 100})`,
+            transformOrigin: 'left',
             backgroundColor: expense.color,
           }}
         />

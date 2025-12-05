@@ -37,7 +37,7 @@ describe('ErrorBoundary', () => {
     expect(
       screen.getByText(
         'We encountered an unexpected error. Your data is safe, but the app needs to restart.'
-      )
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText('Try Again')).toBeInTheDocument();
     expect(screen.getByText('Reload Page')).toBeInTheDocument();

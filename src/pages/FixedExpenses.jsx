@@ -178,7 +178,7 @@ const FixedExpenses = () => {
                     setShowResetPrompt(false);
                   }
                 }}
-                className='flex-1 px-4 py-2 bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg hover:bg-red-500/30 transition-colors'
+                className='flex-1 px-4 py-2 glass-button glass-button--danger'
               >
                 Reset
               </button>

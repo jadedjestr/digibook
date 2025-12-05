@@ -126,10 +126,14 @@ const OverpaymentAnalysis = ({ data }) => {
 
                 {/* Progress Bar */}
                 <div className='relative'>
-                  <div className='w-full bg-white/10 rounded-full h-2'>
+                  <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
                     <div
-                      className='h-2 rounded-full bg-gradient-to-r from-orange-500 to-red-400 transition-all duration-500'
-                      style={{ width: `${barWidth}%` }}
+                      className='h-2 rounded-full bg-gradient-to-r from-orange-500 to-red-400 transition-transform duration-500'
+                      style={{
+                        width: '100%',
+                        transform: `scaleX(${barWidth / 100})`,
+                        transformOrigin: 'left',
+                      }}
                     />
                   </div>
                   <div className='flex justify-between mt-2 text-xs text-white/50'>

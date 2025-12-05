@@ -225,7 +225,7 @@ const CategoryManagerContent = () => {
                     <button
                       onClick={handleBulkDelete}
                       disabled={bulkOperationLoading}
-                      className='glass-button bg-red-500/20 hover:bg-red-500/30 text-red-300 flex items-center space-x-2 disabled:opacity-50'
+                      className='glass-button glass-button--danger flex items-center space-x-2 disabled:opacity-50'
                     >
                       <Trash2 size={16} />
                       <span>

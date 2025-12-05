@@ -302,7 +302,7 @@ class DataManager {
             row.isVariableAmount === 'Yes' ||
             row.isVariableAmount === true;
 
-        // Convert dates to ISO strings
+          // Convert dates to ISO strings
           if (row.startDate) {
             const startDate = new Date(row.startDate);
             converted.startDate = !isNaN(startDate.getTime())
@@ -499,6 +499,31 @@ class DataManager {
     }
 
     return files;
+  }
+
+  // Export only credit cards as CSV
+  async exportCreditCardsCSV(onProgress = () => {}) {
+    try {
+      onProgress('Preparing credit card data...');
+      const creditCards = await dbHelpers.getCreditCards();
+
+      if (!creditCards || creditCards.length === 0) {
+        throw new Error('No credit cards found to export');
+      }
+
+      onProgress('Creating CSV file...');
+      const Papa = await import('papaparse');
+      const csv = Papa.unparse(creditCards);
+      const blob = new Blob([csv], { type: 'text/csv' });
+
+      return {
+        blob,
+        filename: `credit_cards_${new Date().toISOString().split('T')[0]}.csv`,
+      };
+    } catch (error) {
+      logger.error('Credit card export failed:', error);
+      throw new Error(`Credit card export failed: ${error.message}`);
+    }
   }
 
   // Data Validation

@@ -13,8 +13,14 @@ const StatusBadge = ({ status, className = '', variant = 'default' }) => {
           return 'badge-success';
         case 'Due Soon':
           return 'badge-danger';
+        case 'Overdue':
+          return 'badge-danger';
         case 'Payment Due':
           return 'badge-info';
+        case 'Credit Balance':
+          return 'badge-success';
+        case 'Paid Off':
+          return 'badge-success';
         default:
           return 'badge-info';
       }
@@ -23,15 +29,15 @@ const StatusBadge = ({ status, className = '', variant = 'default' }) => {
     // Original statuses for backward compatibility
     switch (status) {
       case 'Paid':
-        return 'bg-green-500/20 text-green-300 border-green-500/30';
+        return 'badge-success';
       case 'Partially Paid':
-        return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
+        return 'badge-warning';
       case 'Overdue':
-        return 'bg-red-500/20 text-red-300 border-red-500/30';
+        return 'badge-danger';
       case 'Pay This Week':
-        return 'bg-orange-500/20 text-orange-300 border-orange-500/30';
+        return 'badge-warning';
       case 'Pay with Next Check':
-        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+        return 'badge-info';
       case 'Pay with Following Check':
         return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
       default:

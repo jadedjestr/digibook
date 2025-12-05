@@ -273,20 +273,28 @@ const MonthlyTrends = ({ history = [] }) => {
               <div className='space-y-2'>
                 {/* Budget Bar */}
                 <div className='relative'>
-                  <div className='w-full bg-white/10 rounded-full h-2'>
+                  <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
                     <div
-                      className='h-2 rounded-full bg-blue-400 transition-all duration-500'
-                      style={{ width: `${budgetWidth}%` }}
+                      className='h-2 rounded-full bg-blue-400 transition-transform duration-500'
+                      style={{
+                        width: '100%',
+                        transform: `scaleX(${budgetWidth / 100})`,
+                        transformOrigin: 'left',
+                      }}
                     />
                   </div>
                 </div>
 
                 {/* Actual Bar */}
                 <div className='relative'>
-                  <div className='w-full bg-white/10 rounded-full h-2'>
+                  <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
                     <div
-                      className='h-2 rounded-full bg-purple-400 transition-all duration-500'
-                      style={{ width: `${actualWidth}%` }}
+                      className='h-2 rounded-full bg-purple-400 transition-transform duration-500'
+                      style={{
+                        width: '100%',
+                        transform: `scaleX(${actualWidth / 100})`,
+                        transformOrigin: 'left',
+                      }}
                     />
                   </div>
                 </div>
@@ -294,10 +302,14 @@ const MonthlyTrends = ({ history = [] }) => {
                 {/* Overpayment Bar */}
                 {data.totalOverpayment > 0 && (
                   <div className='relative'>
-                    <div className='w-full bg-white/10 rounded-full h-2'>
+                    <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
                       <div
-                        className='h-2 rounded-full bg-orange-400 transition-all duration-500'
-                        style={{ width: `${overpaymentWidth}%` }}
+                        className='h-2 rounded-full bg-orange-400 transition-transform duration-500'
+                        style={{
+                          width: '100%',
+                          transform: `scaleX(${overpaymentWidth / 100})`,
+                          transformOrigin: 'left',
+                        }}
                       />
                     </div>
                   </div>

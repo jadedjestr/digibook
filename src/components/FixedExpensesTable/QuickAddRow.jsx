@@ -264,6 +264,7 @@ const QuickAddRow = ({
             isCreditCardPayment={categoryName === 'Credit Card Payment'}
             placeholder='Select payment source...'
             error={errors.paymentSource}
+            label={null}
           />
         </div>
       </td>

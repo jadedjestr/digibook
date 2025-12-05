@@ -132,11 +132,13 @@ const PerformanceDashboard = () => {
                       {memoryUsage.used} MB
                     </span>
                   </div>
-                  <div className='w-full bg-white/10 rounded-full h-2 mt-1'>
+                  <div className='w-full bg-white/10 rounded-full h-2 mt-1 overflow-hidden'>
                     <div
-                      className='bg-blue-400 h-2 rounded-full transition-all duration-300'
+                      className='bg-blue-400 h-2 rounded-full transition-transform duration-300'
                       style={{
-                        width: `${(parseFloat(memoryUsage.used) / parseFloat(memoryUsage.limit)) * 100}%`,
+                        width: '100%',
+                        transform: `scaleX(${((parseFloat(memoryUsage.used) / parseFloat(memoryUsage.limit)) * 100) / 100})`,
+                        transformOrigin: 'left',
                       }}
                     />
                   </div>

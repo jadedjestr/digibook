@@ -109,7 +109,7 @@ const Sidebar = ({ navigation, onToggleLock, isLocked }) => {
                 Liquid Cash
               </span>
               {defaultAccount.isDefault && (
-                <span className='text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full backdrop-blur-sm'>
+                <span className='text-xs badge-info px-2 py-1 rounded-full backdrop-blur-sm'>
                   Default
                 </span>
               )}

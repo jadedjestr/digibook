@@ -59,7 +59,7 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
       const result = await dbHelpers.calculateDebtPayoff(
         balance,
         payment,
-        interestRate,
+        interestRate
       );
       setPayoffResult(result);
     } catch (error) {
@@ -126,9 +126,9 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
   };
 
   const creditUtilization =
-    calculatorData.creditLimit > 0 ?
-      (calculatorData.balance / calculatorData.creditLimit) * 100 :
-      0;
+    calculatorData.creditLimit > 0
+      ? (calculatorData.balance / calculatorData.creditLimit) * 100
+      : 0;
 
   if (creditCards.length === 0) {
     return (
@@ -156,9 +156,9 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
           <button
             onClick={() => setIsEditing(!isEditing)}
             className={`p-2 rounded-lg transition-colors ${
-              isEditing ?
-                'bg-blue-500/20 text-blue-400' :
-                'hover:bg-white/10 text-white/70'
+              isEditing
+                ? 'bg-blue-500/20 text-blue-400'
+                : 'hover:bg-white/10 text-white/70'
             }`}
             title='Edit Mode'
           >
@@ -177,7 +177,7 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
             value={selectedCard?.id || ''}
             onChange={e => {
               const card = creditCards.find(
-                c => c.id === parseInt(e.target.value),
+                c => c.id === parseInt(e.target.value)
               );
               setSelectedCard(card);
             }}
@@ -338,14 +338,14 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                       <p className='text-sm text-white/70'>Payoff Time</p>
                     </div>
                     <p className={`text-xl font-bold ${getPayoffColor()}`}>
-                      {payoffResult.success && payoffResult.payoffMonths > 0 ?
-                        `${payoffResult.payoffMonths} months` :
-                        'N/A'}
+                      {payoffResult.success && payoffResult.payoffMonths > 0
+                        ? `${payoffResult.payoffMonths} months`
+                        : 'N/A'}
                     </p>
                     <p className='text-sm text-white/50'>
-                      {payoffResult.success && payoffResult.payoffDate ?
-                        formatDate(payoffResult.payoffDate) :
-                        'Unable to calculate'}
+                      {payoffResult.success && payoffResult.payoffDate
+                        ? formatDate(payoffResult.payoffDate)
+                        : 'Unable to calculate'}
                     </p>
                   </div>
 
@@ -373,7 +373,7 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                         {payoffResult.success
                           ? formatCurrency(
                               calculatorData.balance +
-                                  payoffResult.totalInterest,
+                                payoffResult.totalInterest
                             )
                           : 'N/A'}
                       </p>
@@ -403,7 +403,7 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                         const interestPayment = balance * monthlyRate;
                         const principalPayment = Math.min(
                           newPayment - interestPayment,
-                          balance,
+                          balance
                         );
                         totalInterest += interestPayment;
                         balance -= principalPayment;

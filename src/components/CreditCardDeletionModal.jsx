@@ -334,8 +334,8 @@ const CreditCardDeletionModal = ({
             <button
               onClick={handleDelete}
               disabled={isProcessing || !canProceed()}
-              className='px-4 py-2 bg-red-500/20 text-red-300 hover:bg-red-500/30
-                       disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors'
+              className='px-4 py-2 glass-button glass-button--danger
+                       disabled:opacity-50 disabled:cursor-not-allowed'
             >
               {isProcessing ? 'Processing...' : 'Delete Credit Card'}
             </button>

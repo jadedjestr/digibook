@@ -578,7 +578,7 @@ const AddExpensePanel = ({
           <button
             onClick={handleSave}
             disabled={isSaving || makeRecurring}
-            className='w-full px-6 py-4 glass-button bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed'
+            className='w-full px-6 py-4 glass-button glass-button--primary disabled:opacity-50 disabled:cursor-not-allowed'
           >
             {isSaving
               ? 'Saving...'
@@ -588,7 +588,7 @@ const AddExpensePanel = ({
           </button>
           <button
             onClick={handleClose}
-            className='w-full px-6 py-4 glass-button bg-white/10 text-white/70 hover:bg-white/20'
+            className='w-full px-6 py-4 glass-button glass-button--secondary'
           >
             Cancel
           </button>

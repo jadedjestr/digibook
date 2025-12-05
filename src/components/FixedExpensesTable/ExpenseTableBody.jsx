@@ -39,7 +39,7 @@ const ExpenseTableBody = ({
             <th>Name</th>
             <th>Due Date</th>
             <th>Amount</th>
-            <th>Account</th>
+            <th>Payment Source</th>
             <th>Paid Amount</th>
             <th>Status</th>
             <th>Actions</th>

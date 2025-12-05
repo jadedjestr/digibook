@@ -415,7 +415,7 @@ const PendingTransactions = ({
                   type: 'expense',
                 });
               }}
-              className='glass-button bg-red-500/20 hover:bg-red-500/30'
+              className='glass-button glass-button--danger'
             >
               Cancel
             </button>

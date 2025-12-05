@@ -308,7 +308,7 @@ const RecurringExpenseModal = ({ isOpen, onClose, expenseData, onSave }) => {
           </button>
           <button
             onClick={handleClose}
-            className='w-full px-6 py-3 glass-button bg-white/10 text-white/70 hover:bg-white/20'
+            className='w-full px-6 py-3 glass-button glass-button--secondary'
           >
             Cancel
           </button>

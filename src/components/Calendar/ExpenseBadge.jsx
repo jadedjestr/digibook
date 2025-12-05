@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import QuickActions from './QuickActions';
 
@@ -30,20 +31,20 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   // Get status class for styling
   const getStatusClass = status => {
     switch (status) {
-    case 'Paid':
-      return 'expense-badge--paid';
-    case 'Partially Paid':
-      return 'expense-badge--partially-paid';
-    case 'Overdue':
-      return 'expense-badge--overdue';
-    case 'Pay This Week':
-      return 'expense-badge--pay-this-week';
-    case 'Pay with Next Check':
-      return 'expense-badge--pay-next-check';
-    case 'Pay with Following Check':
-      return 'expense-badge--pay-following-check';
-    default:
-      return 'expense-badge--unknown';
+      case 'Paid':
+        return 'expense-badge--paid';
+      case 'Partially Paid':
+        return 'expense-badge--partially-paid';
+      case 'Overdue':
+        return 'expense-badge--overdue';
+      case 'Pay This Week':
+        return 'expense-badge--pay-this-week';
+      case 'Pay with Next Check':
+        return 'expense-badge--pay-next-check';
+      case 'Pay with Following Check':
+        return 'expense-badge--pay-following-check';
+      default:
+        return 'expense-badge--unknown';
     }
   };
 
@@ -80,12 +81,14 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
         {expenseText}
       </div>
 
-      {showQuickActions && (
-        <QuickActions
-          selectedExpense={expense}
-          onClose={() => setShowQuickActions(false)}
-        />
-      )}
+      {showQuickActions &&
+        createPortal(
+          <QuickActions
+            selectedExpense={expense}
+            onClose={() => setShowQuickActions(false)}
+          />,
+          document.body
+        )}
     </>
   );
 };

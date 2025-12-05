@@ -280,7 +280,7 @@ const CreditCards = ({
           {creditCards.length > 0 && (
             <button
               onClick={handleOpenMigration}
-              className='glass-button flex items-center space-x-2 bg-green-500/20 text-green-300 hover:bg-green-500/30'
+              className='glass-button glass-button--primary flex items-center space-x-2'
             >
               <Plus size={16} />
               <span>Smart Link Expenses</span>
@@ -290,7 +290,7 @@ const CreditCards = ({
           {creditCards.length > 0 && (
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className='glass-button flex items-center space-x-2 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
+              className='glass-button glass-button--primary flex items-center space-x-2'
             >
               <Plus size={16} />
               <span>Add Credit Card</span>
@@ -306,40 +306,32 @@ const CreditCards = ({
           <div className='flex items-center space-x-2'>
             <button
               onClick={() => setSortBy('name')}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                sortBy === 'name'
-                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                  : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+              className={`glass-button glass-button--filter text-sm ${
+                sortBy === 'name' ? 'active' : ''
               }`}
             >
               Name
             </button>
             <button
               onClick={() => setSortBy('dueDate')}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                sortBy === 'dueDate'
-                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                  : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+              className={`glass-button glass-button--filter text-sm ${
+                sortBy === 'dueDate' ? 'active' : ''
               }`}
             >
               Due Date (Soonest First)
             </button>
             <button
               onClick={() => setSortBy('balance')}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                sortBy === 'balance'
-                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                  : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+              className={`glass-button glass-button--filter text-sm ${
+                sortBy === 'balance' ? 'active' : ''
               }`}
             >
               Balance (Highest First)
             </button>
             <button
               onClick={() => setSortBy('utilization')}
-              className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                sortBy === 'utilization'
-                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                  : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+              className={`glass-button glass-button--filter text-sm ${
+                sortBy === 'utilization' ? 'active' : ''
               }`}
             >
               Utilization (Highest First)
@@ -425,7 +417,7 @@ const CreditCards = ({
               }
             }}
           >
-            <div className='liquid-glass rounded-2xl p-8 w-full max-w-md space-y-6'>
+            <div className='glass-panel rounded-2xl p-8 w-full max-w-md space-y-6'>
               <h2 className='text-xl font-semibold text-white'>
                 {editingCard ? 'Edit Credit Card' : 'Add Credit Card'}
               </h2>
@@ -564,7 +556,7 @@ const CreditCards = ({
               <div className='flex space-x-3'>
                 <button
                   onClick={handleSave}
-                  className='flex-1 px-4 py-3 glass-button bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
+                  className='flex-1 px-4 py-3 glass-button glass-button--primary'
                 >
                   {editingCard ? 'Update' : 'Add'} Credit Card
                 </button>

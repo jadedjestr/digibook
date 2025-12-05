@@ -47,20 +47,20 @@ import { logger } from '../utils/logger';
 const ComponentName = ({ prop1, prop2 }) => {
   // 3. State declarations
   const [localState, setLocalState] = useState(null);
-  
+
   // 4. Custom hooks
   const { data, loading } = useCustomHook();
-  
+
   // 5. Event handlers
   const handleEvent = () => {
     // Implementation
   };
-  
+
   // 6. Effects
   useEffect(() => {
     // Effect logic
   }, [dependency]);
-  
+
   // 7. Render
   return (
     <div>
@@ -203,7 +203,7 @@ describe('ExpenseTable', () => {
   it('should display expenses in correct order', () => {
     // Test implementation
   });
-  
+
   it('should handle empty expense list gracefully', () => {
     // Test implementation
   });
@@ -253,15 +253,15 @@ const handleClick = useCallback(() => {
 // ✅ Good - Validate all inputs
 const validateExpense = (expense) => {
   const errors = {};
-  
+
   if (!expense.description?.trim()) {
     errors.description = 'Description is required';
   }
-  
+
   if (expense.amount <= 0) {
     errors.amount = 'Amount must be positive';
   }
-  
+
   return errors;
 };
 ```
@@ -294,7 +294,7 @@ const calculateProjectedBalance = (account, expenses, endDate) => {
 ```jsx
 /**
  * ExpenseTable - Displays a list of expenses with sorting and filtering
- * 
+ *
  * @param {Array} expenses - Array of expense objects
  * @param {Function} onExpenseUpdate - Callback for expense updates
  * @param {boolean} isLoading - Loading state
@@ -305,6 +305,91 @@ const ExpenseTable = ({ expenses, onExpenseUpdate, isLoading }) => {
 ```
 
 ## 🎨 **CSS & Styling**
+
+### **60/30/10 Color Rule**
+
+The design system follows the 60/30/10 color rule:
+- **60%**: Dominant color (background) - `--color-dominant-base`
+- **30%**: Secondary color (glass surfaces) - `--color-secondary-*`
+- **10%**: Accent color (primary actions) - `--color-accent-*`
+
+**Always use color tokens, never hardcode colors.**
+
+### **Button Styling**
+
+```jsx
+// ✅ Good - Use button variants
+<button className="glass-button glass-button--primary">Save</button>
+<button className="glass-button glass-button--secondary">Cancel</button>
+<button className="glass-button glass-button--danger">Delete</button>
+<button className="glass-button glass-button--filter active">Sort</button>
+
+// ❌ Bad - Inline color classes
+<button className="glass-button bg-blue-500/20 text-blue-300">Save</button>
+<button className="glass-button bg-red-500/20 text-red-300">Delete</button>
+```
+
+**Button Usage Rules:**
+- Primary actions → `glass-button--primary`
+- Secondary actions → `glass-button--secondary`
+- Destructive actions → `glass-button--danger`
+- Filter/sort controls → `glass-button--filter` with `active` class when selected
+
+### **Glass Surface Usage**
+
+```jsx
+// ✅ Good - Use glass system classes
+<div className="glass-card">Content</div>
+<div className="glass-panel">Content</div>
+<div className="glass-surface glass-surface--interactive">Interactive</div>
+
+// ✅ Good - Use utility classes for common patterns
+<div className="glass-secondary">Secondary surface</div>
+<div className="glass-interactive">Interactive surface</div>
+
+// ❌ Bad - Direct Tailwind glass styles
+<div className="bg-white/10 backdrop-blur-sm">Content</div>
+<div className="bg-white/20">Content</div>
+```
+
+**Glass Surface Rules:**
+- Use `glass-card`, `glass-panel`, or `glass-container` for surfaces
+- Use `glass-surface--interactive` for clickable surfaces
+- Use utility classes (`glass-secondary`, `glass-interactive`) for common patterns
+- Never use direct `bg-white/X` or `backdrop-blur-X` classes
+
+### **Status Colors**
+
+```jsx
+// ✅ Good - Status colors only in badges/alerts
+<StatusBadge status="Paid" />
+<div className="badge-danger">Error</div>
+<ErrorDisplay severity="critical" />
+
+// ❌ Bad - Status colors in buttons (except danger)
+<button className="glass-button bg-green-500/20">Save</button>
+```
+
+**Status Color Rules:**
+- Use status colors (green, yellow, red, orange) ONLY in:
+  - StatusBadge component
+  - ErrorDisplay component
+  - Status indicators (small badges)
+  - Alert messages
+- Never use status colors in primary/secondary buttons (except `glass-button--danger`)
+- Never use status colors for icons or large backgrounds
+
+### **Color Token Usage**
+
+```jsx
+// ✅ Good - Use CSS custom properties
+<div style={{ background: 'var(--color-accent-light)' }}>Content</div>
+
+// ❌ Bad - Hardcoded colors
+<div style={{ background: 'rgba(59, 130, 246, 0.2)' }}>Content</div>
+```
+
+## 🎨 **CSS & Styling (Legacy)**
 
 ### **Tailwind Classes**
 ```jsx

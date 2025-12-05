@@ -399,11 +399,13 @@ const MobileExpenseCard = ({
             {((expense.paidAmount / expense.amount) * 100).toFixed(0)}%
           </span>
         </div>
-        <div className='w-full bg-white/10 rounded-full h-2'>
+        <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
           <div
-            className='bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-300'
+            className='bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-transform duration-300'
             style={{
-              width: `${Math.min((expense.paidAmount / expense.amount) * 100, 100)}%`,
+              width: '100%',
+              transform: `scaleX(${Math.min((expense.paidAmount / expense.amount) * 100, 100) / 100})`,
+              transformOrigin: 'left',
             }}
           />
         </div>

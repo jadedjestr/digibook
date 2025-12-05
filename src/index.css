@@ -93,6 +93,32 @@
   --text-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.3);
   --text-shadow-medium: 0 2px 4px rgba(0, 0, 0, 0.3);
   --text-shadow-strong: 0 4px 8px rgba(0, 0, 0, 0.3);
+
+  /* ========================================
+     60/30/10 COLOR SYSTEM
+     ======================================== */
+
+  /* 60% - Dominant Color (Background) */
+  --color-dominant-base: #0f172a; /* slate-900 */
+  --color-dominant-variant: #1e293b; /* slate-800 */
+
+  /* 30% - Secondary Color (Glass Surfaces) */
+  --color-secondary-base: rgba(255, 255, 255, 0.08);
+  --color-secondary-elevated: rgba(255, 255, 255, 0.12);
+  --color-secondary-hover: rgba(255, 255, 255, 0.15);
+
+  /* 10% - Accent Color (Primary Actions) */
+  --color-accent: #3b82f6; /* blue-500 */
+  --color-accent-hover: #2563eb; /* blue-600 */
+  --color-accent-light: rgba(59, 130, 246, 0.2);
+  --color-accent-border: rgba(59, 130, 246, 0.3);
+  --color-accent-text: #93c5fd; /* blue-300 */
+
+  /* Semantic Colors (Status Only) */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
 }
 
 /* Custom Scrollbar Styles */
@@ -518,21 +544,43 @@
   .glass-button--primary {
     background: linear-gradient(
       135deg,
-      rgba(59, 130, 246, 0.2) 0%,
+      var(--color-accent-light) 0%,
       rgba(59, 130, 246, 0.3) 50%,
-      rgba(59, 130, 246, 0.2) 100%
+      var(--color-accent-light) 100%
     );
-    border-color: rgba(59, 130, 246, 0.4);
+    border-color: var(--color-accent-border);
+    color: var(--color-accent-text);
+  }
+
+  .glass-button--primary:hover {
+    background: linear-gradient(
+      135deg,
+      rgba(59, 130, 246, 0.3) 0%,
+      rgba(59, 130, 246, 0.4) 50%,
+      rgba(59, 130, 246, 0.3) 100%
+    );
+    border-color: rgba(59, 130, 246, 0.5);
   }
 
   .glass-button--secondary {
     background: linear-gradient(
       135deg,
-      rgba(255, 255, 255, 0.1) 0%,
-      rgba(255, 255, 255, 0.2) 50%,
-      rgba(255, 255, 255, 0.1) 100%
+      var(--color-secondary-base) 0%,
+      var(--color-secondary-elevated) 50%,
+      var(--color-secondary-base) 100%
     );
     border-color: rgba(255, 255, 255, 0.2);
+    color: white;
+  }
+
+  .glass-button--secondary:hover {
+    background: linear-gradient(
+      135deg,
+      var(--color-secondary-elevated) 0%,
+      var(--color-secondary-hover) 50%,
+      var(--color-secondary-elevated) 100%
+    );
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .glass-button--danger {
@@ -544,6 +592,32 @@
     );
     border-color: var(--glass-error-border);
     color: var(--glass-error-text);
+  }
+
+  .glass-button--danger:hover {
+    background: linear-gradient(
+      135deg,
+      rgba(239, 68, 68, 0.2) 0%,
+      rgba(239, 68, 68, 0.3) 50%,
+      rgba(239, 68, 68, 0.2) 100%
+    );
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  /* Filter/Sort Button Variant */
+  .glass-button--filter {
+    @apply glass-button--secondary;
+  }
+
+  .glass-button--filter.active {
+    background: var(--color-accent-light);
+    border-color: var(--color-accent-border);
+    color: var(--color-accent-text);
+  }
+
+  .glass-button--filter.active:hover {
+    background: rgba(59, 130, 246, 0.3);
+    border-color: rgba(59, 130, 246, 0.4);
   }
 
   /* Ripple Effect for Buttons */
@@ -1009,9 +1083,11 @@
     }
   }
 
-  /* Credit Card Redesign Styles */
+  /* ========================================
+     CREDIT CARD SPECIFIC STYLES
+     ======================================== */
 
-  /* Enhanced Status Badges */
+  /* Enhanced Status Badges (used by StatusBadge component) */
   .badge-danger {
     @apply bg-red-500/20 text-red-300 border border-red-500/30;
   }
@@ -1028,10 +1104,9 @@
     @apply bg-blue-500/20 text-blue-300 border border-blue-500/30;
   }
 
-  /* Credit Card Layout */
+  /* Credit Card Layout (extends glass-card with credit card specific styling) */
   .credit-card {
-    @apply liquid-glass;
-    @apply p-6;
+    @apply glass-card;
     @apply space-y-4;
     @apply transition-all duration-300 ease-out;
     @apply hover:transform hover:translate-y-[-2px];
@@ -1103,11 +1178,12 @@
     @apply mb-4;
   }
 
+  /* Credit card info items use glass-secondary utility */
   .credit-info-item {
-    @apply bg-gray-700/50;
+    background: var(--color-secondary-base);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     @apply p-3;
     @apply rounded-lg;
-    @apply border border-gray-600/30;
   }
 
   .credit-info-label {
@@ -1151,17 +1227,18 @@
 
   .utilization-bar {
     @apply h-2;
-    @apply bg-gray-700/50;
+    background: var(--color-secondary-base);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     @apply rounded-full;
     @apply overflow-hidden;
-    @apply border border-gray-600/30;
   }
 
   .utilization-fill {
     @apply h-full;
     @apply rounded-full;
-    @apply transition-all duration-1000 ease-out;
-    @apply transform origin-left;
+    width: 100%; /* Full width, scaled down via transform */
+    transform-origin: left;
+    transition: transform 1000ms ease-out; /* Specific property */
   }
 
   .utilization-fill.danger {
@@ -1567,6 +1644,25 @@
 
   .glass-surface-interactive {
     @apply glass-surface--interactive;
+  }
+
+  /* Common Glass Pattern Utilities */
+  .glass-interactive {
+    @apply glass-surface glass-surface--interactive;
+  }
+
+  .glass-secondary {
+    background: var(--color-secondary-base);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .glass-hover {
+    background: var(--color-secondary-hover);
+  }
+
+  .glass-hover:hover {
+    background: var(--color-secondary-hover);
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .glass-surface-elevated {
