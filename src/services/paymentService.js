@@ -1,12 +1,12 @@
 /**
  * Payment Service for Dual Foreign Key Architecture
  *
- * This service handles all payment processing logic for the new architecture
- * where expenses can be paid from either accounts or credit cards, but not both.
+ * Payment processing for the dual foreign key architecture:
+ * expenses can be paid from accounts or credit cards, not both.
  *
  * Key Features:
  * - Processes regular expense payments (account or credit card)
- * - Handles credit card payments (two-field system: funding account → target credit card)
+ * - Handles credit card payments (funding account → target credit card)
  * - Manages account balance updates
  * - Provides payment source information for UI display
  * - Maintains audit trails for all transactions
@@ -14,7 +14,7 @@
 
 import { dbHelpers } from '../db/database-clean';
 import {
-  createPaymentSource,
+  createPaymentSource as _createPaymentSource,
   PaymentSourceTypes,
 } from '../types/paymentSource';
 import { logger } from '../utils/logger';
@@ -47,7 +47,7 @@ export class PaymentService {
       }
 
       logger.success(
-        `Payment processed: $${paymentDifference} for ${expense.name}`
+        `Payment processed: $${paymentDifference} for ${expense.name}`,
       );
     } catch (error) {
       logger.error('Payment processing failed:', error);
@@ -66,10 +66,10 @@ export class PaymentService {
    */
   async processCreditCardPayment(expense, paymentDifference) {
     const fundingAccount = this.accounts.find(
-      acc => acc.id === expense.accountId
+      acc => acc.id === expense.accountId,
     );
     const targetCreditCard = this.creditCards.find(
-      card => card.id === expense.targetCreditCardId
+      card => card.id === expense.targetCreditCardId,
     );
 
     if (!fundingAccount) {
@@ -77,7 +77,7 @@ export class PaymentService {
     }
     if (!targetCreditCard) {
       throw new Error(
-        `Target credit card not found: ${expense.targetCreditCardId}`
+        `Target credit card not found: ${expense.targetCreditCardId}`,
       );
     }
 
@@ -106,7 +106,7 @@ export class PaymentService {
     });
 
     logger.success(
-      `Paid $${paymentDifference} to ${targetCreditCard.name} from ${fundingAccount.name}`
+      `Paid $${paymentDifference} to ${targetCreditCard.name} from ${fundingAccount.name}`,
     );
   }
 
@@ -127,7 +127,7 @@ export class PaymentService {
       await this.processCreditCardCharge(expense, paymentDifference);
     } else {
       throw new Error(
-        `No payment source specified for expense: ${expense.name}`
+        `No payment source specified for expense: ${expense.name}`,
       );
     }
   }
@@ -157,7 +157,7 @@ export class PaymentService {
     });
 
     logger.success(
-      `Paid $${paymentDifference} for ${expense.name} from ${account.name}`
+      `Paid $${paymentDifference} for ${expense.name} from ${account.name}`,
     );
   }
 
@@ -170,7 +170,7 @@ export class PaymentService {
    */
   async processCreditCardCharge(expense, paymentDifference) {
     const creditCard = this.creditCards.find(
-      card => card.id === expense.creditCardId
+      card => card.id === expense.creditCardId,
     );
     if (!creditCard) {
       throw new Error(`Credit card not found: ${expense.creditCardId}`);
@@ -188,7 +188,7 @@ export class PaymentService {
     });
 
     logger.success(
-      `Charged $${paymentDifference} for ${expense.name} to ${creditCard.name}`
+      `Charged $${paymentDifference} for ${expense.name} to ${creditCard.name}`,
     );
   }
 
@@ -211,7 +211,7 @@ export class PaymentService {
       };
     } else if (expense.creditCardId) {
       const creditCard = this.creditCards.find(
-        card => card.id === expense.creditCardId
+        card => card.id === expense.creditCardId,
       );
       return {
         type: PaymentSourceTypes.CREDIT_CARD,
@@ -248,10 +248,10 @@ export class PaymentService {
     }
 
     const fundingAccount = this.accounts.find(
-      acc => acc.id === expense.accountId
+      acc => acc.id === expense.accountId,
     );
     const targetCreditCard = this.creditCards.find(
-      card => card.id === expense.targetCreditCardId
+      card => card.id === expense.targetCreditCardId,
     );
 
     return {
@@ -292,7 +292,7 @@ export class PaymentService {
 
     if (expense.creditCardId) {
       const creditCard = this.creditCards.find(
-        card => card.id === expense.creditCardId
+        card => card.id === expense.creditCardId,
       );
       if (!creditCard) {
         errors.push(`Credit card with ID ${expense.creditCardId} not found`);
@@ -303,27 +303,27 @@ export class PaymentService {
     if (expense.category === 'Credit Card Payment') {
       if (!expense.accountId) {
         errors.push(
-          'Credit card payments must have funding account (accountId)'
+          'Credit card payments must have funding account (accountId)',
         );
       }
       if (!expense.targetCreditCardId) {
         errors.push(
-          'Credit card payments must have target credit card (targetCreditCardId)'
+          'Credit card payments must have target credit card (targetCreditCardId)',
         );
       }
       if (expense.creditCardId) {
         errors.push(
-          'Credit card payments cannot have creditCardId (use targetCreditCardId)'
+          'Credit card payments cannot have creditCardId (use targetCreditCardId)',
         );
       }
 
       if (expense.targetCreditCardId) {
         const targetCard = this.creditCards.find(
-          card => card.id === expense.targetCreditCardId
+          card => card.id === expense.targetCreditCardId,
         );
         if (!targetCard) {
           errors.push(
-            `Target credit card with ID ${expense.targetCreditCardId} not found`
+            `Target credit card with ID ${expense.targetCreditCardId} not found`,
           );
         }
       }
@@ -334,7 +334,7 @@ export class PaymentService {
       const account = this.accounts.find(acc => acc.id === expense.accountId);
       if (account && account.currentBalance < expense.paidAmount) {
         warnings.push(
-          `Insufficient funds in ${account.name}: $${account.currentBalance} available, $${expense.paidAmount} required`
+          `Insufficient funds in ${account.name}: $${account.currentBalance} available, $${expense.paidAmount} required`,
         );
       }
     }
@@ -369,10 +369,10 @@ export class PaymentService {
     }
 
     const fundingAccount = this.accounts.find(
-      acc => acc.id === expense.accountId
+      acc => acc.id === expense.accountId,
     );
     const targetCreditCard = this.creditCards.find(
-      card => card.id === expense.targetCreditCardId
+      card => card.id === expense.targetCreditCardId,
     );
 
     if (!fundingAccount || !targetCreditCard) {
@@ -390,7 +390,7 @@ export class PaymentService {
     // Insufficient funds check
     if (paymentAmount > fundingAccount.currentBalance) {
       result.errors.push(
-        `Insufficient funds in ${fundingAccount.name}. Available: $${fundingAccount.currentBalance.toFixed(2)}, Required: $${paymentAmount.toFixed(2)}`
+        `Insufficient funds in ${fundingAccount.name}. Available: $${fundingAccount.currentBalance.toFixed(2)}, Required: $${paymentAmount.toFixed(2)}`,
       );
       result.isValid = false;
     }
@@ -402,21 +402,21 @@ export class PaymentService {
     ) {
       const overpayment = paymentAmount - targetCreditCard.balance;
       result.warnings.push(
-        `Payment exceeds current debt by $${overpayment.toFixed(2)}. This will create a credit balance on your ${targetCreditCard.name}.`
+        `Payment exceeds current debt by $${overpayment.toFixed(2)}. This will create a credit balance on your ${targetCreditCard.name}.`,
       );
     }
 
     // Zero balance warning
     if (targetCreditCard.balance <= 0) {
       result.warnings.push(
-        `${targetCreditCard.name} already has a zero or credit balance. This payment will increase your credit balance.`
+        `${targetCreditCard.name} already has a zero or credit balance. This payment will increase your credit balance.`,
       );
     }
 
     // Generate payment suggestions
     result.suggestions = this.generatePaymentSuggestions(
       targetCreditCard,
-      fundingAccount
+      fundingAccount,
     );
 
     // Payment info for UI display

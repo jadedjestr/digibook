@@ -238,12 +238,15 @@ const handleClick = useCallback(() => {
 
 ### **Virtual Scrolling**
 ```jsx
-// ✅ Good - Use virtual scrolling for large lists
-<VirtualizedExpenseTable
-  items={expenses}
-  itemHeight={60}
-  renderItem={({ item }) => <ExpenseRow expense={item} />}
-/>
+// ✅ Good - Use virtual scrolling for large lists (when needed)
+// Note: Virtual scrolling is not currently implemented in Fixed Expenses.
+// Consider implementing if expense lists exceed 100+ items per category.
+// Example implementation would use @tanstack/react-virtual:
+// const virtualizer = useVirtualizer({
+//   count: items.length,
+//   getScrollElement: () => parentRef.current,
+//   estimateSize: () => 60,
+// });
 ```
 
 ## 🔒 **Security Guidelines**
@@ -429,7 +432,7 @@ The design system follows the 60/30/10 color rule:
 - [ ] Tests are written and passing
 - [ ] Performance implications considered
 - [ ] Accessibility requirements met
-- [ ] No console.log statements (use logger)
+- [ ] No console.log statements (use logger). Enforced by ESLint; only `src/utils/logger.js` may use console.
 - [ ] No unused variables or imports
 - [ ] Proper import ordering
 - [ ] Consistent formatting

@@ -5,7 +5,17 @@ module.exports = {
     es2021: true,
     node: true,
   },
-  extends: ['eslint:recommended', 'plugin:react/recommended', 'plugin:react-hooks/recommended', 'plugin:react/jsx-runtime', 'plugin:jsx-a11y/recommended', 'plugin:import/recommended', 'plugin:import/react', 'prettier', 'plugin:storybook/recommended'],
+  extends: [
+    'eslint:recommended',
+    'plugin:react/recommended',
+    'plugin:react-hooks/recommended',
+    'plugin:react/jsx-runtime',
+    'plugin:jsx-a11y/recommended',
+    'plugin:import/recommended',
+    'plugin:import/react',
+    'prettier',
+    'plugin:storybook/recommended',
+  ],
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module',
@@ -18,12 +28,20 @@ module.exports = {
     react: {
       version: 'detect',
     },
+    'import/resolver': {
+      node: {
+        extensions: ['.js', '.jsx', '.json'],
+      },
+    },
   },
   rules: {
     // Critical code quality rules
     'no-console': 'off', // We handle this with custom rules below
     'no-debugger': 'error',
-    'no-unused-vars': 'error',
+    'no-unused-vars': [
+      'error',
+      { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+    ],
     'no-undef': 'error',
 
     // Custom console prevention rules
@@ -170,7 +188,7 @@ module.exports = {
     'max-len': [
       'error',
       {
-        code: 80,
+        code: 100,
         tabWidth: 2,
         ignoreUrls: true,
         ignoreStrings: true,
@@ -207,4 +225,40 @@ module.exports = {
     'unicode-bom': ['error', 'never'],
     'wrap-regex': 'error',
   },
+  overrides: [
+    {
+      files: ['src/utils/logger.js'],
+      rules: {
+        'no-restricted-syntax': 'off',
+      },
+    },
+    {
+      files: ['src/**/*.js', 'src/**/*.jsx'],
+      rules: {
+        indent: 'off',
+        'space-before-function-paren': 'off',
+        'operator-linebreak': 'off',
+      },
+    },
+    {
+      files: ['src/stories/**', '**/*.stories.js'],
+      rules: {
+        'import/no-unresolved': 'off',
+      },
+    },
+    {
+      files: ['src/test/**', '**/*.test.js', '**/*.test.jsx'],
+      globals: {
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        vi: 'readonly',
+      },
+    },
+  ],
 };

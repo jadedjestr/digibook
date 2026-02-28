@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
 
 import BudgetVsActualDashboard from '../components/BudgetVsActualDashboard';
 import CreditCardDebtTable from '../components/CreditCardDebtTable';
@@ -8,7 +9,11 @@ import OverpaymentAnalysis from '../components/OverpaymentAnalysis';
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 
-const Insights = ({ accounts = [], creditCards = [], onDataChange }) => {
+const Insights = ({
+  accounts: _accounts = [],
+  creditCards = [],
+  onDataChange,
+}) => {
   const [budgetSummary, setBudgetSummary] = useState(null);
   const [overpaymentData, setOverpaymentData] = useState({});
   const [monthlyHistory, setMonthlyHistory] = useState([]);
@@ -106,6 +111,17 @@ const Insights = ({ accounts = [], creditCards = [], onDataChange }) => {
       <MonthlyTrends history={monthlyHistory} />
     </div>
   );
+};
+
+Insights.propTypes = {
+  accounts: PropTypes.arrayOf(PropTypes.object),
+  creditCards: PropTypes.arrayOf(PropTypes.object),
+  onDataChange: PropTypes.func.isRequired,
+};
+
+Insights.defaultProps = {
+  accounts: [],
+  creditCards: [],
 };
 
 export default Insights;

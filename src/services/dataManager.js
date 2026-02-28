@@ -141,14 +141,14 @@ class DataManager {
         const normalizedVersion = normalizeVersion(data.version);
         if (normalizedVersion > CURRENT_DATA_VERSION) {
           throw new Error(
-            `Data format version ${data.version} is not supported. Current version: ${CURRENT_DATA_VERSION}`
+            `Data format version ${data.version} is not supported. Current version: ${CURRENT_DATA_VERSION}`,
           );
         }
 
         // Log version migration scenario
         if (normalizedVersion < CURRENT_DATA_VERSION) {
           logger.info(
-            `Importing data from version ${data.version}, will migrate to version ${CURRENT_DATA_VERSION}`
+            `Importing data from version ${data.version}, will migrate to version ${CURRENT_DATA_VERSION}`,
           );
         }
       }
@@ -171,7 +171,7 @@ class DataManager {
 
       if (result.errors && result.errors.length > 0) {
         throw new Error(
-          `CSV parsing errors: ${result.errors.map(e => e.message).join(', ')}`
+          `CSV parsing errors: ${result.errors.map(e => e.message).join(', ')}`,
         );
       }
 
@@ -205,7 +205,7 @@ class DataManager {
       return {
         pendingTransactions: this.convertCSVData(
           csvData,
-          'pendingTransactions'
+          'pendingTransactions',
         ),
       };
     }
@@ -233,7 +233,7 @@ class DataManager {
       return {
         recurringExpenseTemplates: this.convertCSVData(
           csvData,
-          'recurringExpenseTemplates'
+          'recurringExpenseTemplates',
         ),
       };
     }
@@ -263,7 +263,17 @@ class DataManager {
         case 'fixedExpenses':
           converted.amount = parseFloat(row.amount) || 0;
           converted.paidAmount = parseFloat(row.paidAmount) || 0;
-          converted.accountId = parseInt(row.accountId) || 0;
+
+          // V4 format: handle both accountId and creditCardId
+          converted.accountId = row.accountId
+            ? parseInt(row.accountId) || null
+            : null;
+          converted.creditCardId = row.creditCardId
+            ? parseInt(row.creditCardId) || null
+            : null;
+          converted.targetCreditCardId = row.targetCreditCardId
+            ? parseInt(row.targetCreditCardId) || null
+            : null;
           converted.dueDate = row.dueDate
             ? new Date(row.dueDate).toISOString()
             : '';
@@ -290,7 +300,12 @@ class DataManager {
         case 'recurringExpenseTemplates':
           converted.baseAmount = parseFloat(row.baseAmount) || 0;
           converted.intervalValue = parseInt(row.intervalValue) || 1;
+
+          // V4 format: handle both accountId and creditCardId
           converted.accountId = row.accountId ? parseInt(row.accountId) : null;
+          converted.creditCardId = row.creditCardId
+            ? parseInt(row.creditCardId)
+            : null;
           converted.isActive =
             row.isActive === 'true' ||
             row.isActive === '1' ||
@@ -358,11 +373,11 @@ class DataManager {
       const validationResult = await this.validateImportData(validatedData);
       if (!validationResult.isValid) {
         throw new Error(
-          `Import validation failed: ${validationResult.errors.join(', ')}`
+          `Import validation failed: ${validationResult.errors.join(', ')}`,
         );
       }
 
-      onProgress('Importing data...');
+      onProgress('Applying import (atomic transaction)...');
       await dbHelpers.importData(validatedData);
 
       onProgress('Import completed successfully!');
@@ -382,7 +397,7 @@ class DataManager {
       // Check if it's an encrypted export
       if (!data.encrypted) {
         throw new Error(
-          'File is not encrypted. Use regular import for unencrypted files.'
+          'File is not encrypted. Use regular import for unencrypted files.',
         );
       }
 
@@ -401,16 +416,16 @@ class DataManager {
       const validationResult = await this.validateImportData(validatedData);
       if (!validationResult.isValid) {
         throw new Error(
-          `Import validation failed: ${validationResult.errors.join(', ')}`
+          `Import validation failed: ${validationResult.errors.join(', ')}`,
         );
       }
 
-      onProgress('Importing data...');
+      onProgress('Applying import (atomic transaction)...');
       await dbHelpers.importData(validatedData);
 
       onProgress('Secure import completed successfully!');
       logger.success(
-        `Encrypted data imported successfully from ${fileType} file`
+        `Encrypted data imported successfully from ${fileType} file`,
       );
     } catch (error) {
       logger.error('Secure import failed:', error);
@@ -431,9 +446,8 @@ class DataManager {
       onProgress('Creating file...');
       if (format === 'json') {
         return this.createJSONExport(data);
-      } else {
-        return this.createCSVExport(data);
       }
+      return this.createCSVExport(data);
     } catch (error) {
       logger.error('Export failed:', error);
       throw new Error(`Export failed: ${error.message}`);
@@ -453,7 +467,7 @@ class DataManager {
       onProgress('Encrypting data...');
       const encryptedExport = await secureDataHandling.exportData(
         data,
-        password
+        password,
       );
 
       onProgress('Creating secure file...');
@@ -563,7 +577,7 @@ class BackupManager {
       const verificationResult = await this.verifyBackupIntegrity(backup);
       if (!verificationResult.isValid) {
         throw new Error(
-          `Backup integrity verification failed: ${verificationResult.errors.join(', ')}`
+          `Backup integrity verification failed: ${verificationResult.errors.join(', ')}`,
         );
       }
 
@@ -574,8 +588,13 @@ class BackupManager {
       // Rotate old backups
       await this.rotateBackups();
 
+      const compressionRatio = backup.originalSize
+        ? backup.size / backup.originalSize
+        : 0;
+      const compressionPct = Math.round((1 - compressionRatio) * 100);
+
       logger.success(
-        `Backup created successfully (${backup.size} bytes, ${Math.round((1 - backup.size / backup.originalSize) * 100)}% compressed)`
+        `Backup created successfully (${backup.size} bytes, ${compressionPct}% compressed)`,
       );
       return key;
     } catch (error) {
@@ -628,7 +647,7 @@ class BackupManager {
       const integrityResult = await this.verifyBackupIntegrity(backup);
       if (!integrityResult.isValid) {
         throw new Error(
-          `Backup integrity check failed: ${integrityResult.errors.join(', ')}`
+          `Backup integrity check failed: ${integrityResult.errors.join(', ')}`,
         );
       }
 
@@ -657,7 +676,7 @@ class BackupManager {
     }
 
     return backups.sort(
-      (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+      (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
     )[0];
   }
 
@@ -708,7 +727,7 @@ class BackupManager {
           if (typeof value === 'object' && Object.keys(value).length === 0)
             return undefined;
           return value;
-        })
+        }),
       );
 
       return compressed;
@@ -764,7 +783,7 @@ class BackupManager {
         const normalizedVersion = normalizeVersion(backup.version);
         if (normalizedVersion > CURRENT_DATA_VERSION) {
           errors.push(
-            `Backup version ${backup.version} is newer than current version ${CURRENT_DATA_VERSION}`
+            `Backup version ${backup.version} is newer than current version ${CURRENT_DATA_VERSION}`,
           );
         }
       }
@@ -801,7 +820,7 @@ class BackupManager {
       const integrityResult = await this.verifyBackupIntegrity(backup);
       if (!integrityResult.isValid) {
         throw new Error(
-          `Backup integrity check failed: ${integrityResult.errors.join(', ')}`
+          `Backup integrity check failed: ${integrityResult.errors.join(', ')}`,
         );
       }
 
@@ -812,7 +831,7 @@ class BackupManager {
       const validationResult = await this.validateImportData(decompressedData);
       if (!validationResult.isValid) {
         throw new Error(
-          `Data validation failed: ${validationResult.errors.join(', ')}`
+          `Data validation failed: ${validationResult.errors.join(', ')}`,
         );
       }
 
@@ -853,7 +872,7 @@ class BackupManager {
       const totalCount = results.length;
 
       logger.info(
-        `Automated backup testing completed: ${successCount}/${totalCount} backups passed`
+        `Automated backup testing completed: ${successCount}/${totalCount} backups passed`,
       );
 
       return {
@@ -910,11 +929,11 @@ class BackupManager {
             logger.error('Scheduled daily backup failed:', error);
           }
         },
-        24 * 60 * 60 * 1000
+        24 * 60 * 60 * 1000,
       ); // 24 hours
 
       logger.info(
-        `Automatic backups scheduled. Next backup at: ${nextBackup.toISOString()}`
+        `Automatic backups scheduled. Next backup at: ${nextBackup.toISOString()}`,
       );
     } catch (error) {
       logger.error('Failed to schedule automatic backups:', error);
@@ -962,7 +981,7 @@ export const validateExpenseDataV4 = expense => {
     return sanitizedExpense;
   } catch (error) {
     logger.warn(
-      `Expense validation failed for "${expense.name || 'Unknown'}": ${error.message}`
+      `Expense validation failed for "${expense.name || 'Unknown'}": ${error.message}`,
     );
 
     // Attempt to fix common issues
@@ -990,7 +1009,7 @@ export const convertV3ToV4Expense = v3Expense => {
     v4Expense.accountId = null;
 
     logger.debug(
-      `Converted V3 expense "${v4Expense.name}" from credit card format`
+      `Converted V3 expense "${v4Expense.name}" from credit card format`,
     );
   }
 
@@ -1011,7 +1030,7 @@ export const fixCommonExpenseIssues = expense => {
   // Issue 1: Both accountId and creditCardId are set
   if (fixedExpense.accountId && fixedExpense.creditCardId) {
     logger.warn(
-      `Expense "${fixedExpense.name}" has both payment sources - keeping accountId, removing creditCardId`
+      `Expense "${fixedExpense.name}" has both payment sources - keeping accountId, removing creditCardId`,
     );
     fixedExpense.creditCardId = null;
   }
@@ -1019,7 +1038,7 @@ export const fixCommonExpenseIssues = expense => {
   // Issue 2: No payment source specified
   if (!fixedExpense.accountId && !fixedExpense.creditCardId) {
     logger.warn(
-      `Expense "${fixedExpense.name}" has no payment source - setting default account`
+      `Expense "${fixedExpense.name}" has no payment source - setting default account`,
     );
     fixedExpense.accountId = 1; // Default to first account
     fixedExpense.creditCardId = null;
@@ -1029,19 +1048,19 @@ export const fixCommonExpenseIssues = expense => {
   if (fixedExpense.category === 'Credit Card Payment') {
     if (!fixedExpense.accountId) {
       logger.warn(
-        `Credit card payment "${fixedExpense.name}" missing funding account - setting default`
+        `Credit card payment "${fixedExpense.name}" missing funding account - setting default`,
       );
       fixedExpense.accountId = 1;
     }
     if (!fixedExpense.targetCreditCardId) {
       logger.warn(
-        `Credit card payment "${fixedExpense.name}" missing target credit card - setting default`
+        `Credit card payment "${fixedExpense.name}" missing target credit card - setting default`,
       );
       fixedExpense.targetCreditCardId = 1;
     }
     if (fixedExpense.creditCardId) {
       logger.warn(
-        `Credit card payment "${fixedExpense.name}" has creditCardId - removing (use targetCreditCardId)`
+        `Credit card payment "${fixedExpense.name}" has creditCardId - removing (use targetCreditCardId)`,
       );
       fixedExpense.creditCardId = null;
     }
@@ -1091,7 +1110,7 @@ export const validateImportedDataV4 = importedData => {
           return validateExpenseDataV4(expense);
         } catch (error) {
           logger.warn(
-            `Expense ${index + 1} failed V4 validation, attempting V3→V4 conversion`
+            `Expense ${index + 1} failed V4 validation, attempting V3→V4 conversion`,
           );
           try {
             // Try V3→V4 conversion
@@ -1099,18 +1118,18 @@ export const validateImportedDataV4 = importedData => {
           } catch (conversionError) {
             logger.error(
               `Failed to convert expense ${index + 1}:`,
-              conversionError
+              conversionError,
             );
 
             // Return the expense with basic fixes applied
             return fixCommonExpenseIssues(expense);
           }
         }
-      }
+      },
     );
 
     logger.success(
-      `Validated ${validatedData.fixedExpenses.length} expenses for V4 format`
+      `Validated ${validatedData.fixedExpenses.length} expenses for V4 format`,
     );
   }
 

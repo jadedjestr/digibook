@@ -1,5 +1,5 @@
-import { Calendar, DollarSign } from 'lucide-react';
-import React from 'react';
+import { Calendar } from 'lucide-react';
+import PropTypes from 'prop-types';
 
 import { formatCurrency } from '../utils/accountUtils';
 
@@ -32,6 +32,11 @@ const NextCheckExpensesCard = ({ totalAmount, expenseCount }) => {
       </div>
     </div>
   );
+};
+
+NextCheckExpensesCard.propTypes = {
+  totalAmount: PropTypes.number.isRequired,
+  expenseCount: PropTypes.number.isRequired,
 };
 
 export default NextCheckExpensesCard;

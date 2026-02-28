@@ -1,42 +1,62 @@
 import PropTypes from 'prop-types';
 
-import { useAppStore } from '../../stores/useAppStore';
+import { useExpenseOperations } from '../../hooks/useExpenseOperations';
 
 /**
  * Quick Actions component for calendar interactions
  */
 const QuickActions = ({ selectedExpense, onClose }) => {
-  const { updateExpense } = useAppStore();
+  const { updateExpense } = useExpenseOperations();
 
   if (!selectedExpense) return null;
 
-  const handleMarkAsPaid = () => {
-    updateExpense(selectedExpense.id, {
+  const handleMarkAsPaid = async () => {
+    await updateExpense(selectedExpense.id, {
       paidAmount: selectedExpense.amount,
+      status: 'paid',
     });
     onClose();
   };
 
-  const handleMarkAsPartial = () => {
+  const handleMarkAsPartial = async () => {
     const partialAmount = selectedExpense.amount * 0.5; // 50% partial payment
-    updateExpense(selectedExpense.id, {
+    await updateExpense(selectedExpense.id, {
       paidAmount: partialAmount,
     });
     onClose();
   };
 
-  const handleResetPayment = () => {
-    updateExpense(selectedExpense.id, {
+  const handleResetPayment = async () => {
+    await updateExpense(selectedExpense.id, {
       paidAmount: 0,
+      status: 'pending',
     });
     onClose();
   };
 
+  const handleKeyDown = (e, stopPropagation) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (stopPropagation) e.stopPropagation();
+      else onClose();
+    }
+  };
+
   return (
-    <div className='quick-actions-overlay' onClick={onClose}>
+    <div
+      className='quick-actions-overlay'
+      onClick={onClose}
+      onKeyDown={e => handleKeyDown(e, false)}
+      role='button'
+      tabIndex={0}
+      aria-label='Close quick actions'
+    >
       <div
         className='quick-actions-panel glass-panel'
         onClick={e => e.stopPropagation()}
+        onKeyDown={e => handleKeyDown(e, true)}
+        role='button'
+        tabIndex={0}
       >
         <div className='quick-actions-header'>
           <h3 className='quick-actions-title'>Quick Actions</h3>
@@ -133,6 +153,17 @@ const QuickActions = ({ selectedExpense, onClose }) => {
       </div>
     </div>
   );
+};
+
+QuickActions.propTypes = {
+  selectedExpense: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    name: PropTypes.string,
+    amount: PropTypes.number,
+    dueDate: PropTypes.string,
+    paidAmount: PropTypes.number,
+  }),
+  onClose: PropTypes.func.isRequired,
 };
 
 export default QuickActions;

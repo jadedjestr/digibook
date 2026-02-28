@@ -97,40 +97,39 @@ export const db = new DigibookDBClean();
 // Initialize database with error handling
 export async function initializeDatabase() {
   try {
-    console.log('Database: Starting initialization...');
-    console.log('Database: db object =', db);
-    console.log('Database: db.name =', db.name);
-    console.log('Database: db.verno =', db.verno);
+    logger.debug('Database: Starting initialization...');
+    logger.debug('Database: db object =', db);
+    logger.debug('Database: db.name =', db.name);
+    logger.debug('Database: db.verno =', db.verno);
 
     await db.open();
 
-    console.log('Database: After opening...');
-    console.log('Database: db.isOpen() =', db.isOpen());
-    console.log(
+    logger.debug('Database: After opening...');
+    logger.debug('Database: db.isOpen() =', db.isOpen());
+    logger.debug(
       'Database: db.tables =',
-      db.tables.map(t => t.name)
+      db.tables.map(t => t.name),
     );
-    console.log('Database: Looking for recurringExpenseTemplates table...');
+    logger.debug('Database: Looking for recurringExpenseTemplates table...');
     const recurringTable = db.tables.find(
-      t => t.name === 'recurringExpenseTemplates'
+      t => t.name === 'recurringExpenseTemplates',
     );
-    console.log(
+    logger.debug(
       'Database: recurringExpenseTemplates table found:',
-      !!recurringTable
+      !!recurringTable,
     );
 
     if (recurringTable) {
-      console.log(
+      logger.debug(
         'Database: recurringExpenseTemplates table schema:',
-        recurringTable.schema
+        recurringTable.schema,
       );
     }
 
     logger.success('Database initialized successfully');
     return true;
   } catch (error) {
-    console.error('Database: Initialization error:', error);
-    logger.error('Database initialization failed:', error);
+    logger.error('Database: Initialization error:', error);
 
     // If initialization fails, try to force reset all databases
     try {
@@ -156,7 +155,7 @@ export async function initializeDatabase() {
     } catch (recreateError) {
       logger.error('Database recreation failed:', recreateError);
       throw new Error(
-        `Failed to initialize database: ${recreateError.message}`
+        `Failed to initialize database: ${recreateError.message}`,
       );
     }
   }
@@ -183,6 +182,7 @@ export const dbHelpers = {
       logger.success('Database cleared successfully');
     } catch (error) {
       logger.error('Error clearing database:', error);
+      throw new Error(`Failed to clear database: ${error.message}`);
     }
   },
 
@@ -243,7 +243,7 @@ export const dbHelpers = {
       for (const dbName of uniqueDbNames) {
         try {
           logger.info(`Attempting to delete database: ${dbName}`);
-          await new Promise((resolve, reject) => {
+          await new Promise((resolve, _reject) => {
             const deleteReq = indexedDB.deleteDatabase(dbName);
             deleteReq.onsuccess = () => {
               logger.info(`Successfully deleted: ${dbName}`);
@@ -360,7 +360,7 @@ export const dbHelpers = {
     try {
       const transactions = await db.pendingTransactions.toArray();
       return transactions.sort(
-        (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+        (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
       );
     } catch (error) {
       logger.error('Error getting pending transactions:', error);
@@ -406,7 +406,53 @@ export const dbHelpers = {
 
   async completePendingTransaction(id) {
     try {
-      await db.pendingTransactions.delete(id);
+      await db.transaction(
+        'rw',
+        db.pendingTransactions,
+        db.accounts,
+        db.auditLogs,
+        async () => {
+          const transaction = await db.pendingTransactions.get(id);
+          if (!transaction) {
+            throw new Error(`Transaction with ID ${id} not found`);
+          }
+
+          // Update the account balance (adding the transaction amount)
+          // For income, this adds to balance. For expense (negative), it subtracts.
+          const account = await db.accounts.get(transaction.accountId);
+          if (account) {
+            const previousBalance = account.currentBalance;
+            const newBalance = previousBalance + transaction.amount;
+
+            await db.accounts.update(account.id, {
+              currentBalance: newBalance,
+            });
+
+            // Log the completion in audit logs
+            await db.auditLogs.add({
+              timestamp: new Date().toISOString(),
+              actionType: 'COMPLETE_TRANSACTION',
+              entityType: 'PendingTransaction',
+              entityId: id,
+              details: {
+                amount: transaction.amount,
+                accountId: transaction.accountId,
+                description: transaction.description,
+                category: transaction.category,
+                previousBalance,
+                newBalance,
+              },
+            });
+          } else {
+            logger.warn(
+              `Account ${transaction.accountId} not found for transaction ${id}`,
+            );
+          }
+
+          // Finally, delete the pending transaction
+          await db.pendingTransactions.delete(id);
+        },
+      );
       logger.success(`Pending transaction completed successfully: ${id}`);
     } catch (error) {
       logger.error('Error completing pending transaction:', error);
@@ -425,7 +471,14 @@ export const dbHelpers = {
     }
   },
 
+  /**
+   * @deprecated Use addFixedExpenseV4() instead. This does not support V4 dual
+   * foreign key format (creditCardId). Will be removed in a future version.
+   */
   async addFixedExpense(expense) {
+    logger.warn(
+      'addFixedExpense() is deprecated. Use addFixedExpenseV4() instead for proper V4 format support.',
+    );
     try {
       // Validate expense data
       if (
@@ -458,7 +511,14 @@ export const dbHelpers = {
     }
   },
 
+  /**
+   * @deprecated Use updateFixedExpenseV4() instead. This does not support V4
+   * dual foreign key format (creditCardId). Will be removed in a future version.
+   */
   async updateFixedExpense(id, updates) {
+    logger.warn(
+      'updateFixedExpense() is deprecated. Use updateFixedExpenseV4() instead for proper V4 format support.',
+    );
     try {
       await db.fixedExpenses.update(id, updates);
       logger.success(`Fixed expense updated successfully: ${id}`);
@@ -492,15 +552,33 @@ export const dbHelpers = {
         throw new Error('Missing required recurring template fields');
       }
 
-      // Calculate next due date based on frequency and start date
-      const nextDueDate = this.calculateNextDueDate(
-        template.startDate,
-        template.frequency,
-        template.intervalValue || 1
-      );
+      // Use caller's nextDueDate when valid; else fall back to computed.
+      let nextDueDate;
+      const callerNextDue = template.nextDueDate;
+      const startParsed = DateUtils.parseDate(template.startDate);
+      let callerNextParsed = null;
+      if (callerNextDue && DateUtils.isValidDate(callerNextDue)) {
+        callerNextParsed = DateUtils.parseDate(callerNextDue);
+      }
+      if (
+        callerNextParsed &&
+        startParsed &&
+        !isNaN(startParsed.getTime()) &&
+        callerNextParsed.getTime() >= startParsed.getTime()
+      ) {
+        nextDueDate = callerNextDue;
+      } else {
+        nextDueDate = this.calculateNextDueDate(
+          template.startDate,
+          template.frequency,
+          template.intervalValue || 1,
+          template.intervalUnit || 'months',
+        );
+      }
 
       const templateData = {
         ...template,
+        intervalUnit: template.intervalUnit || 'months', // Ensure intervalUnit is always set
         nextDueDate,
         lastGenerated: null,
         isActive: true,
@@ -514,28 +592,48 @@ export const dbHelpers = {
     } catch (error) {
       logger.error('Error adding recurring expense template:', error);
       throw new Error(
-        `Failed to add recurring expense template: ${error.message}`
+        `Failed to add recurring expense template: ${error.message}`,
       );
     }
   },
 
   async updateRecurringExpenseTemplate(id, updates) {
     try {
+      const template = await db.recurringExpenseTemplates.get(id);
+      if (!template) {
+        throw new Error('Template not found');
+      }
+
+      // Normalize existing template's intervalUnit
+      const normalizedTemplate = {
+        ...template,
+        intervalUnit: template.intervalUnit || 'months',
+      };
+
       const updateData = {
         ...updates,
+
+        // Ensure intervalUnit is always set
+        intervalUnit:
+          updates.intervalUnit !== undefined
+            ? updates.intervalUnit
+            : normalizedTemplate.intervalUnit,
         updatedAt: new Date().toISOString(),
       };
 
       // If frequency or start date changed, recalculate next due date
-      if (updates.frequency || updates.startDate || updates.intervalValue) {
-        const template = await db.recurringExpenseTemplates.get(id);
-        if (template) {
-          updateData.nextDueDate = this.calculateNextDueDate(
-            updates.startDate || template.startDate,
-            updates.frequency || template.frequency,
-            updates.intervalValue || template.intervalValue || 1
-          );
-        }
+      if (
+        updates.frequency ||
+        updates.startDate ||
+        updates.intervalValue ||
+        updates.intervalUnit
+      ) {
+        updateData.nextDueDate = this.calculateNextDueDate(
+          updates.startDate || normalizedTemplate.startDate,
+          updates.frequency || normalizedTemplate.frequency,
+          updates.intervalValue || normalizedTemplate.intervalValue || 1,
+          updateData.intervalUnit || 'months',
+        );
       }
 
       await db.recurringExpenseTemplates.update(id, updateData);
@@ -558,47 +656,49 @@ export const dbHelpers = {
 
   async getRecurringExpenseTemplates() {
     try {
-      console.log('dbHelpers: Starting getRecurringExpenseTemplates...');
-      console.log('dbHelpers: db object =', db);
-      console.log(
+      logger.debug('dbHelpers: Starting getRecurringExpenseTemplates...');
+      logger.debug('dbHelpers: db object =', db);
+      logger.debug(
         'dbHelpers: db.recurringExpenseTemplates =',
-        db.recurringExpenseTemplates
+        db.recurringExpenseTemplates,
       );
 
       // Test if the table exists
-      console.log('dbHelpers: Testing table existence...');
+      logger.debug('dbHelpers: Testing table existence...');
       const tableExists = db.tables.find(
-        table => table.name === 'recurringExpenseTemplates'
+        table => table.name === 'recurringExpenseTemplates',
       );
-      console.log(
+      logger.debug(
         'dbHelpers: recurringExpenseTemplates table exists:',
-        !!tableExists
+        !!tableExists,
       );
 
       if (!tableExists) {
-        console.error(
-          'dbHelpers: recurringExpenseTemplates table does not exist!'
+        logger.error(
+          'dbHelpers: recurringExpenseTemplates table does not exist!',
         );
         throw new Error('recurringExpenseTemplates table does not exist');
       }
 
-      console.log('dbHelpers: Performing query...');
+      logger.debug('dbHelpers: Performing query...');
 
       // Use toArray() and filter instead of indexed where query to avoid DataError
       const allTemplates = await db.recurringExpenseTemplates.toArray();
-      console.log('dbHelpers: Got all templates:', allTemplates);
+      logger.debug('dbHelpers: Got all templates:', allTemplates);
 
-      const result = allTemplates.filter(
-        template => template.isActive === true
-      );
-      console.log('dbHelpers: Filtered active templates:', result);
+      const result = allTemplates
+        .filter(template => template.isActive === true)
+        .map(template => ({
+          ...template,
 
-      console.log('dbHelpers: Query result:', result);
+          // Normalize intervalUnit for backward compatibility
+          intervalUnit: template.intervalUnit || 'months',
+        }));
+      logger.debug('dbHelpers: Filtered active templates:', result);
+
+      logger.debug('dbHelpers: Query result:', result);
       return result;
     } catch (error) {
-      console.error('dbHelpers: ERROR in getRecurringExpenseTemplates:', error);
-      console.error('dbHelpers: Error stack:', error.stack);
-      console.error('dbHelpers: Error name:', error.name);
       logger.error('Error fetching recurring expense templates:', error);
       throw new Error('Failed to fetch recurring expense templates');
     }
@@ -606,7 +706,15 @@ export const dbHelpers = {
 
   async getRecurringExpenseTemplate(id) {
     try {
-      return await db.recurringExpenseTemplates.get(id);
+      const template = await db.recurringExpenseTemplates.get(id);
+      if (template) {
+        // Normalize intervalUnit for backward compatibility
+        return {
+          ...template,
+          intervalUnit: template.intervalUnit || 'months',
+        };
+      }
+      return template;
     } catch (error) {
       logger.error('Error fetching recurring expense template:', error);
       throw new Error('Failed to fetch recurring expense template');
@@ -614,28 +722,66 @@ export const dbHelpers = {
   },
 
   // Helper function to calculate next due date based on frequency
-  calculateNextDueDate(startDate, frequency, intervalValue = 1) {
+  calculateNextDueDate(
+    startDate,
+    frequency,
+    intervalValue = 1,
+    intervalUnit = 'months',
+  ) {
+    // Ensure intervalValue is a valid number
+    const validIntervalValue =
+      Number.isInteger(intervalValue) && intervalValue > 0 ? intervalValue : 1;
+
+    // Ensure intervalUnit is valid
+    const validIntervalUnit = ['days', 'weeks', 'months', 'years'].includes(
+      intervalUnit,
+    )
+      ? intervalUnit
+      : 'months';
+
     const date = DateUtils.parseDate(startDate);
-    if (!date) {
-      throw new Error('Invalid start date for recurring expense');
+    if (!date || isNaN(date.getTime())) {
+      throw new Error(`Invalid start date for recurring expense: ${startDate}`);
     }
 
     switch (frequency) {
       case 'monthly':
-        date.setMonth(date.getMonth() + intervalValue);
+        date.setMonth(date.getMonth() + validIntervalValue);
         break;
-      case 'quarterly':
-        date.setMonth(date.getMonth() + 3 * intervalValue);
+      case 'quarterly': {
+        const addMonths = 3 * validIntervalValue;
+        date.setMonth(date.getMonth() + addMonths);
         break;
-      case 'biannually':
-        date.setMonth(date.getMonth() + 6 * intervalValue);
+      }
+      case 'biannually': {
+        const addMonths = 6 * validIntervalValue;
+        date.setMonth(date.getMonth() + addMonths);
         break;
+      }
       case 'annually':
-        date.setFullYear(date.getFullYear() + intervalValue);
+        date.setFullYear(date.getFullYear() + validIntervalValue);
         break;
       case 'custom':
-        // For custom, intervalValue represents months
-        date.setMonth(date.getMonth() + intervalValue);
+        // Handle different interval units
+        switch (validIntervalUnit) {
+          case 'days':
+            date.setDate(date.getDate() + validIntervalValue);
+            break;
+          case 'weeks': {
+            const addDays = validIntervalValue * 7;
+            date.setDate(date.getDate() + addDays);
+            break;
+          }
+          case 'months':
+            date.setMonth(date.getMonth() + validIntervalValue);
+            break;
+          case 'years':
+            date.setFullYear(date.getFullYear() + validIntervalValue);
+            break;
+          default:
+            // Fallback to months for backward compatibility
+            date.setMonth(date.getMonth() + validIntervalValue);
+        }
         break;
       default:
         throw new Error(`Unsupported frequency: ${frequency}`);
@@ -652,30 +798,67 @@ export const dbHelpers = {
         throw new Error('Template not found or inactive');
       }
 
-      // Create new fixed expense from template
-      const newExpense = {
-        name: template.name,
-        dueDate: template.nextDueDate,
-        amount: template.baseAmount,
-        accountId: template.accountId,
-        category: template.category,
-        paidAmount: 0,
-        recurringTemplateId: templateId,
-        createdAt: new Date().toISOString(),
+      // Check if template has an end date and if we've passed it
+      if (template.endDate) {
+        const todayString = DateUtils.today();
+        const today = DateUtils.parseDate(todayString);
+        const endDate = DateUtils.parseDate(template.endDate);
+
+        if (endDate && today && today > endDate) {
+          // Template has expired, deactivate it
+          await this.updateRecurringExpenseTemplate(templateId, {
+            isActive: false,
+          });
+          throw new Error('Template has reached its end date');
+        }
+      }
+
+      // Normalize intervalUnit for backward compatibility
+      const normalizedTemplate = {
+        ...template,
+        intervalUnit: template.intervalUnit || 'months',
       };
 
-      const expenseId = await this.addFixedExpense(newExpense);
+      // Create new fixed expense from template using V4 format
+      const newExpense = {
+        name: normalizedTemplate.name,
+        dueDate: normalizedTemplate.nextDueDate,
+        amount: normalizedTemplate.baseAmount,
+        accountId: normalizedTemplate.accountId || null,
+        creditCardId: normalizedTemplate.creditCardId || null,
+        targetCreditCardId: normalizedTemplate.targetCreditCardId || null, // credit card payments
+        category: normalizedTemplate.category,
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: templateId,
+      };
 
-      // Update template with new next due date
+      const expenseId = await this.addFixedExpenseV4(newExpense);
+
+      // Calculate next due date
       const newNextDueDate = this.calculateNextDueDate(
-        template.nextDueDate,
-        template.frequency,
-        template.intervalValue || 1
+        normalizedTemplate.nextDueDate,
+        normalizedTemplate.frequency,
+        normalizedTemplate.intervalValue || 1,
+        normalizedTemplate.intervalUnit || 'months',
       );
+
+      // Check if the next due date would exceed the end date
+      let shouldDeactivate = false;
+      if (template.endDate) {
+        const endDate = DateUtils.parseDate(template.endDate);
+        const nextDue = DateUtils.parseDate(newNextDueDate);
+
+        if (endDate && nextDue && nextDue > endDate) {
+          // Next occurrence would be after end date, deactivate template
+          shouldDeactivate = true;
+        }
+      }
 
       await this.updateRecurringExpenseTemplate(templateId, {
         lastGenerated: template.nextDueDate,
-        nextDueDate: newNextDueDate,
+        nextDueDate: shouldDeactivate ? null : newNextDueDate,
+        isActive: !shouldDeactivate, // Deactivate if we've reached the end
       });
 
       logger.success(`Generated recurring expense: ${template.name}`);
@@ -683,35 +866,6 @@ export const dbHelpers = {
     } catch (error) {
       logger.error('Error generating recurring expense:', error);
       throw new Error('Failed to generate recurring expense');
-    }
-  },
-
-  async getDefaultAccount() {
-    try {
-      const accountCount = await db.accounts.count();
-      if (accountCount === 0) {
-        return null;
-      }
-
-      const allAccounts = await db.accounts.toArray();
-      const defaultAccount = allAccounts.find(
-        account => account.isDefault === true
-      );
-
-      if (defaultAccount) {
-        return defaultAccount;
-      }
-
-      if (allAccounts.length > 0) {
-        const firstAccount = allAccounts[0];
-        await db.accounts.update(firstAccount.id, { isDefault: true });
-        return { ...firstAccount, isDefault: true };
-      }
-
-      return null;
-    } catch (error) {
-      logger.warn('Error getting default account:', error);
-      return null;
     }
   },
 
@@ -739,7 +893,7 @@ export const dbHelpers = {
       const validation = dataIntegrity.validateAccount(account);
       if (!validation.isValid) {
         throw new Error(
-          `Invalid account data: ${validation.errors.join(', ')}`
+          `Invalid account data: ${validation.errors.join(', ')}`,
         );
       }
 
@@ -818,7 +972,7 @@ export const dbHelpers = {
       const validation = dataIntegrity.validateCategory(category);
       if (!validation.isValid) {
         throw new Error(
-          `Invalid category data: ${validation.errors.join(', ')}`
+          `Invalid category data: ${validation.errors.join(', ')}`,
         );
       }
 
@@ -907,6 +1061,137 @@ export const dbHelpers = {
     }
   },
 
+  /**
+   * Rename a category and update all references in expenses and transactions
+   * This is an atomic operation - if any update fails, the category rename is rolled back
+   * @param {number} categoryId - ID of the category to rename
+   * @param {string} oldName - Current category name
+   * @param {string} newName - New category name
+   * @returns {Object} Summary of updated items
+   */
+  async renameCategory(categoryId, oldName, newName) {
+    try {
+      // Validate inputs
+      if (!categoryId || !oldName || !newName) {
+        throw new Error('Category ID, old name, and new name are required');
+      }
+
+      if (oldName === newName) {
+        return {
+          expensesUpdated: 0,
+          transactionsUpdated: 0,
+          totalUpdated: 0,
+        };
+      }
+
+      // Get the category to verify it exists
+      const category = await db.categories.get(categoryId);
+      if (!category) {
+        throw new Error(`Category with ID ${categoryId} not found`);
+      }
+
+      if (category.name !== oldName) {
+        throw new Error(
+          `Category name mismatch. Expected "${oldName}", found "${category.name}"`,
+        );
+      }
+
+      // Check if new name already exists
+      const existingCategory = await db.categories
+        .where('name')
+        .equals(newName)
+        .first();
+      if (existingCategory && existingCategory.id !== categoryId) {
+        throw new Error(`Category with name "${newName}" already exists`);
+      }
+
+      // Find all expenses with the old category name
+      const expensesToUpdate = await db.fixedExpenses
+        .where('category')
+        .equals(oldName)
+        .toArray();
+
+      // Find all pending transactions with the old category name
+      const transactionsToUpdate = await db.pendingTransactions
+        .where('category')
+        .equals(oldName)
+        .toArray();
+
+      // Update category name first
+      await db.categories.update(categoryId, { name: newName });
+
+      // Update all expenses using batch operations
+      let expensesUpdated = 0;
+      for (const expense of expensesToUpdate) {
+        try {
+          await this.updateFixedExpenseV4(expense.id, { category: newName });
+          expensesUpdated++;
+        } catch (error) {
+          logger.error(
+            `Failed to update expense ${expense.id} during category rename:`,
+            error,
+          );
+
+          // Rollback category name change
+          await db.categories.update(categoryId, { name: oldName });
+          throw new Error(
+            `Failed to update expense references. Category rename rolled back. Error: ${error.message}`,
+          );
+        }
+      }
+
+      // Update all pending transactions
+      let transactionsUpdated = 0;
+      for (const transaction of transactionsToUpdate) {
+        try {
+          await this.updatePendingTransaction(transaction.id, {
+            category: newName,
+          });
+          transactionsUpdated++;
+        } catch (error) {
+          logger.error(
+            `Failed to update transaction ${transaction.id} during category rename:`,
+            error,
+          );
+
+          // Rollback category name change
+          await db.categories.update(categoryId, { name: oldName });
+
+          // Rollback expense updates
+          for (const expense of expensesToUpdate.slice(0, expensesUpdated)) {
+            try {
+              await this.updateFixedExpenseV4(expense.id, {
+                category: oldName,
+              });
+            } catch (rollbackError) {
+              logger.error(
+                `Failed to rollback expense ${expense.id}:`,
+                rollbackError,
+              );
+            }
+          }
+          throw new Error(
+            `Failed to update transaction references. Category rename rolled back. Error: ${error.message}`,
+          );
+        }
+      }
+
+      const totalUpdated = expensesUpdated + transactionsUpdated;
+      logger.success(
+        `Category renamed from "${oldName}" to "${newName}". Updated ${expensesUpdated} expenses and ${transactionsUpdated} transactions.`,
+      );
+
+      return {
+        expensesUpdated,
+        transactionsUpdated,
+        totalUpdated,
+      };
+    } catch (error) {
+      logger.error('Error renaming category:', error);
+      throw error;
+    }
+  },
+
   async reassignCategoryItems(oldCategoryName, newCategoryName, affectedItems) {
     try {
       // Update fixed expenses
@@ -927,11 +1212,150 @@ export const dbHelpers = {
       }
 
       logger.success(
-        `Reassigned ${expenseIds.length} expenses and ${transactionIds.length} transactions from ${oldCategoryName} to ${newCategoryName}`
+        `Reassigned ${expenseIds.length} expenses and ${transactionIds.length} transactions from ${oldCategoryName} to ${newCategoryName}`,
       );
     } catch (error) {
       logger.error('Error reassigning category items:', error);
       throw new Error('Failed to reassign category items');
+    }
+  },
+
+  /**
+   * Detect orphaned expenses (expenses with category names that don't exist)
+   * @returns {Object} Map of orphaned category names to their usage counts
+   */
+  async detectOrphanedExpenses() {
+    try {
+      // Get all unique category names from expenses
+      const allExpenses = await db.fixedExpenses.toArray();
+      const expenseCategoryNames = new Set(
+        allExpenses.map(expense => expense.category).filter(Boolean),
+      );
+
+      // Get all unique category names from pending transactions
+      const allTransactions = await db.pendingTransactions.toArray();
+      const transactionCategoryNames = new Set(
+        allTransactions
+          .map(transaction => transaction.category)
+          .filter(Boolean),
+      );
+
+      // Get all valid category names
+      const allCategories = await db.categories.toArray();
+      const validCategoryNames = new Set(
+        allCategories.map(category => category.name),
+      );
+
+      // Find orphaned category names
+      const orphanedCategories = new Map();
+
+      // Check expense categories
+      expenseCategoryNames.forEach(categoryName => {
+        if (!validCategoryNames.has(categoryName)) {
+          const existing = orphanedCategories.get(categoryName) || {
+            expenseCount: 0,
+            transactionCount: 0,
+          };
+          existing.expenseCount = allExpenses.filter(
+            e => e.category === categoryName,
+          ).length;
+          orphanedCategories.set(categoryName, existing);
+        }
+      });
+
+      // Check transaction categories
+      transactionCategoryNames.forEach(categoryName => {
+        if (!validCategoryNames.has(categoryName)) {
+          const existing = orphanedCategories.get(categoryName) || {
+            expenseCount: 0,
+            transactionCount: 0,
+          };
+          existing.transactionCount = allTransactions.filter(
+            t => t.category === categoryName,
+          ).length;
+          orphanedCategories.set(categoryName, existing);
+        }
+      });
+
+      return Array.from(orphanedCategories.entries()).map(([name, counts]) => ({
+        categoryName: name,
+        expenseCount: counts.expenseCount,
+        transactionCount: counts.transactionCount,
+        totalCount: counts.expenseCount + counts.transactionCount,
+      }));
+    } catch (error) {
+      logger.error('Error detecting orphaned expenses:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fix orphaned expenses by reassigning them to a target category
+   * @param {string} orphanedCategoryName - The orphaned category name to fix
+   * @param {string} targetCategoryName - The target category to reassign to
+   * @returns {Object} Summary of fixed items
+   */
+  async fixOrphanedExpenses(orphanedCategoryName, targetCategoryName) {
+    try {
+      // Validate target category exists
+      const targetCategory = await db.categories
+        .where('name')
+        .equals(targetCategoryName)
+        .first();
+      if (!targetCategory) {
+        throw new Error(`Target category "${targetCategoryName}" not found`);
+      }
+
+      // Find all expenses with orphaned category
+      const orphanedExpenses = await db.fixedExpenses
+        .where('category')
+        .equals(orphanedCategoryName)
+        .toArray();
+
+      // Find all transactions with orphaned category
+      const orphanedTransactions = await db.pendingTransactions
+        .where('category')
+        .equals(orphanedCategoryName)
+        .toArray();
+
+      // Update expenses
+      let expensesFixed = 0;
+      for (const expense of orphanedExpenses) {
+        try {
+          await this.updateFixedExpenseV4(expense.id, {
+            category: targetCategoryName,
+          });
+          expensesFixed++;
+        } catch (error) {
+          logger.error(`Failed to fix expense ${expense.id}:`, error);
+        }
+      }
+
+      // Update transactions
+      let transactionsFixed = 0;
+      for (const transaction of orphanedTransactions) {
+        try {
+          await this.updatePendingTransaction(transaction.id, {
+            category: targetCategoryName,
+          });
+          transactionsFixed++;
+        } catch (error) {
+          logger.error(`Failed to fix transaction ${transaction.id}:`, error);
+        }
+      }
+
+      logger.success(
+        `Fixed orphaned category "${orphanedCategoryName}": ${expensesFixed} expenses and ${transactionsFixed} transactions reassigned to "${targetCategoryName}"`,
+      );
+
+      return {
+        expensesFixed,
+        transactionsFixed,
+        totalFixed: expensesFixed + transactionsFixed,
+      };
+    } catch (error) {
+      logger.error('Error fixing orphaned expenses:', error);
+      throw error;
     }
   },
 
@@ -951,11 +1375,11 @@ export const dbHelpers = {
         transactionCount: transactions.length,
         totalExpenseAmount: expenses.reduce(
           (sum, expense) => sum + expense.amount,
-          0
+          0,
         ),
         totalTransactionAmount: transactions.reduce(
           (sum, transaction) => sum + transaction.amount,
-          0
+          0,
         ),
       };
     } catch (error) {
@@ -974,7 +1398,7 @@ export const dbHelpers = {
     try {
       const existingCategories = await db.categories.toArray();
       const existingCategoryNames = existingCategories.map(cat =>
-        cat.name.toLowerCase()
+        cat.name.toLowerCase(),
       );
 
       const defaultCategories = [
@@ -1001,7 +1425,8 @@ export const dbHelpers = {
       ];
 
       const categoriesToAdd = defaultCategories.filter(
-        category => !existingCategoryNames.includes(category.name.toLowerCase())
+        category =>
+          !existingCategoryNames.includes(category.name.toLowerCase()),
       );
 
       if (categoriesToAdd.length > 0) {
@@ -1151,7 +1576,7 @@ export const dbHelpers = {
     try {
       const allAccounts = await db.accounts.toArray();
       const defaultAccounts = allAccounts.filter(
-        account => account.isDefault === true
+        account => account.isDefault === true,
       );
 
       // If there are multiple default accounts, keep only the first one
@@ -1161,32 +1586,32 @@ export const dbHelpers = {
           await db.accounts.update(account.id, { isDefault: false });
         }
         logger.info(
-          `Cleaned up ${accountsToUpdate.length} duplicate default accounts`
+          `Cleaned up ${accountsToUpdate.length} duplicate default accounts`,
         );
       }
 
       // Remove any "Default Account" placeholders if there are real accounts
       const realAccounts = allAccounts.filter(
-        account => account.name !== 'Default Account'
+        account => account.name !== 'Default Account',
       );
 
       if (realAccounts.length > 0) {
         // Remove ALL "Default Account" entries when real accounts exist
         const defaultAccountPlaceholders = allAccounts.filter(
-          account => account.name === 'Default Account'
+          account => account.name === 'Default Account',
         );
 
         for (const placeholder of defaultAccountPlaceholders) {
           await db.accounts.delete(placeholder.id);
           logger.info(
-            `Removed placeholder Default Account (ID: ${placeholder.id})`
+            `Removed placeholder Default Account (ID: ${placeholder.id})`,
           );
         }
 
-        // If we removed placeholders and there's no default, make the first real account the default
+        // No default after removing placeholders: use first real account
         const remainingAccounts = await db.accounts.toArray();
         const hasDefault = remainingAccounts.some(
-          account => account.isDefault === true
+          account => account.isDefault === true,
         );
 
         if (!hasDefault && remainingAccounts.length > 0) {
@@ -1238,8 +1663,10 @@ export const dbHelpers = {
 
       for (const mapping of mappings) {
         try {
-          await db.fixedExpenses.update(mapping.expenseId, {
-            accountId: mapping.creditCardId,
+          // Use V4 format: set creditCardId, not accountId
+          await this.updateFixedExpenseV4(mapping.expenseId, {
+            creditCardId: mapping.creditCardId,
+            accountId: null, // Ensure accountId is null when using creditCardId
             isManuallyMapped: true,
             mappingConfidence: mapping.confidence,
             mappedAt: new Date().toISOString(),
@@ -1293,7 +1720,7 @@ export const dbHelpers = {
       }
 
       logger.success(
-        `Cleaned up ${duplicates.length} duplicate credit card expenses`
+        `Cleaned up ${duplicates.length} duplicate credit card expenses`,
       );
       return duplicates;
     } catch (error) {
@@ -1317,7 +1744,7 @@ export const dbHelpers = {
 
       if (!defaultAccount) {
         logger.warn(
-          'No checking/savings account found. Cannot create credit card payment expenses.'
+          'No checking/savings account found. Cannot create credit card payment expenses.',
         );
         return 0;
       }
@@ -1327,27 +1754,28 @@ export const dbHelpers = {
         const hasPaymentExpense = expenses.some(
           expense =>
             expense.category === 'Credit Card Payment' &&
-            expense.targetCreditCardId === card.id
+            expense.targetCreditCardId === card.id,
         );
 
         if (!hasPaymentExpense) {
           // Create a minimum payment expense using the new two-field system
-          // Use minimum payment if specified, otherwise calculate based on balance or use $25 default
+          // Min payment if set, else from balance or $25 default
           const expenseAmount =
             card.minimumPayment ||
             (card.balance > 0 ? Math.max(card.balance * 0.02, 25) : 25);
 
-          await db.fixedExpenses.add({
+          // Use V4 format with proper validation
+          await this.addFixedExpenseV4({
             name: `${card.name} Payment`,
             dueDate: card.dueDate || new Date().toISOString().split('T')[0],
             amount: expenseAmount,
             accountId: defaultAccount.id, // ← Funding source (checking/savings)
+            creditCardId: null, // ← Credit card payments don't use creditCardId
             targetCreditCardId: card.id, // ← Target credit card to pay
             category: 'Credit Card Payment', // ← Proper category for two-field system
             paidAmount: 0,
             status: 'pending',
             isAutoCreated: true,
-            createdAt: new Date().toISOString(),
           });
           createdCount++;
         }
@@ -1369,11 +1797,11 @@ export const dbHelpers = {
       // Calculate totals across all expenses
       const totalBudget = expenses.reduce(
         (sum, expense) => sum + expense.amount,
-        0
+        0,
       );
       const totalActual = expenses.reduce(
         (sum, expense) => sum + (expense.paidAmount || 0),
-        0
+        0,
       );
       const totalOverpayment = expenses.reduce((sum, expense) => {
         const overpayment = (expense.paidAmount || 0) - expense.amount;
@@ -1511,46 +1939,89 @@ export const dbHelpers = {
 
   async importData(data) {
     try {
-      // Clear existing data
-      await this.clearDatabase();
+      const CHUNK_SIZE = 1000;
+      const bulkPutChunked = async (table, items) => {
+        if (!Array.isArray(items) || items.length === 0) return;
+        for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+          const chunk = items.slice(i, i + CHUNK_SIZE);
+          await table.bulkPut(chunk);
+        }
+      };
 
-      // Import core data first (order matters for foreign key relationships)
-      if (data.accounts) await db.accounts.bulkAdd(data.accounts);
-      if (data.categories) await db.categories.bulkAdd(data.categories);
-      if (data.paycheckSettings)
-        await db.paycheckSettings.bulkAdd(data.paycheckSettings);
-      if (data.userPreferences)
-        await db.userPreferences.bulkAdd(data.userPreferences);
+      // Atomic full-replace import:
+      // - Everything is cleared and written inside one IndexedDB transaction.
+      // - Any failure aborts the transaction, rolling back the clears/writes.
+      await db.transaction(
+        'rw',
+        db.accounts,
+        db.categories,
+        db.paycheckSettings,
+        db.userPreferences,
+        db.recurringExpenseTemplates,
+        db.creditCards,
+        db.pendingTransactions,
+        db.fixedExpenses,
+        db.monthlyExpenseHistory,
+        db.auditLogs,
+        async () => {
+          // Clear existing data (inline so failures abort the transaction)
+          await db.accounts.clear();
+          await db.pendingTransactions.clear();
+          await db.fixedExpenses.clear();
+          await db.categories.clear();
+          await db.creditCards.clear();
+          await db.paycheckSettings.clear();
+          await db.userPreferences.clear();
+          await db.monthlyExpenseHistory.clear();
+          await db.recurringExpenseTemplates.clear();
+          await db.auditLogs.clear();
 
-      // Import recurring templates before fixed expenses (they may reference templates)
-      if (data.recurringExpenseTemplates) {
-        await db.recurringExpenseTemplates.bulkAdd(
-          data.recurringExpenseTemplates
-        );
-      }
+          // Import core data first (order matters for app invariants)
+          await bulkPutChunked(db.accounts, data.accounts);
+          await bulkPutChunked(db.categories, data.categories);
+          await bulkPutChunked(db.paycheckSettings, data.paycheckSettings);
+          await bulkPutChunked(db.userPreferences, data.userPreferences);
 
-      // Import expenses and transactions
-      if (data.creditCards) await db.creditCards.bulkAdd(data.creditCards);
-      if (data.pendingTransactions)
-        await db.pendingTransactions.bulkAdd(data.pendingTransactions);
-      if (data.fixedExpenses)
-        await db.fixedExpenses.bulkAdd(data.fixedExpenses);
+          // Import recurring templates before fixed expenses (they may reference templates)
+          await bulkPutChunked(
+            db.recurringExpenseTemplates,
+            data.recurringExpenseTemplates,
+          );
 
-      // Import historical and audit data
-      if (data.monthlyExpenseHistory)
-        await db.monthlyExpenseHistory.bulkAdd(data.monthlyExpenseHistory);
-      if (data.auditLogs) await db.auditLogs.bulkAdd(data.auditLogs);
+          // Import expenses and transactions
+          await bulkPutChunked(db.creditCards, data.creditCards);
+          await bulkPutChunked(
+            db.pendingTransactions,
+            data.pendingTransactions,
+          );
+          await bulkPutChunked(db.fixedExpenses, data.fixedExpenses);
 
-      logger.success('Data imported successfully');
+          // Import historical and audit data
+          await bulkPutChunked(
+            db.monthlyExpenseHistory,
+            data.monthlyExpenseHistory,
+          );
+          await bulkPutChunked(db.auditLogs, data.auditLogs);
+        },
+      );
+
+      logger.success('Data imported successfully (atomic transaction)');
     } catch (error) {
       logger.error('Error importing data:', error);
-      throw new Error('Failed to import data');
+      throw new Error(`Failed to import data: ${error.message}`);
     }
   },
 
   async validateImportData(data) {
     try {
-      const requiredFields = [
+      const errors = [];
+
+      if (!data || typeof data !== 'object') {
+        return { isValid: false, errors: ['Invalid data: expected an object'] };
+      }
+
+      // Full-replace import expects these core tables.
+      const requiredArrayFields = [
         'accounts',
         'creditCards',
         'pendingTransactions',
@@ -1558,13 +2029,188 @@ export const dbHelpers = {
         'categories',
       ];
 
-      for (const field of requiredFields) {
-        if (!data[field] || !Array.isArray(data[field])) {
-          throw new Error(`Invalid data: missing or invalid ${field}`);
+      for (const field of requiredArrayFields) {
+        if (!Array.isArray(data[field])) {
+          errors.push(`Invalid data: missing or invalid ${field} array`);
         }
       }
 
-      return { isValid: true, errors: [] };
+      // Optional arrays: if present, must be arrays.
+      const optionalArrayFields = [
+        'paycheckSettings',
+        'userPreferences',
+        'monthlyExpenseHistory',
+        'auditLogs',
+        'recurringExpenseTemplates',
+      ];
+      for (const field of optionalArrayFields) {
+        if (data[field] !== undefined && data[field] !== null) {
+          if (!Array.isArray(data[field])) {
+            errors.push(
+              `Invalid data: ${field} must be an array when provided`,
+            );
+          }
+        }
+      }
+
+      if (errors.length > 0) {
+        return { isValid: false, errors };
+      }
+
+      // Basic referential integrity checks (fail-fast)
+      const toId = value => {
+        if (value === null || value === undefined || value === '') return null;
+        const n =
+          typeof value === 'number' ? value : Number.parseInt(value, 10);
+        return Number.isFinite(n) ? n : null;
+      };
+
+      const accountIds = new Set((data.accounts || []).map(a => toId(a.id)));
+      accountIds.delete(null);
+      const creditCardIds = new Set(
+        (data.creditCards || []).map(c => toId(c.id)),
+      );
+      creditCardIds.delete(null);
+      const templateIds = new Set(
+        (data.recurringExpenseTemplates || []).map(t => toId(t.id)),
+      );
+      templateIds.delete(null);
+
+      // Pending transactions must reference an account
+      for (const [idx, txn] of (data.pendingTransactions || []).entries()) {
+        const accountId = toId(txn?.accountId);
+        if (!accountId || !accountIds.has(accountId)) {
+          errors.push(
+            `pendingTransactions[${idx}]: invalid accountId (${txn?.accountId})`,
+          );
+        }
+      }
+
+      const hasValue = v => v !== null && v !== undefined && v !== '';
+
+      // Fixed expenses must reference exactly one payment source, and valid IDs
+      for (const [idx, exp] of (data.fixedExpenses || []).entries()) {
+        const accountId = toId(exp?.accountId);
+        const creditCardId = toId(exp?.creditCardId);
+        const targetCreditCardId = toId(exp?.targetCreditCardId);
+        const recurringTemplateId = toId(exp?.recurringTemplateId);
+
+        const hasAccount = hasValue(accountId);
+        const hasCreditCard = hasValue(creditCardId);
+
+        if (hasAccount && hasCreditCard) {
+          errors.push(
+            `fixedExpenses[${idx}]: cannot have both accountId and creditCardId`,
+          );
+        } else if (!hasAccount && !hasCreditCard) {
+          errors.push(
+            `fixedExpenses[${idx}]: must have either accountId or creditCardId`,
+          );
+        }
+
+        if (hasAccount && !accountIds.has(accountId)) {
+          errors.push(
+            `fixedExpenses[${idx}]: accountId (${exp?.accountId}) not found in accounts`,
+          );
+        }
+        if (hasCreditCard && !creditCardIds.has(creditCardId)) {
+          errors.push(
+            `fixedExpenses[${idx}]: creditCardId (${exp?.creditCardId}) not found in creditCards`,
+          );
+        }
+
+        if (exp?.category === 'Credit Card Payment') {
+          if (!hasAccount) {
+            errors.push(
+              `fixedExpenses[${idx}]: Credit Card Payment must have funding accountId`,
+            );
+          }
+          if (!targetCreditCardId || !creditCardIds.has(targetCreditCardId)) {
+            errors.push(
+              `fixedExpenses[${idx}]: Credit Card Payment must have valid targetCreditCardId`,
+            );
+          }
+          if (hasCreditCard) {
+            errors.push(
+              `fixedExpenses[${idx}]: Credit Card Payment cannot use creditCardId (use targetCreditCardId)`,
+            );
+          }
+        } else if (hasValue(targetCreditCardId)) {
+          errors.push(
+            `fixedExpenses[${idx}]: targetCreditCardId must be null unless category is Credit Card Payment`,
+          );
+        }
+
+        if (
+          hasValue(recurringTemplateId) &&
+          !templateIds.has(recurringTemplateId)
+        ) {
+          errors.push(
+            `fixedExpenses[${idx}]: recurringTemplateId (${exp?.recurringTemplateId}) not found in recurringExpenseTemplates`,
+          );
+        }
+      }
+
+      // Recurring templates (if present) must also obey payment-source constraints and reference
+      // valid IDs
+      for (const [idx, tpl] of (
+        data.recurringExpenseTemplates || []
+      ).entries()) {
+        const accountId = toId(tpl?.accountId);
+        const creditCardId = toId(tpl?.creditCardId);
+        const targetCreditCardId = toId(tpl?.targetCreditCardId);
+
+        const hasAccount = hasValue(accountId);
+        const hasCreditCard = hasValue(creditCardId);
+
+        if (hasAccount && hasCreditCard) {
+          errors.push(
+            `recurringExpenseTemplates[${idx}]: cannot have both accountId and creditCardId`,
+          );
+        } else if (!hasAccount && !hasCreditCard) {
+          errors.push(
+            `recurringExpenseTemplates[${idx}]: must have either accountId or creditCardId`,
+          );
+        }
+
+        if (hasAccount && !accountIds.has(accountId)) {
+          errors.push(
+            `recurringExpenseTemplates[${idx}]: accountId (${tpl?.accountId}) not found in accounts`,
+          );
+        }
+        if (hasCreditCard && !creditCardIds.has(creditCardId)) {
+          errors.push(
+            `recurringExpenseTemplates[${idx}]: creditCardId (${tpl?.creditCardId}) not found in creditCards`,
+          );
+        }
+
+        if (tpl?.category === 'Credit Card Payment') {
+          if (!hasAccount) {
+            errors.push(
+              `recurringExpenseTemplates[${idx}]: Credit Card Payment must have funding accountId`,
+            );
+          }
+          if (!targetCreditCardId || !creditCardIds.has(targetCreditCardId)) {
+            errors.push(
+              `recurringExpenseTemplates[${idx}]: Credit Card Payment must have valid targetCreditCardId`,
+            );
+          }
+          if (hasCreditCard) {
+            errors.push(
+              `recurringExpenseTemplates[${idx}]: Credit Card Payment cannot use creditCardId (use targetCreditCardId)`,
+            );
+          }
+        } else if (hasValue(targetCreditCardId)) {
+          errors.push(
+            `recurringExpenseTemplates[${idx}]: targetCreditCardId must be null unless category is Credit Card Payment`,
+          );
+        }
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors,
+      };
     } catch (error) {
       return { isValid: false, errors: [error.message] };
     }
@@ -1619,7 +2265,7 @@ export const dbHelpers = {
         const interestPayment = remainingBalance * monthlyRate;
         const principalPayment = Math.min(
           payment - interestPayment,
-          remainingBalance
+          remainingBalance,
         );
 
         totalInterest += interestPayment;
@@ -1681,7 +2327,7 @@ export const dbHelpers = {
         await this.initializeDefaultCategories();
       } else {
         logger.debug(
-          `Found ${categoryCount} existing categories, skipping default initialization`
+          `Found ${categoryCount} existing categories, skipping default initialization`,
         );
       }
 
@@ -1723,8 +2369,14 @@ export const dbHelpers = {
 
   /**
    * Update fixed expense with V4 validation (dual foreign key)
+   *
+   * @param {number} id - Expense ID to update
+   * @param {Object} updates - Fields to update
+   * @param {Object} [options={}] - Optional validation options
+   * @param {boolean} [options.skipPaymentSourceValidation=false] - Skip
+   *   payment source validation during update if true
    */
-  async updateFixedExpenseV4(id, updates) {
+  async updateFixedExpenseV4(id, updates, options = {}) {
     try {
       // Import validation functions
       const { validateExpense, sanitizeExpenseData } = await import(
@@ -1740,7 +2392,7 @@ export const dbHelpers = {
       // Merge current data with updates and validate
       const updatedExpense = { ...currentExpense, ...updates };
       const sanitizedData = sanitizeExpenseData(updatedExpense);
-      validateExpense(sanitizedData);
+      validateExpense(sanitizedData, options);
 
       // Only update the fields that were actually changed
       const sanitizedUpdates = sanitizeExpenseData(updates);
@@ -1751,6 +2403,198 @@ export const dbHelpers = {
       logger.error('Error updating V4 expense:', error);
       throw error;
     }
+  },
+
+  /**
+   * Apply a paidAmount change atomically (expense + balances).
+   *
+   * This prevents partial commits where balances update but the expense does not
+   * (or vice versa). Audit log is best-effort by design.
+   *
+   * @param {number} expenseId - Expense ID to update
+   * @param {Object} updates - Fields to update (must include paidAmount)
+   * @param {Object} [options={}] - Optional validation options for validateExpense
+   */
+  async applyExpensePaymentChangeAtomic(expenseId, updates, options = {}) {
+    if (!updates || typeof updates.paidAmount !== 'number') {
+      throw new Error(
+        'applyExpensePaymentChangeAtomic requires numeric paidAmount',
+      );
+    }
+
+    // Import validators outside the transaction callback to avoid IndexedDB
+    // transaction inactivity across non-DB awaits.
+    const { validateExpense, sanitizeExpenseData } = await import(
+      '../utils/expenseValidation'
+    );
+
+    await db.transaction(
+      'rw',
+      db.fixedExpenses,
+      db.accounts,
+      db.creditCards,
+      db.auditLogs,
+      async () => {
+        const currentExpense = await db.fixedExpenses.get(expenseId);
+        if (!currentExpense) {
+          throw new Error(`Expense with ID ${expenseId} not found`);
+        }
+
+        const updatedExpense = { ...currentExpense, ...updates };
+        const sanitizedExpense = sanitizeExpenseData(updatedExpense);
+        validateExpense(sanitizedExpense, options);
+
+        const previousPaidAmount = Number(currentExpense.paidAmount || 0);
+        const newPaidAmount = Number(sanitizedExpense.paidAmount || 0);
+        const paymentDifference = newPaidAmount - previousPaidAmount;
+
+        const derivedStatus =
+          sanitizedExpense.amount > 0 &&
+          newPaidAmount >= sanitizedExpense.amount
+            ? 'paid'
+            : 'pending';
+
+        const updatesWithDerived = {
+          ...updates,
+          paidAmount: newPaidAmount,
+          status: derivedStatus,
+        };
+
+        // Persist expense first (within the same transaction).
+        const sanitizedUpdates = sanitizeExpenseData(updatesWithDerived);
+        await db.fixedExpenses.update(expenseId, sanitizedUpdates);
+
+        // No balance change needed.
+        if (paymentDifference === 0) {
+          return;
+        }
+
+        // Apply balance deltas based on payment source.
+        if (sanitizedExpense.category === 'Credit Card Payment') {
+          if (!sanitizedExpense.accountId) {
+            throw new Error('Credit Card Payment requires funding accountId');
+          }
+          if (!sanitizedExpense.targetCreditCardId) {
+            throw new Error('Credit Card Payment requires targetCreditCardId');
+          }
+
+          const fundingAccount = await db.accounts.get(
+            sanitizedExpense.accountId,
+          );
+          if (!fundingAccount) {
+            throw new Error(
+              `Funding account not found: ${sanitizedExpense.accountId}`,
+            );
+          }
+
+          const targetCard = await db.creditCards.get(
+            sanitizedExpense.targetCreditCardId,
+          );
+          if (!targetCard) {
+            throw new Error(
+              `Target credit card not found: ${sanitizedExpense.targetCreditCardId}`,
+            );
+          }
+
+          const newAccountBalance =
+            Number(fundingAccount.currentBalance || 0) - paymentDifference;
+          const newCardBalance =
+            Number(targetCard.balance || 0) - paymentDifference;
+
+          await db.accounts.update(fundingAccount.id, {
+            currentBalance: newAccountBalance,
+          });
+          await db.creditCards.update(targetCard.id, {
+            balance: newCardBalance,
+          });
+
+          // Best-effort audit log
+          try {
+            await db.auditLogs.add({
+              timestamp: new Date().toISOString(),
+              actionType: 'PAYMENT',
+              entityType: 'creditCardPayment',
+              entityId: expenseId,
+              details: {
+                amount: paymentDifference,
+                fundingAccountId: fundingAccount.id,
+                targetCreditCardId: targetCard.id,
+                newAccountBalance,
+                newCreditCardBalance: newCardBalance,
+              },
+            });
+          } catch (auditError) {
+            logger.error('Error adding payment audit log:', auditError);
+          }
+          return;
+        }
+
+        if (sanitizedExpense.accountId) {
+          const account = await db.accounts.get(sanitizedExpense.accountId);
+          if (!account) {
+            throw new Error(`Account not found: ${sanitizedExpense.accountId}`);
+          }
+
+          const newBalance =
+            Number(account.currentBalance || 0) - paymentDifference;
+          await db.accounts.update(account.id, { currentBalance: newBalance });
+
+          try {
+            await db.auditLogs.add({
+              timestamp: new Date().toISOString(),
+              actionType: 'PAYMENT',
+              entityType: 'account',
+              entityId: account.id,
+              details: {
+                expenseId,
+                amount: paymentDifference,
+                newBalance,
+              },
+            });
+          } catch (auditError) {
+            logger.error('Error adding payment audit log:', auditError);
+          }
+          return;
+        }
+
+        if (sanitizedExpense.creditCardId) {
+          const creditCard = await db.creditCards.get(
+            sanitizedExpense.creditCardId,
+          );
+          if (!creditCard) {
+            throw new Error(
+              `Credit card not found: ${sanitizedExpense.creditCardId}`,
+            );
+          }
+
+          // Credit card charges increase debt.
+          const newBalance =
+            Number(creditCard.balance || 0) + paymentDifference;
+          await db.creditCards.update(creditCard.id, { balance: newBalance });
+
+          try {
+            await db.auditLogs.add({
+              timestamp: new Date().toISOString(),
+              actionType: 'PAYMENT',
+              entityType: 'creditCard',
+              entityId: creditCard.id,
+              details: {
+                expenseId,
+                amount: paymentDifference,
+                newBalance,
+              },
+            });
+          } catch (auditError) {
+            logger.error('Error adding payment audit log:', auditError);
+          }
+          return;
+        }
+
+        throw new Error(
+          'No payment source specified (expected accountId or creditCardId)',
+        );
+      },
+    );
   },
 
   /**
@@ -1801,18 +2645,18 @@ export const dbHelpers = {
         const creditCard = await db.creditCards.get(expense.creditCardId);
         if (!creditCard) {
           throw new Error(
-            `Credit card with ID ${expense.creditCardId} not found`
+            `Credit card with ID ${expense.creditCardId} not found`,
           );
         }
       }
 
       if (expense.targetCreditCardId) {
         const targetCreditCard = await db.creditCards.get(
-          expense.targetCreditCardId
+          expense.targetCreditCardId,
         );
         if (!targetCreditCard) {
           throw new Error(
-            `Target credit card with ID ${expense.targetCreditCardId} not found`
+            `Target credit card with ID ${expense.targetCreditCardId} not found`,
           );
         }
       }
@@ -1883,17 +2727,285 @@ export const dbHelpers = {
       throw error;
     }
   },
+
+  /**
+   * Audit expenses to check for legacy format issues
+   * Identifies expenses that need migration to V4 format
+   *
+   * @returns {Object} Audit report with findings
+   */
+  async auditExpenseFormat() {
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+      const accounts = await db.accounts.toArray();
+      const creditCards = await db.creditCards.toArray();
+
+      const accountIds = new Set(accounts.map(acc => acc.id));
+      const creditCardIds = new Set(creditCards.map(card => card.id));
+
+      const report = {
+        totalExpenses: expenses.length,
+        issues: {
+          accountIdMatchesCreditCard: [],
+          missingCreditCardId: [],
+          bothFieldsSet: [],
+          noPaymentSource: [],
+          stringAccountId: [],
+        },
+        summary: {},
+      };
+
+      expenses.forEach(expense => {
+        // Check for string accountId (V3 format with "cc-" prefix)
+        if (typeof expense.accountId === 'string') {
+          report.issues.stringAccountId.push({
+            id: expense.id,
+            name: expense.name,
+            accountId: expense.accountId,
+          });
+        }
+
+        // Check for expenses with both accountId and creditCardId set
+        if (expense.accountId && expense.creditCardId) {
+          report.issues.bothFieldsSet.push({
+            id: expense.id,
+            name: expense.name,
+            accountId: expense.accountId,
+            creditCardId: expense.creditCardId,
+          });
+        }
+
+        // Check for expenses with no payment source
+        if (!expense.accountId && !expense.creditCardId) {
+          report.issues.noPaymentSource.push({
+            id: expense.id,
+            name: expense.name,
+          });
+        }
+
+        // Check if accountId matches a credit card ID (legacy numeric format)
+        if (
+          expense.accountId &&
+          typeof expense.accountId === 'number' &&
+          !expense.creditCardId
+        ) {
+          if (
+            creditCardIds.has(expense.accountId) &&
+            !accountIds.has(expense.accountId)
+          ) {
+            report.issues.accountIdMatchesCreditCard.push({
+              id: expense.id,
+              name: expense.name,
+              accountId: expense.accountId,
+              shouldBeCreditCardId: expense.accountId,
+            });
+          }
+        }
+
+        // Check for expenses that should have creditCardId but don't
+        // (This is harder to detect, but we can check if accountId doesn't match any account)
+        if (
+          expense.accountId &&
+          typeof expense.accountId === 'number' &&
+          !expense.creditCardId &&
+          !accountIds.has(expense.accountId) &&
+          !creditCardIds.has(expense.accountId)
+        ) {
+          report.issues.missingCreditCardId.push({
+            id: expense.id,
+            name: expense.name,
+            accountId: expense.accountId,
+            note: 'accountId does not match any account or credit card',
+          });
+        }
+      });
+
+      // Generate summary
+      report.summary = {
+        totalIssues:
+          report.issues.accountIdMatchesCreditCard.length +
+          report.issues.missingCreditCardId.length +
+          report.issues.bothFieldsSet.length +
+          report.issues.noPaymentSource.length +
+          report.issues.stringAccountId.length,
+        accountIdMatchesCreditCard:
+          report.issues.accountIdMatchesCreditCard.length,
+        missingCreditCardId: report.issues.missingCreditCardId.length,
+        bothFieldsSet: report.issues.bothFieldsSet.length,
+        noPaymentSource: report.issues.noPaymentSource.length,
+        stringAccountId: report.issues.stringAccountId.length,
+      };
+
+      // Log summary
+      logger.info('Expense Format Audit Results:', report.summary);
+      if (report.summary.totalIssues > 0) {
+        logger.warn(
+          `Found ${report.summary.totalIssues} expenses with format issues`,
+        );
+      } else {
+        logger.success('All expenses are in V4 format');
+      }
+
+      return report;
+    } catch (error) {
+      logger.error('Error auditing expense format:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Migrate expenses from legacy format to V4 format
+   * Moves credit card IDs from accountId field to creditCardId field
+   *
+   * @returns {Object} Migration report with counts and details
+   */
+  async migrateExpensesToV4Format() {
+    try {
+      const expenses = await db.fixedExpenses.toArray();
+      const accounts = await db.accounts.toArray();
+      const creditCards = await db.creditCards.toArray();
+
+      const accountIds = new Set(accounts.map(acc => acc.id));
+      const creditCardIds = new Set(creditCards.map(card => card.id));
+
+      const report = {
+        totalExpenses: expenses.length,
+        migrated: [],
+        failed: [],
+        skipped: [],
+        summary: {},
+      };
+
+      for (const expense of expenses) {
+        try {
+          // Skip if already in V4 format (has creditCardId set)
+          if (expense.creditCardId) {
+            report.skipped.push({
+              id: expense.id,
+              name: expense.name,
+              reason: 'Already has creditCardId',
+            });
+            continue;
+          }
+
+          // Check if accountId is a string with "cc-" prefix (V3 format)
+          if (
+            typeof expense.accountId === 'string' &&
+            expense.accountId.startsWith('cc-')
+          ) {
+            const creditCardId = parseInt(expense.accountId.slice(3));
+            if (creditCardIds.has(creditCardId)) {
+              await this.updateFixedExpenseV4(expense.id, {
+                accountId: null,
+                creditCardId,
+              });
+              report.migrated.push({
+                id: expense.id,
+                name: expense.name,
+                from: `accountId: "${expense.accountId}"`,
+                to: `creditCardId: ${creditCardId}`,
+              });
+              continue;
+            }
+          }
+
+          // Check if numeric accountId matches a credit card ID (legacy numeric format)
+          if (
+            expense.accountId &&
+            typeof expense.accountId === 'number' &&
+            !expense.creditCardId
+          ) {
+            if (
+              creditCardIds.has(expense.accountId) &&
+              !accountIds.has(expense.accountId)
+            ) {
+              await this.updateFixedExpenseV4(expense.id, {
+                accountId: null,
+                creditCardId: expense.accountId,
+              });
+              report.migrated.push({
+                id: expense.id,
+                name: expense.name,
+                from: `accountId: ${expense.accountId} (credit card ID)`,
+                to: `creditCardId: ${expense.accountId}`,
+              });
+              continue;
+            }
+          }
+
+          // Skip if accountId matches a valid account (correct format)
+          if (expense.accountId && accountIds.has(expense.accountId)) {
+            report.skipped.push({
+              id: expense.id,
+              name: expense.name,
+              reason: 'accountId matches valid account',
+            });
+            continue;
+          }
+
+          // Skip if no accountId (might be credit card payment with targetCreditCardId)
+          if (!expense.accountId) {
+            report.skipped.push({
+              id: expense.id,
+              name: expense.name,
+              reason: 'No accountId (may be credit card payment)',
+            });
+            continue;
+          }
+
+          // If we get here, we couldn't determine what to do
+          report.skipped.push({
+            id: expense.id,
+            name: expense.name,
+            reason: 'Could not determine migration path',
+            accountId: expense.accountId,
+          });
+        } catch (error) {
+          logger.error(`Failed to migrate expense ${expense.id}:`, error);
+          report.failed.push({
+            id: expense.id,
+            name: expense.name,
+            error: error.message,
+          });
+        }
+      }
+
+      // Generate summary
+      report.summary = {
+        total: expenses.length,
+        migrated: report.migrated.length,
+        failed: report.failed.length,
+        skipped: report.skipped.length,
+      };
+
+      // Log results
+      logger.info('Expense Migration Results:', report.summary);
+      if (report.migrated.length > 0) {
+        logger.success(
+          `Migrated ${report.migrated.length} expenses to V4 format`,
+        );
+      }
+      if (report.failed.length > 0) {
+        logger.error(`Failed to migrate ${report.failed.length} expenses`);
+      }
+
+      return report;
+    } catch (error) {
+      logger.error('Error migrating expenses to V4 format:', error);
+      throw error;
+    }
+  },
 };
 
 // Emergency database reset function - can be called from browser console
 window.digibookEmergencyReset = async () => {
   try {
-    console.log('🚨 EMERGENCY DATABASE RESET STARTING...');
+    logger.info('🚨 EMERGENCY DATABASE RESET STARTING...');
     await dbHelpers.forceResetAllDatabases();
-    console.log('✅ Emergency reset complete! Please refresh the page.');
+    logger.info('✅ Emergency reset complete! Please refresh the page.');
     return true;
   } catch (error) {
-    console.error('❌ Emergency reset failed:', error);
+    logger.error('❌ Emergency reset failed:', error);
     return false;
   }
 };
@@ -1901,12 +3013,12 @@ window.digibookEmergencyReset = async () => {
 // Manual cleanup function - can be called from browser console
 window.digibookCleanupAccounts = async () => {
   try {
-    console.log('🧹 CLEANING UP ACCOUNTS...');
+    logger.info('🧹 CLEANING UP ACCOUNTS...');
     await dbHelpers.cleanupDuplicateDefaults();
-    console.log('✅ Account cleanup complete! Please refresh the page.');
+    logger.info('✅ Account cleanup complete! Please refresh the page.');
     return true;
   } catch (error) {
-    console.error('❌ Account cleanup failed:', error);
+    logger.error('❌ Account cleanup failed:', error);
     return false;
   }
 };

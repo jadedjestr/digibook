@@ -1,4 +1,4 @@
-import React from 'react';
+import PropTypes from 'prop-types';
 
 import { usePrivacy } from '../contexts/PrivacyContext';
 
@@ -7,13 +7,18 @@ const PrivacyWrapper = ({ children, fallback = '••••••' }) => {
 
   if (isHidden) {
     return (
-      <span className='privacy-hidden' title='Press Cmd+H to show values'>
+      <span className='privacy-hidden' title='Press Cmd+Shift+H to show values'>
         {fallback}
       </span>
     );
   }
 
   return <>{children}</>;
+};
+
+PrivacyWrapper.propTypes = {
+  children: PropTypes.node,
+  fallback: PropTypes.string,
 };
 
 export default PrivacyWrapper;

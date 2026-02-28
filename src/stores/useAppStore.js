@@ -25,6 +25,7 @@ export const useAppStore = create(
       isPanelOpen: false,
       isLoading: false,
       error: null,
+      templatesLastUpdated: null,
 
       // === ACTIONS ===
 
@@ -43,6 +44,30 @@ export const useAppStore = create(
 
           // Ensure there's a default account BEFORE loading data
           await dbHelpers.ensureDefaultAccount();
+
+          // Run V4 format migration if needed (one-time migration)
+          try {
+            const auditReport = await dbHelpers.auditExpenseFormat();
+            if (auditReport.summary.accountIdMatchesCreditCard > 0) {
+              logger.info(
+                `Found ${auditReport.summary.accountIdMatchesCreditCard} expenses needing V4 migration`,
+              );
+              logger.info('Running automatic V4 format migration...');
+              const migrationReport =
+                await dbHelpers.migrateExpensesToV4Format();
+              if (migrationReport.summary.migrated > 0) {
+                logger.success(
+                  `Successfully migrated ${migrationReport.summary.migrated} expenses to V4 format`,
+                );
+              }
+            }
+          } catch (migrationError) {
+            // Don't fail app load if migration fails - log and continue
+            logger.error(
+              'Migration check failed (non-critical):',
+              migrationError,
+            );
+          }
 
           const [
             accountsData,
@@ -74,6 +99,40 @@ export const useAppStore = create(
           });
 
           logger.success('Application data loaded successfully');
+
+          // Pre-generate occurrences for existing templates (background task)
+          // This doesn't block app load - runs asynchronously
+          (async () => {
+            try {
+              const { preGenerateOccurrences, getActiveTemplates } =
+                await import('../services/recurringExpenseService');
+              const activeTemplates = await getActiveTemplates();
+
+              for (const template of activeTemplates) {
+                try {
+                  await preGenerateOccurrences(template.id, 6);
+                } catch (error) {
+                  logger.warn(
+                    `Failed to pre-generate for template ${template.id}:`,
+                    error,
+                  );
+                }
+              }
+
+              // Reload expenses after pre-generation to show new occurrences
+              const [updatedExpensesData] = await Promise.all([
+                dbHelpers.getFixedExpenses(),
+              ]);
+              set({ fixedExpenses: updatedExpensesData });
+            } catch (error) {
+              logger.warn(
+                'Could not pre-generate recurring expenses on load:',
+                error,
+              );
+
+              // Don't fail app load if this fails
+            }
+          })();
         } catch (error) {
           logger.error('Error loading application data:', error);
           set({
@@ -154,13 +213,31 @@ export const useAppStore = create(
         }
       },
 
+      reloadCategories: async () => {
+        try {
+          const categoriesData = await dbHelpers.getCategories();
+          set({ categories: categoriesData });
+          logger.debug('Categories data reloaded');
+        } catch (error) {
+          logger.error('Error reloading categories:', error);
+        }
+      },
+
+      /**
+       * Refresh templates trigger - updates timestamp to signal widget refresh
+       */
+      refreshTemplates: () => {
+        set({ templatesLastUpdated: Date.now() });
+        logger.debug('Templates refresh triggered');
+      },
+
       /**
        * Update a specific expense in the store
        */
       updateExpense: (expenseId, updates) => {
         set(state => ({
           fixedExpenses: state.fixedExpenses.map(expense =>
-            expense.id === expenseId ? { ...expense, ...updates } : expense
+            expense.id === expenseId ? { ...expense, ...updates } : expense,
           ),
         }));
       },
@@ -180,7 +257,7 @@ export const useAppStore = create(
       removeExpense: expenseId => {
         set(state => ({
           fixedExpenses: state.fixedExpenses.filter(
-            expense => expense.id !== expenseId
+            expense => expense.id !== expenseId,
           ),
         }));
       },
@@ -191,7 +268,7 @@ export const useAppStore = create(
       updateAccount: (accountId, updates) => {
         set(state => ({
           accounts: state.accounts.map(account =>
-            account.id === accountId ? { ...account, ...updates } : account
+            account.id === accountId ? { ...account, ...updates } : account,
           ),
         }));
       },
@@ -202,7 +279,7 @@ export const useAppStore = create(
       updateCreditCard: (cardId, updates) => {
         set(state => ({
           creditCards: state.creditCards.map(card =>
-            card.id === cardId ? { ...card, ...updates } : card
+            card.id === cardId ? { ...card, ...updates } : card,
           ),
         }));
       },
@@ -222,7 +299,7 @@ export const useAppStore = create(
       removeTransaction: transactionId => {
         set(state => ({
           pendingTransactions: state.pendingTransactions.filter(
-            transaction => transaction.id !== transactionId
+            transaction => transaction.id !== transactionId,
           ),
         }));
       },
@@ -319,8 +396,8 @@ export const useAppStore = create(
         currentPage: state.currentPage,
         isPanelOpen: state.isPanelOpen,
       }),
-    }
-  )
+    },
+  ),
 );
 
 // Export individual selectors for better performance
@@ -344,6 +421,8 @@ export const useAppActions = () =>
     reloadAccounts: state.reloadAccounts,
     reloadExpenses: state.reloadExpenses,
     reloadTransactions: state.reloadTransactions,
+    reloadCategories: state.reloadCategories,
+    refreshTemplates: state.refreshTemplates,
     updateExpense: state.updateExpense,
     addExpense: state.addExpense,
     removeExpense: state.removeExpense,

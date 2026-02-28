@@ -1,8 +1,14 @@
-import React from 'react';
+import PropTypes from 'prop-types';
 
 import CategoryCard from './CategoryCard';
 
-const CategoryGrid = ({ categories, onEdit, onDelete }) => {
+const CategoryGrid = ({
+  categories,
+  onEdit,
+  onDelete,
+  selectedCategories = new Set(),
+  onSelectCategory,
+}) => {
   if (categories.length === 0) {
     return (
       <div className='text-center py-8 text-secondary'>
@@ -19,10 +25,27 @@ const CategoryGrid = ({ categories, onEdit, onDelete }) => {
           category={category}
           onEdit={onEdit}
           onDelete={onDelete}
+          isSelected={selectedCategories.has(category.id)}
+          onSelect={
+            onSelectCategory ? () => onSelectCategory(category.id) : undefined
+          }
         />
       ))}
     </div>
   );
+};
+
+CategoryGrid.propTypes = {
+  categories: PropTypes.arrayOf(PropTypes.object).isRequired,
+  onEdit: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  selectedCategories: PropTypes.instanceOf(Set),
+  onSelectCategory: PropTypes.func,
+};
+
+CategoryGrid.defaultProps = {
+  selectedCategories: new Set(),
+  onSelectCategory: undefined,
 };
 
 export default CategoryGrid;

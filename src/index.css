@@ -191,7 +191,7 @@
 
     /* Border and radius */
     border-radius: var(--radius-2xl);
-    border: 1px solid var(--glass-border-primary);
+    border: 0.25px solid var(--glass-border-primary);
 
     /* Elevation shadow */
     box-shadow: var(--glass-elevation-1);
@@ -718,7 +718,7 @@
     @apply glass-surface;
     @apply glass-surface--blur-light;
     width: 100%;
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-2xl);
     border: 1px solid rgba(255, 255, 255, 0.2);
     box-shadow: var(--glass-elevation-1);
     overflow: hidden;
@@ -754,6 +754,58 @@
 
   .glass-table tr:last-child td {
     border-bottom: none;
+  }
+
+  /* Scrollable container utility that respects border-radius */
+  .glass-scroll-container {
+    overflow: auto;
+    border-radius: var(--radius-2xl);
+    /* Ensure proper clipping of rounded corners */
+    isolation: isolate;
+    /* Match glass-surface visual styling for consistency */
+    background: linear-gradient(
+      135deg,
+      var(--glass-surface-primary) 0%,
+      var(--glass-surface-elevated) 50%,
+      var(--glass-surface-primary) 100%
+    );
+    border: 0.25px solid var(--glass-border-primary);
+    box-shadow: var(--glass-elevation-1);
+  }
+
+  /* Remove table border-radius, border, and background when inside scroll container - container handles all styling */
+  .glass-scroll-container > .glass-table {
+    border-radius: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    overflow: visible !important; /* Remove overflow: hidden so container handles clipping */
+  }
+
+  /* Remove table border-radius when inside glass-panel - panel handles rounding */
+  .glass-panel .glass-table {
+    border-radius: 0 !important;
+  }
+
+  .glass-scroll-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .glass-scroll-container::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: var(--radius-2xl);
+  }
+
+  .glass-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-2xl);
+  }
+
+  .glass-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
   }
 
   /* Floating Sidebar */

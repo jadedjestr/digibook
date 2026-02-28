@@ -2,8 +2,9 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import React from 'react';
+import PropTypes from 'prop-types';
 
+import { findPaymentSource } from '../../utils/expenseUtils';
 import DraggableExpenseRow from '../DraggableExpenseRow';
 
 import QuickAddRow from './QuickAddRow';
@@ -24,6 +25,7 @@ const ExpenseTableBody = ({
   onDuplicate,
   onDelete,
   onUpdateExpense,
+  onEditRecurring,
 
   // Quick add props
   categoryName,
@@ -37,6 +39,7 @@ const ExpenseTableBody = ({
         <thead>
           <tr>
             <th>Name</th>
+            <th>Type</th>
             <th>Due Date</th>
             <th>Amount</th>
             <th>Payment Source</th>
@@ -53,16 +56,11 @@ const ExpenseTableBody = ({
             {categoryExpenses.map(expense => {
               const status = paycheckService.calculateExpenseStatus(
                 expense,
-                paycheckDates
+                paycheckDates,
               );
 
-              // Find account in both regular accounts and credit cards
-              let account = creditCards.find(
-                card => card.id === expense.accountId
-              );
-              if (!account) {
-                account = accounts.find(acc => acc.id === expense.accountId);
-              }
+              // Find payment source using V4 format utility (no legacy fallback)
+              const account = findPaymentSource(expense, accounts, creditCards);
 
               const isNewExpense = newExpenseId === expense.id;
 
@@ -78,6 +76,7 @@ const ExpenseTableBody = ({
                   onDuplicate={onDuplicate}
                   onDelete={onDelete}
                   onUpdateExpense={onUpdateExpense}
+                  onEditRecurring={onEditRecurring}
                   accounts={accounts}
                   creditCards={creditCards}
                 />
@@ -98,6 +97,25 @@ const ExpenseTableBody = ({
       </table>
     </div>
   );
+};
+
+ExpenseTableBody.propTypes = {
+  categoryExpenses: PropTypes.arrayOf(PropTypes.object).isRequired,
+  paycheckService: PropTypes.object.isRequired,
+  paycheckDates: PropTypes.object.isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
+  creditCards: PropTypes.arrayOf(PropTypes.object).isRequired,
+  newExpenseId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  updatingExpenseId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  onMarkAsPaid: PropTypes.func.isRequired,
+  onDuplicate: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  onUpdateExpense: PropTypes.func.isRequired,
+  onEditRecurring: PropTypes.func.isRequired,
+  categoryName: PropTypes.string.isRequired,
+  showQuickAdd: PropTypes.bool.isRequired,
+  onQuickAddClose: PropTypes.func.isRequired,
+  onExpenseAdded: PropTypes.func.isRequired,
 };
 
 export default ExpenseTableBody;

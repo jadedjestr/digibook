@@ -21,13 +21,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import PropTypes from 'prop-types';
-import React, {
-  useState,
-  useCallback,
-  useMemo,
-  useRef,
-  useEffect,
-} from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
@@ -124,7 +118,7 @@ const PaymentSourceSelector = ({
       onChange(paymentSource);
       setIsOpen(false);
     },
-    [onChange]
+    [onChange],
   );
 
   const handleToggle = useCallback(() => {
@@ -149,7 +143,7 @@ const PaymentSourceSelector = ({
       const maxDropdownHeight = 300; // Maximum height before scrolling
       const totalNeededHeight = Math.min(
         options.length * optionHeight,
-        maxDropdownHeight
+        maxDropdownHeight,
       );
 
       // Calculate available space below and above the button
@@ -159,7 +153,7 @@ const PaymentSourceSelector = ({
       // Add some padding for better UX
       const padding = 20;
 
-      let top, left, width, maxHeight;
+      let top, left, maxHeight;
 
       // Determine best position based on available space
       if (spaceBelow >= totalNeededHeight + padding) {
@@ -170,31 +164,28 @@ const PaymentSourceSelector = ({
         // Not enough space below, but enough above - position above
         top = rect.top + window.scrollY - totalNeededHeight - 8;
         maxHeight = Math.min(totalNeededHeight, maxDropdownHeight);
+      } else if (spaceBelow > spaceAbove) {
+        // Not enough space in either direction - more space below
+        top = rect.bottom + window.scrollY + 8;
+        maxHeight = Math.max(spaceBelow - padding, minDropdownHeight);
       } else {
-        // Not enough space in either direction - use available space with scrolling
-        if (spaceBelow > spaceAbove) {
-          // More space below, position below with limited height
-          top = rect.bottom + window.scrollY + 8;
-          maxHeight = Math.max(spaceBelow - padding, minDropdownHeight);
-        } else {
-          // More space above, position above with limited height
-          top =
-            rect.top +
-            window.scrollY -
-            Math.min(spaceAbove - padding, maxDropdownHeight) -
-            8;
-          maxHeight = Math.max(spaceAbove - padding, minDropdownHeight);
-        }
+        // Not enough space in either direction - more space above
+        top =
+          rect.top +
+          window.scrollY -
+          Math.min(spaceAbove - padding, maxDropdownHeight) -
+          8;
+        maxHeight = Math.max(spaceAbove - padding, minDropdownHeight);
       }
 
       // Ensure dropdown doesn't go off the right edge of viewport
       left = Math.min(
         rect.left + window.scrollX,
-        viewportWidth - rect.width - 20
+        viewportWidth - rect.width - 20,
       );
       left = Math.max(left, 20); // Don't go off left edge either
 
-      width = rect.width;
+      const width = rect.width;
 
       // If we're still constrained, try to scroll the page to create more space
       if (maxHeight < totalNeededHeight && spaceBelow < spaceAbove) {
@@ -208,7 +199,7 @@ const PaymentSourceSelector = ({
           const newSpaceBelow = window.innerHeight - newRect.bottom;
           const newMaxHeight = Math.max(
             newSpaceBelow - padding,
-            minDropdownHeight
+            minDropdownHeight,
           );
 
           setDropdownPosition({
@@ -367,7 +358,7 @@ const PaymentSourceSelector = ({
               </button>
             ))}
           </div>,
-          document.body
+          document.body,
         )}
 
       {/* Empty state message */}
@@ -392,7 +383,7 @@ const PaymentSourceSelector = ({
                 : 'No payment sources available'}
             </div>
           </div>,
-          document.body
+          document.body,
         )}
 
       {error && <p className='mt-2 text-sm text-red-400'>{error}</p>}

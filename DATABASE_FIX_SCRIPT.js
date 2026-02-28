@@ -1,3 +1,5 @@
+/* eslint-disable no-restricted-syntax, space-before-function-paren */
+
 // Database Fix Script for Version Conflicts
 // Run this in the browser console to fix database version issues
 
@@ -9,7 +11,7 @@ async function fixDatabase() {
     console.log('Step 1: Clearing localStorage...');
     const keysToKeep = ['digibook_encrypted_pin', 'digibook_device_key'];
     const keysToRemove = Object.keys(localStorage).filter(
-      key => key.startsWith('digibook_') && !keysToKeep.includes(key)
+      key => key.startsWith('digibook_') && !keysToKeep.includes(key),
     );
 
     keysToRemove.forEach(key => {

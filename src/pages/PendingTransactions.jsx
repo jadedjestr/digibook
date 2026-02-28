@@ -1,5 +1,6 @@
 import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
 
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
@@ -35,10 +36,8 @@ const PendingTransactions = ({
     type: 'expense', // 'income' or 'expense'
   });
 
-  const { calculateProjectedBalance, getAccountName } = useFinanceCalculations(
-    accounts,
-    pendingTransactions
-  );
+  const { calculateProjectedBalance, getAccountName: _getAccountName } =
+    useFinanceCalculations(accounts, pendingTransactions);
 
   // Load categories
   useEffect(() => {
@@ -168,7 +167,6 @@ const PendingTransactions = ({
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
               className='glass-input flex-1 glass-focus'
-              autoFocus
               onBlur={handleSave}
             >
               {options.map(option => (
@@ -183,7 +181,6 @@ const PendingTransactions = ({
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
               className='glass-input flex-1 glass-focus'
-              autoFocus
               onKeyPress={e => {
                 if (e.key === 'Enter') handleSave();
                 if (e.key === 'Escape') handleCancel();
@@ -208,9 +205,10 @@ const PendingTransactions = ({
     }
 
     return (
-      <div
+      <button
+        type='button'
         onClick={() => setIsEditing(true)}
-        className='cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-all duration-200 group'
+        className='w-full text-left cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-all duration-200 group'
         title='Click to edit'
       >
         <span className='text-primary group-hover:text-white transition-colors'>
@@ -220,8 +218,15 @@ const PendingTransactions = ({
           size={14}
           className='inline ml-2 text-muted group-hover:text-white transition-colors opacity-0 group-hover:opacity-100'
         />
-      </div>
+      </button>
     );
+  };
+
+  InlineEdit.propTypes = {
+    value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    onSave: PropTypes.func.isRequired,
+    type: PropTypes.string,
+    options: PropTypes.arrayOf(PropTypes.object),
   };
 
   const categoryOptions = categories.map(category => ({
@@ -459,10 +464,10 @@ const PendingTransactions = ({
             <tbody>
               {pendingTransactions.map(transaction => {
                 const account = accounts.find(
-                  a => a.id === parseInt(transaction.accountId)
+                  a => a.id === parseInt(transaction.accountId),
                 );
                 const projectedBalance = calculateProjectedBalance(
-                  transaction.accountId
+                  transaction.accountId,
                 );
 
                 return (
@@ -564,6 +569,12 @@ const PendingTransactions = ({
       </div>
     </div>
   );
+};
+
+PendingTransactions.propTypes = {
+  pendingTransactions: PropTypes.arrayOf(PropTypes.object).isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
+  onDataChange: PropTypes.func.isRequired,
 };
 
 export default PendingTransactions;

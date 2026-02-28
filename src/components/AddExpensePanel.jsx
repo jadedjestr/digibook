@@ -1,10 +1,15 @@
-import { X, CreditCard, PiggyBank, Building2, ChevronDown } from 'lucide-react';
-import React, { useState, useEffect, useRef } from 'react';
+import { X, CreditCard, PiggyBank, Building2 } from 'lucide-react';
+import PropTypes from 'prop-types';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 import { dbHelpers } from '../db/database-clean';
-import { recurringExpenseService } from '../services/recurringExpenseService';
-import { createPaymentSource } from '../types/paymentSource';
+import {
+  createTemplate,
+  generateNextOccurrence,
+  preGenerateOccurrences,
+} from '../services/recurringExpenseService';
+import { DateUtils } from '../utils/dateUtils';
 import {
   validatePaymentSource,
   validateCreditCardPayment,
@@ -71,7 +76,7 @@ const AddExpensePanel = ({
     const handleTabKey = e => {
       if (e.key === 'Tab') {
         const focusableElements = panelRef.current?.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
         );
 
         if (!focusableElements?.length) return;
@@ -166,58 +171,103 @@ const AddExpensePanel = ({
 
   const handleSaveRecurring = async recurringData => {
     try {
-      // First save the regular expense
+      // Validate the base expense data before creating the template
       if (!validateForm()) {
         throw new Error(
-          'Please fix form errors before creating recurring template'
+          'Please fix form errors before creating recurring template',
         );
       }
 
-      // Save the expense first
+      // Build expense data (for validation only)
       const expenseData = {
         name: formData.name,
         dueDate: formData.dueDate,
         amount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
-
-        // New payment source structure
         accountId: formData.paymentSource?.accountId || null,
         creditCardId: formData.paymentSource?.creditCardId || null,
         category: formData.category,
-        status: 'Unpaid',
+        status: 'pending',
         paidAmount: 0,
-        createdAt: new Date().toISOString(),
       };
 
-      const expenseId = await dbHelpers.addFixedExpense(expenseData);
+      validatePaymentSource(expenseData);
+      if (expenseData.category === 'Credit Card Payment') {
+        validateCreditCardPayment(expenseData);
+      }
 
-      // Create the recurring template
+      // Create recurring template with V4 format (template-first flow)
       const templateData = {
         name: recurringData.name,
         baseAmount: parseFloat(formData.amount.toString().replace(/[$,]/g, '')),
         frequency: recurringData.frequency,
         intervalValue: recurringData.intervalValue,
+        intervalUnit: recurringData.intervalUnit || 'months',
         startDate: recurringData.startDate,
+        endDate: recurringData.endDate || null,
         category: formData.category,
-        accountId: formData.paymentSource?.accountId || null,
+        accountId: formData.paymentSource?.accountId || null, // V4 format
+        creditCardId: formData.paymentSource?.creditCardId || null,
+        targetCreditCardId: formData.targetCreditCardId || null,
         notes: recurringData.notes,
         isVariableAmount: recurringData.isVariableAmount,
       };
 
-      const templateId =
-        await recurringExpenseService.createTemplate(templateData);
+      const templateId = await createTemplate(templateData);
 
-      // Link the expense to the template
-      await dbHelpers.updateFixedExpense(expenseId, {
-        recurringTemplateId: templateId,
-      });
+      // If first occurrence is due now, generate via unified path
+      const today = DateUtils.today();
+      const isFirstDueNow =
+        recurringData.startDate && recurringData.startDate <= today;
 
-      logger.success('Recurring expense and template created successfully');
+      let generatedExpenseId = null;
+      if (isFirstDueNow) {
+        try {
+          generatedExpenseId = await generateNextOccurrence(templateId);
+          logger.success(
+            `Recurring expense created. First occurrence added for ${
+              recurringData.startDate
+            }.`,
+          );
+        } catch (error) {
+          logger.warn(
+            'Recurring template created but first occurrence not generated:',
+            error,
+          );
+        }
+      } else {
+        logger.success(
+          `Recurring expense created. First occurrence on ${
+            recurringData.startDate
+          }.`,
+        );
+      }
 
-      // Close modal and refresh data
+      // Pre-generate multiple occurrences (6 months ahead)
+      try {
+        const result = await preGenerateOccurrences(templateId, 6);
+        if (result.generated > 0) {
+          logger.success(
+            `Pre-generated ${result.generated} future occurrences (6 months).`,
+          );
+        }
+      } catch (error) {
+        logger.warn('Could not pre-generate future occurrences:', error);
+
+        // Don't fail the entire operation if pre-generation fails
+      }
+
+      // Close modal
       setShowRecurringModal(false);
       setMakeRecurring(false);
       handleClose();
-      if (onDataChange) onDataChange();
+
+      // Always call onDataChange after pre-generation to reload expenses
+      // Pre-generation may have created multiple expenses, so we need to reload
+      // Pass generatedExpenseId if available, otherwise pass a flag to indicate reload is needed
+      if (onDataChange) {
+        // Pass generatedExpenseId if available, else truthy to trigger reload
+        onDataChange(generatedExpenseId || true);
+      }
     } catch (error) {
       logger.error('Error creating recurring expense:', error);
       throw error;
@@ -225,23 +275,22 @@ const AddExpensePanel = ({
   };
 
   const handleInputChange = (field, value) => {
-    // Handle category change specially - need to reset payment source if switching TO credit card payment
+    // Reset payment source when switching TO credit card payment
     if (field === 'category') {
       const wasCreditCardPayment = formData.category === 'Credit Card Payment';
       const willBeCreditCardPayment = value === 'Credit Card Payment';
 
-      // Only reset payment source when switching TO "Credit Card Payment"
-      // When switching away from it, keep the existing selection since it's now valid for regular expenses
+      // Reset only when switching TO "Credit Card Payment"
       if (!wasCreditCardPayment && willBeCreditCardPayment) {
-        // Switching TO credit card payment - reset payment source because current selection might be invalid
+        // Switching TO credit card payment - reset selection
         setFormData(prev => ({
           ...prev,
           [field]: value,
           paymentSource: null, // Reset payment source - need to pick funding account
-          targetCreditCardId: '', // Reset target credit card
+          targetCreditCardId: '',
         }));
       } else {
-        // Regular category change or switching away from credit card payment - keep selection
+        // Keep selection for other category changes
         setFormData(prev => ({ ...prev, [field]: value }));
       }
     } else {
@@ -330,9 +379,8 @@ const AddExpensePanel = ({
 
       const newExpenseId = await dbHelpers.addFixedExpenseV4(expenseData);
 
-      // Note: We don't update credit card balances when creating expenses
-      // Credit card balances should only be updated when expenses are actually marked as paid
-      // This prevents artificially inflating debt when just creating expense assignments
+      // We don't update credit card balances when creating expenses.
+      // Balances update when expenses are marked as paid.
 
       logger.success('Expense added successfully');
       onDataChange(newExpenseId);
@@ -345,9 +393,9 @@ const AddExpensePanel = ({
     }
   };
 
-  // Debug logging for account selection issues
-  if (formData.name === 'Claude') {
-    console.log('🔍 AddExpensePanel Debug for Claude expense:', {
+  // Debug logging for account selection issues (dev only)
+  if (process.env.NODE_ENV === 'development' && formData.name === 'Claude') {
+    logger.debug('🔍 AddExpensePanel Debug for Claude expense:', {
       category: formData.category,
       isCreditCardPayment,
       accountId: formData.accountId,
@@ -362,7 +410,7 @@ const AddExpensePanel = ({
     });
   }
 
-  const getAccountIcon = accountType => {
+  const _getAccountIcon = accountType => {
     switch (accountType?.toLowerCase()) {
       case 'checking':
         return <CreditCard size={16} className='text-blue-400' />;
@@ -393,8 +441,17 @@ const AddExpensePanel = ({
               visibility: isOpen ? 'visible' : 'hidden',
             }}
             onClick={handleClose}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleClose();
+              }
+            }}
+            role='button'
+            tabIndex={0}
+            aria-label='Close panel'
           />,
-          document.body
+          document.body,
         )}
 
       {/* Panel */}
@@ -424,10 +481,14 @@ const AddExpensePanel = ({
         <div className='flex-1 overflow-y-auto p-8 space-y-6'>
           {/* Expense Name */}
           <div>
-            <label className='block text-sm font-medium text-white mb-2'>
+            <label
+              htmlFor='add-expense-name'
+              className='block text-sm font-medium text-white mb-2'
+            >
               Expense Name
             </label>
             <input
+              id='add-expense-name'
               ref={firstInputRef}
               type='text'
               value={formData.name}
@@ -442,10 +503,14 @@ const AddExpensePanel = ({
 
           {/* Due Date */}
           <div>
-            <label className='block text-sm font-medium text-white mb-2'>
+            <label
+              htmlFor='add-expense-due-date'
+              className='block text-sm font-medium text-white mb-2'
+            >
               Due Date
             </label>
             <input
+              id='add-expense-due-date'
               type='date'
               value={formData.dueDate}
               onChange={e => handleInputChange('dueDate', e.target.value)}
@@ -458,10 +523,14 @@ const AddExpensePanel = ({
 
           {/* Amount */}
           <div>
-            <label className='block text-sm font-medium text-white mb-2'>
+            <label
+              htmlFor='add-expense-amount'
+              className='block text-sm font-medium text-white mb-2'
+            >
               Amount
             </label>
             <input
+              id='add-expense-amount'
               type='number'
               step='0.01'
               min='0'
@@ -477,10 +546,14 @@ const AddExpensePanel = ({
 
           {/* Category Selection - REQUIRED FIRST */}
           <div>
-            <label className='block text-sm font-medium text-white mb-2'>
+            <label
+              htmlFor='add-expense-category'
+              className='block text-sm font-medium text-white mb-2'
+            >
               Category <span className='text-red-400'>*</span>
             </label>
             <select
+              id='add-expense-category'
               value={formData.category}
               onChange={e => handleInputChange('category', e.target.value)}
               className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
@@ -517,10 +590,14 @@ const AddExpensePanel = ({
           {/* Target Credit Card Selector - Only for Credit Card Payments */}
           {isCreditCardPayment && (
             <div>
-              <label className='block text-sm font-medium text-white mb-2'>
+              <label
+                htmlFor='add-expense-target-credit-card'
+                className='block text-sm font-medium text-white mb-2'
+              >
                 Pay TO (Target Credit Card)
               </label>
               <select
+                id='add-expense-target-credit-card'
                 value={formData.targetCreditCardId}
                 onChange={e =>
                   handleInputChange('targetCreditCardId', e.target.value)
@@ -580,11 +657,11 @@ const AddExpensePanel = ({
             disabled={isSaving || makeRecurring}
             className='w-full px-6 py-4 glass-button glass-button--primary disabled:opacity-50 disabled:cursor-not-allowed'
           >
-            {isSaving
-              ? 'Saving...'
-              : makeRecurring
-                ? 'Configure recurring settings above'
-                : 'Save Expense'}
+            {(() => {
+              if (isSaving) return 'Saving...';
+              if (makeRecurring) return 'Configure recurring settings above';
+              return 'Save Expense';
+            })()}
           </button>
           <button
             onClick={handleClose}
@@ -607,6 +684,14 @@ const AddExpensePanel = ({
       />
     </>
   );
+};
+
+AddExpensePanel.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
+  creditCards: PropTypes.arrayOf(PropTypes.object),
+  onDataChange: PropTypes.func.isRequired,
 };
 
 export default AddExpensePanel;

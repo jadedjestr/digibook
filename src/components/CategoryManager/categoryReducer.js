@@ -5,6 +5,7 @@ export const ACTIONS = {
   SET_FORM_MODE: 'SET_FORM_MODE',
   SET_EDITING_CATEGORY: 'SET_EDITING_CATEGORY',
   SET_DELETION_MODAL: 'SET_DELETION_MODAL',
+  SET_RENAME_MODAL: 'SET_RENAME_MODAL',
   RESET_FORM: 'RESET_FORM',
 
   // Optimistic update actions
@@ -25,6 +26,13 @@ export const initialState = {
   deletionModal: {
     isOpen: false,
     category: null,
+    affectedItems: { fixedExpenses: [], pendingTransactions: [] },
+  },
+  renameModal: {
+    isOpen: false,
+    category: null,
+    oldName: '',
+    newName: '',
     affectedItems: { fixedExpenses: [], pendingTransactions: [] },
   },
 };
@@ -70,6 +78,15 @@ export const categoryReducer = (state, action) => {
         },
       };
 
+    case ACTIONS.SET_RENAME_MODAL:
+      return {
+        ...state,
+        renameModal: {
+          ...state.renameModal,
+          ...action.payload,
+        },
+      };
+
     case ACTIONS.RESET_FORM:
       return {
         ...state,
@@ -88,7 +105,7 @@ export const categoryReducer = (state, action) => {
       return {
         ...state,
         categories: state.categories.map(cat =>
-          cat.id === action.payload.id ? action.payload : cat
+          cat.id === action.payload.id ? action.payload : cat,
         ),
       };
 
@@ -104,7 +121,7 @@ export const categoryReducer = (state, action) => {
         categories: state.categories.map(cat =>
           cat.id === action.payload.id
             ? { ...cat, ...action.payload.updates }
-            : cat
+            : cat,
         ),
       };
 
@@ -114,7 +131,7 @@ export const categoryReducer = (state, action) => {
         categories: state.categories.map(cat =>
           cat.id === action.payload.id
             ? { ...cat, ...action.payload.updates }
-            : cat
+            : cat,
         ),
       };
 
@@ -122,7 +139,7 @@ export const categoryReducer = (state, action) => {
       return {
         ...state,
         categories: state.categories.map(cat =>
-          cat.id === action.payload.id ? action.payload.originalData : cat
+          cat.id === action.payload.id ? action.payload.originalData : cat,
         ),
       };
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import PropTypes from 'prop-types';
 
 const StatusBadge = ({ status, className = '', variant = 'default' }) => {
   const getStatusColor = (status, variant) => {
@@ -57,6 +57,12 @@ const StatusBadge = ({ status, className = '', variant = 'default' }) => {
       {status}
     </span>
   );
+};
+
+StatusBadge.propTypes = {
+  status: PropTypes.string.isRequired,
+  className: PropTypes.string,
+  variant: PropTypes.string,
 };
 
 export default StatusBadge;

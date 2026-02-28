@@ -1,4 +1,5 @@
 import { DollarSign } from 'lucide-react';
+import PropTypes from 'prop-types';
 
 import { formatCurrency } from '../utils/accountUtils';
 
@@ -41,6 +42,18 @@ const PaySummaryCard = ({ summaryTotals = {} }) => {
       </div>
     </div>
   );
+};
+
+PaySummaryCard.propTypes = {
+  summaryTotals: PropTypes.shape({
+    payThisWeekTotal: PropTypes.number,
+    payNextCheckTotal: PropTypes.number,
+    overdueTotal: PropTypes.number,
+  }),
+};
+
+PaySummaryCard.defaultProps = {
+  summaryTotals: {},
 };
 
 export default PaySummaryCard;

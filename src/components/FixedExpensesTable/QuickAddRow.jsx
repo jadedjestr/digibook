@@ -1,4 +1,5 @@
 import { Check, X } from 'lucide-react';
+import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
 
 import { dbHelpers } from '../../db/database-clean';
@@ -318,6 +319,15 @@ const QuickAddRow = ({
       )}
     </tr>
   );
+};
+
+QuickAddRow.propTypes = {
+  categoryName: PropTypes.string.isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
+  creditCards: PropTypes.arrayOf(PropTypes.object).isRequired,
+  onExpenseAdded: PropTypes.func.isRequired,
+  onClose: PropTypes.func.isRequired,
+  isVisible: PropTypes.bool.isRequired,
 };
 
 export default QuickAddRow;

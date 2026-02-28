@@ -1,5 +1,4 @@
 import {
-  Edit3,
   Trash2,
   Copy,
   Check,
@@ -7,12 +6,15 @@ import {
   Calendar,
   DollarSign,
   Building2,
+  RefreshCw,
 } from 'lucide-react';
-import React, { useState, useMemo } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useMemo } from 'react';
 
 import { createPaymentSource } from '../types/paymentSource';
 import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
+import { getPaymentSourceInfo } from '../utils/expenseUtils';
 
 import CreditCardPaymentInput from './CreditCardPaymentInput';
 import PaymentSourceSelector from './PaymentSourceSelector';
@@ -22,13 +24,14 @@ import StatusBadge from './StatusBadge';
 const MobileExpenseCard = ({
   expense,
   status,
-  account,
+  account: _account,
   isNewExpense,
   isUpdating,
   onMarkAsPaid,
   onDuplicate,
   onDelete,
   onUpdateExpense,
+  onEditRecurring,
   accounts,
   creditCards,
 }) => {
@@ -40,27 +43,9 @@ const MobileExpenseCard = ({
     return createPaymentSource.fromExpense(expense);
   }, [expense]);
 
-  // Get payment source display info
+  // Get payment source display info using V4 format utility
   const paymentSourceInfo = useMemo(() => {
-    if (expense.accountId) {
-      const account = accounts.find(acc => acc.id === expense.accountId);
-      return {
-        name: account?.name || 'Unknown Account',
-        type: 'account',
-      };
-    } else if (expense.creditCardId) {
-      const creditCard = creditCards.find(
-        card => card.id === expense.creditCardId
-      );
-      return {
-        name: creditCard?.name || 'Unknown Card',
-        type: 'creditCard',
-      };
-    }
-    return {
-      name: 'No Payment Source',
-      type: 'none',
-    };
+    return getPaymentSourceInfo(expense, accounts, creditCards);
   }, [expense, accounts, creditCards]);
   const [editValue, setEditValue] = useState('');
 
@@ -137,13 +122,36 @@ const MobileExpenseCard = ({
       {/* Header with name and status */}
       <div className='flex items-start justify-between mb-4'>
         <div className='flex-1 min-w-0'>
-          <h3 className='text-lg font-semibold text-primary truncate'>
-            {expense.name}
-          </h3>
+          <div className='flex items-center space-x-2'>
+            {expense.recurringTemplateId && (
+              <RefreshCw
+                size={14}
+                className='text-amber-400 flex-shrink-0'
+                title='Recurring expense'
+              />
+            )}
+            <h3
+              className={`text-lg font-semibold text-primary truncate ${
+                !expense.recurringTemplateId
+                  ? 'border-l-2 border-l-purple-400/30 pl-2'
+                  : ''
+              }`}
+            >
+              {expense.name}
+            </h3>
+            {!expense.recurringTemplateId && (
+              <span className='text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full border border-purple-500/30 flex-shrink-0'>
+                One-time
+              </span>
+            )}
+          </div>
           <div className='flex items-center space-x-2 mt-1'>
             <StatusBadge status={status} />
             <span className={`text-sm font-medium ${getStatusColor(status)}`}>
               {status}
+            </span>
+            <span className='text-xs text-white/50'>
+              {expense.recurringTemplateId ? 'Recurring' : 'One-time'}
             </span>
           </div>
         </div>
@@ -163,6 +171,15 @@ const MobileExpenseCard = ({
           >
             <Copy size={16} />
           </button>
+          {expense.recurringTemplateId && onEditRecurring && (
+            <button
+              onClick={() => onEditRecurring(expense)}
+              className='p-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 transition-colors'
+              title='Edit recurring'
+            >
+              <RefreshCw size={16} />
+            </button>
+          )}
           <button
             onClick={() => onDelete(expense.id)}
             className='p-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 transition-colors'
@@ -190,7 +207,6 @@ const MobileExpenseCard = ({
                   value={editValue}
                   onChange={e => setEditValue(e.target.value)}
                   className='glass-input w-24 text-right'
-                  autoFocus
                 />
                 <button
                   onClick={handleSave}
@@ -230,7 +246,6 @@ const MobileExpenseCard = ({
                   value={editValue}
                   onChange={e => setEditValue(e.target.value)}
                   className='glass-input text-right'
-                  autoFocus
                 />
                 <button
                   onClick={handleSave}
@@ -314,46 +329,51 @@ const MobileExpenseCard = ({
             </span>
           </div>
           <div className='text-right'>
-            {isEditing && editingField === 'paidAmount' ? (
-              (() => {
-                console.log('MobileExpenseCard Debug:', {
-                  expenseCategory: expense.category,
-                  editingField,
-                  isCreditCardPayment:
-                    expense.category === 'Credit Card Payment',
-                });
-                return expense.category === 'Credit Card Payment';
-              })() ? (
-                <div className='w-full max-w-md'>
-                  <CreditCardPaymentInput
-                    expense={expense}
-                    value={parseFloat(editValue) || 0}
-                    onChange={value => setEditValue(value.toString())}
-                    onValidationChange={result => {
-                      // Store validation result for save button state
-                      if (result && !result.isValid) {
-                        // Visual feedback could be added here
-                      }
-                    }}
-                    className='w-full'
-                    autoFocus={true}
-                  />
-                  <div className='flex items-center justify-end space-x-2 mt-2'>
-                    <button
-                      onClick={handleSave}
-                      className='p-1 text-green-400 hover:text-green-300'
-                    >
-                      <Check size={14} />
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      className='p-1 text-red-400 hover:text-red-300'
-                    >
-                      <X size={14} />
-                    </button>
+            {(() => {
+              const editingPaidAmount =
+                isEditing && editingField === 'paidAmount';
+              const isCreditCardPayment =
+                expense.category === 'Credit Card Payment';
+              if (!editingPaidAmount) {
+                return (
+                  <button
+                    onClick={() => handleEdit('paidAmount', expense.paidAmount)}
+                    className='text-sm font-medium text-primary hover:text-white transition-colors'
+                  >
+                    <PrivacyWrapper>
+                      ${formatAmount(expense.paidAmount)}
+                    </PrivacyWrapper>
+                  </button>
+                );
+              }
+              if (isCreditCardPayment) {
+                return (
+                  <div className='w-full max-w-md'>
+                    <CreditCardPaymentInput
+                      expense={expense}
+                      value={parseFloat(editValue) || 0}
+                      onChange={value => setEditValue(value.toString())}
+                      onValidationChange={() => {}}
+                      className='w-full'
+                    />
+                    <div className='flex items-center justify-end space-x-2 mt-2'>
+                      <button
+                        onClick={handleSave}
+                        className='p-1 text-green-400 hover:text-green-300'
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        onClick={handleCancel}
+                        className='p-1 text-red-400 hover:text-red-300'
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ) : (
+                );
+              }
+              return (
                 <div className='flex items-center space-x-2'>
                   <input
                     type='number'
@@ -361,7 +381,6 @@ const MobileExpenseCard = ({
                     value={editValue}
                     onChange={e => setEditValue(e.target.value)}
                     className='glass-input w-24 text-right'
-                    autoFocus
                   />
                   <button
                     onClick={handleSave}
@@ -376,17 +395,8 @@ const MobileExpenseCard = ({
                     <X size={14} />
                   </button>
                 </div>
-              )
-            ) : (
-              <button
-                onClick={() => handleEdit('paidAmount', expense.paidAmount)}
-                className='text-sm font-medium text-primary hover:text-white transition-colors'
-              >
-                <PrivacyWrapper>
-                  ${formatAmount(expense.paidAmount)}
-                </PrivacyWrapper>
-              </button>
-            )}
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -412,6 +422,34 @@ const MobileExpenseCard = ({
       </div>
     </div>
   );
+};
+
+MobileExpenseCard.propTypes = {
+  expense: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    name: PropTypes.string,
+    amount: PropTypes.number,
+    dueDate: PropTypes.string,
+    category: PropTypes.string,
+    paidAmount: PropTypes.number,
+    recurringTemplateId: PropTypes.oneOfType([
+      PropTypes.string,
+      PropTypes.number,
+    ]),
+    accountId: PropTypes.string,
+    creditCardId: PropTypes.string,
+  }).isRequired,
+  status: PropTypes.string.isRequired,
+  account: PropTypes.object,
+  isNewExpense: PropTypes.bool.isRequired,
+  isUpdating: PropTypes.bool.isRequired,
+  onMarkAsPaid: PropTypes.func.isRequired,
+  onDuplicate: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  onUpdateExpense: PropTypes.func.isRequired,
+  onEditRecurring: PropTypes.func.isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
+  creditCards: PropTypes.arrayOf(PropTypes.object).isRequired,
 };
 
 export default MobileExpenseCard;

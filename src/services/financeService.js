@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 export const useFinanceCalculations = (
   accounts,
   pendingTransactions,
-  creditCards = []
+  creditCards = [],
 ) => {
   const calculateProjectedBalance = useMemo(() => {
     return accountId => {
@@ -15,8 +15,7 @@ export const useFinanceCalculations = (
         .filter(t => parseInt(t.accountId) === numericAccountId)
         .reduce((sum, t) => sum + t.amount, 0);
 
-      // For expenses (negative amounts), we add the pending amount to get the projected balance
-      // For income (positive amounts), we also add the pending amount
+      // Add pending amount to get projected balance (expenses or income)
       return account.currentBalance + pendingForAccount;
     };
   }, [accounts, pendingTransactions]);

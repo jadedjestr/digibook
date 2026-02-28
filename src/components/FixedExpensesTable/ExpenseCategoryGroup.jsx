@@ -1,25 +1,13 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  Home,
-  Zap,
-  Shield,
-  Car,
-  Smartphone,
-  CreditCard,
-  Stethoscope,
-  GraduationCap,
-  Package,
-  Plus,
-} from 'lucide-react';
-import React, { useState } from 'react';
+import { ChevronDown, ChevronRight, Package, Plus } from 'lucide-react';
+import PropTypes from 'prop-types';
+import { useState } from 'react';
 
 import { formatCurrency } from '../../utils/accountUtils';
+import { getCategoryFromMap } from '../../utils/categoryUtils';
 import CategoryDropZone from '../CategoryDropZone';
 
 import ExpenseMobileView from './ExpenseMobileView';
 import ExpenseTableBody from './ExpenseTableBody';
-import QuickAddRow from './QuickAddRow';
 
 /**
  * Component that displays a group of expenses for a specific category
@@ -28,7 +16,7 @@ import QuickAddRow from './QuickAddRow';
 const ExpenseCategoryGroup = ({
   categoryName,
   categoryExpenses,
-  categories,
+  categoryMap,
   collapsedCategories,
   setCollapsedCategories,
   getCategoryTotal,
@@ -42,6 +30,7 @@ const ExpenseCategoryGroup = ({
   onDuplicate,
   onDelete,
   onUpdateExpense,
+  onEditRecurring,
   onExpenseAdded,
   activeId,
 }) => {
@@ -49,28 +38,15 @@ const ExpenseCategoryGroup = ({
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
 
-  // Get category icon
+  // Get category icon from database
   const getCategoryIcon = categoryName => {
-    switch (categoryName) {
-      case 'Housing':
-        return <Home size={20} className='text-blue-300' />;
-      case 'Utilities':
-        return <Zap size={20} className='text-green-300' />;
-      case 'Insurance':
-        return <Shield size={20} className='text-yellow-300' />;
-      case 'Transportation':
-        return <Car size={20} className='text-purple-300' />;
-      case 'Subscriptions':
-        return <Smartphone size={20} className='text-pink-300' />;
-      case 'Debt':
-        return <CreditCard size={20} className='text-red-300' />;
-      case 'Healthcare':
-        return <Stethoscope size={20} className='text-cyan-300' />;
-      case 'Education':
-        return <GraduationCap size={20} className='text-lime-300' />;
-      default:
-        return <Package size={20} className='text-gray-300' />;
+    const category = getCategoryFromMap(categoryMap, categoryName);
+    if (category?.icon) {
+      return <span className='text-lg'>{category.icon}</span>;
     }
+
+    // Fallback to default icon
+    return <Package size={20} className='text-gray-300' />;
   };
 
   // Get category display name
@@ -80,16 +56,17 @@ const ExpenseCategoryGroup = ({
       : `${categoryName} Expenses`;
   };
 
-  // Get category color from categories data
+  // Get category color from categoryMap
   const getCategoryColor = categoryName => {
-    const category = categories.find(cat => cat.name === categoryName);
+    const category = getCategoryFromMap(categoryMap, categoryName);
     return category?.color || '#6B7280';
   };
 
   const isCollapsed = collapsedCategories.has(categoryName);
   const categoryTotal = getCategoryTotal(categoryExpenses);
   const paidCount = categoryExpenses.filter(
-    expense => (expense.paidAmount || 0) >= expense.amount && expense.amount > 0
+    expense =>
+      (expense.paidAmount || 0) >= expense.amount && expense.amount > 0,
   ).length;
   const totalCount = categoryExpenses.length;
 
@@ -129,13 +106,22 @@ const ExpenseCategoryGroup = ({
   };
 
   return (
-    <div className='glass-panel'>
+    <div className='glass-panel' data-category={categoryName}>
       {/* Category Header */}
       <div
         className='flex items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors relative'
         onClick={toggleCollapse}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleCollapse();
+          }
+        }}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
+        role='button'
+        tabIndex={0}
+        aria-expanded={!isCollapsed}
       >
         <div className='flex items-center gap-3'>
           <div className='flex items-center gap-2'>
@@ -217,7 +203,7 @@ const ExpenseCategoryGroup = ({
             onDuplicate={onDuplicate}
             onDelete={onDelete}
             onUpdateExpense={onUpdateExpense}
-            // Quick add props
+            onEditRecurring={onEditRecurring}
             categoryName={categoryName}
             showQuickAdd={showQuickAdd}
             onQuickAddClose={handleCloseQuickAdd}
@@ -237,6 +223,7 @@ const ExpenseCategoryGroup = ({
             onDuplicate={onDuplicate}
             onDelete={onDelete}
             onUpdateExpense={onUpdateExpense}
+            onEditRecurring={onEditRecurring}
           />
 
           {/* Drop Zone for drag and drop */}
@@ -249,6 +236,28 @@ const ExpenseCategoryGroup = ({
       )}
     </div>
   );
+};
+
+ExpenseCategoryGroup.propTypes = {
+  categoryName: PropTypes.string.isRequired,
+  categoryExpenses: PropTypes.arrayOf(PropTypes.object).isRequired,
+  categoryMap: PropTypes.object.isRequired,
+  collapsedCategories: PropTypes.instanceOf(Set).isRequired,
+  setCollapsedCategories: PropTypes.func.isRequired,
+  getCategoryTotal: PropTypes.func.isRequired,
+  paycheckService: PropTypes.object.isRequired,
+  paycheckDates: PropTypes.object.isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
+  creditCards: PropTypes.arrayOf(PropTypes.object).isRequired,
+  newExpenseId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  updatingExpenseId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  onMarkAsPaid: PropTypes.func.isRequired,
+  onDuplicate: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  onUpdateExpense: PropTypes.func.isRequired,
+  onEditRecurring: PropTypes.func.isRequired,
+  onExpenseAdded: PropTypes.func.isRequired,
+  activeId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 };
 
 export default ExpenseCategoryGroup;

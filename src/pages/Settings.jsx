@@ -8,15 +8,21 @@ import {
   Database,
   DollarSign,
   Settings as SettingsIcon,
+  RefreshCw,
 } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect, useMemo } from 'react';
 
 import CategoryManager from '../components/CategoryManager';
 import CollapsibleCardGroup from '../components/CollapsibleCardGroup';
 import PaycheckManager from '../components/PaycheckManager';
+import RecurringTemplatesManager from '../components/RecurringTemplatesManager';
 import { useGlobalCategories } from '../contexts/GlobalCategoryContext';
 import { dbHelpers } from '../db/database-clean';
 import { dataManager } from '../services/dataManager';
+import { useAppStore } from '../stores/useAppStore';
+import { DateUtils } from '../utils/dateUtils';
+import { exportJSONData } from '../utils/exportUtils';
 import { logger } from '../utils/logger';
 
 const Settings = ({ onDataChange }) => {
@@ -32,18 +38,50 @@ const Settings = ({ onDataChange }) => {
 
   // Global categories service for cache invalidation
   const globalCategories = useGlobalCategories();
+  const { fixedExpenses, reloadCategories, reloadExpenses } = useAppStore();
+  const [showFutureGenPrompt, setShowFutureGenPrompt] = useState(false);
+  const [selectedHorizon, setSelectedHorizon] = useState(3);
+  const [pendingFutureCheck, setPendingFutureCheck] = useState(false);
+
+  const { currentMonthHasData, nextMonthHasData, startCurrent } =
+    useMemo(() => {
+      const today = new Date();
+      const currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      const currentEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const nextStart = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      const nextEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+
+      const isInRange = (dateString, start, end) => {
+        const parsed = DateUtils.parseDate(dateString);
+        if (!parsed) return false;
+        return parsed >= start && parsed <= end;
+      };
+
+      const hasCurrent = (fixedExpenses || []).some(expense =>
+        isInRange(expense.dueDate, currentStart, currentEnd),
+      );
+      const hasNext = (fixedExpenses || []).some(expense =>
+        isInRange(expense.dueDate, nextStart, nextEnd),
+      );
+
+      return {
+        currentMonthHasData: hasCurrent,
+        nextMonthHasData: hasNext,
+        startCurrent: currentStart,
+      };
+    }, [fixedExpenses]);
 
   useEffect(() => {
     const initializeSettings = async () => {
       try {
         logger.debug('Settings page initializing...');
-        console.log('Settings: Starting initialization...');
+        logger.debug('Settings: Starting initialization...');
 
         // Test basic functionality first
-        console.log('Settings: Testing basic state...');
+        logger.debug('Settings: Testing basic state...');
 
         // Test database connection with schema fix
-        console.log('Settings: Testing database connection...');
+        logger.debug('Settings: Testing database connection...');
         try {
           await loadAuditLogs();
         } catch (dbError) {
@@ -52,8 +90,8 @@ const Settings = ({ onDataChange }) => {
             dbError.message.includes('DatabaseClosedError') ||
             dbError.message.includes('already exists')
           ) {
-            console.log(
-              'Settings: Database schema issue detected, attempting reset...'
+            logger.debug(
+              'Settings: Database schema issue detected, attempting reset...',
             );
             await dbHelpers.deleteDatabase();
             await loadAuditLogs();
@@ -62,12 +100,11 @@ const Settings = ({ onDataChange }) => {
           }
         }
 
-        console.log('Settings: Initialization successful');
+        logger.debug('Settings: Initialization successful');
         setIsLoading(false);
         logger.debug('Settings page loaded successfully');
       } catch (error) {
-        console.error('Settings: Error during initialization:', error);
-        logger.error('Error initializing Settings page:', error);
+        logger.error('Settings: Error during initialization:', error);
         setError(error.message);
         setIsLoading(false);
       }
@@ -75,6 +112,16 @@ const Settings = ({ onDataChange }) => {
 
     initializeSettings();
   }, []);
+
+  useEffect(() => {
+    if (!pendingFutureCheck) return;
+
+    if (currentMonthHasData && !nextMonthHasData) {
+      setShowFutureGenPrompt(true);
+    }
+
+    setPendingFutureCheck(false);
+  }, [pendingFutureCheck, currentMonthHasData, nextMonthHasData]);
 
   const loadAuditLogs = async () => {
     try {
@@ -115,9 +162,8 @@ const Settings = ({ onDataChange }) => {
   const handleExportCreditCardsCSV = async () => {
     setIsExporting(true);
     try {
-      const { blob, filename } = await dataManager.exportCreditCardsCSV(
-        setImportProgress
-      );
+      const { blob, filename } =
+        await dataManager.exportCreditCardsCSV(setImportProgress);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -139,19 +185,10 @@ const Settings = ({ onDataChange }) => {
   const handleExportJSON = async () => {
     setIsExporting(true);
     try {
-      const { blob, filename } = await dataManager.exportData(
-        'json',
-        setImportProgress
-      );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      logger.success('Data exported successfully');
+      const result = await exportJSONData(setImportProgress);
+      if (!result.success) {
+        alert(`Error exporting data: ${result.error}`);
+      }
     } catch (error) {
       logger.error('Error exporting JSON:', error);
       alert(`Error exporting data: ${error.message}`);
@@ -176,7 +213,7 @@ const Settings = ({ onDataChange }) => {
     try {
       if (
         confirm(
-          'This will overwrite all existing data. A backup will be created automatically. Are you sure?'
+          'This will overwrite all existing data. A backup will be created automatically. Are you sure?',
         )
       ) {
         await dataManager.importData(importFile, setImportProgress);
@@ -185,6 +222,8 @@ const Settings = ({ onDataChange }) => {
         globalCategories.invalidateCache();
 
         onDataChange();
+        await reloadExpenses();
+        setPendingFutureCheck(true);
         setImportFile(null);
         alert('Data imported successfully');
       }
@@ -212,7 +251,7 @@ const Settings = ({ onDataChange }) => {
   const handleClearAllData = async () => {
     if (
       confirm(
-        'This will clear all data from all tables. A backup will be created automatically. Are you sure?'
+        'This will clear all data from all tables. A backup will be created automatically. Are you sure?',
       )
     ) {
       try {
@@ -226,7 +265,7 @@ const Settings = ({ onDataChange }) => {
         onDataChange();
         setTimeout(() => setImportProgress(''), 3000);
         alert(
-          'All data cleared successfully. Default categories have been restored.'
+          'All data cleared successfully. Default categories have been restored.',
         );
       } catch (error) {
         logger.error('Error clearing all data:', error);
@@ -281,6 +320,111 @@ const Settings = ({ onDataChange }) => {
         return '✅';
       default:
         return '📝';
+    }
+  };
+
+  const buildDedupeKey = (dateString, expense) =>
+    `${dateString || ''}|${expense.name || ''}|${expense.category || ''}|${
+      expense.amount || ''
+    }`;
+
+  const handleGenerateFutureExpenses = async () => {
+    try {
+      const horizon = Math.min(Math.max(selectedHorizon, 1), 6);
+      const { preGenerateOccurrences, createTemplate } = await import(
+        '../services/recurringExpenseService'
+      );
+
+      const existingKeys = new Set(
+        (fixedExpenses || []).map(exp => buildDedupeKey(exp.dueDate, exp)),
+      );
+
+      const isCurrentMonthExpense = expense => {
+        const parsed = DateUtils.parseDate(expense.dueDate);
+        if (!parsed) return false;
+        return (
+          parsed.getFullYear() === startCurrent.getFullYear() &&
+          parsed.getMonth() === startCurrent.getMonth()
+        );
+      };
+
+      const getFutureDates = dueDate => {
+        const base = DateUtils.parseDate(dueDate);
+        if (!base) return [];
+        const dates = [];
+        for (let i = 1; i <= horizon; i++) {
+          const d = new Date(base);
+          d.setMonth(d.getMonth() + i);
+          dates.push(DateUtils.formatDate(d));
+        }
+        return dates;
+      };
+
+      for (const expense of fixedExpenses || []) {
+        if (!isCurrentMonthExpense(expense)) continue;
+
+        const futureDates = getFutureDates(expense.dueDate);
+        const needsGeneration = futureDates.some(
+          date => !existingKeys.has(buildDedupeKey(date, expense)),
+        );
+        if (!needsGeneration) continue;
+
+        if (expense.recurringTemplateId) {
+          await preGenerateOccurrences(expense.recurringTemplateId, horizon);
+        } else {
+          // Create a template starting next month to avoid current-month duplicate
+          const parsedDue = DateUtils.parseDate(expense.dueDate);
+          const startFrom =
+            parsedDue != null
+              ? (() => {
+                  const d = new Date(parsedDue);
+                  d.setMonth(d.getMonth() + 1);
+                  return DateUtils.formatDate(d);
+                })()
+              : DateUtils.today();
+
+          const templateId = await createTemplate({
+            name: expense.name,
+            baseAmount: expense.amount,
+            frequency: 'monthly',
+            intervalValue: 1,
+            intervalUnit: 'months',
+            startDate: startFrom,
+            nextDueDate: startFrom,
+            endDate: null,
+            category: expense.category,
+            accountId: expense.accountId || null,
+            creditCardId: expense.creditCardId || null,
+            targetCreditCardId: expense.targetCreditCardId || null, // For credit card payments
+            notes: expense.notes || '',
+            isVariableAmount: expense.isVariableAmount || false,
+          });
+
+          // Link the existing expense to the new template for lineage
+          try {
+            await dbHelpers.updateFixedExpenseV4(expense.id, {
+              recurringTemplateId: templateId,
+            });
+          } catch (linkError) {
+            logger.warn(
+              'Could not link expense to new template (continuing generation):',
+              linkError,
+            );
+          }
+
+          await preGenerateOccurrences(templateId, horizon);
+        }
+
+        futureDates.forEach(date =>
+          existingKeys.add(buildDedupeKey(date, expense)),
+        );
+      }
+
+      await reloadExpenses();
+      setShowFutureGenPrompt(false);
+    } catch (error) {
+      logger.error('Error generating future expenses:', error);
+      alert(`Failed to generate future expenses: ${error.message}`);
     }
   };
 
@@ -469,6 +613,48 @@ const Settings = ({ onDataChange }) => {
                     </div>
                   </div>
 
+                  {showFutureGenPrompt && (
+                    <div className='glass-panel p-4 space-y-3'>
+                      <h5 className='text-primary font-semibold'>
+                        No future fixed expenses detected
+                      </h5>
+                      <p className='text-secondary text-sm'>
+                        Generate upcoming months from this month&apos;s fixed
+                        expenses? This will create or reuse recurring templates
+                        and populate future months, skipping duplicates.
+                      </p>
+                      <div className='flex items-center space-x-2'>
+                        {[1, 3, 6].map(value => (
+                          <button
+                            key={value}
+                            onClick={() => setSelectedHorizon(value)}
+                            className={`glass-button glass-button--sm ${
+                              selectedHorizon === value
+                                ? 'glass-button--primary'
+                                : ''
+                            }`}
+                          >
+                            {value} {value === 1 ? 'month' : 'months'}
+                          </button>
+                        ))}
+                      </div>
+                      <div className='flex space-x-3'>
+                        <button
+                          onClick={handleGenerateFutureExpenses}
+                          className='glass-button glass-button--primary flex-1'
+                        >
+                          Generate
+                        </button>
+                        <button
+                          onClick={() => setShowFutureGenPrompt(false)}
+                          className='glass-button flex-1'
+                        >
+                          Skip
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Clear Data Section */}
                   <div>
                     <h4 className='text-primary font-medium mb-3'>
@@ -516,9 +702,19 @@ const Settings = ({ onDataChange }) => {
               icon: SettingsIcon,
               content: (
                 <div className='category-manager-wrapper'>
-                  <CategoryManager onDataChange={onDataChange} />
+                  <CategoryManager
+                    onDataChange={async () => {
+                      await reloadCategories(); // Targeted reload of categories
+                      onDataChange(); // Maintain existing full reload behavior
+                    }}
+                  />
                 </div>
               ),
+            },
+            {
+              title: 'Recurring Templates Management',
+              icon: RefreshCw,
+              content: <RecurringTemplatesManager />,
             },
             {
               title: 'Audit Log',
@@ -625,7 +821,7 @@ const Settings = ({ onDataChange }) => {
       </div>
     );
   } catch (error) {
-    console.error('Settings: Rendering error:', error);
+    logger.error('Settings: Rendering error:', error);
     return (
       <div className='space-y-6'>
         <div className='text-center py-8'>
@@ -646,6 +842,10 @@ const Settings = ({ onDataChange }) => {
       </div>
     );
   }
+};
+
+Settings.propTypes = {
+  onDataChange: PropTypes.func.isRequired,
 };
 
 export default Settings;

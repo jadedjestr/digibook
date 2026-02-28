@@ -1,4 +1,5 @@
 import { AlertTriangle, DollarSign, CheckCircle, Info } from 'lucide-react';
+import PropTypes from 'prop-types';
 import { useState, useEffect, useMemo } from 'react';
 
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
@@ -22,7 +23,7 @@ const CreditCardPaymentInput = ({
   disabled = false,
   className = '',
   showSuggestions = true,
-  autoFocus = false,
+  autoFocus: _autoFocus = false,
 }) => {
   const [inputValue, setInputValue] = useState(value?.toString() || '');
   const [validationResult, setValidationResult] = useState(null);
@@ -114,7 +115,7 @@ const CreditCardPaymentInput = ({
         const isOverpayment = validationResult.warnings.some(
           w =>
             w.toLowerCase().includes('overpay') ||
-            w.toLowerCase().includes('more than')
+            w.toLowerCase().includes('more than'),
         );
         if (isOverpayment) {
           baseClass += ' border-yellow-400 border-l-4 border-l-yellow-500';
@@ -282,7 +283,7 @@ const CreditCardPaymentInput = ({
               >
                 $
                 {Math.abs(
-                  validationResult.paymentInfo.afterPaymentDebt
+                  validationResult.paymentInfo.afterPaymentDebt,
                 ).toFixed(2)}
                 {validationResult.paymentInfo.afterPaymentDebt < 0 &&
                   ' (credit)'}
@@ -299,10 +300,10 @@ const CreditCardPaymentInput = ({
 
       {/* Payment Suggestions */}
       {showSuggestions && suggestions.length > 0 && !disabled && (
-        <div className='space-y-2'>
-          <label className='text-sm font-medium text-white/70'>
+        <fieldset className='space-y-2 border-0 p-0 m-0'>
+          <legend className='text-sm font-medium text-white/70'>
             Payment Suggestions
-          </label>
+          </legend>
           <div className='flex flex-wrap gap-2'>
             {suggestions.map((suggestion, index) => (
               <button
@@ -319,25 +320,43 @@ const CreditCardPaymentInput = ({
 
           {/* Show description of selected suggestion */}
           {suggestions.find(
-            s => s.amount.toFixed(2) === parseFloat(inputValue || 0).toFixed(2)
+            s => s.amount.toFixed(2) === parseFloat(inputValue || 0).toFixed(2),
           ) && (
             <div className='text-sm text-white/70 italic animate-in fade-in duration-300'>
               {
                 suggestions.find(
                   s =>
                     s.amount.toFixed(2) ===
-                    parseFloat(inputValue || 0).toFixed(2)
+                    parseFloat(inputValue || 0).toFixed(2),
                 )?.description
               }
             </div>
           )}
-        </div>
+        </fieldset>
       )}
     </div>
   );
 };
 
-const getSuggestionButtonClass = type => {
+CreditCardPaymentInput.propTypes = {
+  expense: PropTypes.object,
+  value: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  onChange: PropTypes.func,
+  onValidationChange: PropTypes.func,
+  disabled: PropTypes.bool,
+  className: PropTypes.string,
+  showSuggestions: PropTypes.bool,
+  autoFocus: PropTypes.bool,
+};
+
+CreditCardPaymentInput.defaultProps = {
+  disabled: false,
+  className: '',
+  showSuggestions: true,
+  autoFocus: false,
+};
+
+const _getSuggestionButtonClass = type => {
   switch (type) {
     case 'minimum':
       return 'bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 border border-yellow-500/30';

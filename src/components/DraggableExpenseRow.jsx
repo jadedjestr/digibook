@@ -1,26 +1,27 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Check, Copy, Trash2, RotateCcw } from 'lucide-react';
-import React, { useMemo } from 'react';
+import { Check, Copy, Trash2, RotateCcw, RefreshCw } from 'lucide-react';
+import PropTypes from 'prop-types';
+import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 import { createPaymentSource } from '../types/paymentSource';
 
 import InlineEdit from './InlineEdit';
 import PaymentSourceSelector from './PaymentSourceSelector';
-import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
 
 const DraggableExpenseRow = ({
   expense,
   status,
-  account,
+  account: _account,
   isNewExpense,
   isUpdating = false,
   onMarkAsPaid,
   onDuplicate,
   onDelete,
   onUpdateExpense,
+  onEditRecurring,
   accounts,
   creditCards = [],
 }) => {
@@ -119,7 +120,7 @@ const DraggableExpenseRow = ({
           </table>
         </div>
       </div>,
-      document.body
+      document.body,
     );
   };
 
@@ -134,18 +135,34 @@ const DraggableExpenseRow = ({
           isNewExpense ? 'new-expense-animation' : ''
         } ${isDragging ? 'bg-white/5' : ''} hover:bg-white/5 ${
           isUpdating ? 'bg-blue-500/10 border-l-4 border-l-blue-400' : ''
+        } ${
+          !expense.recurringTemplateId
+            ? 'border-l-2 border-l-purple-400/30'
+            : ''
         }`}
         data-updating={isUpdating}
         data-expense-id={expense.id}
       >
         <td>
           <div className='flex items-center space-x-2'>
+            {expense.recurringTemplateId && (
+              <RefreshCw
+                size={14}
+                className='text-amber-400 flex-shrink-0'
+                title='Recurring expense'
+              />
+            )}
             <InlineEdit
               value={expense.name}
               expense={expense}
               fieldName='name'
               onSave={value => onUpdateExpense(expense.id, { name: value })}
             />
+            {!expense.recurringTemplateId && (
+              <span className='text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full border border-purple-500/30'>
+                One-time
+              </span>
+            )}
             {expense.isAutoCreated && (
               <span className='text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full border border-blue-500/30'>
                 Auto
@@ -155,6 +172,18 @@ const DraggableExpenseRow = ({
               <span className='text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full border border-green-500/30'>
                 Linked
               </span>
+            )}
+          </div>
+        </td>
+        <td>
+          <div className='flex items-center space-x-1'>
+            {expense.recurringTemplateId ? (
+              <>
+                <RefreshCw size={12} className='text-amber-400' />
+                <span className='text-white/70 text-sm'>Recurring</span>
+              </>
+            ) : (
+              <span className='text-white/70 text-sm'>One-time</span>
             )}
           </div>
         </td>
@@ -237,6 +266,15 @@ const DraggableExpenseRow = ({
             >
               <Copy size={16} />
             </button>
+            {expense.recurringTemplateId && onEditRecurring && (
+              <button
+                onClick={() => onEditRecurring(expense)}
+                className='p-1 text-amber-300 hover:text-amber-200'
+                title='Edit recurring'
+              >
+                <RefreshCw size={16} />
+              </button>
+            )}
             <button
               onClick={() => onDelete(expense.id)}
               className='p-1 text-red-300 hover:text-red-200'
@@ -250,6 +288,27 @@ const DraggableExpenseRow = ({
       <DragOverlay />
     </>
   );
+};
+
+DraggableExpenseRow.propTypes = {
+  expense: PropTypes.object.isRequired,
+  status: PropTypes.string.isRequired,
+  account: PropTypes.object,
+  isNewExpense: PropTypes.bool,
+  isUpdating: PropTypes.bool,
+  onMarkAsPaid: PropTypes.func.isRequired,
+  onDuplicate: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  onUpdateExpense: PropTypes.func.isRequired,
+  onEditRecurring: PropTypes.func,
+  accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
+  creditCards: PropTypes.arrayOf(PropTypes.object),
+};
+
+DraggableExpenseRow.defaultProps = {
+  isNewExpense: false,
+  isUpdating: false,
+  creditCards: [],
 };
 
 export default DraggableExpenseRow;

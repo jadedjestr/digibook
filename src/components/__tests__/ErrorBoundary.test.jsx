@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import PropTypes from 'prop-types';
 import { describe, it, expect, vi } from 'vitest';
 
 import ErrorBoundary from '../ErrorBoundary';
@@ -11,13 +12,14 @@ const ThrowError = ({ shouldThrow }) => {
   }
   return <div>No error</div>;
 };
+ThrowError.propTypes = { shouldThrow: PropTypes.bool };
 
 describe('ErrorBoundary', () => {
   it('should render children when there is no error', () => {
     render(
       <ErrorBoundary>
         <ThrowError shouldThrow={false} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(screen.getByText('No error')).toBeInTheDocument();
@@ -30,13 +32,13 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'We encountered an unexpected error. Your data is safe, but the app needs to restart.'
+        'We encountered an unexpected error. Your data is safe, but the app needs to restart.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByText('Try Again')).toBeInTheDocument();
@@ -52,7 +54,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     // Error UI should be visible
@@ -77,7 +79,7 @@ describe('ErrorBoundary', () => {
     render(
       <ErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
 
     expect(screen.getByText('Error Details (Development)')).toBeInTheDocument();

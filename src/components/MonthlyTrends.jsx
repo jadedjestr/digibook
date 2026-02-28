@@ -1,5 +1,6 @@
 import { TrendingUp, TrendingDown, BarChart3, Calendar } from 'lucide-react';
-import React, { useMemo } from 'react';
+import PropTypes from 'prop-types';
+import { useMemo } from 'react';
 
 import PrivacyWrapper from './PrivacyWrapper';
 
@@ -64,7 +65,7 @@ const MonthlyTrends = ({ history = [] }) => {
     return 'text-red-400';
   };
 
-  const getTrendIcon = (current, previous) => {
+  const _getTrendIcon = (current, previous) => {
     if (!previous) return null;
     if (current > previous) return TrendingUp;
     if (current < previous) return TrendingDown;
@@ -103,7 +104,7 @@ const MonthlyTrends = ({ history = [] }) => {
 
   // Calculate max value for chart scaling
   const maxValue = Math.max(
-    ...monthlyData.map(d => Math.max(d.totalBudget, d.totalActual))
+    ...monthlyData.map(d => Math.max(d.totalBudget, d.totalActual)),
   );
 
   return (
@@ -134,13 +135,11 @@ const MonthlyTrends = ({ history = [] }) => {
               )}
             </div>
             <p
-              className={`text-lg font-bold ${
-                trends.budgetTrend > 0
-                  ? 'text-red-400'
-                  : trends.budgetTrend < 0
-                    ? 'text-green-400'
-                    : 'text-white'
-              }`}
+              className={`text-lg font-bold ${(() => {
+                if (trends.budgetTrend > 0) return 'text-red-400';
+                if (trends.budgetTrend < 0) return 'text-green-400';
+                return 'text-white';
+              })()}`}
             >
               {trends.budgetTrend > 0 ? '+' : ''}
               <PrivacyWrapper>
@@ -164,13 +163,11 @@ const MonthlyTrends = ({ history = [] }) => {
               )}
             </div>
             <p
-              className={`text-lg font-bold ${
-                trends.actualTrend > 0
-                  ? 'text-red-400'
-                  : trends.actualTrend < 0
-                    ? 'text-green-400'
-                    : 'text-white'
-              }`}
+              className={`text-lg font-bold ${(() => {
+                if (trends.actualTrend > 0) return 'text-red-400';
+                if (trends.actualTrend < 0) return 'text-green-400';
+                return 'text-white';
+              })()}`}
             >
               {trends.actualTrend > 0 ? '+' : ''}
               <PrivacyWrapper>
@@ -194,13 +191,11 @@ const MonthlyTrends = ({ history = [] }) => {
               )}
             </div>
             <p
-              className={`text-lg font-bold ${
-                trends.overpaymentTrend > 0
-                  ? 'text-orange-400'
-                  : trends.overpaymentTrend < 0
-                    ? 'text-green-400'
-                    : 'text-white'
-              }`}
+              className={`text-lg font-bold ${(() => {
+                if (trends.overpaymentTrend > 0) return 'text-orange-400';
+                if (trends.overpaymentTrend < 0) return 'text-green-400';
+                return 'text-white';
+              })()}`}
             >
               {trends.overpaymentTrend > 0 ? '+' : ''}
               <PrivacyWrapper>
@@ -231,7 +226,7 @@ const MonthlyTrends = ({ history = [] }) => {
           </div>
         </div>
 
-        {monthlyData.map((data, index) => {
+        {monthlyData.map((data, _index) => {
           const budgetWidth =
             maxValue > 0 ? (data.totalBudget / maxValue) * 100 : 0;
           const actualWidth =
@@ -339,6 +334,14 @@ const MonthlyTrends = ({ history = [] }) => {
       </div>
     </div>
   );
+};
+
+MonthlyTrends.propTypes = {
+  history: PropTypes.arrayOf(PropTypes.object),
+};
+
+MonthlyTrends.defaultProps = {
+  history: [],
 };
 
 export default MonthlyTrends;

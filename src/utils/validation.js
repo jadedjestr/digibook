@@ -4,7 +4,7 @@
  */
 
 // Email validation regex
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const _EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // PIN validation (4-6 digits)
 const PIN_REGEX = /^\d{4,6}$/;
@@ -172,8 +172,16 @@ export const validateDate = date => {
 
 /**
  * Validate category name
+ * @param {string} name - The category name to validate
+ * @param {Array} existingCategories - Existing category objects with name
+ * @param {string|null} excludeCategoryName - Optional: name of category to
+ *   exclude from duplicate check (for edit mode)
  */
-export const validateCategoryName = (name, existingCategories = []) => {
+export const validateCategoryName = (
+  name,
+  existingCategories = [],
+  excludeCategoryName = null,
+) => {
   const sanitized = sanitizeString(name);
 
   if (!sanitized) {
@@ -194,10 +202,17 @@ export const validateCategoryName = (name, existingCategories = []) => {
     };
   }
 
-  // Check for duplicates (case-insensitive)
-  const isDuplicate = existingCategories.some(
-    category => category.name.toLowerCase() === sanitized.toLowerCase()
-  );
+  // Check for duplicates (case-insensitive), excluding current category if edit
+  const isDuplicate = existingCategories.some(category => {
+    // Skip the category being edited (case-insensitive comparison)
+    if (
+      excludeCategoryName &&
+      category.name.toLowerCase() === String(excludeCategoryName).toLowerCase()
+    ) {
+      return false;
+    }
+    return category.name.toLowerCase() === sanitized.toLowerCase();
+  });
 
   if (isDuplicate) {
     return {
@@ -349,7 +364,7 @@ export const sanitizeObject = obj => {
       sanitized[key] = value.map(item =>
         typeof item === 'object'
           ? sanitizeObject(item)
-          : sanitizeString(String(item))
+          : sanitizeString(String(item)),
       );
     } else if (typeof value === 'object' && value !== null) {
       sanitized[key] = sanitizeObject(value);

@@ -1,5 +1,6 @@
-import { X, Check, AlertTriangle, Zap, Link, Search, Plus } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import { X, Check, Link, Search, Plus } from 'lucide-react';
+import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
@@ -41,7 +42,7 @@ const CreditCardMigrationModal = ({ isOpen, onClose, onComplete }) => {
     setSelectedMappings(prev =>
       prev.includes(expenseId)
         ? prev.filter(id => id !== expenseId)
-        : [...prev, expenseId]
+        : [...prev, expenseId],
     );
   };
 
@@ -52,7 +53,7 @@ const CreditCardMigrationModal = ({ isOpen, onClose, onComplete }) => {
     try {
       // Get selected mappings
       const mappingsToApply = detectedMappings.filter(mapping =>
-        selectedMappings.includes(mapping.expenseId)
+        selectedMappings.includes(mapping.expenseId),
       );
 
       // Apply mappings
@@ -74,12 +75,8 @@ const CreditCardMigrationModal = ({ isOpen, onClose, onComplete }) => {
 
       setStep('complete');
 
-      const totalActions =
-        results.appliedCount +
-        duplicatesRemoved.length +
-        missingExpensesCreated;
       notify.success(
-        `Migration complete! Mapped ${results.appliedCount} expenses, removed ${duplicatesRemoved.length} duplicates, and created ${missingExpensesCreated} missing expenses`
+        `Migration complete! Mapped ${results.appliedCount} expenses, removed ${duplicatesRemoved.length} duplicates, and created ${missingExpensesCreated} missing expenses`,
       );
     } catch (error) {
       logger.error('Error applying mappings:', error);
@@ -173,6 +170,14 @@ const CreditCardMigrationModal = ({ isOpen, onClose, onComplete }) => {
                           : 'border-white/10 bg-white/5 hover:bg-white/10'
                       }`}
                       onClick={() => toggleMapping(mapping.expenseId)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleMapping(mapping.expenseId);
+                        }
+                      }}
+                      role='button'
+                      tabIndex={0}
                     >
                       <div className='flex items-center justify-between'>
                         <div className='flex items-center space-x-3'>
@@ -258,7 +263,8 @@ const CreditCardMigrationModal = ({ isOpen, onClose, onComplete }) => {
                       </h4>
                       <p className='text-sm text-gray-300'>
                         Created {migrationResults.missingExpensesCreated} new
-                        fixed expenses for credit cards that didn't have any.
+                        fixed expenses for credit cards that didn&apos;t have
+                        any.
                       </p>
                     </div>
                   </div>
@@ -335,6 +341,12 @@ const CreditCardMigrationModal = ({ isOpen, onClose, onComplete }) => {
       </div>
     </div>
   );
+};
+
+CreditCardMigrationModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onComplete: PropTypes.func.isRequired,
 };
 
 export default CreditCardMigrationModal;

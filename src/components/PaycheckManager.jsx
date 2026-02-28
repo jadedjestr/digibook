@@ -1,5 +1,6 @@
 import { Calendar, Clock } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { DateUtils } from '../utils/dateUtils';
@@ -40,7 +41,7 @@ const PaycheckManager = ({ onDataChange }) => {
   const handleSave = async () => {
     if (isSaving) {
       logger.warn(
-        'Save operation already in progress, ignoring duplicate request'
+        'Save operation already in progress, ignoring duplicate request',
       );
       return;
     }
@@ -141,10 +142,14 @@ const PaycheckManager = ({ onDataChange }) => {
       <div className='space-y-6'>
         {/* Last Paycheck Date */}
         <div>
-          <label className='block text-primary font-medium mb-2'>
+          <label
+            htmlFor='paycheck-last-date'
+            className='block text-primary font-medium mb-2'
+          >
             Last Paycheck Date
           </label>
           <input
+            id='paycheck-last-date'
             type='date'
             value={paycheckSettings.lastPaycheckDate}
             onChange={e =>
@@ -162,10 +167,14 @@ const PaycheckManager = ({ onDataChange }) => {
 
         {/* Pay Frequency */}
         <div>
-          <label className='block text-primary font-medium mb-2'>
+          <label
+            htmlFor='paycheck-frequency'
+            className='block text-primary font-medium mb-2'
+          >
             Pay Frequency
           </label>
           <select
+            id='paycheck-frequency'
             value={paycheckSettings.frequency}
             onChange={e =>
               setPaycheckSettings({
@@ -246,6 +255,10 @@ const PaycheckManager = ({ onDataChange }) => {
       </div>
     </div>
   );
+};
+
+PaycheckManager.propTypes = {
+  onDataChange: PropTypes.func.isRequired,
 };
 
 export default PaycheckManager;

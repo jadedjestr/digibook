@@ -1,4 +1,4 @@
-import React from 'react';
+import PropTypes from 'prop-types';
 
 import ExpenseTableContainer from './FixedExpensesTable/ExpenseTableContainer';
 
@@ -15,8 +15,23 @@ import ExpenseTableContainer from './FixedExpensesTable/ExpenseTableContainer';
  *
  * Note: ExpenseTableContainer now uses Zustand store directly, so no props needed
  */
-const FixedExpensesTable = () => {
-  return <ExpenseTableContainer />;
+const FixedExpensesTable = ({ expenses, onCategoryClick }) => {
+  return (
+    <ExpenseTableContainer
+      expensesOverride={expenses}
+      onCategoryClick={onCategoryClick}
+    />
+  );
+};
+
+FixedExpensesTable.propTypes = {
+  expenses: PropTypes.arrayOf(PropTypes.object),
+  onCategoryClick: PropTypes.func,
+};
+
+FixedExpensesTable.defaultProps = {
+  expenses: undefined,
+  onCategoryClick: undefined,
 };
 
 export default FixedExpensesTable;

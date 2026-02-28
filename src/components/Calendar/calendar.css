@@ -454,6 +454,7 @@
 .expense-badge--recurring {
   @apply bg-amber-500/15 text-amber-200 border-amber-500/25;
   position: relative;
+  padding-left: 14px; /* Add extra left padding to make room for the recurring icon */
   box-shadow:
     0 0 0 1px rgba(251, 191, 36, 0.1),
     0 2px 4px rgba(251, 191, 36, 0.05);
@@ -585,6 +586,10 @@
   .expense-badge {
     @apply text-xs;
     padding: 1px 4px;
+  }
+
+  .expense-badge--recurring {
+    padding-left: 12px; /* Maintain left padding for recurring icon on mobile */
   }
 
   .calendar-nav-button,

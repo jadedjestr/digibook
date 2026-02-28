@@ -51,7 +51,7 @@ export const usePerformanceMonitor = (componentName, options = {}) => {
     // Log slow renders
     if (renderTime > logThreshold) {
       logger.warn(
-        `Slow render detected in ${componentName}: ${renderTime.toFixed(2)}ms`
+        `Slow render detected in ${componentName}: ${renderTime.toFixed(2)}ms`,
       );
     }
 

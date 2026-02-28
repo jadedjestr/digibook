@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import React from 'react';
+import PropTypes from 'prop-types';
 import { vi, describe, test, expect, beforeEach } from 'vitest';
 
 import AccountSelector from '../AccountSelector';
@@ -120,9 +120,13 @@ describe('AccountSelector Performance Tests', () => {
         />
       );
     };
+    TestComponent.propTypes = {
+      accounts: PropTypes.array,
+      creditCards: PropTypes.array,
+    };
 
     const { rerender } = render(
-      <TestComponent accounts={mockAccounts} creditCards={mockCreditCards} />
+      <TestComponent accounts={mockAccounts} creditCards={mockCreditCards} />,
     );
 
     // Clear initial render
@@ -130,7 +134,7 @@ describe('AccountSelector Performance Tests', () => {
 
     // Rerender with same props - should not cause re-render due to memoization
     rerender(
-      <TestComponent accounts={mockAccounts} creditCards={mockCreditCards} />
+      <TestComponent accounts={mockAccounts} creditCards={mockCreditCards} />,
     );
 
     // Should not have re-rendered due to memoization

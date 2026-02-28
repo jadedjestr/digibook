@@ -409,19 +409,19 @@ describe('Database Operations', () => {
     it('should handle database errors gracefully', async () => {
       // Try to add account with invalid data
       await expect(dbHelpers.addAccount(null)).rejects.toThrow(
-        'Failed to add account'
+        'Failed to add account',
       );
     });
 
     it('should handle missing account in update', async () => {
       await expect(
-        dbHelpers.updateAccount(999, { name: 'Test' })
+        dbHelpers.updateAccount(999, { name: 'Test' }),
       ).rejects.toThrow('Failed to update account');
     });
 
     it('should handle missing account in delete', async () => {
       await expect(dbHelpers.deleteAccount(999)).rejects.toThrow(
-        'Failed to delete account'
+        'Failed to delete account',
       );
     });
   });
@@ -447,7 +447,7 @@ describe('Database Operations', () => {
 
       // Try to delete account with linked transaction
       await expect(dbHelpers.deleteAccount(accountId)).rejects.toThrow(
-        'Failed to delete account'
+        'Failed to delete account',
       );
     });
 
@@ -464,7 +464,7 @@ describe('Database Operations', () => {
           name: 'test category',
           color: '#00FF00',
           icon: '🚗',
-        })
+        }),
       ).rejects.toThrow();
     });
   });

@@ -31,13 +31,13 @@ export class PaycheckService {
     }
 
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset time to start of day for consistent comparison
+    today.setHours(0, 0, 0, 0); // Start of day for consistent comparison
 
-    // Calculate next paycheck (14 days from last paycheck)
+    // Next paycheck (14 days from last paycheck)
     const nextPayDate = new Date(lastPayDate);
     nextPayDate.setDate(nextPayDate.getDate() + BIWEEKLY_INTERVAL);
 
-    // If next paycheck is in the past, keep adding 14 days until it's in the future
+    // If next pay is in the past, add 14 days until future
     while (nextPayDate <= today) {
       nextPayDate.setDate(nextPayDate.getDate() + BIWEEKLY_INTERVAL);
     }
@@ -48,10 +48,10 @@ export class PaycheckService {
 
     // Calculate days until each paycheck
     const daysUntilNextPay = Math.ceil(
-      (nextPayDate - today) / (1000 * 60 * 60 * 24)
+      (nextPayDate - today) / (1000 * 60 * 60 * 24),
     );
     const daysUntilFollowingPay = Math.ceil(
-      (followingPayDate - today) / (1000 * 60 * 60 * 24)
+      (followingPayDate - today) / (1000 * 60 * 60 * 24),
     );
 
     return {
@@ -68,7 +68,7 @@ export class PaycheckService {
     const { nextPayDate, followingPayDate } = paycheckDates;
 
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset time to start of day for consistent comparison
+    today.setHours(0, 0, 0, 0); // Start of day for comparison
 
     const due = DateUtils.parseDate(dueDate);
     const nextPay = DateUtils.parseDate(nextPayDate);
@@ -94,7 +94,7 @@ export class PaycheckService {
       return 'Pay This Week';
     }
 
-    // If due with next check (between next paycheck and following paycheck)
+    // Due with next check (between next and following paycheck)
     if (due > nextPay && due <= followingPay && paidAmount === 0) {
       return 'Pay with Next Check';
     }

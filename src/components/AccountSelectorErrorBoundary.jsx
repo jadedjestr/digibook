@@ -1,5 +1,8 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import PropTypes from 'prop-types';
 import React from 'react';
+
+import { logger } from '../utils/logger';
 
 /**
  * Error boundary component for AccountSelector
@@ -22,11 +25,10 @@ class AccountSelectorErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Log error details for debugging
-    console.error(
+    logger.error(
       'AccountSelector Error Boundary caught an error:',
       error,
-      errorInfo
+      errorInfo,
     );
 
     // Update state with error info
@@ -141,5 +143,9 @@ class AccountSelectorErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+
+AccountSelectorErrorBoundary.propTypes = {
+  children: PropTypes.node,
+};
 
 export default AccountSelectorErrorBoundary;

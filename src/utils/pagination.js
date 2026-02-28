@@ -41,7 +41,7 @@ export const createPaginatedResult = (data, page, pageSize, total) => {
 export const calculatePagination = (page, pageSize, total) => {
   const normalizedPageSize = Math.min(
     Math.max(pageSize, PAGINATION_CONFIG.MIN_PAGE_SIZE),
-    PAGINATION_CONFIG.MAX_PAGE_SIZE
+    PAGINATION_CONFIG.MAX_PAGE_SIZE,
   );
 
   const normalizedPage = Math.max(1, page);
@@ -103,7 +103,7 @@ export const createInfiniteScrollQuery = async (
     const data = await queryFunction(
       'infinite',
       { lastId, limit: pageSize },
-      ...args
+      ...args,
     );
 
     const result = {
@@ -148,7 +148,7 @@ export const createSearchQuery = async (
       'data',
       query,
       { offset, limit },
-      ...args
+      ...args,
     );
 
     const result = createPaginatedResult(data, page, pageSize, total);
@@ -179,7 +179,7 @@ export const processBatch = async (items, batchSize = 100, processFunction) => {
 
       // Log progress
       logger.debug(
-        `Processed batch ${i + 1}/${totalBatches} (${batch.length} items)`
+        `Processed batch ${i + 1}/${totalBatches} (${batch.length} items)`,
       );
     } catch (error) {
       logger.error(`Error processing batch ${i + 1}:`, error);
@@ -207,7 +207,7 @@ export const streamData = async function* (
         queryFunction,
         page,
         pageSize,
-        ...args
+        ...args,
       );
 
       yield result.data;
@@ -235,7 +235,7 @@ const end = operation => {
   if (duration > 100) {
     // Log if operation takes more than 100ms
     logger.warn(
-      `Slow pagination operation: ${operation} took ${duration.toFixed(2)}ms`
+      `Slow pagination operation: ${operation} took ${duration.toFixed(2)}ms`,
     );
   }
 };

@@ -1,23 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
 
 import { formatCurrency } from '../utils/accountUtils';
 
 import PrivacyWrapper from './PrivacyWrapper';
 
-const ExpenseBar = ({ expense, index, totalAmount }) => {
+const ExpenseBar = ({
+  expense,
+  index,
+  totalAmount: _totalAmount,
+  onCategoryClick,
+}) => {
   const [isVisible, setIsVisible] = useState(false);
   const [barWidth, setBarWidth] = useState(0);
 
   useEffect(() => {
-    // Stagger animation: 100ms delay between each item
-    const visibilityTimer = setTimeout(() => setIsVisible(true), index * 100);
-
-    // Animate bar width after visibility
+    const baseDelay = index * 100;
+    const visibilityTimer = setTimeout(() => setIsVisible(true), baseDelay);
     const barTimer = setTimeout(
-      () => {
-        setBarWidth(expense.percentage);
-      },
-      index * 100 + 200
+      () => setBarWidth(expense.percentage),
+      baseDelay + 200,
     );
 
     return () => {
@@ -25,6 +27,17 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
       clearTimeout(barTimer);
     };
   }, [index, expense.percentage]);
+
+  const handleClick = () => {
+    onCategoryClick?.(expense.name);
+  };
+
+  const handleKeyDown = e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleClick();
+    }
+  };
 
   return (
     <div
@@ -39,7 +52,9 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
       }}
       role='button'
       tabIndex={0}
-      aria-label={`${expense.name}: ${formatCurrency(expense.amount)} (${expense.percentage.toFixed(1)}% of total expenses)`}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      aria-label={`${expense.name}: ${formatCurrency(expense.amount)} (${expense.percentage.toFixed(1)}% of total). Click to view expenses in this category.`}
     >
       {/* Color indicator dot */}
       <div
@@ -80,6 +95,18 @@ const ExpenseBar = ({ expense, index, totalAmount }) => {
       </span>
     </div>
   );
+};
+
+ExpenseBar.propTypes = {
+  expense: PropTypes.shape({
+    name: PropTypes.string,
+    amount: PropTypes.number,
+    percentage: PropTypes.number,
+    color: PropTypes.string,
+  }).isRequired,
+  index: PropTypes.number.isRequired,
+  totalAmount: PropTypes.number,
+  onCategoryClick: PropTypes.func,
 };
 
 export default ExpenseBar;

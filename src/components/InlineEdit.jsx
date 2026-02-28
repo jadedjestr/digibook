@@ -1,4 +1,5 @@
 import { Check, X } from 'lucide-react';
+import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
 
 import { formatCurrency } from '../utils/accountUtils';
@@ -89,7 +90,6 @@ const InlineEdit = ({
                 onChange={setEditValue}
                 onValidationChange={setValidationResult}
                 className='w-full'
-                autoFocus={true}
               />
             </div>
             <button
@@ -121,18 +121,17 @@ const InlineEdit = ({
     }
 
     // Regular inline editing for other fields
-    return (
-      <div className='flex items-center space-x-2'>
-        {type === 'number' ? (
+    const renderInput = () => {
+      if (type === 'number') {
+        return (
           <input
             ref={inputRef}
             type='number'
             value={editValue}
             onChange={e => {
               const value = e.target.value;
-
-              // Allow empty string and valid numbers, including incomplete decimals
-              if (value === '' || /^\d*\.?\d*$/.test(value)) {
+              const decimalRegex = /^\d*\.?\d*$/;
+              if (value === '' || decimalRegex.test(value)) {
                 setEditValue(value);
               }
             }}
@@ -141,7 +140,10 @@ const InlineEdit = ({
             step='0.01'
             min='0'
           />
-        ) : type === 'date' ? (
+        );
+      }
+      if (type === 'date') {
+        return (
           <input
             ref={inputRef}
             type='date'
@@ -153,16 +155,23 @@ const InlineEdit = ({
             onKeyDown={handleKeyDown}
             className='glass-input text-sm w-32'
           />
-        ) : (
-          <input
-            ref={inputRef}
-            type='text'
-            value={editValue}
-            onChange={e => setEditValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className='glass-input text-sm w-full'
-          />
-        )}
+        );
+      }
+      return (
+        <input
+          ref={inputRef}
+          type='text'
+          value={editValue}
+          onChange={e => setEditValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className='glass-input text-sm w-full'
+        />
+      );
+    };
+
+    return (
+      <div className='flex items-center space-x-2'>
+        {renderInput()}
         <button
           onClick={handleSave}
           className='p-1 text-green-300 hover:text-green-200'
@@ -192,13 +201,28 @@ const InlineEdit = ({
   };
 
   return (
-    <div
-      className='cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors'
+    <button
+      type='button'
+      className='w-full text-left cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors'
       onClick={() => setIsEditing(true)}
     >
       {formatDisplayValue(value, type)}
-    </div>
+    </button>
   );
+};
+
+InlineEdit.propTypes = {
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  onSave: PropTypes.func.isRequired,
+  type: PropTypes.string,
+  expense: PropTypes.object,
+  fieldName: PropTypes.string,
+};
+
+InlineEdit.defaultProps = {
+  type: 'text',
+  expense: null,
+  fieldName: null,
 };
 
 export default InlineEdit;

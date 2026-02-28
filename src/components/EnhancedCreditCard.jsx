@@ -1,4 +1,5 @@
 import { Edit, Trash2, AlertTriangle, Plus, Minus } from 'lucide-react';
+import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 
 import {
@@ -23,9 +24,9 @@ const EnhancedCreditCard = ({
   // Calculate derived values using new utilities
   const balanceInfo = formatCreditCardBalance(card.balance);
   const creditInfo = calculateAvailableCredit(card.balance, card.creditLimit);
-  const minimumPaymentInfo = getMinimumPaymentStatus(
+  const _minimumPaymentInfo = getMinimumPaymentStatus(
     card.balance,
-    card.minimumPayment || 0
+    card.minimumPayment || 0,
   );
   const monthlyInterest =
     (Math.max(card.balance, 0) * (card.interestRate / 100)) / 12;
@@ -35,15 +36,11 @@ const EnhancedCreditCard = ({
   const utilization = creditInfo.utilization;
 
   useEffect(() => {
-    // Staggered animation for card entry
-    const visibilityTimer = setTimeout(() => setIsVisible(true), index * 100);
-
-    // Animate utilization bar after card is visible
+    const baseDelay = index * 100;
+    const visibilityTimer = setTimeout(() => setIsVisible(true), baseDelay);
     const barTimer = setTimeout(
-      () => {
-        setUtilizationWidth(creditInfo.utilization);
-      },
-      index * 100 + 500
+      () => setUtilizationWidth(creditInfo.utilization),
+      baseDelay + 500,
     );
 
     return () => {
@@ -121,20 +118,21 @@ const EnhancedCreditCard = ({
             <div
               className={`flex items-center space-x-2 ${balanceInfo.className}`}
             >
-              {balanceInfo.isCredit ? (
-                <Plus size={16} className='text-blue-400' />
-              ) : balanceInfo.isZero ? null : (
-                <Minus size={16} className='text-yellow-400' />
-              )}
+              {(() => {
+                if (balanceInfo.isCredit)
+                  return <Plus size={16} className='text-blue-400' />;
+                if (balanceInfo.isZero) return null;
+                return <Minus size={16} className='text-yellow-400' />;
+              })()}
               <PrivacyWrapper>
                 <span className='font-bold'>{balanceInfo.formattedAmount}</span>
               </PrivacyWrapper>
               <span className='text-sm opacity-75'>
-                {balanceInfo.isCredit
-                  ? 'Credit'
-                  : balanceInfo.isZero
-                    ? 'Paid Off'
-                    : 'Debt'}
+                {(() => {
+                  if (balanceInfo.isCredit) return 'Credit';
+                  if (balanceInfo.isZero) return 'Paid Off';
+                  return 'Debt';
+                })()}
               </span>
             </div>
           </div>
@@ -289,6 +287,29 @@ const EnhancedCreditCard = ({
       )}
     </div>
   );
+};
+
+EnhancedCreditCard.propTypes = {
+  card: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    name: PropTypes.string,
+    balance: PropTypes.number,
+    creditLimit: PropTypes.number,
+    minimumPayment: PropTypes.number,
+    interestRate: PropTypes.number,
+    daysUntilDue: PropTypes.number,
+    dueDate: PropTypes.string,
+    statementClosingDate: PropTypes.string,
+  }).isRequired,
+  onEdit: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  index: PropTypes.number,
+  className: PropTypes.string,
+};
+
+EnhancedCreditCard.defaultProps = {
+  index: 0,
+  className: '',
 };
 
 export default EnhancedCreditCard;

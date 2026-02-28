@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useCallback, useMemo } from 'react';
+import PropTypes from 'prop-types';
+import { createContext, useContext, useCallback, useMemo } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { categoryCache } from '../services/categoryCache';
@@ -10,7 +11,7 @@ export const useGlobalCategories = () => {
   const context = useContext(GlobalCategoryContext);
   if (!context) {
     throw new Error(
-      'useGlobalCategories must be used within a GlobalCategoryProvider'
+      'useGlobalCategories must be used within a GlobalCategoryProvider',
     );
   }
   return context;
@@ -71,21 +72,21 @@ export const GlobalCategoryProvider = ({ children }) => {
         await dbHelpers.reassignCategoryItems(
           oldCategoryName,
           newCategoryName,
-          affectedItems
+          affectedItems,
         );
         categoryCache.invalidate(); // Invalidate cache after mutation
         notify.success(
-          `Reassigned items from "${oldCategoryName}" to "${newCategoryName}"`
+          `Reassigned items from "${oldCategoryName}" to "${newCategoryName}"`,
         );
       } catch (error) {
         notify.error(
           'Failed to reassign category items. Please try again.',
-          error
+          error,
         );
         throw error;
       }
     },
-    []
+    [],
   );
 
   // Get category usage stats (cached)
@@ -126,7 +127,7 @@ export const GlobalCategoryProvider = ({ children }) => {
       getCategoryUsageStats,
       refreshCategories,
       invalidateCache,
-    ]
+    ],
   );
 
   return (
@@ -134,6 +135,10 @@ export const GlobalCategoryProvider = ({ children }) => {
       {children}
     </GlobalCategoryContext.Provider>
   );
+};
+
+GlobalCategoryProvider.propTypes = {
+  children: PropTypes.node.isRequired,
 };
 
 export default GlobalCategoryContext;

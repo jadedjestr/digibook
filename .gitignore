@@ -28,6 +28,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Local scratch scripts
+test_net.js
+
 # Runtime data
 pids
 *.pid

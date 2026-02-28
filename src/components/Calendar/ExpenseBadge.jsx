@@ -57,12 +57,13 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
     expense.recurringTemplateId !== null &&
     expense.recurringTemplateId !== undefined;
   const recurringClass = isRecurring ? 'expense-badge--recurring' : '';
+  const oneOffClass = !isRecurring ? 'expense-badge--oneoff' : '';
 
   return (
     <>
       <div
-        className={`expense-badge ${statusClass} ${recurringClass}`.trim()}
-        title={`${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${status}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : ''}`}
+        className={`expense-badge ${statusClass} ${recurringClass} ${oneOffClass}`.trim()}
+        title={`${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${status}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : '\n📅 One-time Expense'}`}
         role='button'
         tabIndex={0}
         onClick={e => {
@@ -78,6 +79,14 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
           }
         }}
       >
+        {!isRecurring && (
+          <span
+            className='expense-badge-oneoff-indicator'
+            title='One-time expense'
+          >
+            📅
+          </span>
+        )}
         {expenseText}
       </div>
 
@@ -87,7 +96,7 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
             selectedExpense={expense}
             onClose={() => setShowQuickActions(false)}
           />,
-          document.body
+          document.body,
         )}
     </>
   );

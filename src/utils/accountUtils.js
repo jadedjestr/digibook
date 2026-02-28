@@ -7,20 +7,20 @@
  * Creates a standardized account mapping with proper ID handling
  * @param {Array} accounts - Regular accounts array
  * @param {Array} creditCards - Credit cards array
- * @param {boolean} isCreditCardPayment - Whether this is for credit card payments
+ * @param {boolean} isCreditCardPayment - Whether for credit card payments
  * @returns {Array} Standardized account array with proper ID mapping
  */
 export const createAccountMapping = (
   accounts = [],
   creditCards = [],
-  isCreditCardPayment = false
+  isCreditCardPayment = false,
 ) => {
   if (isCreditCardPayment) {
-    // For credit card payments: only allow checking/savings accounts (funding source)
+    // For credit card payments: only allow checking/savings (funding source)
     return accounts.map(acc => ({ ...acc, type: 'account' }));
   }
 
-  // For regular expenses: allow all accounts (checking, savings, credit cards)
+  // For regular expenses: allow all (checking, savings, credit cards)
   return [
     ...accounts.map(acc => ({ ...acc, type: 'account' })),
     ...creditCards.map(card => ({
@@ -40,13 +40,13 @@ export const createAccountMapping = (
  * Finds the selected account from the standardized account array
  * @param {Array} allAccounts - Standardized account array
  * @param {number|string} value - The account ID to find
- * @param {boolean} isCreditCardPayment - Whether this is for credit card payments
+ * @param {boolean} isCreditCardPayment - Whether for credit card payments
  * @returns {Object|undefined} The found account or undefined
  */
 export const findSelectedAccount = (
   allAccounts,
   value,
-  isCreditCardPayment = false
+  isCreditCardPayment = false,
 ) => {
   if (!allAccounts || !Array.isArray(allAccounts)) {
     return undefined;
@@ -58,25 +58,25 @@ export const findSelectedAccount = (
   if (isCreditCardPayment) {
     // For credit card payments: only look for regular accounts (funding source)
     return allAccounts.find(
-      account => account.type === 'account' && String(account.id) === valueStr
+      account => account.type === 'account' && String(account.id) === valueStr,
     );
   }
 
-  // For regular expenses: find account by ID (works for both regular accounts and credit cards)
+  // For regular expenses: find by ID (accounts and credit cards)
   return allAccounts.find(account => String(account.id) === valueStr);
 };
 
 /**
  * Gets the correct account ID to save to the database
  * @param {Object} account - The account object
- * @returns {number|string} The ID to save (account.id for both regular accounts and credit cards)
+ * @returns {number|string} The ID to save (account.id for all types)
  */
 export const getAccountIdToSave = account => {
   if (!account) {
     return null;
   }
 
-  // FIXED: Since we no longer override credit card IDs, just use account.id for all types
+  // Use account.id for all types (no ID override)
   return account.id;
 };
 
@@ -84,13 +84,13 @@ export const getAccountIdToSave = account => {
  * Checks if an account is currently selected
  * @param {Object} account - The account object
  * @param {number|string} currentValue - The current selected value
- * @param {boolean} isCreditCardPayment - Whether this is for credit card payments
+ * @param {boolean} isCreditCardPayment - Whether for credit card payments
  * @returns {boolean} Whether the account is selected
  */
 export const isAccountSelected = (
   account,
   currentValue,
-  isCreditCardPayment = false
+  isCreditCardPayment = false,
 ) => {
   if (!account || currentValue === null || currentValue === undefined) {
     return false;
@@ -104,7 +104,7 @@ export const isAccountSelected = (
     return account.type === 'account' && String(account.id) === currentValueStr;
   }
 
-  // FIXED: Use account.id for all account types (both regular accounts and credit cards)
+  // Use account.id for all types (accounts and credit cards)
   return String(account.id) === currentValueStr;
 };
 

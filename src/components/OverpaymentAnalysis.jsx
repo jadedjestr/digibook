@@ -1,5 +1,5 @@
 import { TrendingUp, AlertCircle, DollarSign } from 'lucide-react';
-import React from 'react';
+import PropTypes from 'prop-types';
 
 import PrivacyWrapper from './PrivacyWrapper';
 
@@ -30,7 +30,7 @@ const OverpaymentAnalysis = ({ data }) => {
 
   const totalOverpayment = Object.values(data).reduce(
     (sum, category) => sum + category.totalOverpayment,
-    0
+    0,
   );
 
   const getCategoryIcon = category => {
@@ -77,7 +77,7 @@ const OverpaymentAnalysis = ({ data }) => {
           <AlertCircle className='w-12 h-12 text-white/30 mx-auto mb-4' />
           <p className='text-white/70'>No overpayments detected this cycle.</p>
           <p className='text-white/50 text-sm mt-2'>
-            You're staying within budget! 🎉
+            You&apos;re staying within budget! 🎉
           </p>
         </div>
       ) : (
@@ -87,7 +87,7 @@ const OverpaymentAnalysis = ({ data }) => {
             const maxBarWidth = 100;
             const barWidth = Math.min(
               (categoryData.totalOverpayment / totalOverpayment) * maxBarWidth,
-              maxBarWidth
+              maxBarWidth,
             );
 
             return (
@@ -189,7 +189,7 @@ const OverpaymentAnalysis = ({ data }) => {
                 overpaid.
               </p>
               {sortedCategories.some(
-                ([, data]) => data.overpaymentPercentage >= 20
+                ([, data]) => data.overpaymentPercentage >= 20,
               ) && (
                 <p className='text-white/70 text-sm mt-1'>
                   Consider adjusting budget allocations for categories with
@@ -202,6 +202,10 @@ const OverpaymentAnalysis = ({ data }) => {
       )}
     </div>
   );
+};
+
+OverpaymentAnalysis.propTypes = {
+  data: PropTypes.object,
 };
 
 export default OverpaymentAnalysis;

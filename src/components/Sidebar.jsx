@@ -1,5 +1,6 @@
 import { Lock, Unlock, Eye, EyeOff, Menu, X } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
 
 import { usePrivacy } from '../contexts/PrivacyContext';
 import { useFinanceCalculations } from '../services/financeService';
@@ -85,6 +86,15 @@ const Sidebar = ({ navigation, onToggleLock, isLocked }) => {
       <div
         className='lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40'
         onClick={() => setIsMobileMenuOpen(false)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsMobileMenuOpen(false);
+          }
+        }}
+        role='button'
+        tabIndex={0}
+        aria-label='Close menu'
       />
     );
 
@@ -204,6 +214,12 @@ const Sidebar = ({ navigation, onToggleLock, isLocked }) => {
       </div>
     </>
   );
+};
+
+Sidebar.propTypes = {
+  navigation: PropTypes.arrayOf(PropTypes.object).isRequired,
+  onToggleLock: PropTypes.func.isRequired,
+  isLocked: PropTypes.bool.isRequired,
 };
 
 export default Sidebar;

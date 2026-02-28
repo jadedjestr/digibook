@@ -1,5 +1,6 @@
-import { CreditCard, ChevronDown, Check, X } from 'lucide-react';
-import React, { useState, useRef, useEffect } from 'react';
+import { CreditCard, ChevronDown, Check } from 'lucide-react';
+import PropTypes from 'prop-types';
+import { useState, useRef, useEffect } from 'react';
 
 import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
@@ -136,6 +137,27 @@ const CreditCardSelector = ({
       )}
     </div>
   );
+};
+
+CreditCardSelector.propTypes = {
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  onSave: PropTypes.func.isRequired,
+  creditCards: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+      name: PropTypes.string,
+      balance: PropTypes.number,
+      creditLimit: PropTypes.number,
+    }),
+  ),
+  disabled: PropTypes.bool,
+  className: PropTypes.string,
+};
+
+CreditCardSelector.defaultProps = {
+  creditCards: [],
+  disabled: false,
+  className: 'glass-input text-sm w-full',
 };
 
 export default CreditCardSelector;

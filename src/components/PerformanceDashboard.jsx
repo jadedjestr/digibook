@@ -1,5 +1,5 @@
 import { BarChart3, Zap, Cpu, Clock, Eye, EyeOff } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 import { usePerformanceMonitor } from '../hooks/usePerformanceMonitor';
 
@@ -14,7 +14,7 @@ const PerformanceDashboard = () => {
   const [memoryUsage, setMemoryUsage] = useState(null);
 
   const { getPerformanceData, trackMemoryUsage } = usePerformanceMonitor(
-    'PerformanceDashboard'
+    'PerformanceDashboard',
   );
 
   // Update performance data periodically
@@ -170,7 +170,9 @@ const PerformanceDashboard = () => {
             <ul className='space-y-1 text-white/50'>
               <li>• Keep render times under 16ms for 60fps</li>
               <li>• Monitor memory usage for leaks</li>
-              <li>• Use virtual scrolling for large lists</li>
+              <li>
+                • Consider virtual scrolling for very large lists (100+ items)
+              </li>
               <li>• Memoize expensive calculations</li>
             </ul>
           </div>

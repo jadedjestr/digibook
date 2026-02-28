@@ -14,7 +14,7 @@ import { logger } from '../utils/logger';
 export const usePersistedState = (
   key,
   defaultValue,
-  component = 'fixedExpenses'
+  component = 'fixedExpenses',
 ) => {
   const [state, setState] = useState(defaultValue);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -24,7 +24,7 @@ export const usePersistedState = (
   useEffect(() => {
     const loadPreferences = async () => {
       try {
-        console.log(`🔄 Loading preferences for ${key}...`);
+        logger.debug(`🔄 Loading preferences for ${key}...`);
 
         // Step 1: Try localStorage first (fast, synchronous)
         let value = defaultValue;
@@ -32,10 +32,10 @@ export const usePersistedState = (
           const localValue = localStorage.getItem(`ui_${component}_${key}`);
           if (localValue !== null) {
             value = JSON.parse(localValue);
-            console.log('📦 Loaded from localStorage:', value);
+            logger.debug('📦 Loaded from localStorage:', value);
           }
         } catch (localError) {
-          console.warn(`⚠️ localStorage read failed for ${key}:`, localError);
+          logger.warn(`⚠️ localStorage read failed for ${key}:`, localError);
         }
 
         // Step 2: Try IndexedDB (comprehensive, but async)
@@ -43,20 +43,20 @@ export const usePersistedState = (
           const dbPrefs = await dbHelpers.getUserPreferences(component);
           if (dbPrefs && dbPrefs[key] !== undefined) {
             value = dbPrefs[key];
-            console.log('🗄️ Loaded from IndexedDB:', value);
+            logger.debug('🗄️ Loaded from IndexedDB:', value);
 
             // Sync localStorage with IndexedDB value
             try {
               localStorage.setItem(
                 `ui_${component}_${key}`,
-                JSON.stringify(value)
+                JSON.stringify(value),
               );
             } catch (syncError) {
-              console.warn('⚠️ localStorage sync failed:', syncError);
+              logger.warn('⚠️ localStorage sync failed:', syncError);
             }
           }
         } catch (dbError) {
-          console.warn(`⚠️ IndexedDB read failed for ${key}:`, dbError);
+          logger.warn(`⚠️ IndexedDB read failed for ${key}:`, dbError);
         }
 
         // Handle special types (Set, Date, etc.)
@@ -69,9 +69,9 @@ export const usePersistedState = (
 
         setState(value);
         setIsLoaded(true);
-        console.log(`✅ Preferences loaded for ${key}:`, value);
+        logger.debug(`✅ Preferences loaded for ${key}:`, value);
       } catch (error) {
-        console.error(`❌ Failed to load preferences for ${key}:`, error);
+        logger.error(`❌ Failed to load preferences for ${key}:`, error);
         setError(error.message);
         setState(defaultValue);
         setIsLoaded(true);
@@ -85,7 +85,7 @@ export const usePersistedState = (
   const updateState = useCallback(
     async newValue => {
       try {
-        console.log(`💾 Saving preference ${key}:`, newValue);
+        logger.debug(`💾 Saving preference ${key}:`, newValue);
 
         // Update local state immediately
         setState(newValue);
@@ -101,11 +101,11 @@ export const usePersistedState = (
 
           localStorage.setItem(
             `ui_${component}_${key}`,
-            JSON.stringify(valueToStore)
+            JSON.stringify(valueToStore),
           );
-          console.log('📦 Saved to localStorage successfully');
+          logger.debug('📦 Saved to localStorage successfully');
         } catch (localError) {
-          console.warn(`⚠️ localStorage save failed for ${key}:`, localError);
+          logger.warn(`⚠️ localStorage save failed for ${key}:`, localError);
         }
 
         // Step 2: Save to IndexedDB asynchronously (for persistence)
@@ -124,20 +124,20 @@ export const usePersistedState = (
           };
 
           await dbHelpers.updateUserPreferences(updatedPrefs, component);
-          console.log('🗄️ Saved to IndexedDB successfully');
+          logger.debug('🗄️ Saved to IndexedDB successfully');
         } catch (dbError) {
-          console.warn(`⚠️ IndexedDB save failed for ${key}:`, dbError);
+          logger.warn(`⚠️ IndexedDB save failed for ${key}:`, dbError);
 
           // Don't throw - localStorage save already succeeded
         }
       } catch (error) {
-        console.error(`❌ Failed to save preference ${key}:`, error);
+        logger.error(`❌ Failed to save preference ${key}:`, error);
         setError(error.message);
 
         // Don't revert state - user action should still take effect locally
       }
     },
-    [key, component]
+    [key, component],
   );
 
   // Clear preferences (useful for testing/reset)
@@ -151,9 +151,9 @@ export const usePersistedState = (
       delete currentPrefs[key];
       await dbHelpers.updateUserPreferences(currentPrefs, component);
 
-      console.log(`🗑️ Cleared preference ${key}`);
+      logger.debug(`🗑️ Cleared preference ${key}`);
     } catch (error) {
-      console.error(`❌ Failed to clear preference ${key}:`, error);
+      logger.error(`❌ Failed to clear preference ${key}:`, error);
     }
   }, [key, component, defaultValue]);
 
@@ -182,7 +182,7 @@ export const useAutoCollapsePreference = () => {
   return usePersistedState(
     'autoCollapseEnabled',
     defaultAutoCollapse,
-    'fixedExpenses'
+    'fixedExpenses',
   );
 };
 
@@ -191,6 +191,15 @@ export const useShowOnlyUnpaidPreference = () => {
   return usePersistedState(
     'showOnlyUnpaid',
     defaultShowOnlyUnpaid,
-    'fixedExpenses'
+    'fixedExpenses',
+  );
+};
+
+export const useExpenseTypeFilter = () => {
+  const defaultExpenseTypeFilter = useMemo(() => 'all', []);
+  return usePersistedState(
+    'expenseTypeFilter',
+    defaultExpenseTypeFilter,
+    'fixedExpenses',
   );
 };

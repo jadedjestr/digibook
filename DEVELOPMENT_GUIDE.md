@@ -152,7 +152,7 @@ npm run test -- --grep "performance"
 1. **Use React.memo()** for expensive components
 2. **Implement useMemo()** for expensive calculations
 3. **Use useCallback()** for event handlers
-4. **Virtual Scrolling** for large lists
+4. **Virtual Scrolling** for large lists (not currently implemented; can be added if needed for 100+ items)
 5. **Lazy Loading** for route components
 
 ## 🔍 **Code Quality**
@@ -249,7 +249,7 @@ VITE_APP_LOG_LEVEL=debug
 ### **Performance**
 1. **Lazy Loading**: Load components when needed
 2. **Memoization**: Cache expensive calculations
-3. **Virtual Scrolling**: Handle large datasets efficiently
+3. **Virtual Scrolling**: Consider for very large datasets (100+ items) - not currently implemented
 4. **Bundle Optimization**: Minimize bundle size
 
 ### **Testing**

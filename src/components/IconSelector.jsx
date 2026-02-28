@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react';
-import React, { useState, useRef, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 const IconSelector = ({ value, onChange, categories }) => {
@@ -15,7 +16,7 @@ const IconSelector = ({ value, onChange, categories }) => {
           icons: category.icons.filter(
             icon =>
               icon.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              category.name.toLowerCase().includes(searchTerm.toLowerCase())
+              category.name.toLowerCase().includes(searchTerm.toLowerCase()),
           ),
         }))
         .filter(category => category.icons.length > 0)
@@ -105,7 +106,6 @@ const IconSelector = ({ value, onChange, categories }) => {
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className='glass-input w-full pl-9'
-              autoFocus
             />
           </div>
         </div>
@@ -137,7 +137,7 @@ const IconSelector = ({ value, onChange, categories }) => {
           ))}
           {filteredCategories.length === 0 && (
             <div className='text-center py-8 text-white/40'>
-              No icons found for "{searchTerm}"
+              No icons found for &quot;{searchTerm}&quot;
             </div>
           )}
         </div>
@@ -166,6 +166,12 @@ const IconSelector = ({ value, onChange, categories }) => {
       {isOpen && createPortal(<Modal />, document.body)}
     </>
   );
+};
+
+IconSelector.propTypes = {
+  value: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+  categories: PropTypes.arrayOf(PropTypes.object).isRequired,
 };
 
 export default IconSelector;

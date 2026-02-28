@@ -1,5 +1,6 @@
 import { Plus, CreditCard } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
@@ -7,13 +8,14 @@ import CreditCardMigrationModal from '../components/CreditCardMigrationModal';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
+import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 
 const CreditCards = ({
   onDataChange,
   accounts = [],
-  creditCards: creditCardsProp = [],
+  creditCards: _creditCardsProp = [],
 }) => {
   const [creditCards, setCreditCards] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -119,7 +121,7 @@ const CreditCards = ({
             await dbHelpers.createMissingCreditCardExpenses();
           if (createdCount > 0) {
             notify.success(
-              `Created ${createdCount} minimum payment expense(s)`
+              `Created ${createdCount} minimum payment expense(s)`,
             );
           }
         } catch (error) {
@@ -147,6 +149,21 @@ const CreditCards = ({
       logger.error('Error saving credit card:', error);
       notify.error('Failed to save credit card');
     }
+  };
+
+  const resetAddEditModal = () => {
+    setIsAddModalOpen(false);
+    setEditingCard(null);
+    setFormData({
+      name: '',
+      balance: '',
+      creditLimit: '',
+      interestRate: '',
+      dueDate: '',
+      statementClosingDate: '',
+      minimumPayment: '',
+    });
+    setErrors({});
   };
 
   const handleEdit = card => {
@@ -179,7 +196,7 @@ const CreditCards = ({
     setDeletionModal({ isOpen: false, card: null });
   };
 
-  const handleCreateMissingExpenses = async () => {
+  const _handleCreateMissingExpenses = async () => {
     try {
       const createdCount = await dbHelpers.createMissingCreditCardExpenses();
       if (createdCount > 0) {
@@ -187,7 +204,7 @@ const CreditCards = ({
         onDataChange(); // Refresh the data
       } else {
         notify.info(
-          'All credit cards already have corresponding fixed expenses'
+          'All credit cards already have corresponding fixed expenses',
         );
       }
     } catch (error) {
@@ -225,13 +242,20 @@ const CreditCards = ({
     return diffDays;
   };
 
+  const getUtilizationColor = utilization => {
+    if (utilization >= 90) return 'text-red-400';
+    if (utilization >= 70) return 'text-orange-400';
+    if (utilization >= 50) return 'text-yellow-400';
+    return 'text-green-400';
+  };
+
   // Sort credit cards based on selected criteria
-  const sortedCreditCards = React.useMemo(() => {
+  const sortedCreditCards = useMemo(() => {
     if (!creditCards.length) return [];
 
     const sorted = [...creditCards].sort((a, b) => {
       switch (sortBy) {
-        case 'dueDate':
+        case 'dueDate': {
           // Sort by due date (closest due date first)
           const aDue = a.dueDate
             ? new Date(`${a.dueDate}T00:00:00`)
@@ -240,16 +264,18 @@ const CreditCards = ({
             ? new Date(`${b.dueDate}T00:00:00`)
             : new Date('2099-12-31');
           return aDue - bDue;
+        }
 
         case 'balance':
           // Sort by current balance (highest debt first)
           return b.balance - a.balance;
 
-        case 'utilization':
+        case 'utilization': {
           // Sort by utilization percentage (highest utilization first)
           const aUtil = calculateUtilization(a.balance, a.creditLimit);
           const bUtil = calculateUtilization(b.balance, b.creditLimit);
           return bUtil - aUtil;
+        }
 
         case 'name':
         default:
@@ -260,6 +286,31 @@ const CreditCards = ({
 
     return sorted;
   }, [creditCards, sortBy]);
+
+  // Calculate summary statistics for all credit cards
+  const summary = useMemo(() => {
+    const totalDebt = creditCards.reduce(
+      (sum, card) => sum + Math.max(card.balance || 0, 0),
+      0,
+    );
+    const totalCreditLimit = creditCards.reduce(
+      (sum, card) => sum + (card.creditLimit || 0),
+      0,
+    );
+    const totalUtilization =
+      totalCreditLimit > 0 ? (totalDebt / totalCreditLimit) * 100 : 0;
+    const totalAvailableCredit = creditCards.reduce((sum, card) => {
+      const available = (card.creditLimit || 0) - (card.balance || 0);
+      return sum + Math.max(0, available);
+    }, 0);
+
+    return {
+      totalDebt,
+      totalCreditLimit,
+      totalUtilization,
+      totalAvailableCredit,
+    };
+  }, [creditCards]);
 
   if (isLoading) {
     return (
@@ -298,6 +349,48 @@ const CreditCards = ({
           )}
         </div>
       </div>
+
+      {/* Total Debt Summary Card */}
+      {creditCards.length > 0 && (
+        <div className='glass-card rounded-2xl p-6 border border-white/10 mb-6'>
+          <div className='grid grid-cols-2 md:grid-cols-4 gap-6'>
+            <div>
+              <p className='text-white/70 text-sm mb-2'>Total Debt</p>
+              <PrivacyWrapper>
+                <p className='text-2xl font-bold text-white'>
+                  {formatCurrency(summary.totalDebt)}
+                </p>
+              </PrivacyWrapper>
+            </div>
+            <div>
+              <p className='text-white/70 text-sm mb-2'>Total Credit Limit</p>
+              <PrivacyWrapper>
+                <p className='text-2xl font-bold text-white'>
+                  {formatCurrency(summary.totalCreditLimit)}
+                </p>
+              </PrivacyWrapper>
+            </div>
+            <div>
+              <p className='text-white/70 text-sm mb-2'>Utilization</p>
+              <p
+                className={`text-2xl font-bold ${getUtilizationColor(
+                  summary.totalUtilization,
+                )}`}
+              >
+                {summary.totalUtilization.toFixed(1)}%
+              </p>
+            </div>
+            <div>
+              <p className='text-white/70 text-sm mb-2'>Available Credit</p>
+              <PrivacyWrapper>
+                <p className='text-2xl font-bold text-green-400'>
+                  {formatCurrency(summary.totalAvailableCredit)}
+                </p>
+              </PrivacyWrapper>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sorting Controls */}
       {creditCards.length > 0 && (
@@ -363,7 +456,7 @@ const CreditCards = ({
             // Calculate derived values for the enhanced component
             const utilization = calculateUtilization(
               card.balance,
-              card.creditLimit
+              card.creditLimit,
             );
             const daysUntilDue = getDaysUntilDue(card.dueDate);
 
@@ -400,20 +493,17 @@ const CreditCards = ({
               width: '100vw',
               height: '100vh',
             }}
+            role='button'
+            tabIndex={0}
+            aria-label='Close credit card modal'
             onClick={e => {
               if (e.target === e.currentTarget) {
-                setIsAddModalOpen(false);
-                setEditingCard(null);
-                setFormData({
-                  name: '',
-                  balance: '',
-                  creditLimit: '',
-                  interestRate: '',
-                  dueDate: '',
-                  statementClosingDate: '',
-                  minimumPayment: '',
-                });
-                setErrors({});
+                resetAddEditModal();
+              }
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Escape') {
+                resetAddEditModal();
               }
             }}
           >
@@ -424,10 +514,14 @@ const CreditCards = ({
 
               <div className='space-y-4'>
                 <div>
-                  <label className='block text-sm font-medium text-white mb-2'>
+                  <label
+                    htmlFor='credit-card-name'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
                     Name
                   </label>
                   <input
+                    id='credit-card-name'
                     type='text'
                     value={formData.name}
                     onChange={e => handleInputChange('name', e.target.value)}
@@ -440,10 +534,14 @@ const CreditCards = ({
                 </div>
 
                 <div>
-                  <label className='block text-sm font-medium text-white mb-2'>
+                  <label
+                    htmlFor='credit-card-balance'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
                     Current Balance
                   </label>
                   <input
+                    id='credit-card-balance'
                     type='number'
                     step='0.01'
                     value={formData.balance}
@@ -459,10 +557,14 @@ const CreditCards = ({
                 </div>
 
                 <div>
-                  <label className='block text-sm font-medium text-white mb-2'>
+                  <label
+                    htmlFor='credit-card-credit-limit'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
                     Credit Limit
                   </label>
                   <input
+                    id='credit-card-credit-limit'
                     type='number'
                     step='0.01'
                     value={formData.creditLimit}
@@ -480,10 +582,14 @@ const CreditCards = ({
                 </div>
 
                 <div>
-                  <label className='block text-sm font-medium text-white mb-2'>
+                  <label
+                    htmlFor='credit-card-interest-rate'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
                     Interest Rate (%)
                   </label>
                   <input
+                    id='credit-card-interest-rate'
                     type='number'
                     step='0.01'
                     value={formData.interestRate}
@@ -501,10 +607,14 @@ const CreditCards = ({
                 </div>
 
                 <div>
-                  <label className='block text-sm font-medium text-white mb-2'>
+                  <label
+                    htmlFor='credit-card-due-date'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
                     Due Date
                   </label>
                   <input
+                    id='credit-card-due-date'
                     type='date'
                     value={formData.dueDate}
                     onChange={e => handleInputChange('dueDate', e.target.value)}
@@ -518,10 +628,14 @@ const CreditCards = ({
                 </div>
 
                 <div>
-                  <label className='block text-sm font-medium text-white mb-2'>
+                  <label
+                    htmlFor='credit-card-statement-closing-date'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
                     Statement Closing Date (Optional)
                   </label>
                   <input
+                    id='credit-card-statement-closing-date'
                     type='date'
                     value={formData.statementClosingDate}
                     onChange={e =>
@@ -532,10 +646,14 @@ const CreditCards = ({
                 </div>
 
                 <div>
-                  <label className='block text-sm font-medium text-white mb-2'>
+                  <label
+                    htmlFor='credit-card-minimum-payment'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
                     Minimum Payment
                   </label>
                   <input
+                    id='credit-card-minimum-payment'
                     type='number'
                     step='0.01'
                     value={formData.minimumPayment}
@@ -562,27 +680,16 @@ const CreditCards = ({
                 </button>
                 <button
                   onClick={() => {
-                    setIsAddModalOpen(false);
-                    setEditingCard(null);
-                    setFormData({
-                      name: '',
-                      balance: '',
-                      creditLimit: '',
-                      interestRate: '',
-                      dueDate: '',
-                      statementClosingDate: '',
-                      minimumPayment: '',
-                    });
-                    setErrors({});
+                    resetAddEditModal();
                   }}
-                  className='flex-1 px-4 py-3 glass-button bg-white/10 text-white/70 hover:bg-white/20'
+                  className='flex-1 px-4 py-3 glass-button glass-button--secondary'
                 >
                   Cancel
                 </button>
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
 
       {/* Credit Card Deletion Modal */}
@@ -603,6 +710,17 @@ const CreditCards = ({
       />
     </div>
   );
+};
+
+CreditCards.propTypes = {
+  onDataChange: PropTypes.func.isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.object),
+  creditCards: PropTypes.arrayOf(PropTypes.object),
+};
+
+CreditCards.defaultProps = {
+  accounts: [],
+  creditCards: [],
 };
 
 export default CreditCards;

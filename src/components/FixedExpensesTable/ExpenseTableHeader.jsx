@@ -1,5 +1,5 @@
-import { Plus, SortAsc, SortDesc, Filter, Eye, EyeOff } from 'lucide-react';
-import React from 'react';
+import { Plus, SortAsc, SortDesc, Eye, EyeOff } from 'lucide-react';
+import PropTypes from 'prop-types';
 
 import { formatCurrency } from '../../utils/accountUtils';
 
@@ -8,7 +8,7 @@ import { formatCurrency } from '../../utils/accountUtils';
  * Displays summary information, controls, and action buttons
  */
 const ExpenseTableHeader = ({
-  expenses,
+  expenses: _expenses,
   groupedExpenses,
   totals,
   categoryTotals,
@@ -16,19 +16,26 @@ const ExpenseTableHeader = ({
   setSortBy,
   showOnlyUnpaid,
   setShowOnlyUnpaid,
+  expenseTypeFilter,
+  setExpenseTypeFilter,
   setIsPanelOpen,
+  onCategoryClick,
 }) => {
   // Use memoized totals for better performance
   const { totalExpenses, totalAmount, totalPaid, totalRemaining } = totals;
 
-  // Use memoized category totals
-  const categoryCounts = Object.entries(categoryTotals).map(
-    ([categoryName, categoryData]) => ({
-      name: categoryName,
-      count: categoryData.count,
-      total: categoryData.total,
-    })
-  );
+  // Category rows in same order as groupedExpenses (matches blocks below)
+  const categoryRows =
+    groupedExpenses && typeof groupedExpenses === 'object'
+      ? Object.keys(groupedExpenses).map(categoryName => {
+          const data = categoryTotals[categoryName] || {};
+          return {
+            name: categoryName,
+            count: data.count ?? 0,
+            totalBudgeted: data.totalBudgeted ?? 0,
+          };
+        })
+      : [];
 
   return (
     <div className='glass-panel p-6'>
@@ -38,7 +45,7 @@ const ExpenseTableHeader = ({
           <h2 className='text-2xl font-bold text-white mb-2'>Fixed Expenses</h2>
           <div className='flex flex-wrap gap-4 text-sm text-white/70'>
             <span>{totalExpenses} expenses</span>
-            <span>Total: {formatCurrency(totalAmount)}</span>
+            <span>Total Budgeted: {formatCurrency(totalAmount)}</span>
             <span>Paid: {formatCurrency(totalPaid)}</span>
             <span className='text-yellow-300'>
               Remaining: {formatCurrency(totalRemaining)}
@@ -84,6 +91,18 @@ const ExpenseTableHeader = ({
               {showOnlyUnpaid ? <EyeOff size={16} /> : <Eye size={16} />}
               {showOnlyUnpaid ? 'All' : 'Unpaid'}
             </button>
+
+            {/* Expense Type Filter */}
+            <select
+              value={expenseTypeFilter}
+              onChange={e => setExpenseTypeFilter(e.target.value)}
+              className='px-3 py-2 text-sm glass-button bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50'
+              title='Filter by expense type'
+            >
+              <option value='all'>All Types</option>
+              <option value='recurring'>Recurring Only</option>
+              <option value='oneoff'>One-Off Only</option>
+            </select>
           </div>
 
           {/* Add Expense Button */}
@@ -97,56 +116,96 @@ const ExpenseTableHeader = ({
         </div>
       </div>
 
-      {/* Category Summary */}
-      {categoryCounts.length > 0 && (
-        <div className='grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3'>
-          {categoryCounts.map(({ name, count, total }) => (
-            <div key={name} className='glass-panel p-3 text-center'>
-              <div className='text-sm text-white/70 mb-1'>
-                {name === 'Uncategorized' ? 'Uncategorized' : name}
-              </div>
-              <div className='text-lg font-semibold text-white mb-1'>
-                {count}
-              </div>
-              <div className='text-xs text-white/60'>
-                {formatCurrency(total)}
-              </div>
-            </div>
-          ))}
+      {/* By category: single card with summary strip + table */}
+      {categoryRows.length > 0 && (
+        <div className='glass-panel p-4 mt-4'>
+          <h3 className='text-sm font-medium text-white/80 mb-3'>
+            Category breakdown
+          </h3>
+          <div className='flex flex-wrap gap-4 text-sm text-white/70 mb-4'>
+            <span>Total budgeted: {formatCurrency(totalAmount)}</span>
+            <span>Paid: {formatCurrency(totalPaid)}</span>
+            <span className='text-yellow-300'>
+              Remaining: {formatCurrency(totalRemaining)}
+            </span>
+            <span>{totalExpenses} expenses</span>
+          </div>
+          <div className='overflow-x-auto'>
+            <table className='w-full min-w-[280px] text-left'>
+              <thead>
+                <tr className='border-b border-white/10 text-xs text-white/60 uppercase tracking-wide'>
+                  <th className='pb-2 pr-4 font-medium'>Category</th>
+                  <th className='pb-2 pr-4 font-medium text-right'>Count</th>
+                  <th className='pb-2 font-medium text-right'>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categoryRows.map(({ name, count, totalBudgeted }) => (
+                  <tr
+                    key={name}
+                    role={onCategoryClick ? 'button' : null}
+                    tabIndex={onCategoryClick ? 0 : undefined}
+                    onClick={() => onCategoryClick?.(name)}
+                    onKeyDown={e => {
+                      if (
+                        onCategoryClick &&
+                        (e.key === 'Enter' || e.key === ' ')
+                      ) {
+                        e.preventDefault();
+                        onCategoryClick(name);
+                      }
+                    }}
+                    className={`border-b border-white/5 text-sm ${
+                      onCategoryClick
+                        ? 'cursor-pointer hover:bg-white/5 focus:outline-none focus:bg-white/5'
+                        : ''
+                    }`}
+                  >
+                    <td className='py-2 pr-4 text-white'>
+                      {name === 'Uncategorized' ? 'Uncategorized' : name}
+                    </td>
+                    <td className='py-2 pr-4 text-right text-white/80'>
+                      {count}
+                    </td>
+                    <td className='py-2 text-right text-white/80'>
+                      {formatCurrency(totalBudgeted)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className='border-t border-white/10 text-sm font-medium text-white/80'>
+                  <td className='pt-2 pr-4'>Total</td>
+                  <td className='pt-2 pr-4 text-right'>{totalExpenses}</td>
+                  <td className='pt-2 text-right'>
+                    {formatCurrency(totalAmount)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
-
-      {/* Quick Stats */}
-      <div className='mt-4 pt-4 border-t border-white/10'>
-        <div className='grid grid-cols-2 sm:grid-cols-4 gap-4 text-center'>
-          <div>
-            <div className='text-2xl font-bold text-green-300'>
-              {formatCurrency(totalPaid)}
-            </div>
-            <div className='text-xs text-white/60'>Total Paid</div>
-          </div>
-          <div>
-            <div className='text-2xl font-bold text-yellow-300'>
-              {formatCurrency(totalRemaining)}
-            </div>
-            <div className='text-xs text-white/60'>Remaining</div>
-          </div>
-          <div>
-            <div className='text-2xl font-bold text-blue-300'>
-              {totalExpenses}
-            </div>
-            <div className='text-xs text-white/60'>Total Expenses</div>
-          </div>
-          <div>
-            <div className='text-2xl font-bold text-purple-300'>
-              {categoryCounts.length}
-            </div>
-            <div className='text-xs text-white/60'>Categories</div>
-          </div>
-        </div>
-      </div>
     </div>
   );
+};
+
+ExpenseTableHeader.propTypes = {
+  expenses: PropTypes.arrayOf(PropTypes.object),
+  groupedExpenses: PropTypes.object,
+  totals: PropTypes.shape({
+    totalExpenses: PropTypes.number,
+    totalAmount: PropTypes.number,
+    totalPaid: PropTypes.number,
+    totalRemaining: PropTypes.number,
+  }).isRequired,
+  categoryTotals: PropTypes.object.isRequired,
+  sortBy: PropTypes.string.isRequired,
+  setSortBy: PropTypes.func.isRequired,
+  showOnlyUnpaid: PropTypes.bool.isRequired,
+  setShowOnlyUnpaid: PropTypes.func.isRequired,
+  expenseTypeFilter: PropTypes.string.isRequired,
+  setExpenseTypeFilter: PropTypes.func.isRequired,
+  setIsPanelOpen: PropTypes.func.isRequired,
+  onCategoryClick: PropTypes.func,
 };
 
 export default ExpenseTableHeader;

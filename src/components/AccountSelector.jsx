@@ -1,12 +1,6 @@
 import { ChevronDown, CreditCard, PiggyBank, Building2 } from 'lucide-react';
 import PropTypes from 'prop-types';
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useMemo,
-  useCallback,
-} from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
@@ -16,6 +10,7 @@ import {
   isAccountSelected,
   formatAccountBalance,
 } from '../utils/accountUtils';
+import { logger } from '../utils/logger';
 
 const AccountSelector = ({
   value = null,
@@ -23,7 +18,7 @@ const AccountSelector = ({
   accounts,
   creditCards = [],
   isEditing = false,
-  onEdit = null,
+  onEdit: _onEdit = null,
   onCancel = null,
   showSaveCancel = true,
   isCreditCardPayment = false,
@@ -56,22 +51,22 @@ const AccountSelector = ({
 
   // Memoize callback functions to prevent unnecessary re-renders
   const handleSave = useCallback(() => {
-    console.log(
-      `AccountSelector: Saving account change from ${value} to ${editValue}`
+    logger.debug(
+      `AccountSelector: Saving account change from ${value} to ${editValue}`,
     );
 
     // Only save if the account actually changed
     if (editValue !== value) {
-      console.log(
-        `AccountSelector: Account changed, calling onSave with ${editValue}`
+      logger.debug(
+        `AccountSelector: Account changed, calling onSave with ${editValue}`,
       );
       if (typeof onSave === 'function') {
         onSave(editValue);
       } else {
-        console.warn('AccountSelector: onSave callback is not a function');
+        logger.warn('AccountSelector: onSave callback is not a function');
       }
     } else {
-      console.log('AccountSelector: No change detected, not calling onSave');
+      logger.debug('AccountSelector: No change detected, not calling onSave');
     }
     setIsOpen(false);
   }, [editValue, value, onSave]);
@@ -83,7 +78,7 @@ const AccountSelector = ({
   }, [value, onCancel]);
 
   const handleToggleDropdown = useCallback(
-    event => {
+    _event => {
       if (!isOpen && buttonRef.current) {
         const rect = buttonRef.current.getBoundingClientRect();
         setDropdownPosition({
@@ -94,13 +89,13 @@ const AccountSelector = ({
       }
       setIsOpen(!isOpen);
     },
-    [isOpen]
+    [isOpen],
   );
 
   // Memoize expensive calculations to prevent unnecessary re-renders
   const allAccounts = useMemo(
     () => createAccountMapping(accounts, creditCards, isCreditCardPayment),
-    [accounts, creditCards, isCreditCardPayment]
+    [accounts, creditCards, isCreditCardPayment],
   );
 
   // Memoize selected account lookup
@@ -108,7 +103,7 @@ const AccountSelector = ({
     const found = findSelectedAccount(
       allAccounts,
       editValue,
-      isCreditCardPayment
+      isCreditCardPayment,
     );
 
     return found;
@@ -145,11 +140,11 @@ const AccountSelector = ({
       if (typeof onSave === 'function') {
         onSave(accountIdToSave);
       } else {
-        console.warn('AccountSelector: onSave callback is not a function');
+        logger.warn('AccountSelector: onSave callback is not a function');
       }
       setIsOpen(false);
     },
-    [editValue, onSave, isCreditCardPayment]
+    [editValue, onSave, isCreditCardPayment],
   );
 
   if (isEditing) {
@@ -199,7 +194,7 @@ const AccountSelector = ({
                 disabled={isAccountSelected(
                   account,
                   editValue,
-                  isCreditCardPayment
+                  isCreditCardPayment,
                 )}
               >
                 <div className='flex items-center space-x-3'>
@@ -247,7 +242,7 @@ const AccountSelector = ({
               <div className='border-t border-white/10'>
                 <button
                   onClick={() => {
-                    console.log('AccountSelector: Unlinking account');
+                    logger.debug('AccountSelector: Unlinking account');
                     onSave(null); // Pass null to indicate unlinking
                     setIsOpen(false);
                   }}
@@ -288,22 +283,29 @@ const AccountSelector = ({
     );
   }
 
+  const fallbackLabel = value === null ? 'No Account' : 'Select account';
+  const displayLabel = selectedAccount ? selectedAccount.name : fallbackLabel;
+
   return (
     <div className='relative'>
       <div
         ref={buttonRef}
+        role='button'
+        tabIndex={0}
         className='cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors'
         onClick={handleToggleDropdown}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleToggleDropdown();
+          }
+        }}
       >
         <div className='flex items-center space-x-2'>
           {selectedAccount && getAccountIcon(selectedAccount.type)}
           <div className='text-left'>
             <span className={selectedAccount ? 'text-white' : 'text-gray-400'}>
-              {selectedAccount
-                ? selectedAccount.name
-                : value === null
-                  ? 'No Account'
-                  : 'Select account'}
+              {displayLabel}
             </span>
             {selectedAccount && selectedAccount.type === 'creditCard' && (
               <div className='text-xs text-red-300'>💳 Credit Card</div>
@@ -314,7 +316,9 @@ const AccountSelector = ({
           </div>
           <ChevronDown
             size={14}
-            className={`text-secondary transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+            className={`text-secondary transition-transform duration-200 ${
+              isOpen ? 'rotate-180' : ''
+            }`}
           />
         </div>
       </div>
@@ -343,7 +347,7 @@ const AccountSelector = ({
                 disabled={isAccountSelected(
                   account,
                   editValue,
-                  isCreditCardPayment
+                  isCreditCardPayment,
                 )}
               >
                 <div className='flex items-center space-x-3'>
@@ -386,7 +390,7 @@ const AccountSelector = ({
               </button>
             ))}
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );
@@ -403,7 +407,7 @@ AccountSelector.propTypes = {
       currentBalance: PropTypes.number,
       type: PropTypes.string,
       isDefault: PropTypes.bool,
-    })
+    }),
   ).isRequired,
   creditCards: PropTypes.arrayOf(
     PropTypes.shape({
@@ -416,7 +420,7 @@ AccountSelector.propTypes = {
       statementClosingDate: PropTypes.string,
       minimumPayment: PropTypes.number,
       createdAt: PropTypes.string,
-    })
+    }),
   ),
   isEditing: PropTypes.bool,
   isCreditCardPayment: PropTypes.bool,
@@ -425,6 +429,6 @@ AccountSelector.propTypes = {
   onCancel: PropTypes.func,
 };
 
-// Default props are now handled via JavaScript default parameters in the function signature
+// Default props are handled via default parameters in the function signature
 
 export default AccountSelector;

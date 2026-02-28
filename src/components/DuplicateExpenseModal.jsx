@@ -1,24 +1,39 @@
 import { X, Copy } from 'lucide-react';
-import React, { useState, useEffect, useMemo } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect, useMemo, memo } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 
-const ExpensePreview = React.memo(({ formData, numCopies }) => (
-  <div className='glass-card bg-white/5'>
-    <div className='text-sm text-secondary'>
-      Will create {numCopies} expense(s) with:
+const ExpensePreview = memo(({ formData, numCopies }) => {
+  return (
+    <div className='glass-card bg-white/5'>
+      <div className='text-sm text-secondary'>
+        Will create {numCopies} expense(s) with:
+      </div>
+      <div className='text-sm text-primary space-y-1 mt-2'>
+        <div>Name: {formData.name}</div>
+        <div>Amount: ${formData.amount}</div>
+        <div>Paid Amount: ${formData.paidAmount}</div>
+        <div>Due Date: {formData.dueDate}</div>
+        <div>Category: {formData.category}</div>
+        <div>Status: {formData.status}</div>
+      </div>
     </div>
-    <div className='text-sm text-primary space-y-1 mt-2'>
-      <div>Name: {formData.name}</div>
-      <div>Amount: ${formData.amount}</div>
-      <div>Paid Amount: ${formData.paidAmount}</div>
-      <div>Due Date: {formData.dueDate}</div>
-      <div>Category: {formData.category}</div>
-      <div>Status: {formData.status}</div>
-    </div>
-  </div>
-));
+  );
+});
+ExpensePreview.displayName = 'ExpensePreview';
+ExpensePreview.propTypes = {
+  formData: PropTypes.shape({
+    name: PropTypes.string,
+    amount: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    paidAmount: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    dueDate: PropTypes.string,
+    category: PropTypes.string,
+    status: PropTypes.string,
+  }).isRequired,
+  numCopies: PropTypes.number.isRequired,
+};
 
 const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
   const [numCopies, setNumCopies] = useState(1);
@@ -32,7 +47,7 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
           {category.name}
         </option>
       )),
-    [categories]
+    [categories],
   );
 
   const [formData, setFormData] = useState({
@@ -116,19 +131,23 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
         <form onSubmit={handleSubmit} className='space-y-6'>
           {/* Original Expense Info */}
           <div>
-            <label className='text-sm font-medium text-secondary'>
+            <div className='text-sm font-medium text-secondary'>
               Original Expense
-            </label>
+            </div>
             <div className='mt-1 text-primary'>{expense.name}</div>
           </div>
 
           {/* Number of Copies Slider */}
           <div>
-            <label className='text-sm font-medium text-secondary'>
+            <label
+              htmlFor='duplicate-modal-num-copies'
+              className='text-sm font-medium text-secondary'
+            >
               Number of Copies
             </label>
             <div className='mt-2 space-y-2'>
               <input
+                id='duplicate-modal-num-copies'
                 type='range'
                 min='1'
                 max='10'
@@ -146,8 +165,14 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
           {/* Form Fields */}
           <div className='space-y-4'>
             <div>
-              <label className='text-sm font-medium text-secondary'>Name</label>
+              <label
+                htmlFor='duplicate-modal-name'
+                className='text-sm font-medium text-secondary'
+              >
+                Name
+              </label>
               <input
+                id='duplicate-modal-name'
                 type='text'
                 value={formData.name}
                 onChange={e =>
@@ -160,10 +185,14 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
 
             <div className='grid grid-cols-2 gap-4'>
               <div>
-                <label className='text-sm font-medium text-secondary'>
+                <label
+                  htmlFor='duplicate-modal-amount'
+                  className='text-sm font-medium text-secondary'
+                >
                   Amount
                 </label>
                 <input
+                  id='duplicate-modal-amount'
                   type='number'
                   step='0.01'
                   value={formData.amount}
@@ -179,10 +208,14 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
               </div>
 
               <div>
-                <label className='text-sm font-medium text-secondary'>
+                <label
+                  htmlFor='duplicate-modal-due-date'
+                  className='text-sm font-medium text-secondary'
+                >
                   Due Date
                 </label>
                 <input
+                  id='duplicate-modal-due-date'
                   type='date'
                   value={formData.dueDate?.split('T')[0]}
                   onChange={e =>
@@ -196,10 +229,14 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
 
             <div className='grid grid-cols-2 gap-4'>
               <div>
-                <label className='text-sm font-medium text-secondary'>
+                <label
+                  htmlFor='duplicate-modal-category'
+                  className='text-sm font-medium text-secondary'
+                >
                   Category
                 </label>
                 <select
+                  id='duplicate-modal-category'
                   value={formData.category}
                   onChange={e =>
                     setFormData({ ...formData, category: e.target.value })
@@ -213,10 +250,14 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
               </div>
 
               <div>
-                <label className='text-sm font-medium text-secondary'>
+                <label
+                  htmlFor='duplicate-modal-status'
+                  className='text-sm font-medium text-secondary'
+                >
                   Status
                 </label>
                 <select
+                  id='duplicate-modal-status'
                   value={formData.status}
                   onChange={e => {
                     const newStatus = e.target.value;
@@ -255,7 +296,7 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
             <button
               type='submit'
               disabled={isSubmitting}
-              className={`glass-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 flex items-center space-x-2 ${
+              className={`glass-button glass-button--primary flex items-center space-x-2 ${
                 isSubmitting ? 'glass-loading' : ''
               }`}
             >
@@ -276,6 +317,19 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
       </div>
     </div>
   );
+};
+
+DuplicateExpenseModal.propTypes = {
+  expense: PropTypes.shape({
+    name: PropTypes.string,
+    amount: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    dueDate: PropTypes.string,
+    category: PropTypes.string,
+    accountId: PropTypes.string,
+    status: PropTypes.string,
+  }).isRequired,
+  onClose: PropTypes.func.isRequired,
+  onDuplicate: PropTypes.func.isRequired,
 };
 
 export default DuplicateExpenseModal;

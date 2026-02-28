@@ -3,6 +3,8 @@
  * Uses Web Crypto API for encryption/decryption operations
  */
 
+import { logger } from './logger';
+
 const CRYPTO_KEY_NAME = 'digibook_crypto_key';
 const STORAGE_PREFIX = 'digibook_encrypted_';
 
@@ -18,7 +20,7 @@ async function generateKey(password, salt) {
       new TextEncoder().encode(password),
       'PBKDF2',
       false,
-      ['deriveBits', 'deriveKey']
+      ['deriveBits', 'deriveKey'],
     );
 
     // Derive the encryption key
@@ -32,12 +34,12 @@ async function generateKey(password, salt) {
       keyMaterial,
       { name: 'AES-GCM', length: 256 },
       false,
-      ['encrypt', 'decrypt']
+      ['encrypt', 'decrypt'],
     );
 
     return key;
   } catch (error) {
-    console.error('Error generating crypto key:', error);
+    logger.error('Error generating crypto key:', error);
     throw new Error('Failed to generate encryption key');
   }
 }
@@ -64,12 +66,12 @@ async function encryptData(data, password) {
         iv,
       },
       key,
-      new TextEncoder().encode(data)
+      new TextEncoder().encode(data),
     );
 
     // Combine salt, IV, and encrypted data
     const combined = new Uint8Array(
-      salt.length + iv.length + encryptedData.byteLength
+      salt.length + iv.length + encryptedData.byteLength,
     );
     combined.set(salt, 0);
     combined.set(iv, salt.length);
@@ -78,7 +80,7 @@ async function encryptData(data, password) {
     // Convert to base64 for storage
     return btoa(String.fromCharCode(...combined));
   } catch (error) {
-    console.error('Error encrypting data:', error);
+    logger.error('Error encrypting data:', error);
     throw new Error('Failed to encrypt data');
   }
 }
@@ -92,7 +94,7 @@ async function decryptData(encryptedData, password) {
     const combined = new Uint8Array(
       atob(encryptedData)
         .split('')
-        .map(char => char.charCodeAt(0))
+        .map(char => char.charCodeAt(0)),
     );
 
     // Extract salt, IV, and encrypted data
@@ -108,14 +110,14 @@ async function decryptData(encryptedData, password) {
         iv,
       },
       key,
-      encrypted
+      encrypted,
     );
 
     return new TextDecoder().decode(decryptedData);
   } catch (error) {
-    console.error('Error decrypting data:', error);
+    logger.error('Error decrypting data:', error);
     throw new Error(
-      'Failed to decrypt data - invalid password or corrupted data'
+      'Failed to decrypt data - invalid password or corrupted data',
     );
   }
 }
@@ -141,10 +143,10 @@ export const securePINStorage = {
       localStorage.setItem(`${STORAGE_PREFIX}pin`, encryptedPIN);
       return true;
     } catch (error) {
-      console.error('Error storing PIN securely:', error);
+      logger.error('Error storing PIN securely:', error);
 
       // Fallback to unencrypted storage with warning
-      console.warn('Falling back to unencrypted PIN storage');
+      logger.warn('Falling back to unencrypted PIN storage');
       localStorage.setItem('digibook_pin', pin);
       return false;
     }
@@ -165,7 +167,7 @@ export const securePINStorage = {
       const decryptedPIN = await decryptData(encryptedPIN, deviceKey);
       return decryptedPIN;
     } catch (error) {
-      console.error('Error retrieving PIN:', error);
+      logger.error('Error retrieving PIN:', error);
 
       // Fallback to unencrypted storage
       return localStorage.getItem('digibook_pin') || '';
@@ -216,7 +218,7 @@ export const securePINStorage = {
       localStorage.setItem(CRYPTO_KEY_NAME, deviceKey);
       return deviceKey;
     } catch (error) {
-      console.error('Error generating device key:', error);
+      logger.error('Error generating device key:', error);
 
       // Fallback to a simple key
       return `digibook_fallback_key_${Date.now()}`;
@@ -322,7 +324,7 @@ export const dataIntegrity = {
       transaction.description.trim().length === 0
     ) {
       errors.push(
-        'Transaction description is required and must be a non-empty string'
+        'Transaction description is required and must be a non-empty string',
       );
     }
 
@@ -363,10 +365,11 @@ export const dataIntegrity = {
       errors.push('Category name must be 50 characters or less');
     }
 
+    const hexColorPattern = /^#[0-9A-F]{6}$/i;
     if (
       !category.color ||
       typeof category.color !== 'string' ||
-      !/^#[0-9A-F]{6}$/i.test(category.color)
+      !hexColorPattern.test(category.color)
     ) {
       errors.push('Category color must be a valid hex color (e.g., #FF0000)');
     }
@@ -402,7 +405,7 @@ export const secureDataHandling = {
         checksum: await this.generateChecksum(jsonData),
       };
     } catch (error) {
-      console.error('Error exporting data securely:', error);
+      logger.error('Error exporting data securely:', error);
       throw new Error('Failed to export data securely');
     }
   },
@@ -424,16 +427,16 @@ export const secureDataHandling = {
         const currentChecksum = await this.generateChecksum(decryptedData);
         if (currentChecksum !== encryptedExport.checksum) {
           throw new Error(
-            'Data integrity check failed - file may be corrupted'
+            'Data integrity check failed - file may be corrupted',
           );
         }
       }
 
       return data;
     } catch (error) {
-      console.error('Error importing data securely:', error);
+      logger.error('Error importing data securely:', error);
       throw new Error(
-        'Failed to import data - invalid password or corrupted file'
+        'Failed to import data - invalid password or corrupted file',
       );
     }
   },

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle,
 } from 'lucide-react';
+import PropTypes from 'prop-types';
 
 import PrivacyWrapper from './PrivacyWrapper';
 
@@ -139,13 +140,14 @@ const BudgetVsActualDashboard = ({ summary }) => {
         </div>
         <div className='w-full bg-white/10 rounded-full h-3 overflow-hidden'>
           <div
-            className={`h-3 rounded-full transition-transform duration-500 ${
-              (budgetAccuracy || 0) <= 100
-                ? 'bg-gradient-to-r from-green-500 to-green-400'
-                : (budgetAccuracy || 0) <= 120
-                  ? 'bg-gradient-to-r from-yellow-500 to-orange-400'
-                  : 'bg-gradient-to-r from-red-500 to-red-400'
-            }`}
+            className={`h-3 rounded-full transition-transform duration-500 ${(() => {
+              const acc = budgetAccuracy || 0;
+              if (acc <= 100)
+                return 'bg-gradient-to-r from-green-500 to-green-400';
+              if (acc <= 120)
+                return 'bg-gradient-to-r from-yellow-500 to-orange-400';
+              return 'bg-gradient-to-r from-red-500 to-red-400';
+            })()}`}
             style={{
               width: '100%',
               transform: `scaleX(${Math.min(budgetAccuracy || 0, 150) / 100})`,
@@ -194,6 +196,16 @@ const BudgetVsActualDashboard = ({ summary }) => {
       )}
     </div>
   );
+};
+
+BudgetVsActualDashboard.propTypes = {
+  summary: PropTypes.shape({
+    totalBudget: PropTypes.number,
+    totalActual: PropTypes.number,
+    totalOverpayment: PropTypes.number,
+    significantOverpayments: PropTypes.number,
+    budgetAccuracy: PropTypes.number,
+  }),
 };
 
 export default BudgetVsActualDashboard;

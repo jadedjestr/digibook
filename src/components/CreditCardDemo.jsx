@@ -1,4 +1,4 @@
-import React from 'react';
+import { logger } from '../utils/logger';
 
 import EnhancedCreditCard from './EnhancedCreditCard';
 
@@ -44,11 +44,11 @@ const CreditCardDemo = () => {
   ];
 
   const handleEdit = card => {
-    console.log('Edit card:', card.name);
+    logger.debug('Edit card:', card.name);
   };
 
   const handleDelete = card => {
-    console.log('Delete card:', card.name);
+    logger.debug('Delete card:', card.name);
   };
 
   return (

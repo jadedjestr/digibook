@@ -30,15 +30,15 @@ export class ErrorHandler {
   }
 
   /**
-   * Handle and categorize errors with comprehensive logging and user notification
+   * Handle and categorize errors with logging and user notification
    * @param {Error} error - The error to handle
    * @param {Object} context - Additional context about where the error occurred
-   * @param {Object} context.componentName - Name of the component where error occurred
+   * @param {Object} context.componentName - Component where error occurred
    * @param {Object} context.action - Action being performed when error occurred
    * @param {Object} context.userId - ID of the user (if applicable)
    * @param {Object} options - Handling options
-   * @param {boolean} options.showNotification - Whether to show user notification (default: true)
-   * @param {boolean} options.attemptRecovery - Whether to attempt automatic recovery (default: false)
+   * @param {boolean} options.showNotification - Show user notification (default: true)
+   * @param {boolean} options.attemptRecovery - Attempt automatic recovery (default: false)
    * @returns {Object} Error information object with categorization and severity
    */
   handle(error, context = {}, options = {}) {
@@ -69,12 +69,12 @@ export class ErrorHandler {
    * Categorize error based on type and context for proper handling
    * @param {Error} error - The error to categorize
    * @param {Object} context - Additional context about the error
-   * @param {string} context.component - Name of the component where error occurred
-   * @param {string} context.action - Action being performed when error occurred
+   * @param {string} context.component - Component where error occurred
+   * @param {string} context.action - Action when error occurred
    * @param {string} context.userId - ID of the user (if applicable)
    * @param {string} context.sessionId - Session ID (if applicable)
    * @returns {Object} Categorized error information
-   * @returns {string} returns.type - Error type (validation, network, database, etc.)
+   * @returns {string} returns.type - Error type (validation, network, etc.)
    * @returns {string} returns.message - User-friendly error message
    * @returns {string} returns.stack - Error stack trace
    * @returns {string} returns.category - Error category
@@ -204,7 +204,7 @@ export class ErrorHandler {
    * Get user-friendly error message
    */
   getUserFriendlyMessage(errorInfo, severity) {
-    const { type, message, context } = errorInfo;
+    const { type, message, context: _context } = errorInfo;
 
     // Custom messages based on error type and context
     if (type === this.errorTypes.VALIDATION) {
@@ -253,7 +253,7 @@ export class ErrorHandler {
   /**
    * Attempt to recover from error
    */
-  attemptRecovery(errorInfo, context) {
+  attemptRecovery(errorInfo, _context) {
     const { type, message } = errorInfo;
 
     // Database recovery strategies
@@ -287,8 +287,8 @@ export class ErrorHandler {
     try {
       logger.info('Attempting database reconnection...');
 
-      // Implementation would depend on your database setup
-      // For IndexedDB, this might involve checking if the database is still accessible
+      // Implementation would depend on your database setup.
+      // For IndexedDB, check if the database is still accessible.
       logger.success('Database reconnection successful');
     } catch (error) {
       logger.error('Database reconnection failed:', error);
@@ -326,7 +326,7 @@ export class ErrorHandler {
       'constraint',
     ];
     return validationKeywords.some(keyword =>
-      error.message.toLowerCase().includes(keyword)
+      error.message.toLowerCase().includes(keyword),
     );
   }
 
@@ -343,7 +343,7 @@ export class ErrorHandler {
       'cors',
     ];
     return networkKeywords.some(keyword =>
-      error.message.toLowerCase().includes(keyword)
+      error.message.toLowerCase().includes(keyword),
     );
   }
 
@@ -360,7 +360,7 @@ export class ErrorHandler {
       'locked',
     ];
     return databaseKeywords.some(keyword =>
-      error.message.toLowerCase().includes(keyword)
+      error.message.toLowerCase().includes(keyword),
     );
   }
 
@@ -374,7 +374,7 @@ export class ErrorHandler {
       'insufficient',
     ];
     return permissionKeywords.some(keyword =>
-      error.message.toLowerCase().includes(keyword)
+      error.message.toLowerCase().includes(keyword),
     );
   }
 
@@ -393,7 +393,7 @@ export class ErrorHandler {
         {
           showNotification: true,
           attemptRecovery: false,
-        }
+        },
       );
     };
   }
@@ -422,7 +422,7 @@ export class ErrorHandler {
   createValidationHandler(formName) {
     return validationErrors => {
       const error = new Error(
-        `Validation failed for ${formName}: ${Object.keys(validationErrors).join(', ')}`
+        `Validation failed for ${formName}: ${Object.keys(validationErrors).join(', ')}`,
       );
       this.handle(
         error,
@@ -434,7 +434,7 @@ export class ErrorHandler {
         {
           showNotification: true,
           attemptRecovery: false,
-        }
+        },
       );
     };
   }

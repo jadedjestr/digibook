@@ -13,11 +13,11 @@ const CalendarGrid = forwardRef(
       paycheckService,
       paycheckDates,
       onDaySelect,
-      selectedDay,
+      selectedDay: _selectedDay,
       focusedDayIndex,
       onFocusChange,
     },
-    ref
+    ref,
   ) => {
     const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -50,9 +50,22 @@ const CalendarGrid = forwardRef(
         </div>
       </div>
     );
-  }
+  },
 );
 
 CalendarGrid.displayName = 'CalendarGrid';
+
+CalendarGrid.propTypes = {
+  calendarData: PropTypes.arrayOf(PropTypes.object).isRequired,
+  paycheckService: PropTypes.object.isRequired,
+  paycheckDates: PropTypes.shape({
+    nextPayDate: PropTypes.string,
+    followingPayDate: PropTypes.string,
+  }).isRequired,
+  onDaySelect: PropTypes.func.isRequired,
+  selectedDay: PropTypes.string,
+  focusedDayIndex: PropTypes.number,
+  onFocusChange: PropTypes.func.isRequired,
+};
 
 export default CalendarGrid;

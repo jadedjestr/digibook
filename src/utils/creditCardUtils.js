@@ -25,31 +25,30 @@ export const formatCreditCardBalance = (balance, showSign = false) => {
     })}`,
     isCredit,
     isZero,
-    displayText: isZero
-      ? 'Paid Off'
-      : isCredit
+    displayText: (() => {
+      if (isZero) return 'Paid Off';
+      return isCredit
         ? `$${absBalance.toFixed(2)} Credit${showSign ? ' (+)' : ''}`
-        : `$${absBalance.toFixed(2)} Debt${showSign ? ' (-)' : ''}`,
-    shortDisplayText: isZero
-      ? 'Paid Off'
-      : isCredit
+        : `$${absBalance.toFixed(2)} Debt${showSign ? ' (-)' : ''}`;
+    })(),
+    shortDisplayText: (() => {
+      if (isZero) return 'Paid Off';
+      return isCredit
         ? `+$${absBalance.toFixed(2)}`
-        : `$${absBalance.toFixed(2)}`,
-    className: isZero
-      ? 'text-green-400'
-      : isCredit
-        ? 'text-blue-400'
-        : 'text-yellow-400',
-    bgClassName: isZero
-      ? 'bg-green-500/20'
-      : isCredit
-        ? 'bg-blue-500/20'
-        : 'bg-yellow-500/20',
-    statusText: isZero
-      ? 'Paid Off'
-      : isCredit
-        ? 'Credit Balance'
-        : 'Outstanding Debt',
+        : `$${absBalance.toFixed(2)}`;
+    })(),
+    className: (() => {
+      if (isZero) return 'text-green-400';
+      return isCredit ? 'text-blue-400' : 'text-yellow-400';
+    })(),
+    bgClassName: (() => {
+      if (isZero) return 'bg-green-500/20';
+      return isCredit ? 'bg-blue-500/20' : 'bg-yellow-500/20';
+    })(),
+    statusText: (() => {
+      if (isZero) return 'Paid Off';
+      return isCredit ? 'Credit Balance' : 'Outstanding Debt';
+    })(),
   };
 };
 
@@ -103,7 +102,7 @@ const getUtilizationLevel = utilizationPercent => {
 export const getMinimumPaymentStatus = (
   balance,
   minimumPayment,
-  paidAmount = 0
+  paidAmount = 0,
 ) => {
   // No minimum payment needed if balance is zero or negative (credit)
   if (balance <= 0) {

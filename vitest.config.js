@@ -1,3 +1,5 @@
+/* eslint-disable import/no-unresolved */
+
 // / <reference types="vitest/config" />
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -5,10 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
-const dirname =
-  typeof __dirname !== 'undefined'
-    ? __dirname
-    : path.dirname(fileURLToPath(import.meta.url));
+
+const dirname = (() => {
+  if (typeof __dirname !== 'undefined') return __dirname;
+  return path.dirname(fileURLToPath(import.meta.url));
+})();
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
@@ -19,6 +22,14 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.js'],
     css: true,
     projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          include: ['src/**/*.{test,spec}.{js,jsx}'],
+          exclude: ['src/**/*.stories.{js,jsx}', 'src/**/*.mdx'],
+        },
+      },
       {
         extends: true,
         plugins: [

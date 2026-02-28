@@ -1,5 +1,5 @@
-import { Clock, DollarSign } from 'lucide-react';
-import React from 'react';
+import { Clock } from 'lucide-react';
+import PropTypes from 'prop-types';
 
 import { formatCurrency } from '../utils/accountUtils';
 
@@ -32,6 +32,11 @@ const ThisWeekExpensesCard = ({ totalAmount, expenseCount }) => {
       </div>
     </div>
   );
+};
+
+ThisWeekExpensesCard.propTypes = {
+  totalAmount: PropTypes.number.isRequired,
+  expenseCount: PropTypes.number.isRequired,
 };
 
 export default ThisWeekExpensesCard;

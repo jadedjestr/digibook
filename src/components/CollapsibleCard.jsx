@@ -100,11 +100,10 @@ const CollapsibleCard = ({
           ${contentClassName}
         `}
         style={{
-          maxHeight: isExpanded
-            ? contentHeight > 0
-              ? `${contentHeight}px`
-              : 'none'
-            : '0px',
+          maxHeight: (() => {
+            if (!isExpanded) return '0px';
+            return contentHeight > 0 ? `${contentHeight}px` : 'none';
+          })(),
           marginTop: isExpanded ? '1rem' : '0px',
           overflow: isExpanded ? 'visible' : 'hidden',
         }}

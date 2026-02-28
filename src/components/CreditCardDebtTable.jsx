@@ -1,14 +1,16 @@
 import { ArrowDown, ArrowUp, CreditCard } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import PropTypes from 'prop-types';
+import { useMemo, useState } from 'react';
 
-import CollapsibleCard from './CollapsibleCard';
-import PrivacyWrapper from './PrivacyWrapper';
-import StatusBadge from './StatusBadge';
+import { formatCurrency } from '../utils/accountUtils';
 import {
   calculateAvailableCredit,
   formatCreditCardBalance,
 } from '../utils/creditCardUtils';
-import { formatCurrency } from '../utils/accountUtils';
+
+import CollapsibleCard from './CollapsibleCard';
+import PrivacyWrapper from './PrivacyWrapper';
+import StatusBadge from './StatusBadge';
 
 const CreditCardDebtTable = ({ creditCards = [] }) => {
   // Sorting state
@@ -35,12 +37,12 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
       let comparison = 0;
 
       switch (sortColumn) {
-        case 'name':
+        case 'name': {
           const aName = a.name || '';
           const bName = b.name || '';
           comparison = aName.localeCompare(bName);
           break;
-
+        }
         case 'balance':
           comparison = (a.balance || 0) - (b.balance || 0);
           break;
@@ -50,15 +52,32 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
           break;
 
         case 'utilization': {
-          const aUtil = calculateAvailableCredit(
-            a.balance || 0,
-            a.creditLimit || 0
-          ).utilization;
-          const bUtil = calculateAvailableCredit(
-            b.balance || 0,
-            b.creditLimit || 0
-          ).utilization;
-          comparison = aUtil - bUtil;
+          // Validate creditLimit before calculating utilization to avoid Infinity/NaN
+          const aCreditLimit = a.creditLimit || 0;
+          const bCreditLimit = b.creditLimit || 0;
+
+          // If either card has invalid credit limit, handle specially
+          if (aCreditLimit <= 0 && bCreditLimit <= 0) {
+            // Both invalid - maintain order
+            comparison = 0;
+          } else if (aCreditLimit <= 0) {
+            // a is invalid - sort to end
+            comparison = 1;
+          } else if (bCreditLimit <= 0) {
+            // b is invalid - sort to beginning (will be reversed if desc)
+            comparison = -1;
+          } else {
+            // Both valid - calculate and compare normally
+            const aUtil = calculateAvailableCredit(
+              a.balance || 0,
+              aCreditLimit,
+            ).utilization;
+            const bUtil = calculateAvailableCredit(
+              b.balance || 0,
+              bCreditLimit,
+            ).utilization;
+            comparison = aUtil - bUtil;
+          }
           break;
         }
 
@@ -99,11 +118,11 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
   const summary = useMemo(() => {
     const totalDebt = creditCards.reduce(
       (sum, card) => sum + Math.max(card.balance || 0, 0),
-      0
+      0,
     );
     const totalCreditLimit = creditCards.reduce(
       (sum, card) => sum + (card.creditLimit || 0),
-      0
+      0,
     );
     const totalUtilization =
       totalCreditLimit > 0 ? (totalDebt / totalCreditLimit) * 100 : 0;
@@ -150,7 +169,7 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
     const daysUntilDue = getDaysUntilDue(card.dueDate);
     const creditInfo = calculateAvailableCredit(
       card.balance || 0,
-      card.creditLimit || 0
+      card.creditLimit || 0,
     );
 
     // Handle zero balance (paid off)
@@ -193,7 +212,7 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
       defaultExpanded={false}
     >
       {/* Summary Row - Always Visible */}
-      <div className='mb-4 p-3 glass-card rounded-lg border border-white/10'>
+      <div className='mb-4 p-3 glass-card rounded-2xl border border-white/10'>
         <div className='grid grid-cols-2 md:grid-cols-4 gap-4 text-sm'>
           <div>
             <p className='text-white/70 mb-1'>Total Debt</p>
@@ -215,7 +234,7 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
             <p className='text-white/70 mb-1'>Utilization</p>
             <p
               className={`text-lg font-bold ${getUtilizationColor(
-                summary.totalUtilization
+                summary.totalUtilization,
               )}`}
             >
               {summary.totalUtilization.toFixed(1)}%
@@ -301,7 +320,7 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
               const balanceInfo = formatCreditCardBalance(card.balance || 0);
               const creditInfo = calculateAvailableCredit(
                 card.balance || 0,
-                card.creditLimit || 0
+                card.creditLimit || 0,
               );
               const status = getCardStatus(card);
 
@@ -380,6 +399,23 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
       </div>
     </CollapsibleCard>
   );
+};
+
+CreditCardDebtTable.propTypes = {
+  creditCards: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+      name: PropTypes.string,
+      balance: PropTypes.number,
+      creditLimit: PropTypes.number,
+      interestRate: PropTypes.number,
+      dueDate: PropTypes.string,
+    }),
+  ),
+};
+
+CreditCardDebtTable.defaultProps = {
+  creditCards: [],
 };
 
 export default CreditCardDebtTable;

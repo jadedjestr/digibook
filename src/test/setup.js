@@ -1,9 +1,9 @@
 import '@testing-library/jest-dom';
-import { vi } from 'vitest';
 
 // Mock IndexedDB for testing
-const FDBFactory = require('fake-indexeddb/lib/FDBFactory');
-const FDBKeyRange = require('fake-indexeddb/lib/FDBKeyRange');
+import FDBFactory from 'fake-indexeddb/lib/FDBFactory';
+import FDBKeyRange from 'fake-indexeddb/lib/FDBKeyRange';
+import { vi } from 'vitest';
 
 // Setup fake indexedDB
 const indexedDB = new FDBFactory();
@@ -37,17 +37,27 @@ beforeEach(async () => {
   // Clear all mocks
   vi.clearAllMocks();
 
-  // Clear fake indexedDB
+  // Load app db after fake indexedDB is set (dynamic import so Dexie uses the fake)
+  const { db } = await import('../db/database-clean');
+
+  // Clear fake indexedDB (preserve app DB so tests using it stay valid)
   const dbs = await indexedDB.databases();
   await Promise.all(
-    dbs.map(db => {
-      return new Promise(resolve => {
-        const req = indexedDB.deleteDatabase(db.name);
-        req.onsuccess = resolve;
-        req.onerror = resolve;
-      });
-    })
+    dbs
+      .filter(database => database.name !== db.name)
+      .map(database => {
+        return new Promise(resolve => {
+          const req = indexedDB.deleteDatabase(database.name);
+          req.onsuccess = resolve;
+          req.onerror = resolve;
+        });
+      }),
   );
+
+  // Clear all tables on app db so each test gets a clean slate
+  if (db.tables && db.tables.length > 0) {
+    await Promise.all(db.tables.map(table => table.clear()));
+  }
 
   // Clear localStorage mock
   localStorageMock.clear();

@@ -27,3 +27,4 @@ module.exports = {
     'header-max-length': [2, 'always', 100],
   },
 };
+

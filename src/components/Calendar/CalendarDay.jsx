@@ -17,7 +17,7 @@ const CalendarDay = ({
 }) => {
   const {
     date,
-    dateString,
+    dateString: _dateString,
     expenses,
     isToday,
     isCurrentMonth,
@@ -87,7 +87,7 @@ const CalendarDay = ({
 
       {/* Expense badges */}
       <div className='calendar-day-expenses'>
-        {visibleExpenses.map((expense, index) => (
+        {visibleExpenses.map((expense, _index) => (
           <ExpenseBadge
             key={expense.id}
             expense={expense}
@@ -103,6 +103,30 @@ const CalendarDay = ({
       </div>
     </div>
   );
+};
+
+CalendarDay.propTypes = {
+  dayData: PropTypes.shape({
+    date: PropTypes.instanceOf(Date).isRequired,
+    dateString: PropTypes.string,
+    expenses: PropTypes.arrayOf(PropTypes.object),
+    isToday: PropTypes.bool,
+    isCurrentMonth: PropTypes.bool,
+    isSelected: PropTypes.bool,
+    isPaycheckDate: PropTypes.bool,
+    isNextPayDate: PropTypes.bool,
+    isFollowingPayDate: PropTypes.bool,
+  }).isRequired,
+  paycheckService: PropTypes.object.isRequired,
+  paycheckDates: PropTypes.shape({
+    nextPayDate: PropTypes.string,
+    followingPayDate: PropTypes.string,
+  }).isRequired,
+  onSelect: PropTypes.func.isRequired,
+  isSelected: PropTypes.bool.isRequired,
+  isFocused: PropTypes.bool.isRequired,
+  dayIndex: PropTypes.number.isRequired,
+  onFocus: PropTypes.func.isRequired,
 };
 
 export default CalendarDay;

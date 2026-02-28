@@ -181,7 +181,7 @@ describe('Validation Utils', () => {
       const result = validateDate(oldDate);
       expect(result.isValid).toBe(false);
       expect(result.error).toBe(
-        'Date cannot be more than 10 years in the past'
+        'Date cannot be more than 10 years in the past',
       );
     });
 
@@ -190,7 +190,7 @@ describe('Validation Utils', () => {
       const result = validateDate(futureDate);
       expect(result.isValid).toBe(false);
       expect(result.error).toBe(
-        'Date cannot be more than 10 years in the future'
+        'Date cannot be more than 10 years in the future',
       );
     });
   });
@@ -230,7 +230,7 @@ describe('Validation Utils', () => {
       const result = validateCategoryName(longName, existingCategories);
       expect(result.isValid).toBe(false);
       expect(result.error).toBe(
-        'Category name must be less than 30 characters'
+        'Category name must be less than 30 characters',
       );
     });
   });

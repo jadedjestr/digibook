@@ -1,5 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
-import React from 'react';
+import PropTypes from 'prop-types';
 
 const CategoryDropZone = ({
   categoryName,
@@ -14,16 +14,18 @@ const CategoryDropZone = ({
     },
   });
 
+  const dropZoneClass = (() => {
+    if (isOver && activeId)
+      return 'border-blue-500 bg-blue-500/20 dropzone-pulse scale-105';
+    if (activeId)
+      return 'border-blue-500/50 bg-blue-500/10 hover:bg-blue-500/15 hover:scale-[1.02]';
+    return 'border-white/10';
+  })();
+
   return (
     <div
       ref={setNodeRef}
-      className={`h-16 w-full mt-2 rounded transition-all duration-300 border-2 border-dashed ${
-        isOver && activeId
-          ? 'border-blue-500 bg-blue-500/20 dropzone-pulse scale-105'
-          : activeId
-            ? 'border-blue-500/50 bg-blue-500/10 hover:bg-blue-500/15 hover:scale-[1.02]'
-            : 'border-white/10'
-      }`}
+      className={`h-16 w-full mt-2 rounded transition-all duration-300 border-2 border-dashed ${dropZoneClass}`}
       style={{
         transition: 'all 0.2s ease-in-out',
       }}
@@ -41,6 +43,12 @@ const CategoryDropZone = ({
       )}
     </div>
   );
+};
+
+CategoryDropZone.propTypes = {
+  categoryName: PropTypes.string.isRequired,
+  getCategoryDisplayName: PropTypes.func.isRequired,
+  activeId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 };
 
 export default CategoryDropZone;

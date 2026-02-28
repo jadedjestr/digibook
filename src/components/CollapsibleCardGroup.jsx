@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useCallback } from 'react';
 
 import CollapsibleCard from './CollapsibleCard';
 
@@ -8,7 +9,7 @@ const CollapsibleCardGroup = ({
   className = '',
   exclusive = true,
 }) => {
-  const [expandedCard, setExpandedCard] = useState(defaultExpanded);
+  const [_expandedCard, setExpandedCard] = useState(defaultExpanded);
 
   const handleExclusiveToggle = useCallback(
     cardTitle => {
@@ -16,7 +17,7 @@ const CollapsibleCardGroup = ({
         setExpandedCard(cardTitle);
       }
     },
-    [exclusive]
+    [exclusive],
   );
 
   return (
@@ -38,6 +39,29 @@ const CollapsibleCardGroup = ({
       ))}
     </div>
   );
+};
+
+CollapsibleCardGroup.propTypes = {
+  cards: PropTypes.arrayOf(
+    PropTypes.shape({
+      title: PropTypes.string,
+      icon: PropTypes.elementType,
+      defaultExpanded: PropTypes.bool,
+      content: PropTypes.node,
+      className: PropTypes.string,
+      headerClassName: PropTypes.string,
+      contentClassName: PropTypes.string,
+    }),
+  ).isRequired,
+  defaultExpanded: PropTypes.string,
+  className: PropTypes.string,
+  exclusive: PropTypes.bool,
+};
+
+CollapsibleCardGroup.defaultProps = {
+  defaultExpanded: null,
+  className: '',
+  exclusive: true,
 };
 
 export default CollapsibleCardGroup;

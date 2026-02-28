@@ -1,5 +1,5 @@
 import { Calendar, Clock } from 'lucide-react';
-import React from 'react';
+import PropTypes from 'prop-types';
 
 import { DateUtils } from '../utils/dateUtils';
 
@@ -56,6 +56,13 @@ const PayDateCountdownCard = ({
       </div>
     </div>
   );
+};
+
+PayDateCountdownCard.propTypes = {
+  nextPayDate: PropTypes.string,
+  followingPayDate: PropTypes.string,
+  daysUntilNextPay: PropTypes.number,
+  daysUntilFollowingPay: PropTypes.number,
 };
 
 export default PayDateCountdownCard;

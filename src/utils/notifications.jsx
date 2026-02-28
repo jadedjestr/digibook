@@ -1,4 +1,3 @@
-import React from 'react';
 import { toast } from 'react-toastify';
 
 import { logger } from './logger';
@@ -56,7 +55,7 @@ export const showConfirmation = message => {
         closeOnClick: false,
         draggable: false,
         closeButton: false,
-      }
+      },
     );
   });
 };

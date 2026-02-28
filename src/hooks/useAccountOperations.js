@@ -40,7 +40,7 @@ export const useAccountOperations = () => {
         throw error;
       }
     },
-    [updateAccountInStore, reloadAccounts]
+    [updateAccountInStore, reloadAccounts],
   );
 
   /**
@@ -65,7 +65,7 @@ export const useAccountOperations = () => {
         throw error;
       }
     },
-    [updateCreditCardInStore, reloadAccounts]
+    [updateCreditCardInStore, reloadAccounts],
   );
 
   /**
@@ -79,7 +79,7 @@ export const useAccountOperations = () => {
         null
       );
     },
-    [accounts, creditCards]
+    [accounts, creditCards],
   );
 
   /**
@@ -99,7 +99,7 @@ export const useAccountOperations = () => {
     accountId => {
       return getAllAccountIds().has(accountId);
     },
-    [getAllAccountIds]
+    [getAllAccountIds],
   );
 
   /**
@@ -109,7 +109,7 @@ export const useAccountOperations = () => {
     type => {
       return accounts.filter(account => account.type === type);
     },
-    [accounts]
+    [accounts],
   );
 
   /**
@@ -125,11 +125,11 @@ export const useAccountOperations = () => {
   const getTotalBalance = useCallback(() => {
     const accountTotal = accounts.reduce(
       (sum, account) => sum + (account.currentBalance || 0),
-      0
+      0,
     );
     const creditCardTotal = creditCards.reduce(
       (sum, card) => sum + (card.balance || 0),
-      0
+      0,
     );
     return accountTotal - creditCardTotal; // Credit card balances are debt
   }, [accounts, creditCards]);

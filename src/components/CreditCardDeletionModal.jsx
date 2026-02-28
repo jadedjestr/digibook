@@ -4,7 +4,8 @@ import {
   ExternalLink,
   ArrowRight,
 } from 'lucide-react';
-import React, { useState, useEffect, useCallback } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect, useCallback } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { formatCurrency } from '../utils/accountUtils';
@@ -33,8 +34,16 @@ const CreditCardDeletionModal = ({
     setIsLoading(true);
     try {
       const expenses = await dbHelpers.getFixedExpenses();
+
+      // Find expenses that reference this credit card either as:
+      // 1. accountId (legacy/incorrect usage)
+      // 2. creditCardId (correct usage for regular expenses paid with credit card)
+      // 3. targetCreditCardId (for Credit Card Payment category expenses)
       const linked = expenses.filter(
-        expense => expense.accountId === creditCard.id
+        expense =>
+          expense.accountId === creditCard.id ||
+          expense.creditCardId === creditCard.id ||
+          expense.targetCreditCardId === creditCard.id,
       );
       setLinkedExpenses(linked);
 
@@ -71,26 +80,58 @@ const CreditCardDeletionModal = ({
     setIsProcessing(true);
     try {
       if (deletionOption === 'reassign') {
-        // Reassign all expenses to new accounts
+        // Reassign all expenses to new accounts/credit cards
         for (const [expenseId, newAccountId] of Object.entries(
-          reassignmentMap
+          reassignmentMap,
         )) {
           if (newAccountId) {
-            await dbHelpers.updateFixedExpense(parseInt(expenseId), {
-              accountId: newAccountId,
-            });
-            logger.info(
-              `Reassigned expense ${expenseId} to account ${newAccountId}`
+            const expense = linkedExpenses.find(
+              e => e.id === parseInt(expenseId),
             );
+            if (expense) {
+              // Determine which field to update based on how the expense was linked
+              const updateData = {};
+              if (expense.accountId === creditCard.id) {
+                updateData.accountId = newAccountId;
+              } else if (expense.creditCardId === creditCard.id) {
+                // For expenses paid with credit card, reassign to another credit card
+                updateData.creditCardId = newAccountId;
+              } else if (expense.targetCreditCardId === creditCard.id) {
+                // For credit card payment expenses, reassign target credit card
+                updateData.targetCreditCardId = newAccountId;
+              }
+              await dbHelpers.updateFixedExpenseV4(
+                parseInt(expenseId),
+                updateData,
+              );
+              logger.info(`Reassigned expense ${expenseId} to ${newAccountId}`);
+            }
           }
         }
       } else if (deletionOption === 'unlink') {
-        // Remove account mapping from all expenses (set to null)
+        // Remove payment source mapping from all expenses
         for (const expenseId of Object.keys(reassignmentMap)) {
-          await dbHelpers.updateFixedExpense(parseInt(expenseId), {
-            accountId: null,
-          });
-          logger.info(`Unlinked expense ${expenseId} from credit card`);
+          const expense = linkedExpenses.find(
+            e => e.id === parseInt(expenseId),
+          );
+          if (expense) {
+            const updateData = {};
+            if (expense.accountId === creditCard.id) {
+              updateData.accountId = null;
+            }
+            if (expense.creditCardId === creditCard.id) {
+              updateData.creditCardId = null;
+            }
+            if (expense.targetCreditCardId === creditCard.id) {
+              updateData.targetCreditCardId = null;
+            }
+            await dbHelpers.updateFixedExpenseV4(
+              parseInt(expenseId),
+              updateData,
+              { skipPaymentSourceValidation: true },
+            );
+            logger.info(`Unlinked expense ${expenseId} from credit card`);
+          }
         }
       }
 
@@ -156,7 +197,10 @@ const CreditCardDeletionModal = ({
               </h3>
 
               <div className='space-y-3'>
-                <label className='flex items-start space-x-3 cursor-pointer'>
+                <label
+                  className='flex items-start space-x-3 cursor-pointer'
+                  aria-label='Reassign to Other Accounts'
+                >
                   <input
                     type='radio'
                     name='deletionOption'
@@ -176,7 +220,10 @@ const CreditCardDeletionModal = ({
                   </div>
                 </label>
 
-                <label className='flex items-start space-x-3 cursor-pointer'>
+                <label
+                  className='flex items-start space-x-3 cursor-pointer'
+                  aria-label='Unlink from All Accounts'
+                >
                   <input
                     type='radio'
                     name='deletionOption'
@@ -190,13 +237,16 @@ const CreditCardDeletionModal = ({
                       Unlink from All Accounts
                     </div>
                     <div className='text-white/60 text-sm'>
-                      Remove account mapping from all expenses (they'll need
-                      manual reassignment later)
+                      Remove account mapping from all expenses (they&apos;ll
+                      need manual reassignment later)
                     </div>
                   </div>
                 </label>
 
-                <label className='flex items-start space-x-3 cursor-pointer'>
+                <label
+                  className='flex items-start space-x-3 cursor-pointer'
+                  aria-label='Delete account and all linked expenses'
+                >
                   <input
                     type='radio'
                     name='deletionOption'
@@ -263,15 +313,16 @@ const CreditCardDeletionModal = ({
                               value={reassignmentMap[expense.id]}
                               accounts={accounts}
                               creditCards={creditCards.filter(
-                                card => card.id !== creditCard.id
+                                card => card.id !== creditCard.id,
                               )}
                               onSave={accountId =>
                                 handleReassignmentChange(expense.id, accountId)
                               }
                               showSaveCancel={false}
                               isCreditCardPayment={
-                                expense.category === 'Credit Card' ||
-                                expense.name.toLowerCase().includes('payment')
+                                expense.category === 'Credit Card Payment' &&
+                                expense.accountId === creditCard.id &&
+                                expense.targetCreditCardId !== creditCard.id
                               }
                             />
                           </div>
@@ -344,6 +395,23 @@ const CreditCardDeletionModal = ({
       </div>
     </div>
   );
+};
+
+CreditCardDeletionModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  creditCard: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    name: PropTypes.string,
+  }),
+  onClose: PropTypes.func.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  accounts: PropTypes.arrayOf(PropTypes.object),
+  creditCards: PropTypes.arrayOf(PropTypes.object),
+};
+
+CreditCardDeletionModal.defaultProps = {
+  accounts: [],
+  creditCards: [],
 };
 
 export default CreditCardDeletionModal;

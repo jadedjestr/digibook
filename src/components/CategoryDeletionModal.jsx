@@ -1,5 +1,6 @@
-import { X, AlertTriangle, CheckCircle } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import { X, AlertTriangle } from 'lucide-react';
+import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
@@ -30,7 +31,7 @@ const CategoryDeletionModal = ({
 
       // Filter out the category being deleted
       const availableCategories = categoriesData.filter(
-        cat => cat.name !== categoryToDelete.name
+        cat => cat.name !== categoryToDelete.name,
       );
       setCategories(availableCategories);
     } catch (error) {
@@ -62,7 +63,7 @@ const CategoryDeletionModal = ({
       await dbHelpers.reassignCategoryItems(
         categoryToDelete.name,
         bulkCategory,
-        affectedItems
+        affectedItems,
       );
       await dbHelpers.deleteCategory(categoryToDelete.id);
       onCategoryDeleted();
@@ -80,11 +81,11 @@ const CategoryDeletionModal = ({
   const handleIndividualReassign = async () => {
     // Check if all items have been assigned
     const allAssigned = Object.values(individualAssignments).every(
-      assignment => assignment !== ''
+      assignment => assignment !== '',
     );
     if (!allAssigned) {
       notify.warning(
-        'Please assign all items to a category before proceeding.'
+        'Please assign all items to a category before proceeding.',
       );
       return;
     }
@@ -96,17 +97,17 @@ const CategoryDeletionModal = ({
         if (key.startsWith('expense-')) {
           const expenseId = key.replace('expense-', '');
           const expense = affectedItems.fixedExpenses.find(
-            e => e.id === parseInt(expenseId)
+            e => e.id === parseInt(expenseId),
           );
           if (expense) {
-            await dbHelpers.updateFixedExpense(expense.id, {
+            await dbHelpers.updateFixedExpenseV4(expense.id, {
               category: newCategory,
             });
           }
         } else if (key.startsWith('transaction-')) {
           const transactionId = key.replace('transaction-', '');
           const transaction = affectedItems.pendingTransactions.find(
-            t => t.id === parseInt(transactionId)
+            t => t.id === parseInt(transactionId),
           );
           if (transaction) {
             await dbHelpers.updatePendingTransaction(transaction.id, {
@@ -121,10 +122,10 @@ const CategoryDeletionModal = ({
       onCategoryDeleted();
       onClose();
       logger.success(
-        'Category deleted and items individually reassigned successfully'
+        'Category deleted and items individually reassigned successfully',
       );
       notify.success(
-        'Category deleted and items individually reassigned successfully'
+        'Category deleted and items individually reassigned successfully',
       );
     } catch (error) {
       logger.error('Error during individual reassignment:', error);
@@ -163,8 +164,9 @@ const CategoryDeletionModal = ({
         {/* Warning Message */}
         <div className='mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg'>
           <p className='text-red-300'>
-            You are about to delete <strong>"{categoryToDelete.name}"</strong>.
-            This will affect <strong>{totalAffectedItems} items</strong>.
+            You are about to delete{' '}
+            <strong>&quot;{categoryToDelete.name}&quot;</strong>. This will
+            affect <strong>{totalAffectedItems} items</strong>.
           </p>
         </div>
 
@@ -297,6 +299,20 @@ const CategoryDeletionModal = ({
       </div>
     </div>
   );
+};
+
+CategoryDeletionModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  categoryToDelete: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    name: PropTypes.string.isRequired,
+  }).isRequired,
+  affectedItems: PropTypes.shape({
+    fixedExpenses: PropTypes.arrayOf(PropTypes.object),
+    pendingTransactions: PropTypes.arrayOf(PropTypes.object),
+  }).isRequired,
+  onCategoryDeleted: PropTypes.func.isRequired,
 };
 
 export default CategoryDeletionModal;

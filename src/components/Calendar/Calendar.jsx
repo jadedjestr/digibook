@@ -1,8 +1,6 @@
 import PropTypes from 'prop-types';
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 
-import { PaycheckService } from '../../services/paycheckService';
-import { useAppStore } from '../../stores/useAppStore';
 import { DateUtils } from '../../utils/dateUtils';
 import { logger } from '../../utils/logger';
 
@@ -17,41 +15,29 @@ import './calendar.css';
  * Displays monthly view of expenses with status indicators
  * Integrates with PaycheckService for status calculations
  */
-const Calendar = ({ onReset }) => {
+const Calendar = ({
+  currentMonth,
+  monthExpenses,
+  paycheckService,
+  paycheckDates,
+  onPreviousMonth,
+  onNextMonth,
+  onToday,
+  onReset,
+}) => {
   logger.debug('Calendar: COMPONENT MOUNTING');
 
-  // Get data from Zustand store
-  const { fixedExpenses, paycheckSettings } = useAppStore();
-
-  logger.debug(
-    'Calendar: Got store data - fixedExpenses:',
-    fixedExpenses?.length,
-    'paycheckSettings:',
-    paycheckSettings
-  );
-
   // Calendar state
-  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
   const [focusedDayIndex, setFocusedDayIndex] = useState(null);
   const calendarRef = useRef(null);
-
-  // Initialize PaycheckService
-  const paycheckService = useMemo(() => {
-    return new PaycheckService(paycheckSettings);
-  }, [paycheckSettings]);
-
-  // Calculate paycheck dates
-  const paycheckDates = useMemo(() => {
-    return paycheckService.calculatePaycheckDates();
-  }, [paycheckService]);
 
   // Generate calendar data
   const calendarData = useMemo(() => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
 
-    // Get first day of month and calculate starting date (including previous month days)
+    // First day of month, start from Sunday (include prev month days)
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0); // Last day of current month
     const startDate = new Date(firstDay);
@@ -60,25 +46,25 @@ const Calendar = ({ onReset }) => {
     // Calculate how many days we need to show the complete month
     // We need to go until we complete the week that contains the last day of the month
     const endDate = new Date(lastDay);
-    const daysAfterLastDay = 6 - lastDay.getDay(); // Days to complete the final week (Sunday = 0)
+    const daysAfterLastDay = 6 - lastDay.getDay(); // Complete final week
     endDate.setDate(lastDay.getDate() + daysAfterLastDay);
 
-    // Calculate total days needed
+    // Total days needed
     const totalDays =
       Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
-    // Generate only the days we need (usually 35 days for 5 weeks, sometimes 42 for 6 weeks)
+    // Generate days we need (usually 35 for 5 weeks, sometimes 42 for 6)
     const days = [];
     for (let i = 0; i < totalDays; i++) {
       const date = new Date(startDate);
       date.setDate(startDate.getDate() + i);
 
       const dateString = DateUtils.formatDate(date);
-      const dayExpenses = fixedExpenses.filter(
-        expense => expense.dueDate === dateString
+      const dayExpenses = (monthExpenses || []).filter(
+        expense => expense.dueDate === dateString,
       );
 
-      // Check if this is a paycheck date
+      // Paycheck date?
       const isNextPayDate = paycheckDates.nextPayDate === dateString;
       const isFollowingPayDate = paycheckDates.followingPayDate === dateString;
       const isPaycheckDate = isNextPayDate || isFollowingPayDate;
@@ -97,48 +83,28 @@ const Calendar = ({ onReset }) => {
     }
 
     return days;
-  }, [currentMonth, fixedExpenses, selectedDay]);
-
-  // Navigation handlers
-  const goToPreviousMonth = () => {
-    setCurrentMonth(prev => {
-      const newDate = new Date(prev);
-      newDate.setMonth(prev.getMonth() - 1);
-      return newDate;
-    });
-  };
-
-  const goToNextMonth = () => {
-    setCurrentMonth(prev => {
-      const newDate = new Date(prev);
-      newDate.setMonth(prev.getMonth() + 1);
-      return newDate;
-    });
-  };
-
-  const goToToday = () => {
-    setCurrentMonth(new Date());
-    setSelectedDay(null);
-  };
+  }, [currentMonth, monthExpenses, selectedDay, paycheckDates]);
 
   // Day selection handler
-  const handleDaySelect = dateString => {
-    setSelectedDay(selectedDay === dateString ? null : dateString);
-  };
+  const handleDaySelect = useCallback(
+    dateString => {
+      setSelectedDay(selectedDay === dateString ? null : dateString);
+    },
+    [selectedDay],
+  );
 
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = e => {
       if (!calendarRef.current) return;
 
-      // Only handle keyboard events if the Calendar is focused or the event is from within the Calendar
+      // Only handle if Calendar is focused or event is from within it
       const isCalendarFocused =
         document.activeElement === calendarRef.current ||
         calendarRef.current.contains(document.activeElement);
 
-      // For space and enter keys, only handle if Calendar is focused
       if ((e.key === ' ' || e.key === 'Enter') && !isCalendarFocused) {
-        return; // Don't prevent default for space/enter when Calendar is not focused
+        return;
       }
 
       const { key } = e;
@@ -152,7 +118,7 @@ const Calendar = ({ onReset }) => {
         case 'ArrowRight':
           e.preventDefault();
           setFocusedDayIndex(
-            Math.min(calendarData.length - 1, currentIndex + 1)
+            Math.min(calendarData.length - 1, currentIndex + 1),
           );
           break;
         case 'ArrowUp':
@@ -162,7 +128,7 @@ const Calendar = ({ onReset }) => {
         case 'ArrowDown':
           e.preventDefault();
           setFocusedDayIndex(
-            Math.min(calendarData.length - 1, currentIndex + 7)
+            Math.min(calendarData.length - 1, currentIndex + 7),
           );
           break;
         case 'Enter':
@@ -192,7 +158,7 @@ const Calendar = ({ onReset }) => {
   useEffect(() => {
     if (focusedDayIndex !== null && calendarRef.current) {
       const dayElement = calendarRef.current.querySelector(
-        `[data-day-index="${focusedDayIndex}"]`
+        `[data-day-index="${focusedDayIndex}"]`,
       );
       if (dayElement) {
         dayElement.focus();
@@ -205,9 +171,9 @@ const Calendar = ({ onReset }) => {
       <div className='calendar-container'>
         <CalendarHeader
           currentMonth={currentMonth}
-          onPreviousMonth={goToPreviousMonth}
-          onNextMonth={goToNextMonth}
-          onToday={goToToday}
+          onPreviousMonth={onPreviousMonth}
+          onNextMonth={onNextMonth}
+          onToday={onToday}
         />
 
         <CalendarGrid
@@ -232,7 +198,21 @@ const Calendar = ({ onReset }) => {
 };
 
 Calendar.propTypes = {
+  currentMonth: PropTypes.instanceOf(Date).isRequired,
+  monthExpenses: PropTypes.arrayOf(PropTypes.object),
+  paycheckService: PropTypes.object.isRequired,
+  paycheckDates: PropTypes.shape({
+    nextPayDate: PropTypes.string,
+    followingPayDate: PropTypes.string,
+  }).isRequired,
+  onPreviousMonth: PropTypes.func.isRequired,
+  onNextMonth: PropTypes.func.isRequired,
+  onToday: PropTypes.func.isRequired,
   onReset: PropTypes.func.isRequired,
+};
+
+Calendar.defaultProps = {
+  monthExpenses: [],
 };
 
 export default Calendar;

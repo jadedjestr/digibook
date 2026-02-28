@@ -1,5 +1,6 @@
 import { Lock, Eye, EyeOff, Shield } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
 
 import { securePINStorage } from '../utils/crypto';
 
@@ -100,7 +101,6 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
               onKeyPress={handleKeyPress}
               placeholder={isSettingPIN ? 'Enter new PIN' : 'Enter PIN'}
               className='glass-input w-full text-center text-2xl tracking-widest glass-focus'
-              autoFocus
               disabled={isSubmitting}
             />
             <button
@@ -162,7 +162,7 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
               <button
                 onClick={resetPIN}
                 disabled={isSubmitting}
-                className='glass-button bg-red-500/20 hover:bg-red-500/30'
+                className='glass-button glass-button--danger'
               >
                 Reset PIN
               </button>
@@ -184,6 +184,12 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
       </div>
     </div>
   );
+};
+
+PINLock.propTypes = {
+  pin: PropTypes.string,
+  onUnlock: PropTypes.func.isRequired,
+  onPINChange: PropTypes.func.isRequired,
 };
 
 export default PINLock;

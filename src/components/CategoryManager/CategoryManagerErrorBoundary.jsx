@@ -1,5 +1,8 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import PropTypes from 'prop-types';
 import React from 'react';
+
+import { logger } from '../../utils/logger';
 
 class CategoryManagerErrorBoundary extends React.Component {
   constructor(props) {
@@ -7,14 +10,13 @@ class CategoryManagerErrorBoundary extends React.Component {
     this.state = { hasError: false, error: null, errorInfo: null };
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(_error) {
     // Update state so the next render will show the fallback UI
     return { hasError: true };
   }
 
   componentDidCatch(error, errorInfo) {
-    // Log the error to console for debugging
-    console.error('CategoryManager Error:', error, errorInfo);
+    logger.error('CategoryManager Error:', error, errorInfo);
 
     this.setState({
       error,
@@ -42,7 +44,7 @@ class CategoryManagerErrorBoundary extends React.Component {
               </p>
               <button
                 onClick={this.handleRetry}
-                className='glass-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 flex items-center space-x-2 mx-auto'
+                className='glass-button glass-button--primary flex items-center space-x-2 mx-auto'
               >
                 <RefreshCw size={16} />
                 <span>Retry</span>
@@ -71,5 +73,9 @@ class CategoryManagerErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+
+CategoryManagerErrorBoundary.propTypes = {
+  children: PropTypes.node.isRequired,
+};
 
 export default CategoryManagerErrorBoundary;

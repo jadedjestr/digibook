@@ -1,5 +1,5 @@
-import { AlertTriangle, RefreshCw, Home, Bug, X } from 'lucide-react';
-import React from 'react';
+import { AlertTriangle, RefreshCw, Bug, X } from 'lucide-react';
+import PropTypes from 'prop-types';
 
 /**
  * Consistent Error Display Components
@@ -150,6 +150,18 @@ export const ErrorDisplay = ({
       </div>
     </div>
   );
+};
+
+ErrorDisplay.propTypes = {
+  title: PropTypes.string,
+  message: PropTypes.string,
+  severity: PropTypes.string,
+  type: PropTypes.string,
+  onRetry: PropTypes.func,
+  onDismiss: PropTypes.func,
+  showDetails: PropTypes.bool,
+  details: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
+  className: PropTypes.string,
 };
 
 /**
@@ -343,7 +355,7 @@ export const ErrorSummary = ({
   }
 
   const criticalErrors = errors.filter(
-    e => e.severity === ERROR_SEVERITY.CRITICAL
+    e => e.severity === ERROR_SEVERITY.CRITICAL,
   );
   const highErrors = errors.filter(e => e.severity === ERROR_SEVERITY.HIGH);
   const mediumErrors = errors.filter(e => e.severity === ERROR_SEVERITY.MEDIUM);
@@ -395,6 +407,79 @@ export const ErrorSummary = ({
       ))}
     </div>
   );
+};
+
+ValidationError.propTypes = {
+  errors: PropTypes.object,
+  onRetry: PropTypes.func,
+  onDismiss: PropTypes.func,
+  className: PropTypes.string,
+};
+
+NetworkError.propTypes = {
+  message: PropTypes.string,
+  onRetry: PropTypes.func,
+  onDismiss: PropTypes.func,
+  className: PropTypes.string,
+};
+
+DatabaseError.propTypes = {
+  message: PropTypes.string,
+  onRetry: PropTypes.func,
+  onDismiss: PropTypes.func,
+  showDetails: PropTypes.bool,
+  details: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
+  className: PropTypes.string,
+};
+
+PermissionError.propTypes = {
+  message: PropTypes.string,
+  onRetry: PropTypes.func,
+  onDismiss: PropTypes.func,
+  className: PropTypes.string,
+};
+
+CriticalError.propTypes = {
+  title: PropTypes.string,
+  message: PropTypes.string,
+  onRetry: PropTypes.func,
+  onDismiss: PropTypes.func,
+  showDetails: PropTypes.bool,
+  details: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
+  className: PropTypes.string,
+};
+
+LoadingError.propTypes = {
+  message: PropTypes.string,
+  onRetry: PropTypes.func,
+  onDismiss: PropTypes.func,
+  className: PropTypes.string,
+};
+
+FormError.propTypes = {
+  errors: PropTypes.object,
+  onRetry: PropTypes.func,
+  onDismiss: PropTypes.func,
+  className: PropTypes.string,
+};
+
+InlineError.propTypes = {
+  message: PropTypes.string,
+  className: PropTypes.string,
+};
+
+ErrorSummary.propTypes = {
+  errors: PropTypes.arrayOf(
+    PropTypes.shape({
+      title: PropTypes.string,
+      message: PropTypes.string,
+      severity: PropTypes.string,
+      details: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
+    }),
+  ),
+  onRetry: PropTypes.func,
+  onDismiss: PropTypes.func,
+  className: PropTypes.string,
 };
 
 export default ErrorDisplay;

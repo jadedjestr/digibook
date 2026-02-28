@@ -9,13 +9,15 @@ import {
   CreditCard,
   PiggyBank,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import PropTypes from 'prop-types';
+import { useState } from 'react';
 
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
 import { useFinanceCalculations } from '../services/financeService';
 import { useAppStore } from '../stores/useAppStore';
 import { formatCurrency } from '../utils/accountUtils';
+import { logger } from '../utils/logger';
 
 const Accounts = () => {
   // Use Zustand store for data
@@ -32,7 +34,7 @@ const Accounts = () => {
 
   const { calculateLiquidBalance } = useFinanceCalculations(
     accounts,
-    pendingTransactions
+    pendingTransactions,
   );
   const liquidBalance = calculateLiquidBalance;
 
@@ -106,7 +108,7 @@ const Accounts = () => {
       setErrors({});
       reloadAccounts();
     } catch (error) {
-      console.error('Error adding account:', error);
+      logger.error('Error adding account:', error);
       setErrors({ general: 'Failed to add account. Please try again.' });
     } finally {
       setIsLoading(false);
@@ -115,12 +117,12 @@ const Accounts = () => {
 
   const handleSetDefault = async accountId => {
     try {
-      console.log('Setting default account:', accountId);
+      logger.debug('Setting default account:', accountId);
       await dbHelpers.setDefaultAccount(accountId);
-      console.log('Default account set successfully');
+      logger.debug('Default account set successfully');
       reloadAccounts();
     } catch (error) {
-      console.error('Error setting default account:', error);
+      logger.error('Error setting default account:', error);
     }
   };
 
@@ -141,7 +143,7 @@ const Accounts = () => {
       setEditingId(null);
       reloadAccounts();
     } catch (error) {
-      console.error('Error updating account:', error);
+      logger.error('Error updating account:', error);
     }
   };
 
@@ -167,7 +169,6 @@ const Accounts = () => {
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
               className='glass-input flex-1 glass-focus'
-              autoFocus
               onBlur={handleSave}
             >
               {options.map(option => (
@@ -182,7 +183,6 @@ const Accounts = () => {
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
               className='glass-input flex-1 glass-focus'
-              autoFocus
               onKeyPress={e => {
                 if (e.key === 'Enter') handleSave();
                 if (e.key === 'Escape') handleCancel();
@@ -207,9 +207,10 @@ const Accounts = () => {
     }
 
     return (
-      <div
+      <button
+        type='button'
         onClick={() => setIsEditing(true)}
-        className='cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-all duration-200 group'
+        className='w-full text-left cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-all duration-200 group'
         title='Click to edit'
       >
         <span className='text-primary group-hover:text-white transition-colors'>
@@ -223,8 +224,15 @@ const Accounts = () => {
           size={14}
           className='inline ml-2 text-muted group-hover:text-white transition-colors opacity-0 group-hover:opacity-100'
         />
-      </div>
+      </button>
     );
+  };
+
+  InlineEdit.propTypes = {
+    value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    onSave: PropTypes.func.isRequired,
+    type: PropTypes.string,
+    options: PropTypes.arrayOf(PropTypes.object),
   };
 
   return (
@@ -406,9 +414,9 @@ const Accounts = () => {
                 <tbody>
                   {typeAccounts.map(account => {
                     const projectedBalance = calculateProjectedBalance(account);
-                    const isEditing = editingId === account.id;
+                    const _isEditing = editingId === account.id;
 
-                    console.log('Account data:', account);
+                    logger.debug('Account data:', account);
 
                     return (
                       <tr key={account.id}>

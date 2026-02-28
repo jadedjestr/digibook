@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import React from 'react';
+import PropTypes from 'prop-types';
 import {
   vi,
   describe,
@@ -10,6 +10,7 @@ import {
   afterAll,
 } from 'vitest';
 
+import { logger } from '../../utils/logger';
 import AccountSelectorErrorBoundary from '../AccountSelectorErrorBoundary';
 
 // Component that throws an error for testing
@@ -19,14 +20,17 @@ const ThrowError = ({ shouldThrow }) => {
   }
   return <div>No error</div>;
 };
+ThrowError.propTypes = { shouldThrow: PropTypes.bool };
 
-// Mock console.error to avoid noise in tests
+// Mock console.error to avoid React error boundary noise in test output
 const originalConsoleError = console.error;
 beforeAll(() => {
+  // eslint-disable-next-line no-restricted-syntax -- test mock for React error boundary output
   console.error = vi.fn();
 });
 
 afterAll(() => {
+  // eslint-disable-next-line no-restricted-syntax -- restore after test mock
   console.error = originalConsoleError;
 });
 
@@ -39,7 +43,7 @@ describe('AccountSelectorErrorBoundary', () => {
     render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={false} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     expect(screen.getByText('No error')).toBeInTheDocument();
@@ -49,13 +53,13 @@ describe('AccountSelectorErrorBoundary', () => {
     render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     expect(screen.getByText('Account Selection Error')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Unable to load account options. This might be due to invalid data or a temporary issue.'
+        'Unable to load account options. This might be due to invalid data or a temporary issue.',
       ),
     ).toBeInTheDocument();
   });
@@ -64,7 +68,7 @@ describe('AccountSelectorErrorBoundary', () => {
     render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     const retryButton = screen.getByText('Retry');
@@ -75,7 +79,7 @@ describe('AccountSelectorErrorBoundary', () => {
     const { rerender } = render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     expect(screen.getByText('Account Selection Error')).toBeInTheDocument();
@@ -87,7 +91,7 @@ describe('AccountSelectorErrorBoundary', () => {
     rerender(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={false} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     expect(screen.getByText('No error')).toBeInTheDocument();
@@ -97,7 +101,7 @@ describe('AccountSelectorErrorBoundary', () => {
     const { rerender } = render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     // First retry
@@ -108,7 +112,7 @@ describe('AccountSelectorErrorBoundary', () => {
     rerender(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     // Reset button should now be visible
@@ -120,7 +124,7 @@ describe('AccountSelectorErrorBoundary', () => {
     const { rerender } = render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     // First retry
@@ -131,7 +135,7 @@ describe('AccountSelectorErrorBoundary', () => {
     rerender(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     // Click reset
@@ -142,7 +146,7 @@ describe('AccountSelectorErrorBoundary', () => {
     rerender(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={false} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     expect(screen.getByText('No error')).toBeInTheDocument();
@@ -155,7 +159,7 @@ describe('AccountSelectorErrorBoundary', () => {
     render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     const detailsButton = screen.getByText('Error Details (Development)');
@@ -164,7 +168,7 @@ describe('AccountSelectorErrorBoundary', () => {
     fireEvent.click(detailsButton);
 
     expect(
-      screen.getByText('Test error for error boundary')
+      screen.getByText('Test error for error boundary'),
     ).toBeInTheDocument();
 
     process.env.NODE_ENV = originalEnv;
@@ -177,27 +181,27 @@ describe('AccountSelectorErrorBoundary', () => {
     render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     expect(
-      screen.queryByText('Error Details (Development)')
+      screen.queryByText('Error Details (Development)'),
     ).not.toBeInTheDocument();
 
     process.env.NODE_ENV = originalEnv;
   });
 
-  test('logs error to console', () => {
+  test('logs error via logger', () => {
     render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
-    expect(console.error).toHaveBeenCalledWith(
+    expect(logger.error).toHaveBeenCalledWith(
       'AccountSelector Error Boundary caught an error:',
       expect.any(Error),
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -205,7 +209,7 @@ describe('AccountSelectorErrorBoundary', () => {
     const { rerender } = render(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     // First error
@@ -218,7 +222,7 @@ describe('AccountSelectorErrorBoundary', () => {
     rerender(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={false} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     expect(screen.getByText('No error')).toBeInTheDocument();
@@ -227,7 +231,7 @@ describe('AccountSelectorErrorBoundary', () => {
     rerender(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={true} />
-      </AccountSelectorErrorBoundary>
+      </AccountSelectorErrorBoundary>,
     );
 
     expect(screen.getByText('Account Selection Error')).toBeInTheDocument();

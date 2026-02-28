@@ -6,7 +6,8 @@ import {
   TrendingDown,
   Edit3,
 } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
+import { useState, useEffect } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
@@ -59,7 +60,7 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
       const result = await dbHelpers.calculateDebtPayoff(
         balance,
         payment,
-        interestRate
+        interestRate,
       );
       setPayoffResult(result);
     } catch (error) {
@@ -170,14 +171,18 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
       {/* Credit Card Selector */}
       {creditCards.length > 1 && (
         <div className='mb-6'>
-          <label className='block text-sm font-medium text-white/70 mb-2'>
+          <label
+            htmlFor='debt-calc-credit-card'
+            className='block text-sm font-medium text-white/70 mb-2'
+          >
             Select Credit Card
           </label>
           <select
+            id='debt-calc-credit-card'
             value={selectedCard?.id || ''}
             onChange={e => {
               const card = creditCards.find(
-                c => c.id === parseInt(e.target.value)
+                c => c.id === parseInt(e.target.value),
               );
               setSelectedCard(card);
             }}
@@ -198,11 +203,15 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
           <div className='grid grid-cols-1 md:grid-cols-2 gap-4 mb-6'>
             {/* Current Balance */}
             <div className='glass-card p-4'>
-              <label className='block text-sm font-medium text-white/70 mb-2'>
+              <label
+                htmlFor='debt-calc-balance'
+                className='block text-sm font-medium text-white/70 mb-2'
+              >
                 Current Balance
               </label>
               {isEditing ? (
                 <input
+                  id='debt-calc-balance'
                   type='number'
                   value={calculatorData.balance}
                   onChange={e => handleInputChange('balance', e.target.value)}
@@ -224,11 +233,15 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
 
             {/* Credit Limit */}
             <div className='glass-card p-4'>
-              <label className='block text-sm font-medium text-white/70 mb-2'>
+              <label
+                htmlFor='debt-calc-credit-limit'
+                className='block text-sm font-medium text-white/70 mb-2'
+              >
                 Credit Limit
               </label>
               {isEditing ? (
                 <input
+                  id='debt-calc-credit-limit'
                   type='number'
                   value={calculatorData.creditLimit}
                   onChange={e =>
@@ -259,11 +272,15 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
 
             {/* Interest Rate */}
             <div className='glass-card p-4'>
-              <label className='block text-sm font-medium text-white/70 mb-2'>
+              <label
+                htmlFor='debt-calc-interest-rate'
+                className='block text-sm font-medium text-white/70 mb-2'
+              >
                 Interest Rate (APR)
               </label>
               {isEditing ? (
                 <input
+                  id='debt-calc-interest-rate'
                   type='number'
                   value={calculatorData.interestRate}
                   onChange={e =>
@@ -288,10 +305,14 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
 
             {/* Monthly Payment */}
             <div className='glass-card p-4'>
-              <label className='block text-sm font-medium text-white/70 mb-2'>
+              <label
+                htmlFor='debt-calc-monthly-payment'
+                className='block text-sm font-medium text-white/70 mb-2'
+              >
                 Monthly Payment
               </label>
               <input
+                id='debt-calc-monthly-payment'
                 type='number'
                 value={calculatorData.payment}
                 onChange={e => handleInputChange('payment', e.target.value)}
@@ -322,8 +343,9 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                       </p>
                       <p className='text-white/70 text-sm'>
                         Monthly payment of{' '}
-                        {formatCurrency(calculatorData.payment)} doesn't cover
-                        interest ({formatCurrency(payoffResult.monthlyInterest)}
+                        {formatCurrency(calculatorData.payment)} doesn&apos;t
+                        cover interest (
+                        {formatCurrency(payoffResult.monthlyInterest)}
                         /month). Debt will never be paid off.
                       </p>
                     </div>
@@ -373,7 +395,7 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                         {payoffResult.success
                           ? formatCurrency(
                               calculatorData.balance +
-                                payoffResult.totalInterest
+                                payoffResult.totalInterest,
                             )
                           : 'N/A'}
                       </p>
@@ -403,7 +425,7 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                         const interestPayment = balance * monthlyRate;
                         const principalPayment = Math.min(
                           newPayment - interestPayment,
-                          balance
+                          balance,
                         );
                         totalInterest += interestPayment;
                         balance -= principalPayment;
@@ -442,6 +464,15 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
       )}
     </div>
   );
+};
+
+DebtPayoffCalculator.propTypes = {
+  creditCards: PropTypes.arrayOf(PropTypes.object),
+  onDataChange: PropTypes.func,
+};
+
+DebtPayoffCalculator.defaultProps = {
+  creditCards: [],
 };
 
 export default DebtPayoffCalculator;

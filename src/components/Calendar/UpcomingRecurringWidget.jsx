@@ -1,85 +1,90 @@
 import { Clock, Calendar, AlertCircle } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-import { recurringExpenseService } from '../../services/recurringExpenseService';
+import { getUpcomingRecurringExpenses } from '../../services/recurringExpenseService';
+import { useAppStore } from '../../stores/useAppStore';
 import { DateUtils } from '../../utils/dateUtils';
+import { logger } from '../../utils/logger';
 
 /**
  * Widget showing the next upcoming recurring expense
  * Displayed on the same line as the New Cycle button
  */
 const UpcomingRecurringWidget = () => {
-  console.log('UpcomingRecurringWidget: COMPONENT MOUNTING');
-
   const [nextRecurring, setNextRecurring] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  console.log(
-    'UpcomingRecurringWidget: STATE INITIALIZED - loading:',
-    loading,
-    'error:',
-    error
-  );
+  // Watch for template refresh trigger from store
+  const templatesLastUpdated = useAppStore(state => state.templatesLastUpdated);
 
   // Load the next upcoming recurring expense
-  useEffect(() => {
-    const loadNextRecurring = async () => {
-      try {
-        setLoading(true);
-        console.log(
-          'UpcomingRecurringWidget: Starting to load recurring expenses...'
-        );
+  const loadNextRecurring = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null); // Clear any previous errors
 
-        // Debug: Test if service exists
-        console.log(
-          'UpcomingRecurringWidget: recurringExpenseService =',
-          recurringExpenseService
-        );
+      const upcomingExpenses = await getUpcomingRecurringExpenses();
 
-        const upcomingExpenses =
-          await recurringExpenseService.getUpcomingRecurringExpenses();
+      if (upcomingExpenses.length > 0) {
+        // Sort by next due date and get the closest one
+        const sortedExpenses = upcomingExpenses
+          .filter(expense => {
+            // Filter out expenses with invalid dates
+            if (!expense.nextDueDate) return false;
+            const date = DateUtils.parseDate(expense.nextDueDate);
+            return date && !isNaN(date.getTime());
+          })
+          .sort((a, b) => {
+            try {
+              const dateA = DateUtils.parseDate(a.nextDueDate);
+              const dateB = DateUtils.parseDate(b.nextDueDate);
+              if (!dateA || !dateB) return 0;
+              return dateA - dateB;
+            } catch (err) {
+              logger.error('Error sorting dates:', err);
+              return 0;
+            }
+          });
 
-        console.log(
-          'UpcomingRecurringWidget: Got upcoming expenses:',
-          upcomingExpenses
-        );
-
-        if (upcomingExpenses.length > 0) {
-          // Sort by next due date and get the closest one
-          const sortedExpenses = upcomingExpenses
-            .filter(expense => expense.nextDueDate)
-            .sort((a, b) => new Date(a.nextDueDate) - new Date(b.nextDueDate));
-
-          if (sortedExpenses.length > 0) {
-            setNextRecurring(sortedExpenses[0]);
-            console.log(
-              'UpcomingRecurringWidget: Set next recurring:',
-              sortedExpenses[0]
-            );
-          }
+        if (sortedExpenses.length > 0) {
+          setNextRecurring(sortedExpenses[0]);
         } else {
-          console.log('UpcomingRecurringWidget: No upcoming expenses found');
+          setNextRecurring(null);
         }
-      } catch (err) {
-        console.error('UpcomingRecurringWidget: ERROR CAUGHT:', err);
-        console.error('UpcomingRecurringWidget: Error stack:', err.stack);
-        console.error('UpcomingRecurringWidget: Error name:', err.name);
-        console.error('UpcomingRecurringWidget: Error message:', err.message);
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      } else {
+        setNextRecurring(null);
       }
-    };
-
-    loadNextRecurring();
+    } catch (err) {
+      logger.error(
+        'UpcomingRecurringWidget: Error loading recurring expenses:',
+        err,
+      );
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // Load on mount and when templates are updated
+  useEffect(() => {
+    loadNextRecurring();
+  }, [loadNextRecurring, templatesLastUpdated]);
 
   // Calculate days until next recurring expense
   const getDaysUntil = dateString => {
-    const today = DateUtils.today();
-    const days = DateUtils.daysBetween(today, dateString);
-    return days;
+    try {
+      if (!dateString) return 999;
+      const today = DateUtils.today();
+      const days = DateUtils.daysBetween(today, dateString);
+
+      // DateUtils.daysBetween can return null, so check for both null and NaN
+      if (days === null || isNaN(days)) return 999;
+      return days;
+    } catch (error) {
+      logger.error('Error calculating days until:', error);
+      return 999;
+    }
   };
 
   // Format the time until display
@@ -157,7 +162,11 @@ const UpcomingRecurringWidget = () => {
 
         <div className='upcoming-date'>
           <Calendar size={12} />
-          <span>{DateUtils.formatShortDate(nextRecurring.nextDueDate)}</span>
+          <span>
+            {nextRecurring.nextDueDate
+              ? DateUtils.formatShortDate(nextRecurring.nextDueDate)
+              : 'Invalid date'}
+          </span>
         </div>
       </div>
     </div>

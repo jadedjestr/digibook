@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle, Info } from 'lucide-react';
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 import { formatCreditCardBalance } from '../utils/creditCardUtils';
 
@@ -164,10 +164,14 @@ const CreditCardPaymentTester = () => {
 
       {/* Scenario Selector */}
       <div className='space-y-3'>
-        <label className='block text-sm font-medium text-white/70'>
+        <label
+          htmlFor='credit-card-payment-test-scenario'
+          className='block text-sm font-medium text-white/70'
+        >
           Test Scenario
         </label>
         <select
+          id='credit-card-payment-test-scenario'
           value={selectedScenario}
           onChange={e => {
             setSelectedScenario(e.target.value);
@@ -326,7 +330,7 @@ const CreditCardPaymentTester = () => {
                   >
                     $
                     {Math.abs(
-                      validationResult.paymentInfo.afterPaymentDebt
+                      validationResult.paymentInfo.afterPaymentDebt,
                     ).toFixed(2)}
                     {validationResult.paymentInfo.afterPaymentDebt < 0 &&
                       ' (credit)'}

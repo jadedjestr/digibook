@@ -1,16 +1,14 @@
-import { logger } from './utils/logger';
-
-import { useState, useEffect, Suspense, lazy } from 'react';
+import {
+  BarChart3,
+  Calendar,
+  Clock,
+  CreditCard,
+  Settings,
+  Wallet,
+} from 'lucide-react';
+import { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import {
-  Wallet,
-  Clock,
-  Calendar,
-  Settings,
-  CreditCard,
-  BarChart3,
-} from 'lucide-react';
 
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -19,8 +17,12 @@ import PINLock from './components/PINLock';
 import Sidebar from './components/Sidebar';
 import { GlobalCategoryProvider } from './contexts/GlobalCategoryContext';
 import { PrivacyProvider } from './contexts/PrivacyContext';
+import SettingsPage from './pages/Settings';
 import { useAppStore } from './stores/useAppStore';
 import { securePINStorage } from './utils/crypto';
+import { exportJSONData } from './utils/exportUtils';
+import { logger } from './utils/logger';
+import { notify } from './utils/notifications';
 
 // Lazy load pages for better performance
 const Accounts = lazy(() => import('./pages/Accounts'));
@@ -29,29 +31,15 @@ const FixedExpenses = lazy(() => import('./pages/FixedExpenses'));
 const CreditCards = lazy(() => import('./pages/CreditCards'));
 const Insights = lazy(() => import('./pages/Insights'));
 
-// Import Settings directly to avoid context issues with lazy loading
-import SettingsPage from './pages/Settings';
-
 function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [pin, setPin] = useState('');
   const [isLoadingPIN, setIsLoadingPIN] = useState(true);
+  const isExportingRef = useRef(false);
 
   // Use Zustand store for global state
-  const {
-    currentPage,
-    accounts,
-    creditCards,
-    pendingTransactions,
-    isPanelOpen,
-    isLoading,
-    error,
-    loadData,
-    reloadPaycheckSettings,
-    setCurrentPage,
-    setPanelOpen,
-    clearError,
-  } = useAppStore();
+  const { accounts, creditCards, currentPage, loadData, pendingTransactions } =
+    useAppStore();
 
   // Load PIN securely on mount
   useEffect(() => {
@@ -76,6 +64,60 @@ function App() {
       loadData();
     }
   }, [loadData, isLoadingPIN]);
+
+  // Global keyboard shortcut for export JSON (Cmd+E / Ctrl+E)
+  useEffect(() => {
+    // Don't set up shortcut if app is locked or PIN is loading
+    if (isLoadingPIN || !pin || isLocked) {
+      return;
+    }
+
+    const handleKeyDown = event => {
+      // Cmd+E on Mac, Ctrl+E on Windows/Linux
+      if ((event.metaKey || event.ctrlKey) && event.key === 'e') {
+        // Don't trigger if user is typing in an input field
+        const activeElement = document.activeElement;
+        const isInputFocused =
+          activeElement &&
+          (activeElement.tagName === 'INPUT' ||
+            activeElement.tagName === 'TEXTAREA' ||
+            activeElement.isContentEditable);
+
+        if (isInputFocused) {
+          return;
+        }
+
+        // Prevent default browser behavior
+        event.preventDefault();
+
+        // Prevent multiple simultaneous exports
+        if (isExportingRef.current) {
+          return;
+        }
+
+        isExportingRef.current = true;
+        notify.info('Exporting data...');
+
+        exportJSONData()
+          .then(result => {
+            if (result.success) {
+              notify.success('Data exported successfully');
+            } else {
+              notify.error(`Export failed: ${result.error}`);
+            }
+          })
+          .catch(error => {
+            notify.error('Error exporting data', error);
+          })
+          .finally(() => {
+            isExportingRef.current = false;
+          });
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isLoadingPIN, pin, isLocked]);
 
   const handlePINChange = async newPin => {
     try {
@@ -110,9 +152,9 @@ function App() {
       case 'pending':
         return (
           <PendingTransactions
-            pendingTransactions={pendingTransactions}
             accounts={accounts}
             onDataChange={loadData}
+            pendingTransactions={pendingTransactions}
           />
         );
       case 'expenses':

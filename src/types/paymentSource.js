@@ -31,7 +31,7 @@ export const createPaymentSource = {
   account: accountId => {
     if (!accountId || !Number.isInteger(accountId) || accountId <= 0) {
       throw new Error(
-        `Invalid accountId: ${accountId}. Must be a positive integer.`
+        `Invalid accountId: ${accountId}. Must be a positive integer.`,
       );
     }
 
@@ -51,7 +51,7 @@ export const createPaymentSource = {
   creditCard: creditCardId => {
     if (!creditCardId || !Number.isInteger(creditCardId) || creditCardId <= 0) {
       throw new Error(
-        `Invalid creditCardId: ${creditCardId}. Must be a positive integer.`
+        `Invalid creditCardId: ${creditCardId}. Must be a positive integer.`,
       );
     }
 
@@ -190,7 +190,7 @@ export const PaymentSourceUtils = {
 
     if (paymentSource.creditCardId) {
       const creditCard = creditCards.find(
-        card => card.id === paymentSource.creditCardId
+        card => card.id === paymentSource.creditCardId,
       );
       return creditCard
         ? creditCard.name

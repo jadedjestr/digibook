@@ -12,8 +12,8 @@ import { logger } from './logger';
  * Validates that an expense has exactly one payment source
  *
  * @param {Object} expense - The expense object to validate
- * @param {number|null} expense.accountId - Account ID for checking/savings payment
- * @param {number|null} expense.creditCardId - Credit card ID for credit card payment
+ * @param {number|null} expense.accountId - Account ID for checking/savings
+ * @param {number|null} expense.creditCardId - Credit card ID for credit card
  * @returns {boolean} True if valid
  * @throws {Error} If validation fails
  */
@@ -69,9 +69,11 @@ export const validateCreditCardPayment = expense => {
     throw new Error(error);
   }
 
-  // Credit card payments cannot use creditCardId (that's for regular expenses paid with credit cards)
+  // Credit card payments cannot use creditCardId (for regular expenses only)
   if (expense.creditCardId) {
-    const error = `Credit card payment "${expense.name || 'Unknown'}" cannot have creditCardId (${expense.creditCardId}). Use targetCreditCardId instead. creditCardId is for regular expenses paid with credit cards.`;
+    const error =
+      `Credit card payment "${expense.name || 'Unknown'}" cannot have ` +
+      `creditCardId (${expense.creditCardId}). Use targetCreditCardId instead.`;
     logger.error('Credit card payment validation failed:', error);
     throw new Error(error);
   }
@@ -127,15 +129,19 @@ export const validatePaymentSourceIds = expense => {
  * Comprehensive expense validation that runs all validation checks
  *
  * @param {Object} expense - The expense object to validate
+ * @param {Object} [options={}] - Optional validation options
+ * @param {boolean} [options.skipPaymentSourceValidation=false] - Skip payment
  * @returns {boolean} True if all validations pass
  * @throws {Error} If any validation fails
  */
-export const validateExpense = expense => {
+export const validateExpense = (expense, options = {}) => {
   try {
     // Run all validation checks
     validatePaymentSourceIds(expense);
-    validatePaymentSource(expense);
-    validateCreditCardPayment(expense);
+    if (!options.skipPaymentSourceValidation) {
+      validatePaymentSource(expense);
+      validateCreditCardPayment(expense);
+    }
 
     logger.debug(`Expense validation passed for: ${expense.name || 'Unknown'}`);
     return true;

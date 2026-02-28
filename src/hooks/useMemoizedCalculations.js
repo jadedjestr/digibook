@@ -10,7 +10,7 @@ export const useMemoizedCalculations = (
   expenses,
   accounts,
   creditCards,
-  paycheckSettings // eslint-disable-line no-unused-vars
+  paycheckSettings, // eslint-disable-line no-unused-vars
 ) => {
   const { start, end } = usePerformanceTimer();
 
@@ -38,11 +38,11 @@ export const useMemoizedCalculations = (
 
     const totalAmount = expenses.reduce(
       (sum, expense) => sum + expense.amount,
-      0
+      0,
     );
     const totalPaid = expenses.reduce(
       (sum, expense) => sum + (expense.paidAmount || 0),
-      0
+      0,
     );
 
     // Fix: Calculate remaining per expense, not as total difference
@@ -80,10 +80,10 @@ export const useMemoizedCalculations = (
           count: categoryExpenses.length,
           total: categoryTotal,
           paid: categoryExpenses.filter(
-            e => (e.paidAmount || 0) >= e.amount && e.amount > 0
+            e => (e.paidAmount || 0) >= e.amount && e.amount > 0,
           ).length,
         };
-      }
+      },
     );
 
     const result = totals;
@@ -97,11 +97,11 @@ export const useMemoizedCalculations = (
 
     const accountTotal = accounts.reduce(
       (sum, account) => sum + (account.currentBalance || 0),
-      0
+      0,
     );
     const creditCardTotal = creditCards.reduce(
       (sum, card) => sum + (card.balance || 0),
-      0
+      0,
     );
     const netWorth = accountTotal - creditCardTotal;
 
@@ -153,7 +153,7 @@ export const useMemoizedCalculations = (
 
       if (filters.category) {
         filtered = filtered.filter(
-          expense => (expense.category || 'Uncategorized') === filters.category
+          expense => (expense.category || 'Uncategorized') === filters.category,
         );
       }
 
@@ -179,7 +179,7 @@ export const useMemoizedCalculations = (
 
       if (filters.accountId) {
         filtered = filtered.filter(
-          expense => expense.accountId === filters.accountId
+          expense => expense.accountId === filters.accountId,
         );
       }
 
@@ -188,15 +188,38 @@ export const useMemoizedCalculations = (
         filtered = filtered.filter(
           expense =>
             expense.name.toLowerCase().includes(searchLower) ||
-            (expense.category || '').toLowerCase().includes(searchLower)
+            (expense.category || '').toLowerCase().includes(searchLower),
         );
+      }
+
+      if (filters.expenseType) {
+        switch (filters.expenseType) {
+          case 'recurring':
+            filtered = filtered.filter(
+              expense =>
+                expense.recurringTemplateId !== null &&
+                expense.recurringTemplateId !== undefined,
+            );
+            break;
+          case 'oneoff':
+            filtered = filtered.filter(
+              expense =>
+                expense.recurringTemplateId === null ||
+                expense.recurringTemplateId === undefined,
+            );
+            break;
+          case 'all':
+          default:
+            // No filter
+            break;
+        }
       }
 
       const result = filtered;
       end('getFilteredExpenses');
       return result;
     },
-    [expenses, start, end]
+    [expenses, start, end],
   );
 
   // Memoize sorted expenses
@@ -229,7 +252,7 @@ export const useMemoizedCalculations = (
       end('getSortedExpenses');
       return result;
     },
-    [start, end]
+    [start, end],
   );
 
   return {

@@ -82,7 +82,7 @@ export class MockDatabase {
     }
 
     const pendingCount = Array.from(
-      this.data.pendingTransactions.values()
+      this.data.pendingTransactions.values(),
     ).filter(transaction => transaction.accountId === id).length;
 
     if (pendingCount > 0) {
@@ -140,7 +140,7 @@ export class MockDatabase {
     // Check for duplicate names (case insensitive)
     const existingCategories = Array.from(this.data.categories.values());
     const nameExists = existingCategories.some(
-      cat => cat.nameLower === trimmedName.toLowerCase()
+      cat => cat.nameLower === trimmedName.toLowerCase(),
     );
 
     if (nameExists) {
@@ -188,10 +188,10 @@ export class MockDatabase {
     }
 
     const affectedFixedExpenses = Array.from(
-      this.data.fixedExpenses.values()
+      this.data.fixedExpenses.values(),
     ).filter(expense => expense.category === category.name);
     const affectedPendingTransactions = Array.from(
-      this.data.pendingTransactions.values()
+      this.data.pendingTransactions.values(),
     ).filter(transaction => transaction.category === category.name);
 
     this.data.categories.delete(id);
@@ -205,7 +205,7 @@ export class MockDatabase {
   async initializeDefaultCategories() {
     const existingCategories = Array.from(this.data.categories.values());
     const existingCategoryNames = existingCategories.map(cat =>
-      cat.name.toLowerCase()
+      cat.name.toLowerCase(),
     );
 
     const defaultCategories = [
@@ -222,7 +222,7 @@ export class MockDatabase {
     ];
 
     const categoriesToAdd = defaultCategories.filter(
-      category => !existingCategoryNames.includes(category.name.toLowerCase())
+      category => !existingCategoryNames.includes(category.name.toLowerCase()),
     );
 
     for (const category of categoriesToAdd) {
@@ -246,7 +246,7 @@ export class MockDatabase {
 
   async getAuditLogs() {
     return Array.from(this.data.auditLogs.values()).sort(
-      (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+      (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
     );
   }
 
@@ -304,7 +304,7 @@ export class MockDatabase {
         equals: value => ({
           count: () =>
             Array.from(this.data.accounts.values()).filter(
-              account => account[field] === value
+              account => account[field] === value,
             ).length,
         }),
       }),
@@ -327,7 +327,7 @@ export class MockDatabase {
         equals: value => ({
           count: () =>
             Array.from(this.data.pendingTransactions.values()).filter(
-              transaction => transaction[field] === value
+              transaction => transaction[field] === value,
             ).length,
         }),
       }),
@@ -359,7 +359,7 @@ export class MockDatabase {
         equals: value => ({
           toArray: () =>
             Array.from(this.data.fixedExpenses.values()).filter(
-              expense => expense[field] === value
+              expense => expense[field] === value,
             ),
         }),
       }),
@@ -442,7 +442,7 @@ export class MockDatabase {
         this.data.auditLogs.set(id, logData);
         return id;
       },
-      orderBy: field => ({
+      orderBy: _field => ({
         reverse: () => ({
           toArray: () => this.getAuditLogs(),
         }),

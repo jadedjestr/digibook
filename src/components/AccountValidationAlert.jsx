@@ -1,5 +1,5 @@
 import { AlertTriangle, ExternalLink } from 'lucide-react';
-import React from 'react';
+import PropTypes from 'prop-types';
 
 const AccountValidationAlert = ({
   invalidExpenses = [],
@@ -60,6 +60,18 @@ const AccountValidationAlert = ({
       </div>
     </div>
   );
+};
+
+AccountValidationAlert.propTypes = {
+  invalidExpenses: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string,
+      name: PropTypes.string,
+      accountId: PropTypes.string,
+    }),
+  ),
+  onNavigateToSettings: PropTypes.func,
+  onFixAccount: PropTypes.func,
 };
 
 export default AccountValidationAlert;

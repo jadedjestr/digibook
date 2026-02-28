@@ -1,12 +1,14 @@
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import PropTypes from 'prop-types';
 
 import { formatCurrency } from '../utils/accountUtils';
+import { logger } from '../utils/logger';
 
 import PrivacyWrapper from './PrivacyWrapper';
 
 const ProjectedBalanceCard = ({
   accounts = [],
-  creditCards = [],
+  creditCards: _creditCards = [],
   summaryTotals = {},
 }) => {
   // Find the default account (the one marked as default or first account)
@@ -20,7 +22,7 @@ const ProjectedBalanceCard = ({
   const balanceAfterExpenses = defaultAccountBalance - payThisWeekTotal;
 
   // Debug logging
-  console.log('ProjectedBalanceCard Debug:', {
+  logger.debug('ProjectedBalanceCard Debug:', {
     defaultAccount: defaultAccount
       ? { name: defaultAccount.name, balance: defaultAccountBalance }
       : null,
@@ -66,6 +68,18 @@ const ProjectedBalanceCard = ({
       </div>
     </div>
   );
+};
+
+ProjectedBalanceCard.propTypes = {
+  accounts: PropTypes.arrayOf(PropTypes.object),
+  creditCards: PropTypes.arrayOf(PropTypes.object),
+  summaryTotals: PropTypes.object,
+};
+
+ProjectedBalanceCard.defaultProps = {
+  accounts: [],
+  creditCards: [],
+  summaryTotals: {},
 };
 
 export default ProjectedBalanceCard;
