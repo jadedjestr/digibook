@@ -4,15 +4,13 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  defaultDropAnimationSideEffects,
 } from '@dnd-kit/core';
 import PropTypes from 'prop-types';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
 import { useExpenseOperations } from '../../hooks/useExpenseOperations';
 import { useMemoizedCalculations } from '../../hooks/useMemoizedCalculations';
 import { usePaycheckCalculations } from '../../hooks/usePaycheckCalculations';
-import { usePerformanceMonitor } from '../../hooks/usePerformanceMonitor';
 import {
   useCollapsedCategories,
   useSortPreference,
@@ -64,28 +62,15 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
   const [initError, setInitError] = useState(null);
 
   // Core state - initialized with safe defaults
-  const [_editingId, _setEditingId] = useState(null);
-  const [_editingField, _setEditingField] = useState(null);
   const [newExpenseId, setNewExpenseId] = useState(null);
   const [duplicatingExpense, setDuplicatingExpense] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [updatingExpenseId, setUpdatingExpenseId] = useState(null);
-  const [updateInProgress, setUpdateInProgress] = useState(new Set());
+  const updateInProgressRef = useRef(new Set());
   const [invalidExpenses, setInvalidExpenses] = useState([]);
   const [editingRecurringTemplate, setEditingRecurringTemplate] =
     useState(null);
   const [showEditRecurringModal, setShowEditRecurringModal] = useState(false);
-
-  // Performance monitoring
-  const {
-    startRender: _startRender,
-    endRender: _endRender,
-    getPerformanceData: _getPerformanceData,
-  } = usePerformanceMonitor('ExpenseTableContainer', {
-    trackRenders: true,
-    trackMemory: true,
-    logThreshold: 16,
-  });
 
   // 🔧 SIMPLIFIED PERSISTED STATE - No complex manual overrides
   const {
@@ -98,11 +83,7 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
     setValue: setSortBy,
     isLoaded: sortLoaded,
   } = useSortPreference();
-  const {
-    value: _autoCollapseEnabled,
-    setValue: _setAutoCollapseEnabled,
-    isLoaded: autoCollapseLoaded,
-  } = useAutoCollapsePreference();
+  const { isLoaded: autoCollapseLoaded } = useAutoCollapsePreference();
   const {
     value: showOnlyUnpaid,
     setValue: setShowOnlyUnpaid,
@@ -113,18 +94,6 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
     setValue: setExpenseTypeFilter,
     isLoaded: expenseTypeFilterLoaded,
   } = useExpenseTypeFilter();
-
-  const [_dropAnimation, _setDropAnimation] = useState({
-    duration: 250,
-    easing: 'ease-in-out',
-    sideEffects: defaultDropAnimationSideEffects({
-      styles: {
-        active: {
-          opacity: '0.5',
-        },
-      },
-    }),
-  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -201,22 +170,6 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
     showOnlyUnpaidLoaded,
     expenseTypeFilterLoaded,
   ]);
-
-  // Sorting helpers - MUST be defined BEFORE useMemo that uses them
-  const _sortByDueDate = (a, b) => {
-    if (!a.dueDate && !b.dueDate) return 0;
-    if (!a.dueDate) return 1;
-    if (!b.dueDate) return -1;
-
-    // Parse as local dates to avoid timezone shifts
-    const dateA = new Date(`${a.dueDate}T00:00:00`);
-    const dateB = new Date(`${b.dueDate}T00:00:00`);
-    return dateA - dateB;
-  };
-
-  const _sortByName = (a, b) => {
-    return a.name.localeCompare(b.name);
-  };
 
   // Apply expense type filter
   const filteredExpenses = useMemo(() => {
@@ -312,13 +265,12 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
   }, [filteredExpensesByCategory]);
 
   // Use memoized calculations for sorting
-  const { getFilteredExpenses: _getFilteredExpenses, getSortedExpenses } =
-    useMemoizedCalculations(
-      filteredExpenses || [],
-      accounts,
-      creditCards,
-      paycheckSettings,
-    );
+  const { getSortedExpenses } = useMemoizedCalculations(
+    filteredExpenses || [],
+    accounts,
+    creditCards,
+    paycheckSettings,
+  );
 
   // 🔧 SAFE DATA PROCESSING - Use memoized calculations with filtered expenses
   const groupedExpenses = useMemo(() => {
@@ -365,17 +317,17 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
   );
 
   // Calculate total for a category
-  const getCategoryTotal = categoryExpenses => {
+  const getCategoryTotal = useCallback(categoryExpenses => {
     return categoryExpenses.reduce((total, expense) => {
       const remaining = expense.amount - (expense.paidAmount || 0);
       return total + (remaining > 0 ? remaining : 0);
     }, 0);
-  };
+  }, []);
 
   // Handle expense updates using the custom hook
   const handleUpdateExpense = useCallback(
     async (id, updates) => {
-      if (updateInProgress.has(id)) {
+      if (updateInProgressRef.current.has(id)) {
         logger.debug(
           `FixedExpensesTable: Update already in progress for expense ${id}, skipping`,
         );
@@ -383,22 +335,18 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
       }
 
       try {
-        setUpdateInProgress(prev => new Set(prev).add(id));
+        updateInProgressRef.current.add(id);
         setUpdatingExpenseId(id);
 
         await updateExpense(id, updates);
       } catch (error) {
         logger.error('Error updating expense:', error);
       } finally {
-        setUpdateInProgress(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(id);
-          return newSet;
-        });
+        updateInProgressRef.current.delete(id);
         setUpdatingExpenseId(null);
       }
     },
-    [updateExpense, updateInProgress],
+    [updateExpense],
   );
 
   // Handle marking expense as paid
@@ -544,26 +492,55 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
   }, [editingRecurringTemplate, reloadExpenses]);
 
   // Handle drag and drop
-  const handleDragStart = event => {
+  const handleDragStart = useCallback(event => {
     setActiveId(event.active.id);
-  };
+  }, []);
 
-  const handleDragEnd = async event => {
-    const { active, over } = event;
-    setActiveId(null);
+  const handleDragEnd = useCallback(
+    async event => {
+      const { active, over } = event;
+      setActiveId(null);
 
-    if (!over) return;
+      if (!over) return;
 
-    const expenseId = active.id;
-    const newCategory = over.id;
+      const expenseId = active.id;
+      const newCategory = over.id;
 
-    if (newCategory && newCategory !== 'expense-table') {
-      const expense = fixedExpenses.find(e => e.id === expenseId);
-      if (expense && expense.category !== newCategory) {
-        await handleUpdateExpense(expenseId, { category: newCategory });
+      if (newCategory && newCategory !== 'expense-table') {
+        const expense = fixedExpenses.find(e => e.id === expenseId);
+        if (expense && expense.category !== newCategory) {
+          await handleUpdateExpense(expenseId, { category: newCategory });
+        }
       }
-    }
-  };
+    },
+    [fixedExpenses, handleUpdateExpense],
+  );
+
+  // Extracted JSX handlers — stable refs for child components
+  const handleExpenseAdded = useCallback(
+    async newExpenseId => {
+      if (newExpenseId) {
+        setNewExpenseId(newExpenseId);
+        await reloadExpenses();
+      }
+    },
+    [reloadExpenses],
+  );
+
+  const handleAddPanelDataChange = useCallback(
+    async newExpenseId => {
+      if (newExpenseId && typeof newExpenseId === 'number') {
+        setNewExpenseId(newExpenseId);
+      }
+      await reloadExpenses();
+    },
+    [reloadExpenses],
+  );
+
+  const handleCloseRecurringModal = useCallback(() => {
+    setShowEditRecurringModal(false);
+    setEditingRecurringTemplate(null);
+  }, []);
 
   // Loading state
   if (initState === INIT_STATES.LOADING || isLoading) {
@@ -640,12 +617,7 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
                   onDelete={handleDeleteExpense}
                   onUpdateExpense={handleUpdateExpense}
                   onEditRecurring={handleEditRecurring}
-                  onExpenseAdded={async newExpenseId => {
-                    if (newExpenseId) {
-                      setNewExpenseId(newExpenseId);
-                      await reloadExpenses();
-                    }
-                  }}
+                  onExpenseAdded={handleExpenseAdded}
                   activeId={activeId}
                 />
               ),
@@ -676,26 +648,14 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
         onClose={() => setPanelOpen(false)}
         accounts={accounts}
         creditCards={creditCards}
-        onDataChange={async newExpenseId => {
-          // Always reload expenses after recurring template creation
-          // because pre-generation may have created multiple expenses
-          if (newExpenseId && typeof newExpenseId === 'number') {
-            setNewExpenseId(newExpenseId);
-          }
-
-          // Reload expenses to show all newly generated occurrences
-          await reloadExpenses();
-        }}
+        onDataChange={handleAddPanelDataChange}
       />
 
       {/* Edit Recurring Template Modal */}
       {editingRecurringTemplate && (
         <RecurringExpenseModal
           isOpen={showEditRecurringModal}
-          onClose={() => {
-            setShowEditRecurringModal(false);
-            setEditingRecurringTemplate(null);
-          }}
+          onClose={handleCloseRecurringModal}
           mode='edit'
           templateId={editingRecurringTemplate.id}
           initialData={editingRecurringTemplate}

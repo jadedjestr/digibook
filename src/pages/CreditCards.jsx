@@ -1,6 +1,6 @@
 import { Plus, CreditCard } from 'lucide-react';
 import PropTypes from 'prop-types';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
@@ -65,11 +65,7 @@ const CreditCards = ({
   const [errors, setErrors] = useState({});
   const [sortBy, setSortBy] = useState('name'); // 'name', 'dueDate', 'balance', 'utilization'
 
-  useEffect(() => {
-    loadCreditCards();
-  }, []);
-
-  const loadCreditCards = async () => {
+  const loadCreditCards = useCallback(async () => {
     try {
       setIsLoading(true);
       const cards = await dbHelpers.getCreditCards();
@@ -80,16 +76,23 @@ const CreditCards = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
-  };
+  useEffect(() => {
+    loadCreditCards();
+  }, [loadCreditCards]);
 
-  const validateForm = () => {
+  const handleInputChange = useCallback(
+    (field, value) => {
+      setFormData(prev => ({ ...prev, [field]: value }));
+      if (errors[field]) {
+        setErrors(prev => ({ ...prev, [field]: '' }));
+      }
+    },
+    [errors],
+  );
+
+  const validateForm = useCallback(() => {
     const newErrors = {};
 
     if (!formData.name.trim()) {
@@ -118,9 +121,9 @@ const CreditCards = ({
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
+  }, [formData]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!validateForm()) {
       notify.error('Please fix the errors before saving');
       return;
@@ -176,9 +179,9 @@ const CreditCards = ({
       logger.error('Error saving credit card:', error);
       notify.error('Failed to save credit card');
     }
-  };
+  }, [validateForm, formData, editingCard, loadCreditCards, onDataChange]);
 
-  const resetAddEditModal = () => {
+  const resetAddEditModal = useCallback(() => {
     setIsAddModalOpen(false);
     setEditingCard(null);
     setFormData({
@@ -191,9 +194,9 @@ const CreditCards = ({
       minimumPayment: '',
     });
     setErrors({});
-  };
+  }, []);
 
-  const handleEdit = card => {
+  const handleEdit = useCallback(card => {
     setEditingCard(card);
     setFormData({
       name: card.name,
@@ -205,25 +208,28 @@ const CreditCards = ({
       minimumPayment: card.minimumPayment.toString(),
     });
     setIsAddModalOpen(true);
-  };
+  }, []);
 
-  const handleDelete = async card => {
+  const handleDelete = useCallback(async card => {
     // Open the enhanced deletion modal instead of simple confirmation
     setDeletionModal({ isOpen: true, card });
-  };
+  }, []);
 
-  const handleDeleteConfirmed = deletedCardId => {
-    // Remove the deleted card from local state
-    setCreditCards(prev => prev.filter(card => card.id !== deletedCardId));
+  const handleDeleteConfirmed = useCallback(
+    deletedCardId => {
+      // Remove the deleted card from local state
+      setCreditCards(prev => prev.filter(card => card.id !== deletedCardId));
+      setDeletionModal({ isOpen: false, card: null });
+      onDataChange();
+    },
+    [onDataChange],
+  );
+
+  const handleDeleteModalClose = useCallback(() => {
     setDeletionModal({ isOpen: false, card: null });
-    onDataChange();
-  };
+  }, []);
 
-  const handleDeleteModalClose = () => {
-    setDeletionModal({ isOpen: false, card: null });
-  };
-
-  const _handleCreateMissingExpenses = async () => {
+  const _handleCreateMissingExpenses = useCallback(async () => {
     try {
       const createdCount = await dbHelpers.createMissingCreditCardExpenses();
       if (createdCount > 0) {
@@ -238,18 +244,18 @@ const CreditCards = ({
       logger.error('Error creating missing expenses:', error);
       notify.error('Failed to create missing expenses');
     }
-  };
+  }, [onDataChange]);
 
-  const handleOpenMigration = () => {
+  const handleOpenMigration = useCallback(() => {
     setMigrationModal({ isOpen: true });
-  };
+  }, []);
 
-  const handleMigrationComplete = () => {
+  const handleMigrationComplete = useCallback(() => {
     loadCreditCards();
     onDataChange(); // Refresh the data in parent
-  };
+  }, [loadCreditCards, onDataChange]);
 
-  // Sort credit cards based on selected criteria
+  // Sort credit cards based on selected criteria and pre-compute derived values
   const sortedCreditCards = useMemo(() => {
     if (!creditCards.length) return [];
 
@@ -284,7 +290,11 @@ const CreditCards = ({
       }
     });
 
-    return sorted;
+    return sorted.map(card => ({
+      ...card,
+      utilization: calculateUtilization(card.balance, card.creditLimit),
+      daysUntilDue: getDaysUntilDue(card.dueDate),
+    }));
   }, [creditCards, sortBy]);
 
   // Calculate summary statistics for all credit cards
@@ -452,31 +462,15 @@ const CreditCards = ({
         </div>
       ) : (
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-          {sortedCreditCards.map((card, index) => {
-            // Calculate derived values for the enhanced component
-            const utilization = calculateUtilization(
-              card.balance,
-              card.creditLimit,
-            );
-            const daysUntilDue = getDaysUntilDue(card.dueDate);
-
-            // Create enhanced card data object
-            const enhancedCard = {
-              ...card,
-              utilization,
-              daysUntilDue,
-            };
-
-            return (
-              <EnhancedCreditCard
-                key={card.id}
-                card={enhancedCard}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                index={index}
-              />
-            );
-          })}
+          {sortedCreditCards.map((card, index) => (
+            <EnhancedCreditCard
+              key={card.id}
+              card={card}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              index={index}
+            />
+          ))}
         </div>
       )}
 

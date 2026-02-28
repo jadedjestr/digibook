@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { createPaymentService } from '../services/paymentService';
@@ -46,6 +46,11 @@ export const useExpenseOperations = () => {
   const removeExpenseFromStore = useRemoveExpense();
   const reloadAccounts = useReloadAccounts();
   const reloadExpenses = useReloadExpenses();
+
+  const paymentService = useMemo(
+    () => createPaymentService(accounts, creditCards),
+    [accounts, creditCards],
+  );
 
   /**
    * Update expense with V4 validation (dual foreign key architecture)
@@ -191,13 +196,7 @@ export const useExpenseOperations = () => {
   const updateExpense = useCallback(
     async (expenseId, updates, showNotification = true) => {
       try {
-        // Get the current expense
-        const currentExpense = fixedExpenses.find(e => e.id === expenseId);
-        if (!currentExpense) {
-          throw new Error('Expense not found');
-        }
-
-        // Use V4 update function which includes validation
+        // updateExpenseV4 performs its own authoritative DB check and throws if not found
         await updateExpenseV4(expenseId, updates, showNotification);
       } catch (error) {
         logger.error('Error updating expense:', error);
@@ -207,7 +206,7 @@ export const useExpenseOperations = () => {
         throw error;
       }
     },
-    [fixedExpenses, updateExpenseV4],
+    [updateExpenseV4],
   );
 
   /**
@@ -291,7 +290,7 @@ export const useExpenseOperations = () => {
    */
   const markAsPaid = useCallback(
     async expenseId => {
-      const expense = fixedExpenses.find(e => e.id === expenseId);
+      const expense = await dbHelpers.getFixedExpenseV4(expenseId);
       if (!expense) {
         logger.error(`Expense not found: ${expenseId}`);
         return;
@@ -304,8 +303,7 @@ export const useExpenseOperations = () => {
 
       try {
         await updateExpenseV4(expenseId, updates, false); // Don't show generic notification
-        // Reload expenses to ensure UI is updated
-        await reloadExpenses();
+        // reloadExpenses is called internally by updateExpenseV4 when paidAmount changes
         logger.success(`Expense marked as paid: ${expenseId}`);
         notify.success('Expense marked as paid');
       } catch (error) {
@@ -313,7 +311,7 @@ export const useExpenseOperations = () => {
         notify.error('Failed to mark expense as paid');
       }
     },
-    [fixedExpenses, updateExpenseV4, reloadExpenses],
+    [updateExpenseV4],
   );
 
   /**
@@ -343,10 +341,9 @@ export const useExpenseOperations = () => {
    */
   const getPaymentSourceInfo = useCallback(
     expense => {
-      const paymentService = createPaymentService(accounts, creditCards);
       return paymentService.getPaymentSourceDetails(expense);
     },
-    [accounts, creditCards],
+    [paymentService],
   );
 
   /**
@@ -354,10 +351,9 @@ export const useExpenseOperations = () => {
    */
   const getCreditCardPaymentInfo = useCallback(
     expense => {
-      const paymentService = createPaymentService(accounts, creditCards);
       return paymentService.getCreditCardPaymentDetails(expense);
     },
-    [accounts, creditCards],
+    [paymentService],
   );
 
   /**
@@ -365,10 +361,9 @@ export const useExpenseOperations = () => {
    */
   const validateExpensePaymentSources = useCallback(
     expense => {
-      const paymentService = createPaymentService(accounts, creditCards);
       return paymentService.validatePaymentSources(expense);
     },
-    [accounts, creditCards],
+    [paymentService],
   );
 
   /**
@@ -376,13 +371,12 @@ export const useExpenseOperations = () => {
    */
   const validateCreditCardPaymentAmount = useCallback(
     (expense, paymentAmount) => {
-      const paymentService = createPaymentService(accounts, creditCards);
       return paymentService.validateCreditCardPaymentAmount(
         expense,
         paymentAmount,
       );
     },
-    [accounts, creditCards],
+    [paymentService],
   );
 
   /**
@@ -390,7 +384,6 @@ export const useExpenseOperations = () => {
    */
   const generatePaymentSuggestions = useCallback(
     expense => {
-      const paymentService = createPaymentService(accounts, creditCards);
       if (expense.category !== 'Credit Card Payment') return [];
 
       const targetCard = creditCards.find(
@@ -405,7 +398,7 @@ export const useExpenseOperations = () => {
         fundingAccount,
       );
     },
-    [accounts, creditCards],
+    [accounts, creditCards, paymentService],
   );
 
   return {

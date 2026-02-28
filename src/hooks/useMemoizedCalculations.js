@@ -1,7 +1,5 @@
 import { useMemo, useCallback } from 'react';
 
-import { usePerformanceTimer } from './usePerformanceMonitor';
-
 /**
  * Custom hook for memoized calculations to optimize expensive operations
  * Provides cached results for complex calculations that don't change often
@@ -12,11 +10,8 @@ export const useMemoizedCalculations = (
   creditCards,
   paycheckSettings, // eslint-disable-line no-unused-vars
 ) => {
-  const { start, end } = usePerformanceTimer();
-
   // Memoize expense grouping by category
   const expensesByCategory = useMemo(() => {
-    start();
     const groups = {};
 
     expenses.forEach(expense => {
@@ -27,15 +22,11 @@ export const useMemoizedCalculations = (
       groups[category].push(expense);
     });
 
-    const result = groups;
-    end('expensesByCategory');
-    return result;
-  }, [expenses, start, end]);
+    return groups;
+  }, [expenses]);
 
   // Memoize total calculations
   const totals = useMemo(() => {
-    start();
-
     const totalAmount = expenses.reduce(
       (sum, expense) => sum + expense.amount,
       0,
@@ -53,21 +44,16 @@ export const useMemoizedCalculations = (
       return total + (remaining > 0 ? remaining : 0);
     }, 0);
 
-    const result = {
+    return {
       totalAmount,
       totalPaid,
       totalRemaining,
       totalExpenses: expenses.length,
     };
-
-    end('totals');
-    return result;
-  }, [expenses, start, end]);
+  }, [expenses]);
 
   // Memoize category totals
   const categoryTotals = useMemo(() => {
-    start();
-
     const totals = {};
     Object.entries(expensesByCategory).forEach(
       ([category, categoryExpenses]) => {
@@ -86,15 +72,11 @@ export const useMemoizedCalculations = (
       },
     );
 
-    const result = totals;
-    end('categoryTotals');
-    return result;
-  }, [expensesByCategory, start, end]);
+    return totals;
+  }, [expensesByCategory]);
 
   // Memoize account totals
   const accountTotals = useMemo(() => {
-    start();
-
     const accountTotal = accounts.reduce(
       (sum, account) => sum + (account.currentBalance || 0),
       0,
@@ -105,23 +87,18 @@ export const useMemoizedCalculations = (
     );
     const netWorth = accountTotal - creditCardTotal;
 
-    const result = {
+    return {
       accountTotal,
       creditCardTotal,
       netWorth,
       totalAccounts: accounts.length,
       totalCreditCards: creditCards.length,
     };
-
-    end('accountTotals');
-    return result;
-  }, [accounts, creditCards, start, end]);
+  }, [accounts, creditCards]);
 
   // Memoize expense status calculations
   const expenseStatuses = useMemo(() => {
-    start();
-
-    const statuses = expenses.map(expense => {
+    return expenses.map(expense => {
       const remaining = expense.amount - (expense.paidAmount || 0);
       const isOverdue =
         expense.dueDate && new Date(expense.dueDate) < new Date();
@@ -138,17 +115,11 @@ export const useMemoizedCalculations = (
             : 0, // eslint-disable-line operator-linebreak
       };
     });
-
-    const result = statuses;
-    end('expenseStatuses');
-    return result;
-  }, [expenses, start, end]);
+  }, [expenses]);
 
   // Memoize filtered expenses (for search/filter functionality)
   const getFilteredExpenses = useCallback(
     (filters = {}) => {
-      start();
-
       let filtered = expenses;
 
       if (filters.category) {
@@ -215,45 +186,40 @@ export const useMemoizedCalculations = (
         }
       }
 
-      const result = filtered;
-      end('getFilteredExpenses');
-      return result;
+      return filtered;
     },
-    [expenses, start, end],
+    [expenses],
   );
 
   // Memoize sorted expenses
-  const getSortedExpenses = useCallback(
-    (expensesList, sortBy = 'dueDate') => {
-      start();
+  const getSortedExpenses = useCallback((expensesList, sortBy = 'dueDate') => {
+    if (sortBy === 'dueDate') {
+      // Schwartzian transform: pre-compute timestamps O(N), then sort on numbers
+      return expensesList
+        .map(e => ({
+          e,
+          key: e.dueDate ? new Date(e.dueDate).getTime() : Infinity,
+        }))
+        .sort((a, b) => a.key - b.key)
+        .map(({ e }) => e);
+    }
 
-      const sorted = [...expensesList].sort((a, b) => {
-        switch (sortBy) {
-          case 'dueDate':
-            if (!a.dueDate && !b.dueDate) return 0;
-            if (!a.dueDate) return 1;
-            if (!b.dueDate) return -1;
-            return new Date(a.dueDate) - new Date(b.dueDate);
-          case 'name':
-            return a.name.localeCompare(b.name);
-          case 'amount':
-            return b.amount - a.amount;
-          case 'remaining': {
-            const remainingA = a.amount - (a.paidAmount || 0);
-            const remainingB = b.amount - (b.paidAmount || 0);
-            return remainingB - remainingA;
-          }
-          default:
-            return 0;
+    return [...expensesList].sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'amount':
+          return b.amount - a.amount;
+        case 'remaining': {
+          const remainingA = a.amount - (a.paidAmount || 0);
+          const remainingB = b.amount - (b.paidAmount || 0);
+          return remainingB - remainingA;
         }
-      });
-
-      const result = sorted;
-      end('getSortedExpenses');
-      return result;
-    },
-    [start, end],
-  );
+        default:
+          return 0;
+      }
+    });
+  }, []);
 
   return {
     expensesByCategory,
