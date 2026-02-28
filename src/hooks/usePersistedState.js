@@ -3,6 +3,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 
+// Module-level cache: component → prefs object
+// Shared by all instances of usePersistedState for the same component.
+const prefsCache = new Map();
+
 /**
  * Enhanced hook for persisting UI state with hybrid localStorage + IndexedDB approach
  *
@@ -41,6 +45,12 @@ export const usePersistedState = (
         // Step 2: Try IndexedDB (comprehensive, but async)
         try {
           const dbPrefs = await dbHelpers.getUserPreferences(component);
+          if (dbPrefs) {
+            prefsCache.set(component, {
+              ...(prefsCache.get(component) || {}),
+              ...dbPrefs,
+            });
+          }
           if (dbPrefs && dbPrefs[key] !== undefined) {
             value = dbPrefs[key];
             logger.debug('🗄️ Loaded from IndexedDB:', value);
@@ -110,19 +120,22 @@ export const usePersistedState = (
 
         // Step 2: Save to IndexedDB asynchronously (for persistence)
         try {
-          const currentPrefs =
-            (await dbHelpers.getUserPreferences(component)) || {};
-
           let valueForDB = newValue;
           if (newValue instanceof Set) {
             valueForDB = Array.from(newValue);
           }
+
+          // Use cache; fall back to DB read if cache is not yet populated
+          const cached = prefsCache.get(component);
+          const currentPrefs =
+            cached ?? (await dbHelpers.getUserPreferences(component)) ?? {};
 
           const updatedPrefs = {
             ...currentPrefs,
             [key]: valueForDB,
           };
 
+          prefsCache.set(component, updatedPrefs);
           await dbHelpers.updateUserPreferences(updatedPrefs, component);
           logger.debug('🗄️ Saved to IndexedDB successfully');
         } catch (dbError) {
@@ -146,9 +159,11 @@ export const usePersistedState = (
       setState(defaultValue);
       localStorage.removeItem(`ui_${component}_${key}`);
 
+      const cached = prefsCache.get(component);
       const currentPrefs =
-        (await dbHelpers.getUserPreferences(component)) || {};
+        cached ?? (await dbHelpers.getUserPreferences(component)) ?? {};
       delete currentPrefs[key];
+      prefsCache.set(component, currentPrefs);
       await dbHelpers.updateUserPreferences(currentPrefs, component);
 
       logger.debug(`🗑️ Cleared preference ${key}`);

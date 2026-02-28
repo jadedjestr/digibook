@@ -1,4 +1,4 @@
-import { Check, X } from 'lucide-react';
+import { Check, Edit3, X } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
 
@@ -15,6 +15,8 @@ const InlineEdit = ({
   type = 'text',
   expense = null,
   fieldName = null,
+  options = null,
+  showEditIcon = false,
 }) => {
   const [editValue, setEditValue] = useState(value);
   const [isEditing, setIsEditing] = useState(false);
@@ -120,6 +122,39 @@ const InlineEdit = ({
       );
     }
 
+    // Select dropdown when options provided
+    if (options && options.length > 0) {
+      return (
+        <div className='flex items-center space-x-2'>
+          <select
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleSave}
+            className='glass-input flex-1 glass-focus'
+          >
+            {options.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleSave}
+            className='text-green-400 hover:text-green-300 transition-colors'
+          >
+            <Check size={16} />
+          </button>
+          <button
+            onClick={handleCancel}
+            className='text-red-400 hover:text-red-300 transition-colors'
+          >
+            <X size={16} />
+          </button>
+        </div>
+      );
+    }
+
     // Regular inline editing for other fields
     const renderInput = () => {
       if (type === 'number') {
@@ -191,22 +226,45 @@ const InlineEdit = ({
   }
 
   const formatDisplayValue = (val, type) => {
+    if (options && options.length > 0) {
+      const selectedOption = options.find(option => option.value == val);
+      return selectedOption ? selectedOption.label : val;
+    }
     if (type === 'number') {
       return <PrivacyWrapper>{formatCurrency(parseFloat(val))}</PrivacyWrapper>;
-    } else if (type === 'date') {
+    }
+    if (type === 'date') {
       if (!val) return '';
       return DateUtils.formatDisplayDate(val);
     }
     return val;
   };
 
+  const displayContent = formatDisplayValue(value, type);
+  const buttonClass = showEditIcon
+    ? 'w-full text-left cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-all duration-200 group'
+    : 'w-full text-left cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors';
+
   return (
     <button
       type='button'
-      className='w-full text-left cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors'
+      className={buttonClass}
       onClick={() => setIsEditing(true)}
+      title={showEditIcon ? 'Click to edit' : undefined}
     >
-      {formatDisplayValue(value, type)}
+      {showEditIcon ? (
+        <>
+          <span className='text-primary group-hover:text-white transition-colors'>
+            {displayContent}
+          </span>
+          <Edit3
+            size={14}
+            className='inline ml-2 text-muted group-hover:text-white transition-colors opacity-0 group-hover:opacity-100'
+          />
+        </>
+      ) : (
+        displayContent
+      )}
     </button>
   );
 };
@@ -217,12 +275,21 @@ InlineEdit.propTypes = {
   type: PropTypes.string,
   expense: PropTypes.object,
   fieldName: PropTypes.string,
+  options: PropTypes.arrayOf(
+    PropTypes.shape({
+      value: PropTypes.any,
+      label: PropTypes.string,
+    }),
+  ),
+  showEditIcon: PropTypes.bool,
 };
 
 InlineEdit.defaultProps = {
   type: 'text',
   expense: null,
   fieldName: null,
+  options: null,
+  showEditIcon: false,
 };
 
 export default InlineEdit;

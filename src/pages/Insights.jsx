@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import BudgetVsActualDashboard from '../components/BudgetVsActualDashboard';
 import CreditCardDebtTable from '../components/CreditCardDebtTable';
@@ -19,11 +19,7 @@ const Insights = ({
   const [monthlyHistory, setMonthlyHistory] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadInsightsData();
-  }, []);
-
-  const loadInsightsData = async () => {
+  const loadInsightsData = useCallback(async () => {
     try {
       setIsLoading(true);
       const [summary, categoryData, history] = await Promise.all([
@@ -40,7 +36,11 @@ const Insights = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadInsightsData();
+  }, [loadInsightsData]);
 
   const handleDataRefresh = () => {
     loadInsightsData();

@@ -294,18 +294,7 @@ export const dbHelpers = {
 
   // Account helpers
   async getAccounts() {
-    const accounts = await db.accounts.toArray();
-
-    // Ensure there's always a default account if accounts exist
-    if (accounts.length > 0) {
-      const hasDefault = accounts.some(account => account.isDefault);
-      if (!hasDefault) {
-        await this.setDefaultAccount(accounts[0].id);
-        return await db.accounts.toArray();
-      }
-    }
-
-    return accounts;
+    return await db.accounts.toArray();
   },
 
   // Credit card helpers

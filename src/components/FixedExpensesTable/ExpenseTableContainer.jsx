@@ -11,6 +11,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import { useExpenseOperations } from '../../hooks/useExpenseOperations';
 import { useMemoizedCalculations } from '../../hooks/useMemoizedCalculations';
+import { usePaycheckCalculations } from '../../hooks/usePaycheckCalculations';
 import { usePerformanceMonitor } from '../../hooks/usePerformanceMonitor';
 import {
   useCollapsedCategories,
@@ -19,14 +20,23 @@ import {
   useShowOnlyUnpaidPreference,
   useExpenseTypeFilter,
 } from '../../hooks/usePersistedState';
-import { PaycheckService } from '../../services/paycheckService';
 import {
   getTemplate,
   updateTemplate,
   deleteTemplate,
   regenerateUnpaidOccurrences,
 } from '../../services/recurringExpenseService';
-import { useAppStore } from '../../stores/useAppStore';
+import {
+  useAccounts,
+  useCategories,
+  useCreditCards,
+  useFixedExpenses,
+  useIsLoading,
+  useIsPanelOpen,
+  usePaycheckSettings,
+  useReloadExpenses,
+  useSetPanelOpen,
+} from '../../stores/useAppStore';
 import { createCategoryMap } from '../../utils/categoryUtils';
 import { logger } from '../../utils/logger';
 import AccountValidationAlert from '../AccountValidationAlert';
@@ -125,17 +135,15 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
   );
 
   // Use Zustand store for data
-  const {
-    accounts,
-    creditCards,
-    fixedExpenses: storeFixedExpenses,
-    categories,
-    paycheckSettings,
-    isPanelOpen,
-    isLoading,
-    setPanelOpen,
-    reloadExpenses,
-  } = useAppStore();
+  const accounts = useAccounts();
+  const creditCards = useCreditCards();
+  const storeFixedExpenses = useFixedExpenses();
+  const categories = useCategories();
+  const paycheckSettings = usePaycheckSettings();
+  const isPanelOpen = useIsPanelOpen();
+  const isLoading = useIsLoading();
+  const setPanelOpen = useSetPanelOpen();
+  const reloadExpenses = useReloadExpenses();
 
   const fixedExpenses = expensesOverride ?? storeFixedExpenses;
 
@@ -143,8 +151,8 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
   const { updateExpense, deleteExpense, duplicateExpense, markAsPaid } =
     useExpenseOperations();
 
-  const paycheckService = new PaycheckService(paycheckSettings);
-  const paycheckDates = paycheckService.calculatePaycheckDates();
+  const { paycheckService, paycheckDates } =
+    usePaycheckCalculations(paycheckSettings);
 
   // 🔧 ROBUST INITIALIZATION PROCESS
   useEffect(() => {

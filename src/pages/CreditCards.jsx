@@ -12,6 +12,33 @@ import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 
+const calculateUtilization = (balance, limit) => {
+  if (!limit || limit === 0) return 0;
+  return (balance / limit) * 100;
+};
+
+const getDaysUntilDue = dueDate => {
+  if (!dueDate) return null;
+
+  // Create dates in local timezone to avoid timezone shifts
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Reset to start of day
+
+  // Parse the due date as a local date (not UTC)
+  const due = new Date(`${dueDate}T00:00:00`);
+
+  const diffTime = due - today;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+};
+
+const getUtilizationColor = utilization => {
+  if (utilization >= 90) return 'text-red-400';
+  if (utilization >= 70) return 'text-orange-400';
+  if (utilization >= 50) return 'text-yellow-400';
+  return 'text-green-400';
+};
+
 const CreditCards = ({
   onDataChange,
   accounts = [],
@@ -220,33 +247,6 @@ const CreditCards = ({
   const handleMigrationComplete = () => {
     loadCreditCards();
     onDataChange(); // Refresh the data in parent
-  };
-
-  const calculateUtilization = (balance, limit) => {
-    if (!limit || limit === 0) return 0;
-    return (balance / limit) * 100;
-  };
-
-  const getDaysUntilDue = dueDate => {
-    if (!dueDate) return null;
-
-    // Create dates in local timezone to avoid timezone shifts
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset to start of day
-
-    // Parse the due date as a local date (not UTC)
-    const due = new Date(`${dueDate}T00:00:00`);
-
-    const diffTime = due - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  const getUtilizationColor = utilization => {
-    if (utilization >= 90) return 'text-red-400';
-    if (utilization >= 70) return 'text-orange-400';
-    if (utilization >= 50) return 'text-yellow-400';
-    return 'text-green-400';
   };
 
   // Sort credit cards based on selected criteria

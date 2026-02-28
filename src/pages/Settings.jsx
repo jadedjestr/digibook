@@ -20,7 +20,11 @@ import RecurringTemplatesManager from '../components/RecurringTemplatesManager';
 import { useGlobalCategories } from '../contexts/GlobalCategoryContext';
 import { dbHelpers } from '../db/database-clean';
 import { dataManager } from '../services/dataManager';
-import { useAppStore } from '../stores/useAppStore';
+import {
+  useFixedExpenses,
+  useReloadCategories,
+  useReloadExpenses,
+} from '../stores/useAppStore';
 import { DateUtils } from '../utils/dateUtils';
 import { exportJSONData } from '../utils/exportUtils';
 import { logger } from '../utils/logger';
@@ -38,7 +42,9 @@ const Settings = ({ onDataChange }) => {
 
   // Global categories service for cache invalidation
   const globalCategories = useGlobalCategories();
-  const { fixedExpenses, reloadCategories, reloadExpenses } = useAppStore();
+  const fixedExpenses = useFixedExpenses();
+  const reloadCategories = useReloadCategories();
+  const reloadExpenses = useReloadExpenses();
   const [showFutureGenPrompt, setShowFutureGenPrompt] = useState(false);
   const [selectedHorizon, setSelectedHorizon] = useState(3);
   const [pendingFutureCheck, setPendingFutureCheck] = useState(false);

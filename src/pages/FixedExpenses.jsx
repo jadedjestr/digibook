@@ -9,8 +9,17 @@ import PaySummaryCard from '../components/PaySummaryCard.jsx';
 import ProjectedBalanceCard from '../components/ProjectedBalanceCard.jsx';
 import { dbHelpers } from '../db/database-clean';
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
-import { PaycheckService } from '../services/paycheckService';
-import { useAppStore } from '../stores/useAppStore';
+import { usePaycheckCalculations } from '../hooks/usePaycheckCalculations';
+import {
+  useAccounts,
+  useCategories,
+  useCreditCards,
+  useFixedExpenses,
+  useIsLoading,
+  usePaycheckSettings,
+  useReloadExpenses,
+  useReloadPaycheckSettings,
+} from '../stores/useAppStore';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications.jsx';
@@ -21,16 +30,14 @@ const FixedExpenses = () => {
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'oneoffs'
 
   // Use Zustand store for data
-  const {
-    accounts,
-    creditCards,
-    fixedExpenses,
-    paycheckSettings,
-    categories,
-    isLoading,
-    reloadPaycheckSettings,
-    reloadExpenses,
-  } = useAppStore();
+  const accounts = useAccounts();
+  const creditCards = useCreditCards();
+  const fixedExpenses = useFixedExpenses();
+  const paycheckSettings = usePaycheckSettings();
+  const categories = useCategories();
+  const isLoading = useIsLoading();
+  const reloadPaycheckSettings = useReloadPaycheckSettings();
+  const reloadExpenses = useReloadExpenses();
 
   // Add useExpenseOperations hook (must be unconditional for rules-of-hooks)
   const { updateExpenseV4, deleteExpense, markAsPaid } = useExpenseOperations();
@@ -50,9 +57,9 @@ const FixedExpenses = () => {
     return DateUtils.formatDate(date);
   };
 
-  // Initialize paycheck service
-  const paycheckService = new PaycheckService(paycheckSettings);
-  const paycheckDates = paycheckService.calculatePaycheckDates();
+  // Initialize paycheck service (memoized — only recalculates when paycheckSettings changes)
+  const { paycheckService, paycheckDates } =
+    usePaycheckCalculations(paycheckSettings);
   const formatMonthKey = date => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -93,9 +100,13 @@ const FixedExpenses = () => {
     };
   }, [currentMonth, fixedExpenses]);
 
-  const summaryTotals = paycheckService.calculateSummaryTotals(
-    currentMonthExpenses,
-    paycheckDates,
+  const summaryTotals = useMemo(
+    () =>
+      paycheckService.calculateSummaryTotals(
+        currentMonthExpenses,
+        paycheckDates,
+      ),
+    [paycheckService, currentMonthExpenses, paycheckDates],
   );
 
   const nextPayDisplay = useMemo(() => {

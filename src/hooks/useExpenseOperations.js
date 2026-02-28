@@ -2,7 +2,16 @@ import { useCallback } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { createPaymentService } from '../services/paymentService';
-import { useAppStore } from '../stores/useAppStore';
+import {
+  useAccounts,
+  useAddExpense,
+  useCreditCards,
+  useFixedExpenses,
+  useReloadAccounts,
+  useReloadExpenses,
+  useRemoveExpense,
+  useUpdateExpense,
+} from '../stores/useAppStore';
 import {
   validatePaymentSource,
   validateCreditCardPayment,
@@ -29,16 +38,14 @@ import { notify } from '../utils/notifications';
  * @returns {Function} returns.bulkUpdateExpenses - Update multiple expenses
  */
 export const useExpenseOperations = () => {
-  const {
-    fixedExpenses,
-    accounts,
-    creditCards,
-    updateExpense: updateExpenseInStore,
-    addExpense: _addExpenseToStore,
-    removeExpense: removeExpenseFromStore,
-    reloadAccounts,
-    reloadExpenses,
-  } = useAppStore();
+  const fixedExpenses = useFixedExpenses();
+  const accounts = useAccounts();
+  const creditCards = useCreditCards();
+  const updateExpenseInStore = useUpdateExpense();
+  const _addExpenseToStore = useAddExpense();
+  const removeExpenseFromStore = useRemoveExpense();
+  const reloadAccounts = useReloadAccounts();
+  const reloadExpenses = useReloadExpenses();
 
   /**
    * Update expense with V4 validation (dual foreign key architecture)

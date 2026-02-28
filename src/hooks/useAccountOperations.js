@@ -1,7 +1,13 @@
 import { useCallback } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
-import { useAppStore } from '../stores/useAppStore';
+import {
+  useAccounts,
+  useCreditCards,
+  useReloadAccounts,
+  useUpdateAccount,
+  useUpdateCreditCard,
+} from '../stores/useAppStore';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 
@@ -10,13 +16,11 @@ import { notify } from '../utils/notifications';
  * Provides a clean interface for account CRUD operations
  */
 export const useAccountOperations = () => {
-  const {
-    accounts,
-    creditCards,
-    updateAccount: updateAccountInStore,
-    updateCreditCard: updateCreditCardInStore,
-    reloadAccounts,
-  } = useAppStore();
+  const accounts = useAccounts();
+  const creditCards = useCreditCards();
+  const updateAccountInStore = useUpdateAccount();
+  const updateCreditCardInStore = useUpdateCreditCard();
+  const reloadAccounts = useReloadAccounts();
 
   /**
    * Update a regular account

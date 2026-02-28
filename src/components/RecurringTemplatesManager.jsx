@@ -8,7 +8,13 @@ import {
   deleteTemplate,
   getFrequencyLabel,
 } from '../services/recurringExpenseService';
-import { useAppStore } from '../stores/useAppStore';
+import {
+  useAccounts,
+  useCreditCards,
+  useFixedExpenses,
+  useReloadExpenses,
+  useRefreshTemplates,
+} from '../stores/useAppStore';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
@@ -21,13 +27,11 @@ const RecurringTemplatesManager = () => {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  const {
-    fixedExpenses,
-    accounts,
-    creditCards,
-    reloadExpenses,
-    refreshTemplates,
-  } = useAppStore();
+  const fixedExpenses = useFixedExpenses();
+  const accounts = useAccounts();
+  const creditCards = useCreditCards();
+  const reloadExpenses = useReloadExpenses();
+  const refreshTemplates = useRefreshTemplates();
 
   // Calculate statistics for each template
   const templatesWithStats = useMemo(() => {

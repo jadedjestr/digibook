@@ -1,12 +1,22 @@
-import { Plus, Check, Trash2, Edit3, X, Clock } from 'lucide-react';
+import { Plus, Check, Trash2, Clock } from 'lucide-react';
 import PropTypes from 'prop-types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 
+import InlineEdit from '../components/InlineEdit';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
 import { useFinanceCalculations } from '../services/financeService';
 import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
+
+// Helper function to get today's date in local timezone
+const getTodayDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const PendingTransactions = ({
   pendingTransactions,
@@ -18,15 +28,6 @@ const PendingTransactions = ({
   const [errors, setErrors] = useState({});
   const [categories, setCategories] = useState([]);
 
-  // Helper function to get today's date in local timezone
-  const getTodayDate = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
   const [newTransaction, setNewTransaction] = useState({
     accountId: '',
     amount: 0,
@@ -36,8 +37,18 @@ const PendingTransactions = ({
     type: 'expense', // 'income' or 'expense'
   });
 
-  const { calculateProjectedBalance, getAccountName: _getAccountName } =
+  const { getAccountProjectedBalances, getAccountName: _getAccountName } =
     useFinanceCalculations(accounts, pendingTransactions);
+
+  const accountMap = useMemo(
+    () => new Map(accounts.map(a => [a.id, a])),
+    [accounts],
+  );
+
+  const accountOptions = useMemo(
+    () => accounts.map(acc => ({ value: acc.id, label: acc.name })),
+    [accounts],
+  );
 
   // Load categories
   useEffect(() => {
@@ -53,7 +64,7 @@ const PendingTransactions = ({
     loadCategories();
   }, [onDataChange]); // Refresh when categories are modified
 
-  const validateForm = () => {
+  const validateForm = useCallback(() => {
     const newErrors = {};
     if (!newTransaction.accountId) {
       newErrors.accountId = 'Please select an account';
@@ -66,9 +77,9 @@ const PendingTransactions = ({
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
+  }, [newTransaction]);
 
-  const handleAddTransaction = async () => {
+  const handleAddTransaction = useCallback(async () => {
     if (!validateForm()) return;
 
     setIsLoading(true);
@@ -101,138 +112,54 @@ const PendingTransactions = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [validateForm, newTransaction, onDataChange]);
 
-  const handleCompleteTransaction = async transactionId => {
-    try {
-      await dbHelpers.completePendingTransaction(transactionId);
-      onDataChange();
-    } catch (error) {
-      logger.error('Error completing transaction:', error);
-    }
-  };
-
-  const handleDeleteTransaction = async transactionId => {
-    if (!confirm('Are you sure you want to delete this transaction?')) return;
-
-    try {
-      await dbHelpers.deletePendingTransaction(transactionId);
-      onDataChange();
-    } catch (error) {
-      logger.error('Error deleting transaction:', error);
-    }
-  };
-
-  const handleUpdateTransaction = async (transactionId, updates) => {
-    try {
-      await dbHelpers.updatePendingTransaction(transactionId, updates);
-      onDataChange();
-    } catch (error) {
-      logger.error('Error updating transaction:', error);
-    }
-  };
-
-  const InlineEdit = ({ value, onSave, type = 'text', options = null }) => {
-    const [editValue, setEditValue] = useState(value);
-    const [isEditing, setIsEditing] = useState(false);
-
-    const handleSave = () => {
-      onSave(editValue);
-      setIsEditing(false);
-    };
-
-    const handleCancel = () => {
-      setEditValue(value);
-      setIsEditing(false);
-    };
-
-    // Get display value for account selection
-    const getDisplayValue = () => {
-      if (options) {
-        const selectedOption = options.find(option => option.value == value);
-        return selectedOption ? selectedOption.label : value;
+  const handleCompleteTransaction = useCallback(
+    async transactionId => {
+      try {
+        await dbHelpers.completePendingTransaction(transactionId);
+        onDataChange();
+      } catch (error) {
+        logger.error('Error completing transaction:', error);
       }
-      return type === 'number' ? (
-        <PrivacyWrapper>{formatCurrency(parseFloat(value))}</PrivacyWrapper>
-      ) : (
-        value
-      );
-    };
+    },
+    [onDataChange],
+  );
 
-    if (isEditing) {
-      return (
-        <div className='flex items-center space-x-2'>
-          {options ? (
-            <select
-              value={editValue}
-              onChange={e => setEditValue(e.target.value)}
-              className='glass-input flex-1 glass-focus'
-              onBlur={handleSave}
-            >
-              {options.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type={type}
-              value={editValue}
-              onChange={e => setEditValue(e.target.value)}
-              className='glass-input flex-1 glass-focus'
-              onKeyPress={e => {
-                if (e.key === 'Enter') handleSave();
-                if (e.key === 'Escape') handleCancel();
-              }}
-              onBlur={handleSave}
-            />
-          )}
-          <button
-            onClick={handleSave}
-            className='text-green-400 hover:text-green-300 transition-colors'
-          >
-            <Check size={16} />
-          </button>
-          <button
-            onClick={handleCancel}
-            className='text-red-400 hover:text-red-300 transition-colors'
-          >
-            <X size={16} />
-          </button>
-        </div>
-      );
-    }
+  const handleDeleteTransaction = useCallback(
+    async transactionId => {
+      if (!confirm('Are you sure you want to delete this transaction?')) return;
 
-    return (
-      <button
-        type='button'
-        onClick={() => setIsEditing(true)}
-        className='w-full text-left cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-all duration-200 group'
-        title='Click to edit'
-      >
-        <span className='text-primary group-hover:text-white transition-colors'>
-          {getDisplayValue()}
-        </span>
-        <Edit3
-          size={14}
-          className='inline ml-2 text-muted group-hover:text-white transition-colors opacity-0 group-hover:opacity-100'
-        />
-      </button>
-    );
-  };
+      try {
+        await dbHelpers.deletePendingTransaction(transactionId);
+        onDataChange();
+      } catch (error) {
+        logger.error('Error deleting transaction:', error);
+      }
+    },
+    [onDataChange],
+  );
 
-  InlineEdit.propTypes = {
-    value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    onSave: PropTypes.func.isRequired,
-    type: PropTypes.string,
-    options: PropTypes.arrayOf(PropTypes.object),
-  };
+  const handleUpdateTransaction = useCallback(
+    async (transactionId, updates) => {
+      try {
+        await dbHelpers.updatePendingTransaction(transactionId, updates);
+        onDataChange();
+      } catch (error) {
+        logger.error('Error updating transaction:', error);
+      }
+    },
+    [onDataChange],
+  );
 
-  const categoryOptions = categories.map(category => ({
-    value: category.name,
-    label: `${category.icon} ${category.name}`,
-  }));
+  const categoryOptions = useMemo(
+    () =>
+      categories.map(category => ({
+        value: category.name,
+        label: `${category.icon} ${category.name}`,
+      })),
+    [categories],
+  );
 
   return (
     <div className='space-y-6'>
@@ -463,12 +390,11 @@ const PendingTransactions = ({
             </thead>
             <tbody>
               {pendingTransactions.map(transaction => {
-                const account = accounts.find(
-                  a => a.id === parseInt(transaction.accountId),
-                );
-                const projectedBalance = calculateProjectedBalance(
-                  transaction.accountId,
-                );
+                const account = accountMap.get(parseInt(transaction.accountId));
+                const projectedBalance =
+                  getAccountProjectedBalances[
+                    parseInt(transaction.accountId)
+                  ] ?? 0;
 
                 return (
                   <tr key={transaction.id}>
@@ -480,10 +406,8 @@ const PendingTransactions = ({
                             accountId: parseInt(accountId) || 0,
                           })
                         }
-                        options={accounts.map(acc => ({
-                          value: acc.id,
-                          label: acc.name,
-                        }))}
+                        options={accountOptions}
+                        showEditIcon
                       />
                     </td>
                     <td>
@@ -495,6 +419,7 @@ const PendingTransactions = ({
                           })
                         }
                         type='number'
+                        showEditIcon
                       />
                     </td>
                     <td>
@@ -504,6 +429,7 @@ const PendingTransactions = ({
                           handleUpdateTransaction(transaction.id, { category })
                         }
                         options={categoryOptions}
+                        showEditIcon
                       />
                     </td>
                     <td>
@@ -514,6 +440,7 @@ const PendingTransactions = ({
                             description,
                           })
                         }
+                        showEditIcon
                       />
                     </td>
                     <td>
@@ -523,6 +450,7 @@ const PendingTransactions = ({
                           handleUpdateTransaction(transaction.id, { date })
                         }
                         type='date'
+                        showEditIcon
                       />
                     </td>
                     <td>

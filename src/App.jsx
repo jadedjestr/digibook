@@ -18,7 +18,13 @@ import Sidebar from './components/Sidebar';
 import { GlobalCategoryProvider } from './contexts/GlobalCategoryContext';
 import { PrivacyProvider } from './contexts/PrivacyContext';
 import SettingsPage from './pages/Settings';
-import { useAppStore } from './stores/useAppStore';
+import {
+  useAccounts,
+  useCreditCards,
+  useCurrentPage,
+  useLoadData,
+  usePendingTransactions,
+} from './stores/useAppStore';
 import { securePINStorage } from './utils/crypto';
 import { exportJSONData } from './utils/exportUtils';
 import { logger } from './utils/logger';
@@ -38,8 +44,11 @@ function App() {
   const isExportingRef = useRef(false);
 
   // Use Zustand store for global state
-  const { accounts, creditCards, currentPage, loadData, pendingTransactions } =
-    useAppStore();
+  const accounts = useAccounts();
+  const creditCards = useCreditCards();
+  const currentPage = useCurrentPage();
+  const pendingTransactions = usePendingTransactions();
+  const loadData = useLoadData();
 
   // Load PIN securely on mount
   useEffect(() => {

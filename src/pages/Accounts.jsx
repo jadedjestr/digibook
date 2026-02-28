@@ -2,26 +2,29 @@ import {
   Plus,
   Star,
   Trash2,
-  Edit3,
-  Check,
-  X,
   Wallet,
   CreditCard,
   PiggyBank,
 } from 'lucide-react';
-import PropTypes from 'prop-types';
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
+import InlineEdit from '../components/InlineEdit';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
 import { useFinanceCalculations } from '../services/financeService';
-import { useAppStore } from '../stores/useAppStore';
+import {
+  useAccounts,
+  usePendingTransactions,
+  useReloadAccounts,
+} from '../stores/useAppStore';
 import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
 
 const Accounts = () => {
   // Use Zustand store for data
-  const { accounts, pendingTransactions, reloadAccounts } = useAppStore();
+  const accounts = useAccounts();
+  const pendingTransactions = usePendingTransactions();
+  const reloadAccounts = useReloadAccounts();
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,25 +41,34 @@ const Accounts = () => {
   );
   const liquidBalance = calculateLiquidBalance;
 
-  const calculateProjectedBalance = account => {
-    const pendingForAccount = pendingTransactions
-      .filter(t => t.accountId === account.id)
-      .reduce((sum, t) => sum + t.amount, 0);
+  // Build a Map once — O(M) — so per-account lookup is O(1) instead of O(M) each
+  const pendingByAccount = useMemo(
+    () =>
+      pendingTransactions.reduce((map, t) => {
+        map[t.accountId] = (map[t.accountId] || 0) + t.amount;
+        return map;
+      }, {}),
+    [pendingTransactions],
+  );
 
-    // For expenses (negative amounts), we add the pending amount to get the projected balance
-    // For income (positive amounts), we also add the pending amount
-    return account.currentBalance + pendingForAccount;
-  };
+  const calculateProjectedBalance = useCallback(
+    account => account.currentBalance + (pendingByAccount[account.id] || 0),
+    [pendingByAccount],
+  );
 
   // Group accounts by type
-  const groupedAccounts = accounts.reduce((groups, account) => {
-    const type = account.type;
-    if (!groups[type]) {
-      groups[type] = [];
-    }
-    groups[type].push(account);
-    return groups;
-  }, {});
+  const groupedAccounts = useMemo(
+    () =>
+      accounts.reduce((groups, account) => {
+        const type = account.type;
+        if (!groups[type]) {
+          groups[type] = [];
+        }
+        groups[type].push(account);
+        return groups;
+      }, {}),
+    [accounts],
+  );
 
   // Get account type icon
   const getAccountTypeIcon = type => {
@@ -145,94 +157,6 @@ const Accounts = () => {
     } catch (error) {
       logger.error('Error updating account:', error);
     }
-  };
-
-  const InlineEdit = ({ value, onSave, type = 'text', options = null }) => {
-    const [editValue, setEditValue] = useState(value);
-    const [isEditing, setIsEditing] = useState(false);
-
-    const handleSave = () => {
-      onSave(editValue);
-      setIsEditing(false);
-    };
-
-    const handleCancel = () => {
-      setEditValue(value);
-      setIsEditing(false);
-    };
-
-    if (isEditing) {
-      return (
-        <div className='flex items-center space-x-2'>
-          {options ? (
-            <select
-              value={editValue}
-              onChange={e => setEditValue(e.target.value)}
-              className='glass-input flex-1 glass-focus'
-              onBlur={handleSave}
-            >
-              {options.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type={type}
-              value={editValue}
-              onChange={e => setEditValue(e.target.value)}
-              className='glass-input flex-1 glass-focus'
-              onKeyPress={e => {
-                if (e.key === 'Enter') handleSave();
-                if (e.key === 'Escape') handleCancel();
-              }}
-              onBlur={handleSave}
-            />
-          )}
-          <button
-            onClick={handleSave}
-            className='text-green-400 hover:text-green-300 transition-colors'
-          >
-            <Check size={16} />
-          </button>
-          <button
-            onClick={handleCancel}
-            className='text-red-400 hover:text-red-300 transition-colors'
-          >
-            <X size={16} />
-          </button>
-        </div>
-      );
-    }
-
-    return (
-      <button
-        type='button'
-        onClick={() => setIsEditing(true)}
-        className='w-full text-left cursor-pointer hover:bg-white/5 rounded px-2 py-1 transition-all duration-200 group'
-        title='Click to edit'
-      >
-        <span className='text-primary group-hover:text-white transition-colors'>
-          {type === 'number' ? (
-            <PrivacyWrapper>{formatCurrency(parseFloat(value))}</PrivacyWrapper>
-          ) : (
-            value
-          )}
-        </span>
-        <Edit3
-          size={14}
-          className='inline ml-2 text-muted group-hover:text-white transition-colors opacity-0 group-hover:opacity-100'
-        />
-      </button>
-    );
-  };
-
-  InlineEdit.propTypes = {
-    value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    onSave: PropTypes.func.isRequired,
-    type: PropTypes.string,
-    options: PropTypes.arrayOf(PropTypes.object),
   };
 
   return (
@@ -426,6 +350,7 @@ const Accounts = () => {
                             onSave={name =>
                               handleUpdateAccount(account.id, { name })
                             }
+                            showEditIcon
                           />
                         </td>
                         <td>
@@ -437,6 +362,7 @@ const Accounts = () => {
                               })
                             }
                             type='number'
+                            showEditIcon
                           />
                         </td>
                         <td>

@@ -156,6 +156,8 @@ export const useAppStore = create(
        */
       reloadAccounts: async () => {
         try {
+          await dbHelpers.ensureDefaultAccount();
+
           const [accountsData, creditCardsData, defaultAccountData] =
             await Promise.all([
               dbHelpers.getAccounts(),
@@ -400,7 +402,7 @@ export const useAppStore = create(
   ),
 );
 
-// Export individual selectors for better performance
+// Data selector hooks — each subscribes only to its specific slice
 export const useAccounts = () => useAppStore(state => state.accounts);
 export const useCreditCards = () => useAppStore(state => state.creditCards);
 export const usePendingTransactions = () =>
@@ -414,33 +416,32 @@ export const useIsPanelOpen = () => useAppStore(state => state.isPanelOpen);
 export const useIsLoading = () => useAppStore(state => state.isLoading);
 export const useError = () => useAppStore(state => state.error);
 
-// Export action selectors
-export const useAppActions = () =>
-  useAppStore(state => ({
-    loadData: state.loadData,
-    reloadAccounts: state.reloadAccounts,
-    reloadExpenses: state.reloadExpenses,
-    reloadTransactions: state.reloadTransactions,
-    reloadCategories: state.reloadCategories,
-    refreshTemplates: state.refreshTemplates,
-    updateExpense: state.updateExpense,
-    addExpense: state.addExpense,
-    removeExpense: state.removeExpense,
-    updateAccount: state.updateAccount,
-    updateCreditCard: state.updateCreditCard,
-    addTransaction: state.addTransaction,
-    removeTransaction: state.removeTransaction,
-    setCurrentPage: state.setCurrentPage,
-    togglePanel: state.togglePanel,
-    setPanelOpen: state.setPanelOpen,
-    clearError: state.clearError,
-  }));
-
-// Export computed selectors
-export const useAppComputed = () =>
-  useAppStore(state => ({
-    getAllAccountIds: state.getAllAccountIds,
-    findAccountById: state.findAccountById,
-    getExpensesByCategory: state.getExpensesByCategory,
-    getTotalRemaining: state.getTotalRemaining,
-  }));
+// Action selector hooks — actions are stable references, so these never trigger re-renders
+export const useLoadData = () => useAppStore(state => state.loadData);
+export const useReloadAccounts = () =>
+  useAppStore(state => state.reloadAccounts);
+export const useReloadExpenses = () =>
+  useAppStore(state => state.reloadExpenses);
+export const useReloadTransactions = () =>
+  useAppStore(state => state.reloadTransactions);
+export const useReloadPaycheckSettings = () =>
+  useAppStore(state => state.reloadPaycheckSettings);
+export const useReloadCategories = () =>
+  useAppStore(state => state.reloadCategories);
+export const useRefreshTemplates = () =>
+  useAppStore(state => state.refreshTemplates);
+export const useSetCurrentPage = () =>
+  useAppStore(state => state.setCurrentPage);
+export const useTogglePanel = () => useAppStore(state => state.togglePanel);
+export const useSetPanelOpen = () => useAppStore(state => state.setPanelOpen);
+export const useUpdateExpense = () => useAppStore(state => state.updateExpense);
+export const useAddExpense = () => useAppStore(state => state.addExpense);
+export const useRemoveExpense = () => useAppStore(state => state.removeExpense);
+export const useUpdateAccount = () => useAppStore(state => state.updateAccount);
+export const useUpdateCreditCard = () =>
+  useAppStore(state => state.updateCreditCard);
+export const useAddTransaction = () =>
+  useAppStore(state => state.addTransaction);
+export const useRemoveTransaction = () =>
+  useAppStore(state => state.removeTransaction);
+export const useClearError = () => useAppStore(state => state.clearError);
