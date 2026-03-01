@@ -2,7 +2,6 @@ import PropTypes from 'prop-types';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 
 import { DateUtils } from '../../utils/dateUtils';
-import { logger } from '../../utils/logger';
 
 import CalendarCycleButton from './CalendarCycleButton';
 import CalendarGrid from './CalendarGrid';
@@ -25,8 +24,6 @@ const Calendar = ({
   onToday,
   onReset,
 }) => {
-  logger.debug('Calendar: COMPONENT MOUNTING');
-
   // Calendar state
   const [selectedDay, setSelectedDay] = useState(null);
   const [focusedDayIndex, setFocusedDayIndex] = useState(null);
@@ -75,7 +72,6 @@ const Calendar = ({
         expenses: dayExpenses,
         isToday: DateUtils.isToday(dateString),
         isCurrentMonth: date.getMonth() === month,
-        isSelected: selectedDay === dateString,
         isPaycheckDate,
         isNextPayDate,
         isFollowingPayDate,
@@ -83,15 +79,12 @@ const Calendar = ({
     }
 
     return days;
-  }, [currentMonth, monthExpenses, selectedDay, paycheckDates]);
+  }, [currentMonth, monthExpenses, paycheckDates]);
 
   // Day selection handler
-  const handleDaySelect = useCallback(
-    dateString => {
-      setSelectedDay(selectedDay === dateString ? null : dateString);
-    },
-    [selectedDay],
-  );
+  const handleDaySelect = useCallback(dateString => {
+    setSelectedDay(prev => (prev === dateString ? null : dateString));
+  }, []);
 
   // Keyboard navigation
   useEffect(() => {

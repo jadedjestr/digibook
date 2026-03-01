@@ -2,7 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Check, Copy, Trash2, RotateCcw, RefreshCw } from 'lucide-react';
 import PropTypes from 'prop-types';
-import { useMemo } from 'react';
+import { useMemo, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 
 import { createPaymentSource } from '../types/paymentSource';
@@ -10,6 +10,74 @@ import { createPaymentSource } from '../types/paymentSource';
 import InlineEdit from './InlineEdit';
 import PaymentSourceSelector from './PaymentSourceSelector';
 import StatusBadge from './StatusBadge';
+
+const DragOverlay = ({ isDragging, expense, status }) => {
+  if (!isDragging) return null;
+
+  return createPortal(
+    <div
+      className='fixed pointer-events-none glass-panel bg-white/10 shadow-2xl rounded-lg border border-white/20 drag-overlay'
+      style={{
+        width: '100%',
+        maxWidth: '800px',
+        left: '50%',
+        top: '50%',
+        transform: 'translate(-50%, -50%)',
+        animation: 'float 2s ease-in-out infinite',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+      }}
+    >
+      <div className='absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-lg' />
+      <div className='relative'>
+        <div className='absolute -top-3 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-blue-500/20 rounded-full text-blue-300 text-xs font-medium'>
+          Moving Expense
+        </div>
+        <table className='w-full'>
+          <tbody>
+            <tr className='bg-white/5'>
+              <td className='p-3 font-medium'>
+                <div className='flex items-center space-x-2'>
+                  <span>{expense.name}</span>
+                  {expense.isAutoCreated && (
+                    <span className='text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full border border-blue-500/30'>
+                      Auto
+                    </span>
+                  )}
+                  {expense.isManuallyMapped && (
+                    <span className='text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full border border-green-500/30'>
+                      Linked
+                    </span>
+                  )}
+                </div>
+              </td>
+              <td className='p-3'>{expense.dueDate}</td>
+              <td className='p-3 text-green-300'>${expense.amount}</td>
+              <td className='p-3'>
+                <div className='flex items-center space-x-2'>
+                  <div className='animate-pulse w-2 h-2 rounded-full bg-blue-400' />
+                  <div
+                    className='animate-pulse w-2 h-2 rounded-full bg-blue-400'
+                    style={{ animationDelay: '0.2s' }}
+                  />
+                  <div
+                    className='animate-pulse w-2 h-2 rounded-full bg-blue-400'
+                    style={{ animationDelay: '0.4s' }}
+                  />
+                </div>
+              </td>
+              <td className='p-3'>${expense.paidAmount}</td>
+              <td className='p-3'>
+                <StatusBadge status={status} />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>,
+    document.body,
+  );
+};
 
 const DraggableExpenseRow = ({
   expense,
@@ -31,12 +99,60 @@ const DraggableExpenseRow = ({
   }, [expense]);
 
   // Handle payment source changes
-  const handlePaymentSourceChange = newPaymentSource => {
-    onUpdateExpense(expense.id, {
-      accountId: newPaymentSource.accountId,
-      creditCardId: newPaymentSource.creditCardId,
-    });
-  };
+  const handlePaymentSourceChange = useCallback(
+    newPaymentSource => {
+      onUpdateExpense(expense.id, {
+        accountId: newPaymentSource.accountId,
+        creditCardId: newPaymentSource.creditCardId,
+      });
+    },
+    [expense.id, onUpdateExpense],
+  );
+
+  const handleNameSave = useCallback(
+    value => onUpdateExpense(expense.id, { name: value }),
+    [expense.id, onUpdateExpense],
+  );
+
+  const handleDateSave = useCallback(
+    value => onUpdateExpense(expense.id, { dueDate: value }),
+    [expense.id, onUpdateExpense],
+  );
+
+  const handleAmountSave = useCallback(
+    value => onUpdateExpense(expense.id, { amount: parseFloat(value) }),
+    [expense.id, onUpdateExpense],
+  );
+
+  const handlePaidAmountSave = useCallback(
+    value => onUpdateExpense(expense.id, { paidAmount: parseFloat(value) }),
+    [expense.id, onUpdateExpense],
+  );
+
+  const handleMarkAsPaidClick = useCallback(
+    () => onMarkAsPaid(expense.id),
+    [expense.id, onMarkAsPaid],
+  );
+
+  const handleMarkAsUnpaidClick = useCallback(
+    () => onUpdateExpense(expense.id, { paidAmount: 0 }),
+    [expense.id, onUpdateExpense],
+  );
+
+  const handleDuplicateClick = useCallback(
+    () => onDuplicate(expense),
+    [expense, onDuplicate],
+  );
+
+  const handleEditRecurringClick = useCallback(
+    () => onEditRecurring && onEditRecurring(expense),
+    [expense, onEditRecurring],
+  );
+
+  const handleDeleteClick = useCallback(
+    () => onDelete(expense.id),
+    [expense.id, onDelete],
+  );
 
   const {
     attributes,
@@ -54,74 +170,6 @@ const DraggableExpenseRow = ({
     cursor: isDragging ? 'grabbing' : 'grab',
     position: isDragging ? 'relative' : undefined,
     zIndex: isDragging ? 999 : undefined,
-  };
-
-  const DragOverlay = () => {
-    if (!isDragging) return null;
-
-    return createPortal(
-      <div
-        className='fixed pointer-events-none glass-panel bg-white/10 shadow-2xl rounded-lg border border-white/20 drag-overlay'
-        style={{
-          width: '100%',
-          maxWidth: '800px',
-          left: '50%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)',
-          animation: 'float 2s ease-in-out infinite',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-        }}
-      >
-        <div className='absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-lg' />
-        <div className='relative'>
-          <div className='absolute -top-3 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-blue-500/20 rounded-full text-blue-300 text-xs font-medium'>
-            Moving Expense
-          </div>
-          <table className='w-full'>
-            <tbody>
-              <tr className='bg-white/5'>
-                <td className='p-3 font-medium'>
-                  <div className='flex items-center space-x-2'>
-                    <span>{expense.name}</span>
-                    {expense.isAutoCreated && (
-                      <span className='text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full border border-blue-500/30'>
-                        Auto
-                      </span>
-                    )}
-                    {expense.isManuallyMapped && (
-                      <span className='text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-full border border-green-500/30'>
-                        Linked
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className='p-3'>{expense.dueDate}</td>
-                <td className='p-3 text-green-300'>${expense.amount}</td>
-                <td className='p-3'>
-                  <div className='flex items-center space-x-2'>
-                    <div className='animate-pulse w-2 h-2 rounded-full bg-blue-400' />
-                    <div
-                      className='animate-pulse w-2 h-2 rounded-full bg-blue-400'
-                      style={{ animationDelay: '0.2s' }}
-                    />
-                    <div
-                      className='animate-pulse w-2 h-2 rounded-full bg-blue-400'
-                      style={{ animationDelay: '0.4s' }}
-                    />
-                  </div>
-                </td>
-                <td className='p-3'>${expense.paidAmount}</td>
-                <td className='p-3'>
-                  <StatusBadge status={status} />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>,
-      document.body,
-    );
   };
 
   return (
@@ -156,7 +204,7 @@ const DraggableExpenseRow = ({
               value={expense.name}
               expense={expense}
               fieldName='name'
-              onSave={value => onUpdateExpense(expense.id, { name: value })}
+              onSave={handleNameSave}
             />
             {!expense.recurringTemplateId && (
               <span className='text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full border border-purple-500/30'>
@@ -193,7 +241,7 @@ const DraggableExpenseRow = ({
             expense={expense}
             fieldName='dueDate'
             type='date'
-            onSave={value => onUpdateExpense(expense.id, { dueDate: value })}
+            onSave={handleDateSave}
           />
         </td>
         <td>
@@ -202,9 +250,7 @@ const DraggableExpenseRow = ({
             expense={expense}
             fieldName='amount'
             type='number'
-            onSave={value =>
-              onUpdateExpense(expense.id, { amount: parseFloat(value) })
-            }
+            onSave={handleAmountSave}
           />
         </td>
         <td>
@@ -231,9 +277,7 @@ const DraggableExpenseRow = ({
             expense={expense}
             fieldName='paidAmount'
             type='number'
-            onSave={value =>
-              onUpdateExpense(expense.id, { paidAmount: parseFloat(value) })
-            }
+            onSave={handlePaidAmountSave}
           />
         </td>
         <td>
@@ -243,7 +287,7 @@ const DraggableExpenseRow = ({
           <div className='flex space-x-2'>
             {status !== 'Paid' && (
               <button
-                onClick={() => onMarkAsPaid(expense.id)}
+                onClick={handleMarkAsPaidClick}
                 className='p-1 text-green-300 hover:text-green-200'
                 title='Mark as paid'
               >
@@ -252,7 +296,7 @@ const DraggableExpenseRow = ({
             )}
             {status === 'Paid' && (
               <button
-                onClick={() => onUpdateExpense(expense.id, { paidAmount: 0 })}
+                onClick={handleMarkAsUnpaidClick}
                 className='p-1 text-yellow-300 hover:text-yellow-200'
                 title='Mark as unpaid'
               >
@@ -260,7 +304,7 @@ const DraggableExpenseRow = ({
               </button>
             )}
             <button
-              onClick={() => onDuplicate(expense)}
+              onClick={handleDuplicateClick}
               className='p-1 text-blue-300 hover:text-blue-200'
               title='Duplicate expense'
             >
@@ -268,7 +312,7 @@ const DraggableExpenseRow = ({
             </button>
             {expense.recurringTemplateId && onEditRecurring && (
               <button
-                onClick={() => onEditRecurring(expense)}
+                onClick={handleEditRecurringClick}
                 className='p-1 text-amber-300 hover:text-amber-200'
                 title='Edit recurring'
               >
@@ -276,7 +320,7 @@ const DraggableExpenseRow = ({
               </button>
             )}
             <button
-              onClick={() => onDelete(expense.id)}
+              onClick={handleDeleteClick}
               className='p-1 text-red-300 hover:text-red-200'
               title='Delete expense'
             >
@@ -285,7 +329,7 @@ const DraggableExpenseRow = ({
           </div>
         </td>
       </tr>
-      <DragOverlay />
+      <DragOverlay isDragging={isDragging} expense={expense} status={status} />
     </>
   );
 };
@@ -311,4 +355,4 @@ DraggableExpenseRow.defaultProps = {
   creditCards: [],
 };
 
-export default DraggableExpenseRow;
+export default memo(DraggableExpenseRow);

@@ -1,4 +1,5 @@
 import PropTypes from 'prop-types';
+import { memo } from 'react';
 
 import ExpenseBadge from './ExpenseBadge';
 
@@ -9,15 +10,15 @@ const CalendarDay = ({
   dayData,
   paycheckService,
   paycheckDates,
-  onSelect,
+  onDaySelect,
   isSelected,
   isFocused,
   dayIndex,
-  onFocus,
+  onFocusChange,
 }) => {
   const {
     date,
-    dateString: _dateString,
+    dateString,
     expenses,
     isToday,
     isCurrentMonth,
@@ -40,8 +41,8 @@ const CalendarDay = ({
       } ${isPaycheckDate ? 'calendar-day--paycheck' : ''} ${
         isNextPayDate ? 'calendar-day--next-paycheck' : ''
       } ${isFollowingPayDate ? 'calendar-day--following-paycheck' : ''}`}
-      onClick={onSelect}
-      onFocus={onFocus}
+      onClick={() => onDaySelect(dateString)}
+      onFocus={() => onFocusChange(dayIndex)}
       role='gridcell'
       aria-label={`${date.toLocaleDateString('en-US', {
         weekday: 'long',
@@ -55,7 +56,7 @@ const CalendarDay = ({
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onSelect();
+          onDaySelect(dateString);
         }
       }}
     >
@@ -112,7 +113,6 @@ CalendarDay.propTypes = {
     expenses: PropTypes.arrayOf(PropTypes.object),
     isToday: PropTypes.bool,
     isCurrentMonth: PropTypes.bool,
-    isSelected: PropTypes.bool,
     isPaycheckDate: PropTypes.bool,
     isNextPayDate: PropTypes.bool,
     isFollowingPayDate: PropTypes.bool,
@@ -122,11 +122,11 @@ CalendarDay.propTypes = {
     nextPayDate: PropTypes.string,
     followingPayDate: PropTypes.string,
   }).isRequired,
-  onSelect: PropTypes.func.isRequired,
+  onDaySelect: PropTypes.func.isRequired,
   isSelected: PropTypes.bool.isRequired,
   isFocused: PropTypes.bool.isRequired,
   dayIndex: PropTypes.number.isRequired,
-  onFocus: PropTypes.func.isRequired,
+  onFocusChange: PropTypes.func.isRequired,
 };
 
-export default CalendarDay;
+export default memo(CalendarDay);

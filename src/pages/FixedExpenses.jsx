@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import Calendar from '../components/Calendar/Calendar.jsx';
 import CategoryExpenseSummary from '../components/CategoryExpenseSummary.jsx';
@@ -24,6 +24,14 @@ import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications.jsx';
 
+const addOneMonthToDate = dateString => {
+  if (!dateString) return null;
+  const date = DateUtils.parseDate(dateString);
+  if (!date) return null;
+  date.setMonth(date.getMonth() + 1);
+  return DateUtils.formatDate(date);
+};
+
 const FixedExpenses = () => {
   const [showResetPrompt, setShowResetPrompt] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
@@ -42,24 +50,50 @@ const FixedExpenses = () => {
   // Add useExpenseOperations hook (must be unconditional for rules-of-hooks)
   const { updateExpenseV4, deleteExpense, markAsPaid } = useExpenseOperations();
 
-  // Helper function to add one month to a due date
-  const addOneMonthToDate = dateString => {
-    if (!dateString) return null;
-    const date = DateUtils.parseDate(dateString);
-    if (!date) return null;
-
-    // Add one month
-    date.setMonth(date.getMonth() + 1);
-
-    // Handle edge cases where a day does not exist in the next month.
-    // JavaScript automatically adjusts to the last day of the month
-    // (e.g., Jan 31 -> Feb 28/29), which is the desired behavior.
-    return DateUtils.formatDate(date);
-  };
-
   // Initialize paycheck service (memoized — only recalculates when paycheckSettings changes)
   const { paycheckService, paycheckDates } =
     usePaycheckCalculations(paycheckSettings);
+
+  const handleResetCycle = useCallback(async () => {
+    try {
+      const updatePromises = fixedExpenses.map(expense => {
+        let newDueDate = expense.dueDate;
+        if (expense.dueDate) {
+          newDueDate = addOneMonthToDate(expense.dueDate);
+        }
+        return updateExpenseV4(
+          expense.id,
+          { paidAmount: 0, status: 'pending', dueDate: newDueDate },
+          false,
+        );
+      });
+      await Promise.all(updatePromises);
+
+      if (paycheckDates.nextPayDate) {
+        await dbHelpers.updatePaycheckSettings({
+          lastPaycheckDate: paycheckDates.nextPayDate,
+          frequency: paycheckSettings?.frequency || 'biweekly',
+        });
+        await reloadPaycheckSettings();
+      }
+
+      await reloadExpenses();
+      setShowResetPrompt(false);
+      notify.success('New pay cycle started successfully');
+    } catch (error) {
+      logger.error('Error resetting cycle:', error);
+      notify.error('Failed to reset cycle. Please try again.');
+      setShowResetPrompt(false);
+    }
+  }, [
+    fixedExpenses,
+    updateExpenseV4,
+    paycheckDates,
+    paycheckSettings,
+    reloadPaycheckSettings,
+    reloadExpenses,
+  ]);
+
   const formatMonthKey = date => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -314,54 +348,7 @@ const FixedExpenses = () => {
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  try {
-                    // Reset all expenses to unpaid and advance due dates by one
-                    // month. Use Promise.all for parallel updates.
-                    const updatePromises = fixedExpenses.map(expense => {
-                      let newDueDate = expense.dueDate;
-
-                      if (expense.dueDate) {
-                        newDueDate = addOneMonthToDate(expense.dueDate);
-                      }
-
-                      // Don't show individual notifications
-                      return updateExpenseV4(
-                        expense.id,
-                        {
-                          paidAmount: 0,
-                          status: 'pending',
-                          dueDate: newDueDate,
-                        },
-                        false,
-                      );
-                    });
-
-                    await Promise.all(updatePromises);
-
-                    // Update last paycheck date to the current next paycheck
-                    // date. This effectively moves the cycle forward.
-                    if (paycheckDates.nextPayDate) {
-                      await dbHelpers.updatePaycheckSettings({
-                        lastPaycheckDate: paycheckDates.nextPayDate,
-                        frequency: paycheckSettings?.frequency || 'biweekly',
-                      });
-
-                      // Reload the updated paycheck settings
-                      await reloadPaycheckSettings();
-                    }
-
-                    // Reload expenses to ensure UI consistency
-                    await reloadExpenses();
-
-                    setShowResetPrompt(false);
-                    notify.success('New pay cycle started successfully');
-                  } catch (error) {
-                    logger.error('Error resetting cycle:', error);
-                    notify.error('Failed to reset cycle. Please try again.');
-                    setShowResetPrompt(false);
-                  }
-                }}
+                onClick={handleResetCycle}
                 className='flex-1 px-4 py-2 glass-button glass-button--danger'
               >
                 Reset

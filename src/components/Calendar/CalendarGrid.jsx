@@ -3,6 +3,8 @@ import { forwardRef } from 'react';
 
 import CalendarDay from './CalendarDay';
 
+const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 /**
  * Calendar Grid with 7-column layout and day cells
  */
@@ -13,19 +15,17 @@ const CalendarGrid = forwardRef(
       paycheckService,
       paycheckDates,
       onDaySelect,
-      selectedDay: _selectedDay,
+      selectedDay,
       focusedDayIndex,
       onFocusChange,
     },
     ref,
   ) => {
-    const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
     return (
       <div className='calendar-grid-container'>
         {/* Week day headers */}
         <div className='calendar-weekdays'>
-          {weekDays.map(day => (
+          {WEEK_DAYS.map(day => (
             <div key={day} className='calendar-weekday'>
               {day}
             </div>
@@ -40,11 +40,11 @@ const CalendarGrid = forwardRef(
               dayData={dayData}
               paycheckService={paycheckService}
               paycheckDates={paycheckDates}
-              onSelect={() => onDaySelect(dayData.dateString)}
-              isSelected={dayData.isSelected}
+              onDaySelect={onDaySelect}
+              isSelected={selectedDay === dayData.dateString}
               isFocused={focusedDayIndex === index}
               dayIndex={index}
-              onFocus={() => onFocusChange(index)}
+              onFocusChange={onFocusChange}
             />
           ))}
         </div>
