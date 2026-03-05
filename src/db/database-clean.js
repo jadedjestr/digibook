@@ -324,9 +324,37 @@ export const dbHelpers = {
     }
   },
 
+  /**
+   * Sync due date to all fixed expenses linked to this credit card.
+   * Call this when a credit card's due date changes so linked CC payment
+   * expenses stay in sync.
+   * @param {number} cardId - Credit card ID
+   * @param {string} dueDate - ISO date string (YYYY-MM-DD)
+   * @private Internal helper - use updateCreditCard for external updates
+   */
+  async syncCreditCardDueDateToExpenses(cardId, dueDate) {
+    if (dueDate == null) return;
+    const linked = await db.fixedExpenses
+      .where('targetCreditCardId')
+      .equals(cardId)
+      .filter(e => e.category === 'Credit Card Payment')
+      .toArray();
+    for (const expense of linked) {
+      await db.fixedExpenses.update(expense.id, { dueDate });
+    }
+    if (linked.length > 0) {
+      logger.success(
+        `Synced due date to ${linked.length} linked expense(s) for card ${cardId}`,
+      );
+    }
+  },
+
   async updateCreditCard(id, updates) {
     try {
       await db.creditCards.update(id, updates);
+      if (updates.dueDate !== undefined) {
+        await this.syncCreditCardDueDateToExpenses(id, updates.dueDate);
+      }
       logger.success(`Credit card updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating credit card:', error);
@@ -2387,6 +2415,16 @@ export const dbHelpers = {
       const sanitizedUpdates = sanitizeExpenseData(updates);
       await db.fixedExpenses.update(id, sanitizedUpdates);
 
+      // Sync due date to credit card when a CC payment expense due date changes
+      if (
+        sanitizedUpdates.dueDate !== undefined &&
+        currentExpense.targetCreditCardId
+      ) {
+        await this.updateCreditCard(currentExpense.targetCreditCardId, {
+          dueDate: sanitizedUpdates.dueDate,
+        });
+      }
+
       logger.success(`Updated V4 expense ID: ${id}`);
     } catch (error) {
       logger.error('Error updating V4 expense:', error);
@@ -2417,13 +2455,15 @@ export const dbHelpers = {
       '../utils/expenseValidation'
     );
 
-    await db.transaction(
+    return await db.transaction(
       'rw',
       db.fixedExpenses,
       db.accounts,
       db.creditCards,
       db.auditLogs,
+      db.recurringExpenseTemplates,
       async () => {
+        let templateIdAdvanced = null;
         const currentExpense = await db.fixedExpenses.get(expenseId);
         if (!currentExpense) {
           throw new Error(`Expense with ID ${expenseId} not found`);
@@ -2455,7 +2495,7 @@ export const dbHelpers = {
 
         // No balance change needed.
         if (paymentDifference === 0) {
-          return;
+          return { templateIdAdvanced };
         }
 
         // Apply balance deltas based on payment source.
@@ -2515,10 +2555,7 @@ export const dbHelpers = {
           } catch (auditError) {
             logger.error('Error adding payment audit log:', auditError);
           }
-          return;
-        }
-
-        if (sanitizedExpense.accountId) {
+        } else if (sanitizedExpense.accountId) {
           const account = await db.accounts.get(sanitizedExpense.accountId);
           if (!account) {
             throw new Error(`Account not found: ${sanitizedExpense.accountId}`);
@@ -2543,10 +2580,7 @@ export const dbHelpers = {
           } catch (auditError) {
             logger.error('Error adding payment audit log:', auditError);
           }
-          return;
-        }
-
-        if (sanitizedExpense.creditCardId) {
+        } else if (sanitizedExpense.creditCardId) {
           const creditCard = await db.creditCards.get(
             sanitizedExpense.creditCardId,
           );
@@ -2576,12 +2610,59 @@ export const dbHelpers = {
           } catch (auditError) {
             logger.error('Error adding payment audit log:', auditError);
           }
-          return;
+        } else {
+          throw new Error(
+            'No payment source specified (expected accountId or creditCardId)',
+          );
         }
 
-        throw new Error(
-          'No payment source specified (expected accountId or creditCardId)',
-        );
+        // Advance recurring template when expense just became fully paid
+        const templateId = sanitizedExpense.recurringTemplateId;
+        if (
+          templateId &&
+          derivedStatus === 'paid' &&
+          sanitizedExpense.amount > 0
+        ) {
+          const template = await db.recurringExpenseTemplates.get(templateId);
+          if (template && template.nextDueDate) {
+            const expenseDueNorm = DateUtils.formatDate(
+              DateUtils.parseDate(sanitizedExpense.dueDate),
+            );
+            const templateNextNorm = DateUtils.formatDate(
+              DateUtils.parseDate(template.nextDueDate),
+            );
+            if (expenseDueNorm === templateNextNorm) {
+              const normalizedTemplate = {
+                ...template,
+                intervalUnit: template.intervalUnit || 'months',
+              };
+              const newNextDueDate = this.calculateNextDueDate(
+                normalizedTemplate.nextDueDate,
+                normalizedTemplate.frequency,
+                normalizedTemplate.intervalValue || 1,
+                normalizedTemplate.intervalUnit || 'months',
+              );
+              let shouldDeactivate = false;
+              let nextDueToSet = newNextDueDate;
+              if (template.endDate) {
+                const endDate = DateUtils.parseDate(template.endDate);
+                const nextDue = DateUtils.parseDate(newNextDueDate);
+                if (endDate && nextDue && nextDue > endDate) {
+                  shouldDeactivate = true;
+                  nextDueToSet = null;
+                }
+              }
+              await this.updateRecurringExpenseTemplate(templateId, {
+                lastGenerated: template.nextDueDate,
+                nextDueDate: nextDueToSet,
+                ...(shouldDeactivate && { isActive: false }),
+              });
+              templateIdAdvanced = templateId;
+            }
+          }
+        }
+
+        return { templateIdAdvanced };
       },
     );
   },

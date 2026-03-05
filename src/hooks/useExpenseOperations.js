@@ -9,6 +9,7 @@ import {
   useFixedExpenses,
   useReloadAccounts,
   useReloadExpenses,
+  useRefreshTemplates,
   useRemoveExpense,
   useUpdateExpense,
 } from '../stores/useAppStore';
@@ -46,6 +47,7 @@ export const useExpenseOperations = () => {
   const removeExpenseFromStore = useRemoveExpense();
   const reloadAccounts = useReloadAccounts();
   const reloadExpenses = useReloadExpenses();
+  const refreshTemplates = useRefreshTemplates();
 
   const paymentService = useMemo(
     () => createPaymentService(accounts, creditCards),
@@ -121,14 +123,26 @@ export const useExpenseOperations = () => {
           }
           updatesToApply.paidAmount = paidAmountNumber;
 
-          await dbHelpers.applyExpensePaymentChangeAtomic(
+          const result = await dbHelpers.applyExpensePaymentChangeAtomic(
             expenseId,
             updatesToApply,
           );
+          if (result?.templateIdAdvanced != null) {
+            refreshTemplates();
+          }
           await Promise.all([reloadAccounts(), reloadExpenses()]);
         } else {
           // Update in database with V4 validation
           await dbHelpers.updateFixedExpenseV4(expenseId, updatesToApply);
+
+          // Credit card due date sync happens inside updateFixedExpenseV4.
+          // Reload accounts so Credit Cards tab shows updated due date.
+          if (
+            updatesToApply.dueDate !== undefined &&
+            correctedCurrentExpense.targetCreditCardId
+          ) {
+            await reloadAccounts();
+          }
         }
 
         logger.success(`Expense updated successfully: ${expenseId}`);
@@ -152,6 +166,7 @@ export const useExpenseOperations = () => {
       updateExpenseInStore,
       reloadExpenses,
       reloadAccounts,
+      refreshTemplates,
     ],
   );
 
