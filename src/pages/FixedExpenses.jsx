@@ -7,6 +7,7 @@ import OneOffExpensesView from '../components/OneOffExpensesView.jsx';
 import PayDateCountdownCard from '../components/PayDateCountdownCard.jsx';
 import PaySummaryCard from '../components/PaySummaryCard.jsx';
 import ProjectedBalanceCard from '../components/ProjectedBalanceCard.jsx';
+import { DEFAULT_PAY_FREQUENCY } from '../constants/payFrequency';
 import { dbHelpers } from '../db/database-clean';
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { usePaycheckCalculations } from '../hooks/usePaycheckCalculations';
@@ -72,7 +73,7 @@ const FixedExpenses = () => {
       if (paycheckDates.nextPayDate) {
         await dbHelpers.updatePaycheckSettings({
           lastPaycheckDate: paycheckDates.nextPayDate,
-          frequency: paycheckSettings?.frequency || 'biweekly',
+          frequency: paycheckSettings?.frequency || DEFAULT_PAY_FREQUENCY,
         });
         await reloadPaycheckSettings();
       }

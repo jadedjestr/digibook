@@ -2,6 +2,11 @@ import { Calendar, Clock } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 
+import {
+  calculateNextPayDates,
+  DEFAULT_PAY_FREQUENCY,
+  PAY_FREQUENCIES,
+} from '../constants/payFrequency';
 import { dbHelpers } from '../db/database-clean';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
@@ -10,7 +15,7 @@ import { notify } from '../utils/notifications';
 const PaycheckManager = ({ onDataChange }) => {
   const [paycheckSettings, setPaycheckSettings] = useState({
     lastPaycheckDate: '',
-    frequency: 'biweekly',
+    frequency: DEFAULT_PAY_FREQUENCY,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -26,7 +31,7 @@ const PaycheckManager = ({ onDataChange }) => {
       if (settings) {
         setPaycheckSettings({
           lastPaycheckDate: settings.lastPaycheckDate || '',
-          frequency: settings.frequency || 'biweekly',
+          frequency: settings.frequency || DEFAULT_PAY_FREQUENCY,
         });
         logger.debug('Paycheck settings loaded successfully');
       }
@@ -96,30 +101,10 @@ const PaycheckManager = ({ onDataChange }) => {
     }
   };
 
-  const calculateNextPayDates = () => {
-    if (!paycheckSettings.lastPaycheckDate) {
-      return null;
-    }
-
-    // Use DateUtils for consistent date parsing
-    const lastPayDate = DateUtils.parseDate(paycheckSettings.lastPaycheckDate);
-    if (!lastPayDate) {
-      return null;
-    }
-
-    const nextPayDate = new Date(lastPayDate);
-    nextPayDate.setDate(nextPayDate.getDate() + 14);
-
-    const followingPayDate = new Date(lastPayDate);
-    followingPayDate.setDate(followingPayDate.getDate() + 28);
-
-    return {
-      nextPayDate: DateUtils.formatDate(nextPayDate),
-      followingPayDate: DateUtils.formatDate(followingPayDate),
-    };
-  };
-
-  const nextPayDates = calculateNextPayDates();
+  const nextPayDates = calculateNextPayDates(
+    paycheckSettings.lastPaycheckDate,
+    paycheckSettings.frequency,
+  );
 
   if (isLoading) {
     return (
@@ -184,16 +169,16 @@ const PaycheckManager = ({ onDataChange }) => {
             }
             className='glass-input w-full'
           >
-            <option value='biweekly'>Biweekly (every 2 weeks)</option>
-            {/* Future: Add more options like semi-monthly, monthly */}
+            {Object.entries(PAY_FREQUENCIES).map(([key, { label }]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
           </select>
-          <p className='text-secondary text-sm mt-1'>
-            Currently only biweekly pay schedules are supported
-          </p>
         </div>
 
         {/* Preview Next Pay Dates */}
-        {nextPayDates && (
+        {nextPayDates.nextPayDate && (
           <div className='bg-white/5 rounded-lg p-4'>
             <div className='flex items-center space-x-2 mb-3'>
               <Clock size={16} className='text-secondary' />

@@ -1,5 +1,10 @@
 import Dexie from 'dexie';
 
+import {
+  DEFAULT_PAY_FREQUENCY,
+  VALID_PAY_FREQUENCIES,
+} from '../constants/payFrequency';
+import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
 import { dataIntegrity } from '../utils/crypto';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
@@ -159,6 +164,52 @@ export async function initializeDatabase() {
       );
     }
   }
+}
+
+/**
+ * Normalize paycheckSettings for import so the app always has exactly one valid row.
+ * Mutates data.paycheckSettings in place. Used by importData (file import and backup restore).
+ * @param {Object} data - Full import data object
+ */
+function normalizePaycheckSettings(data) {
+  const defaultRow = {
+    lastPaycheckDate: '',
+    frequency: DEFAULT_PAY_FREQUENCY,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (
+    data.paycheckSettings == null ||
+    !Array.isArray(data.paycheckSettings) ||
+    data.paycheckSettings.length === 0
+  ) {
+    data.paycheckSettings = [defaultRow];
+    return;
+  }
+
+  const first = data.paycheckSettings[0];
+  const lastPaycheckDate =
+    first.lastPaycheckDate && DateUtils.isValidDate(first.lastPaycheckDate)
+      ? first.lastPaycheckDate
+      : '';
+  const frequency = VALID_PAY_FREQUENCIES.includes(first.frequency)
+    ? first.frequency
+    : DEFAULT_PAY_FREQUENCY;
+  const createdAt =
+    first.createdAt && typeof first.createdAt === 'string'
+      ? first.createdAt
+      : new Date().toISOString();
+
+  const normalized = {
+    lastPaycheckDate,
+    frequency,
+    createdAt,
+  };
+  if (first.id != null && Number.isFinite(Number(first.id))) {
+    normalized.id = first.id;
+  }
+
+  data.paycheckSettings = [normalized];
 }
 
 /**
@@ -1482,7 +1533,10 @@ export const dbHelpers = {
         throw new Error('Invalid date format for lastPaycheckDate');
       }
 
-      if (settings.frequency && !['biweekly'].includes(settings.frequency)) {
+      if (
+        settings.frequency &&
+        !VALID_PAY_FREQUENCIES.includes(settings.frequency)
+      ) {
         throw new Error('Invalid frequency value');
       }
 
@@ -1750,14 +1804,16 @@ export const dbHelpers = {
     try {
       const creditCards = await db.creditCards.toArray();
       const expenses = await db.fixedExpenses.toArray();
-      const accounts = await db.accounts.toArray();
       let createdCount = 0;
 
-      // Find the default checking account to use as funding source
-      const defaultAccount =
-        accounts.find(acc => acc.isDefault) ||
-        accounts.find(acc => acc.type === 'checking') ||
-        accounts[0];
+      // Funding source: single source of truth from DB default;
+      // fallback when no default set (backward compatibility)
+      let defaultAccount = await this.getDefaultAccount();
+      if (!defaultAccount) {
+        const accounts = await db.accounts.toArray();
+        defaultAccount =
+          accounts.find(acc => acc.type === 'checking') || accounts[0];
+      }
 
       if (!defaultAccount) {
         logger.warn(
@@ -1775,11 +1831,7 @@ export const dbHelpers = {
         );
 
         if (!hasPaymentExpense) {
-          // Create a minimum payment expense using the new two-field system
-          // Min payment if set, else from balance or $25 default
-          const expenseAmount =
-            card.minimumPayment ||
-            (card.balance > 0 ? Math.max(card.balance * 0.02, 25) : 25);
+          const expenseAmount = getDefaultMinimumPaymentAmount(card);
 
           // Use V4 format with proper validation
           await this.addFixedExpenseV4({
@@ -1964,6 +2016,8 @@ export const dbHelpers = {
           await table.bulkPut(chunk);
         }
       };
+
+      normalizePaycheckSettings(data);
 
       // Atomic full-replace import:
       // - Everything is cleared and written inside one IndexedDB transaction.
@@ -2333,7 +2387,7 @@ export const dbHelpers = {
       if (paycheckSettingsCount === 0) {
         await db.paycheckSettings.add({
           lastPaycheckDate: '',
-          frequency: 'biweekly',
+          frequency: DEFAULT_PAY_FREQUENCY,
           createdAt: new Date().toISOString(),
         });
       }

@@ -1,65 +1,16 @@
+import { calculateNextPayDates } from '../constants/payFrequency';
 import { DateUtils } from '../utils/dateUtils';
-
-// Number of days between paychecks
-const BIWEEKLY_INTERVAL = 14;
 
 export class PaycheckService {
   constructor(paycheckSettings) {
     this.settings = paycheckSettings;
   }
 
-  // Calculate next paycheck dates based on last paycheck date and frequency
   calculatePaycheckDates() {
-    if (!this.settings?.lastPaycheckDate) {
-      return {
-        nextPayDate: null,
-        followingPayDate: null,
-        daysUntilNextPay: null,
-        daysUntilFollowingPay: null,
-      };
-    }
-
-    // Parse dates using DateUtils for consistency
-    const lastPayDate = DateUtils.parseDate(this.settings.lastPaycheckDate);
-    if (!lastPayDate) {
-      return {
-        nextPayDate: null,
-        followingPayDate: null,
-        daysUntilNextPay: null,
-        daysUntilFollowingPay: null,
-      };
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Start of day for consistent comparison
-
-    // Next paycheck (14 days from last paycheck)
-    const nextPayDate = new Date(lastPayDate);
-    nextPayDate.setDate(nextPayDate.getDate() + BIWEEKLY_INTERVAL);
-
-    // If next pay is in the past, add 14 days until future
-    while (nextPayDate <= today) {
-      nextPayDate.setDate(nextPayDate.getDate() + BIWEEKLY_INTERVAL);
-    }
-
-    // Calculate following paycheck (always 14 days after next pay date)
-    const followingPayDate = new Date(nextPayDate);
-    followingPayDate.setDate(followingPayDate.getDate() + 14);
-
-    // Calculate days until each paycheck
-    const daysUntilNextPay = Math.ceil(
-      (nextPayDate - today) / (1000 * 60 * 60 * 24),
+    return calculateNextPayDates(
+      this.settings?.lastPaycheckDate,
+      this.settings?.frequency,
     );
-    const daysUntilFollowingPay = Math.ceil(
-      (followingPayDate - today) / (1000 * 60 * 60 * 24),
-    );
-
-    return {
-      nextPayDate: DateUtils.formatDate(nextPayDate),
-      followingPayDate: DateUtils.formatDate(followingPayDate),
-      daysUntilNextPay,
-      daysUntilFollowingPay,
-    };
   }
 
   // Calculate expense status based on due date, amount, and paid amount
