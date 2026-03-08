@@ -428,16 +428,29 @@
 /* Expense Badge */
 .expense-badge {
   @apply text-xs font-medium;
+  display: flex;
+  align-items: center;
   padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid;
   cursor: pointer;
   transition: all var(--duration-fast) var(--easing-standard);
   text-shadow: var(--text-shadow-subtle);
-  white-space: nowrap;
+  max-width: 100%;
+}
+
+.expense-badge-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.expense-badge-amount {
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-left: 0.25rem;
 }
 
 .expense-badge:hover {
@@ -1200,10 +1213,11 @@
 }
 
 .category-expense-summary-compact-table th {
-  font-size: 0.7rem;
-  letter-spacing: 0.05em;
+  font-size: 0.75rem;
+  letter-spacing: 0.025em;
   text-transform: uppercase;
   opacity: 0.6;
+  font-weight: 500;
 }
 
 @media (max-width: 1024px) {

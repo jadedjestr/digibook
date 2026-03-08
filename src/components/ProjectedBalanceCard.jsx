@@ -10,6 +10,7 @@ const ProjectedBalanceCard = ({
   accounts = [],
   creditCards: _creditCards = [],
   summaryTotals = {},
+  showAccountName = true,
 }) => {
   // Find the default account (the one marked as default or first account)
   const defaultAccount =
@@ -63,7 +64,9 @@ const ProjectedBalanceCard = ({
         </div>
 
         <div className='text-xs text-secondary text-center'>
-          {defaultAccountName} • After expenses
+          {showAccountName
+            ? `${defaultAccountName} • After expenses`
+            : 'After expenses'}
         </div>
       </div>
     </div>
@@ -74,12 +77,14 @@ ProjectedBalanceCard.propTypes = {
   accounts: PropTypes.arrayOf(PropTypes.object),
   creditCards: PropTypes.arrayOf(PropTypes.object),
   summaryTotals: PropTypes.object,
+  showAccountName: PropTypes.bool,
 };
 
 ProjectedBalanceCard.defaultProps = {
   accounts: [],
   creditCards: [],
   summaryTotals: {},
+  showAccountName: true,
 };
 
 export default ProjectedBalanceCard;

@@ -398,6 +398,7 @@ const FixedExpenses = () => {
                   accounts={accounts}
                   creditCards={creditCards}
                   summaryTotals={summaryTotals}
+                  showAccountName={false}
                 />
               </div>
               <div className='fixed-expenses-left-panel-expense-dist'>

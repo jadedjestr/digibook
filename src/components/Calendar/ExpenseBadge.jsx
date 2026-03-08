@@ -13,19 +13,20 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   // Calculate status using PaycheckService
   const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
 
-  // Format expense display text
+  // Format expense display text (returns name and amount for separate elements)
   const formatExpenseText = expense => {
     const { name, amount, paidAmount } = expense;
 
     // Truncate long names
     const displayName = name.length > 15 ? `${name.substring(0, 15)}...` : name;
 
-    // Show payment status
+    // Amount text; include paid status when partially paid
+    let amountText = `$${amount.toLocaleString()}`;
     if (paidAmount > 0 && paidAmount < amount) {
-      return `${displayName} $${amount.toLocaleString()} ($${paidAmount.toLocaleString()} paid)`;
+      amountText = `$${amount.toLocaleString()} ($${paidAmount.toLocaleString()} paid)`;
     }
 
-    return `${displayName} $${amount.toLocaleString()}`;
+    return { displayName, amountText };
   };
 
   // Get status class for styling
@@ -48,7 +49,7 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
     }
   };
 
-  const expenseText = formatExpenseText(expense);
+  const { displayName, amountText } = formatExpenseText(expense);
   const statusClass = getStatusClass(status);
   const remainingAmount = expense.amount - (expense.paidAmount || 0);
 
@@ -87,7 +88,8 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
             📅
           </span>
         )}
-        {expenseText}
+        <span className='expense-badge-name'>{displayName}</span>
+        <span className='expense-badge-amount'>{amountText}</span>
       </div>
 
       {showQuickActions &&
