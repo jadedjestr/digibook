@@ -13,9 +13,13 @@ import { isUnpaidOrPartial } from '../../utils/payCycleNudgeLogic';
 /**
  * Widget showing upcoming payments for the current calendar month.
  * Displays up to 3 unpaid expenses, soonest first, with the next-to-pay item visually distinct.
- * Collapsible; shows empty state when nothing is due this month.
+ * When alwaysExpanded (e.g. in left panel), no collapse; optional onPayNow adds "Pay Now" per row.
  */
-const UpcomingRecurringWidget = ({ monthExpenses = [] }) => {
+const UpcomingRecurringWidget = ({
+  monthExpenses = [],
+  alwaysExpanded = false,
+  onPayNow,
+}) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const upcomingList = useMemo(() => {
@@ -60,29 +64,42 @@ const UpcomingRecurringWidget = ({ monthExpenses = [] }) => {
           `Next: ${first.name} — ${DateUtils.formatShortDate(first.dueDate)}`) ||
         '';
 
+  const showBody = alwaysExpanded || !isCollapsed;
+
   return (
     <div className='upcoming-recurring-widget'>
-      <button
-        type='button'
-        className='upcoming-widget-header'
-        onClick={handleToggleCollapse}
-        aria-expanded={!isCollapsed}
-        aria-label={
-          isCollapsed
-            ? 'Expand upcoming payments'
-            : 'Collapse upcoming payments'
-        }
-      >
-        <span className='upcoming-label'>Upcoming payments</span>
-        {isCollapsed && summary && (
-          <span className='upcoming-collapsed-summary'>{summary}</span>
-        )}
-        <span className='upcoming-chevron'>
-          {isCollapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
-        </span>
-      </button>
+      {!alwaysExpanded && (
+        <button
+          type='button'
+          className='upcoming-widget-header'
+          onClick={handleToggleCollapse}
+          aria-expanded={!isCollapsed}
+          aria-label={
+            isCollapsed
+              ? 'Expand upcoming payments'
+              : 'Collapse upcoming payments'
+          }
+        >
+          <span className='upcoming-label'>Upcoming payments</span>
+          {isCollapsed && summary && (
+            <span className='upcoming-collapsed-summary'>{summary}</span>
+          )}
+          <span className='upcoming-chevron'>
+            {isCollapsed ? (
+              <ChevronRight size={18} />
+            ) : (
+              <ChevronDown size={18} />
+            )}
+          </span>
+        </button>
+      )}
+      {alwaysExpanded && (
+        <div className='upcoming-widget-header upcoming-widget-header--label-only'>
+          <span className='upcoming-label'>Upcoming payments</span>
+        </div>
+      )}
 
-      {!isCollapsed && (
+      {showBody && (
         <div className='upcoming-widget-body'>
           {upcomingList.length === 0 ? (
             <div className='upcoming-empty'>
@@ -115,6 +132,15 @@ const UpcomingRecurringWidget = ({ monthExpenses = [] }) => {
                       <span className='upcoming-item-amount'>
                         {formatCurrency(expense.amount ?? 0)}
                       </span>
+                      {typeof onPayNow === 'function' && (
+                        <button
+                          type='button'
+                          className='upcoming-item-pay-now'
+                          onClick={() => onPayNow(expense)}
+                        >
+                          Pay Now
+                        </button>
+                      )}
                     </div>
                     <div className='upcoming-item-meta'>
                       <span className='upcoming-item-date'>
@@ -140,10 +166,14 @@ const UpcomingRecurringWidget = ({ monthExpenses = [] }) => {
 
 UpcomingRecurringWidget.propTypes = {
   monthExpenses: PropTypes.arrayOf(PropTypes.object),
+  alwaysExpanded: PropTypes.bool,
+  onPayNow: PropTypes.func,
 };
 
 UpcomingRecurringWidget.defaultProps = {
   monthExpenses: [],
+  alwaysExpanded: false,
+  onPayNow: undefined,
 };
 
 export default UpcomingRecurringWidget;

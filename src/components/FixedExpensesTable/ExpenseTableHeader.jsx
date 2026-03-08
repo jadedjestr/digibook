@@ -20,6 +20,7 @@ const ExpenseTableHeader = ({
   setExpenseTypeFilter,
   setIsPanelOpen,
   onCategoryClick,
+  variant = 'full',
 }) => {
   // Use memoized totals for better performance
   const { totalExpenses, totalAmount, totalPaid, totalRemaining } = totals;
@@ -36,6 +37,61 @@ const ExpenseTableHeader = ({
           };
         })
       : [];
+
+  const controlsStrip = (
+    <div className='flex flex-wrap items-center gap-2'>
+      <button
+        onClick={() => setSortBy(sortBy === 'dueDate' ? 'name' : 'dueDate')}
+        className='flex items-center gap-1 px-3 py-2 text-sm glass-button'
+        title={`Sort by ${sortBy === 'dueDate' ? 'name' : 'due date'}`}
+      >
+        {sortBy === 'dueDate' ? <SortAsc size={16} /> : <SortDesc size={16} />}
+        {sortBy === 'dueDate' ? 'Due Date' : 'Name'}
+      </button>
+      <button
+        onClick={() => setShowOnlyUnpaid(!showOnlyUnpaid)}
+        className={`flex items-center gap-1 px-3 py-2 text-sm transition-colors ${
+          showOnlyUnpaid
+            ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+            : 'glass-button'
+        }`}
+        title={
+          showOnlyUnpaid ? 'Show all expenses' : 'Show only unpaid expenses'
+        }
+      >
+        {showOnlyUnpaid ? <EyeOff size={16} /> : <Eye size={16} />}
+        {showOnlyUnpaid ? 'All' : 'Unpaid'}
+      </button>
+      <select
+        value={expenseTypeFilter}
+        onChange={e => setExpenseTypeFilter(e.target.value)}
+        className='px-3 py-2 text-sm glass-button bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50'
+        title='Filter by expense type'
+      >
+        <option value='all'>All Types</option>
+        <option value='recurring'>Recurring Only</option>
+        <option value='oneoff'>One-Off Only</option>
+      </select>
+      <button
+        onClick={() => setIsPanelOpen(true)}
+        className='flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors'
+      >
+        <Plus size={16} />
+        Add Expense
+      </button>
+    </div>
+  );
+
+  if (variant === 'minimal') {
+    return (
+      <div className='glass-panel p-4'>
+        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
+          <h2 className='text-xl font-bold text-white'>Fixed Expenses</h2>
+          {controlsStrip}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className='glass-panel p-6'>
@@ -206,6 +262,7 @@ ExpenseTableHeader.propTypes = {
   setExpenseTypeFilter: PropTypes.func.isRequired,
   setIsPanelOpen: PropTypes.func.isRequired,
   onCategoryClick: PropTypes.func,
+  variant: PropTypes.oneOf(['full', 'minimal']),
 };
 
 export default ExpenseTableHeader;

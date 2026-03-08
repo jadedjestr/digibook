@@ -11,6 +11,7 @@ const DonutChart = ({
   onSegmentClick,
   size = 200,
   showTotalUnderLegend = false,
+  hideTable = false,
 }) => {
   const [animatedSegments, setAnimatedSegments] = useState({});
 
@@ -75,6 +76,76 @@ const DonutChart = ({
       handleSegmentClick(categoryName);
     }
   };
+
+  const chartContent = (
+    <div className='flex justify-center items-center w-full'>
+      <div className='relative' style={{ width: size, height: size }}>
+        <svg
+          viewBox={`0 0 ${size} ${size}`}
+          className='w-full h-full'
+          style={{ transform: 'rotate(-90deg)' }}
+        >
+          {/* Background circle */}
+          <circle
+            cx={centerX}
+            cy={centerY}
+            r={radius}
+            fill='none'
+            stroke='rgba(255, 255, 255, 0.1)'
+            strokeWidth={strokeWidth}
+          />
+
+          {/* Category segments */}
+          {segments.map((segment, _index) => {
+            const _isAnimated = animatedSegments[segment.name];
+
+            return (
+              <circle
+                key={segment.name}
+                cx={centerX}
+                cy={centerY}
+                r={radius}
+                fill='none'
+                stroke={segment.color}
+                strokeWidth={strokeWidth}
+                strokeLinecap='round'
+                strokeDasharray={`${Math.round(segment.segmentLength * 100) / 100} ${Math.round((circumference - segment.segmentLength) * 100) / 100}`}
+                strokeDashoffset={Math.round(segment.offset * 100) / 100}
+                className='cursor-pointer transition-all duration-300 hover:opacity-80'
+                style={{
+                  opacity: 1, // Always visible - animation removed to ensure segments render
+                  transition: 'stroke-width 0.2s ease',
+                }}
+                onClick={() => handleSegmentClick(segment.name)}
+                onKeyDown={e => handleKeyDown(e, segment.name)}
+                onMouseEnter={e => {
+                  e.currentTarget.style.strokeWidth = strokeWidth * 1.2;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.strokeWidth = strokeWidth;
+                }}
+                role='button'
+                tabIndex={0}
+                aria-label={`${segment.name}: ${formatCurrency(segment.amount)} (${segment.percentage.toFixed(1)}% of total). Click to view details.`}
+              />
+            );
+          })}
+        </svg>
+
+        {/* Center text - div is outside SVG so no rotation needed */}
+        <div className='absolute inset-0 flex flex-col items-center justify-center pointer-events-none'>
+          <div className='text-sm text-white/60 mb-1'>Total Budgeted</div>
+          <PrivacyWrapper>
+            <div className='text-2xl font-bold text-white'>
+              {formatCurrency(totalAmount)}
+            </div>
+          </PrivacyWrapper>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (hideTable) return chartContent;
 
   return (
     <div className='flex flex-col lg:flex-row gap-6 w-full'>
@@ -145,71 +216,7 @@ const DonutChart = ({
       </div>
 
       {/* Chart - Right side (60% on desktop, full width on mobile) */}
-      <div className='flex justify-center items-center w-full lg:w-[60%]'>
-        <div className='relative' style={{ width: size, height: size }}>
-          <svg
-            viewBox={`0 0 ${size} ${size}`}
-            className='w-full h-full'
-            style={{ transform: 'rotate(-90deg)' }}
-          >
-            {/* Background circle */}
-            <circle
-              cx={centerX}
-              cy={centerY}
-              r={radius}
-              fill='none'
-              stroke='rgba(255, 255, 255, 0.1)'
-              strokeWidth={strokeWidth}
-            />
-
-            {/* Category segments */}
-            {segments.map((segment, _index) => {
-              const _isAnimated = animatedSegments[segment.name];
-
-              return (
-                <circle
-                  key={segment.name}
-                  cx={centerX}
-                  cy={centerY}
-                  r={radius}
-                  fill='none'
-                  stroke={segment.color}
-                  strokeWidth={strokeWidth}
-                  strokeLinecap='round'
-                  strokeDasharray={`${Math.round(segment.segmentLength * 100) / 100} ${Math.round((circumference - segment.segmentLength) * 100) / 100}`}
-                  strokeDashoffset={Math.round(segment.offset * 100) / 100}
-                  className='cursor-pointer transition-all duration-300 hover:opacity-80'
-                  style={{
-                    opacity: 1, // Always visible - animation removed to ensure segments render
-                    transition: 'stroke-width 0.2s ease',
-                  }}
-                  onClick={() => handleSegmentClick(segment.name)}
-                  onKeyDown={e => handleKeyDown(e, segment.name)}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.strokeWidth = strokeWidth * 1.2;
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.strokeWidth = strokeWidth;
-                  }}
-                  role='button'
-                  tabIndex={0}
-                  aria-label={`${segment.name}: ${formatCurrency(segment.amount)} (${segment.percentage.toFixed(1)}% of total). Click to view details.`}
-                />
-              );
-            })}
-          </svg>
-
-          {/* Center text - div is outside SVG so no rotation needed */}
-          <div className='absolute inset-0 flex flex-col items-center justify-center pointer-events-none'>
-            <div className='text-sm text-white/60 mb-1'>Total Budgeted</div>
-            <PrivacyWrapper>
-              <div className='text-2xl font-bold text-white'>
-                {formatCurrency(totalAmount)}
-              </div>
-            </PrivacyWrapper>
-          </div>
-        </div>
-      </div>
+      {chartContent}
     </div>
   );
 };
@@ -227,6 +234,7 @@ DonutChart.propTypes = {
   onSegmentClick: PropTypes.func,
   size: PropTypes.number,
   showTotalUnderLegend: PropTypes.bool,
+  hideTable: PropTypes.bool,
 };
 
 export default DonutChart;

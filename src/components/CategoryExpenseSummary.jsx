@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types';
 import { useState, useMemo, memo } from 'react';
 
+import { formatCurrency } from '../utils/accountUtils';
 import { createCategoryMap, getCategoryFromMap } from '../utils/categoryUtils';
 
 import CategoryDetailView from './CategoryDetailView';
@@ -42,6 +43,7 @@ const CategoryExpenseSummaryBase = ({
   expenses,
   categories,
   onCategoryClick,
+  compact = false,
 }) => {
   // State management
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -126,8 +128,12 @@ const CategoryExpenseSummaryBase = ({
   };
 
   return (
-    <div className='glass-panel'>
-      <h3 className='text-lg font-semibold text-primary mb-4'>
+    <div className='glass-card p-6'>
+      <h3
+        className={`font-semibold text-primary ${
+          compact ? 'text-base mb-3' : 'text-lg mb-4'
+        }`}
+      >
         Expense Distribution
       </h3>
 
@@ -144,6 +150,84 @@ const CategoryExpenseSummaryBase = ({
               ? 'Try selecting a different time range.'
               : 'Add expenses to see the distribution breakdown.'}
           </p>
+        </div>
+      ) : compact ? (
+        // eslint-disable-next-line lines-around-comment -- compact layout comment
+        /* Compact: donut on top, category table full width below */
+        <div
+          className='category-expense-summary-compact'
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            gap: '1rem',
+          }}
+        >
+          <div
+            className='category-expense-summary-compact-donut'
+            style={{ display: 'flex', justifyContent: 'center' }}
+          >
+            <DonutChart
+              data={expenseData}
+              totalAmount={totalAmount}
+              onSegmentClick={handleSegmentClick}
+              size={150}
+              showTotalUnderLegend={true}
+              hideTable
+            />
+          </div>
+          {selectedCategory ? (
+            <div className='category-expense-summary-compact-detail'>
+              <CategoryDetailView
+                categoryName={selectedCategory}
+                categoryData={getCategoryDetails(selectedCategory)}
+                onBack={handleBackClick}
+              />
+            </div>
+          ) : (
+            <div className='category-expense-summary-compact-table-wrap'>
+              <table className='category-expense-summary-compact-table'>
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th className='text-right'>%</th>
+                    <th className='text-right'>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categoryData.map(({ name, percentage, total }) => (
+                    <tr
+                      key={name}
+                      role='button'
+                      tabIndex={0}
+                      onClick={() => handleSegmentClick(name)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSegmentClick(name);
+                        }
+                      }}
+                      className='cursor-pointer hover:bg-white/5 focus:outline-none focus:bg-white/5'
+                    >
+                      <td>
+                        {name === 'Uncategorized' ? 'Uncategorized' : name}
+                      </td>
+                      <td className='text-right'>{percentage.toFixed(1)}%</td>
+                      <td className='text-right'>{formatCurrency(total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td>Total Budgeted</td>
+                    <td colSpan={2} className='text-right font-semibold'>
+                      {formatCurrency(totalAmount)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
         </div>
       ) : (
         <div
@@ -193,6 +277,8 @@ const CategoryExpenseSummaryBase = ({
 const CategoryExpenseSummary = memo(
   CategoryExpenseSummaryBase,
   (prevProps, nextProps) => {
+    if (prevProps.compact !== nextProps.compact) return false;
+
     // Check onCategoryClick prop (Bug 1 fix)
     if (prevProps.onCategoryClick !== nextProps.onCategoryClick) return false;
 
@@ -250,6 +336,7 @@ CategoryExpenseSummaryBase.propTypes = {
   expenses: PropTypes.arrayOf(PropTypes.object),
   categories: PropTypes.arrayOf(PropTypes.object),
   onCategoryClick: PropTypes.func,
+  compact: PropTypes.bool,
 };
 
 CategoryExpenseSummary.propTypes = CategoryExpenseSummaryBase.propTypes;

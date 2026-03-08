@@ -2,13 +2,17 @@ import PropTypes from 'prop-types';
 
 /**
  * Calendar Cycle Button - Integrated into calendar design
- * Clean, single-icon design that feels natural in the calendar context
+ * variant="ghost" for de-emphasized use in left panel
  */
-const CalendarCycleButton = ({ onReset }) => {
+const CalendarCycleButton = ({ onReset, variant }) => {
+  const className =
+    variant === 'ghost'
+      ? 'calendar-cycle-button calendar-cycle-button--ghost'
+      : 'calendar-cycle-button';
   return (
     <button
       onClick={onReset}
-      className='calendar-cycle-button'
+      className={className}
       aria-label='Start new pay cycle'
       title='Reset all expenses and start a new pay cycle'
     >
@@ -31,6 +35,11 @@ const CalendarCycleButton = ({ onReset }) => {
 
 CalendarCycleButton.propTypes = {
   onReset: PropTypes.func.isRequired,
+  variant: PropTypes.oneOf(['default', 'ghost']),
+};
+
+CalendarCycleButton.defaultProps = {
+  variant: 'default',
 };
 
 export default CalendarCycleButton;

@@ -3,10 +3,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 
 import { DateUtils } from '../../utils/dateUtils';
 
-import CalendarCycleButton from './CalendarCycleButton';
 import CalendarGrid from './CalendarGrid';
 import CalendarHeader from './CalendarHeader';
-import UpcomingRecurringWidget from './UpcomingRecurringWidget';
 import './calendar.css';
 
 /**
@@ -22,7 +20,6 @@ const Calendar = ({
   onPreviousMonth,
   onNextMonth,
   onToday,
-  onReset,
 }) => {
   // Calendar state
   const [selectedDay, setSelectedDay] = useState(null);
@@ -179,12 +176,6 @@ const Calendar = ({
           focusedDayIndex={focusedDayIndex}
           onFocusChange={setFocusedDayIndex}
         />
-
-        {/* Calendar Actions - Upcoming Widget (unpaid expenses this month) + New Cycle Button */}
-        <div className='calendar-actions'>
-          <UpcomingRecurringWidget monthExpenses={monthExpenses} />
-          <CalendarCycleButton onReset={onReset} />
-        </div>
       </div>
     </div>
   );
@@ -201,7 +192,6 @@ Calendar.propTypes = {
   onPreviousMonth: PropTypes.func.isRequired,
   onNextMonth: PropTypes.func.isRequired,
   onToday: PropTypes.func.isRequired,
-  onReset: PropTypes.func.isRequired,
 };
 
 Calendar.defaultProps = {

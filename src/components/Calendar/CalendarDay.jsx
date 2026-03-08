@@ -32,15 +32,19 @@ const CalendarDay = ({
   const visibleExpenses = expenses.slice(0, 3);
   const remainingCount = expenses.length - 3;
 
+  const hasExpenses = expenses.length > 0;
+
   return (
     <div
-      className={`calendar-day ${isToday ? 'calendar-day--today' : ''} ${
-        !isCurrentMonth ? 'calendar-day--other-month' : ''
-      } ${isSelected ? 'calendar-day--selected' : ''} ${
-        isFocused ? 'calendar-day--focused' : ''
-      } ${isPaycheckDate ? 'calendar-day--paycheck' : ''} ${
-        isNextPayDate ? 'calendar-day--next-paycheck' : ''
-      } ${isFollowingPayDate ? 'calendar-day--following-paycheck' : ''}`}
+      className={`calendar-day ${hasExpenses ? 'has-expenses' : ''} ${
+        isToday ? 'calendar-day--today' : ''
+      } ${!isCurrentMonth ? 'calendar-day--other-month' : ''} ${
+        isSelected ? 'calendar-day--selected' : ''
+      } ${isFocused ? 'calendar-day--focused' : ''} ${
+        isPaycheckDate ? 'calendar-day--paycheck' : ''
+      } ${isNextPayDate ? 'calendar-day--next-paycheck' : ''} ${
+        isFollowingPayDate ? 'calendar-day--following-paycheck' : ''
+      }`}
       onClick={() => onDaySelect(dateString)}
       onFocus={() => onFocusChange(dayIndex)}
       role='gridcell'

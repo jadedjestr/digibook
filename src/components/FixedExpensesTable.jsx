@@ -15,11 +15,12 @@ import ExpenseTableContainer from './FixedExpensesTable/ExpenseTableContainer';
  *
  * Note: ExpenseTableContainer now uses Zustand store directly, so no props needed
  */
-const FixedExpensesTable = ({ expenses, onCategoryClick }) => {
+const FixedExpensesTable = ({ expenses, onCategoryClick, headerVariant }) => {
   return (
     <ExpenseTableContainer
       expensesOverride={expenses}
       onCategoryClick={onCategoryClick}
+      headerVariant={headerVariant}
     />
   );
 };
@@ -27,6 +28,7 @@ const FixedExpensesTable = ({ expenses, onCategoryClick }) => {
 FixedExpensesTable.propTypes = {
   expenses: PropTypes.arrayOf(PropTypes.object),
   onCategoryClick: PropTypes.func,
+  headerVariant: PropTypes.oneOf(['full', 'minimal']),
 };
 
 FixedExpensesTable.defaultProps = {

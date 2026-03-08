@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import Calendar from '../components/Calendar/Calendar.jsx';
+import CalendarCycleButton from '../components/Calendar/CalendarCycleButton.jsx';
 import PayCycleNudgeBanner from '../components/Calendar/PayCycleNudgeBanner.jsx';
 import PayCycleNudgeToast from '../components/Calendar/PayCycleNudgeToast.jsx';
+import UpcomingRecurringWidget from '../components/Calendar/UpcomingRecurringWidget.jsx';
 import CategoryExpenseSummary from '../components/CategoryExpenseSummary.jsx';
+import FixedExpensesSummaryCard from '../components/FixedExpensesTable/FixedExpensesSummaryCard.jsx';
 import FixedExpensesTable from '../components/FixedExpensesTable.jsx';
+import MarkAsPaidModal from '../components/MarkAsPaidModal.jsx';
 import OneOffExpensesView from '../components/OneOffExpensesView.jsx';
 import PayDateCountdownCard from '../components/PayDateCountdownCard.jsx';
 import PaySummaryCard from '../components/PaySummaryCard.jsx';
@@ -25,9 +29,15 @@ import {
   useReloadPaycheckSettings,
 } from '../stores/useAppStore';
 import { DateUtils } from '../utils/dateUtils';
+import {
+  groupExpensesByCategory,
+  computeFixedExpenseTotals,
+  computeCategoryTotals,
+} from '../utils/expenseUtils';
 import { logger } from '../utils/logger';
 import { notify, showConfirmation } from '../utils/notifications.jsx';
 import { isUnpaidOrPartial } from '../utils/payCycleNudgeLogic';
+import '../components/Calendar/calendar.css';
 
 /** Set to true to show pay cycle nudge as toast instead of banner. */
 const USE_NUDGE_TOAST = true;
@@ -42,6 +52,7 @@ const addOneMonthToDate = dateString => {
 
 const FixedExpenses = () => {
   const [showResetPrompt, setShowResetPrompt] = useState(false);
+  const [payNowExpense, setPayNowExpense] = useState(null);
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'oneoffs'
   const expensesTableRef = useRef(null);
@@ -180,6 +191,29 @@ const FixedExpenses = () => {
     expensesTableRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  const handlePayNow = useCallback(expense => {
+    setPayNowExpense(expense);
+  }, []);
+
+  const handleMarkAsPaidConfirm = useCallback(
+    async (newPaidAmount, status) => {
+      if (!payNowExpense) return;
+      try {
+        await updateExpenseV4(
+          payNowExpense.id,
+          { paidAmount: newPaidAmount, status },
+          false,
+        );
+        await reloadExpenses();
+        notify.success('Payment updated');
+      } catch (err) {
+        logger.error('Error updating payment', err);
+        notify.error('Failed to update payment');
+      }
+    },
+    [payNowExpense, updateExpenseV4, reloadExpenses],
+  );
+
   const summaryTotals = useMemo(
     () =>
       paycheckService.calculateSummaryTotals(
@@ -188,6 +222,22 @@ const FixedExpenses = () => {
       ),
     [paycheckService, currentMonthExpenses, paycheckDates],
   );
+
+  const { fixedExpenseSummaryTotals, fixedExpenseSummaryCategoryRows } =
+    useMemo(() => {
+      const groups = groupExpensesByCategory(currentMonthExpenses);
+      const totals = computeFixedExpenseTotals(currentMonthExpenses);
+      const categoryTotals = computeCategoryTotals(groups);
+      const rows = Object.keys(groups).map(categoryName => ({
+        name: categoryName,
+        count: categoryTotals[categoryName]?.count ?? 0,
+        totalBudgeted: categoryTotals[categoryName]?.totalBudgeted ?? 0,
+      }));
+      return {
+        fixedExpenseSummaryTotals: totals,
+        fixedExpenseSummaryCategoryRows: rows,
+      };
+    }, [currentMonthExpenses]);
 
   const nextPayDisplay = useMemo(() => {
     if (!paycheckDates.nextPayDate) {
@@ -308,7 +358,7 @@ const FixedExpenses = () => {
 
       {viewMode === 'month' ? (
         <>
-          {/* Pay cycle nudge - above calendar (or as toast when USE_NUDGE_TOAST) */}
+          {/* Pay cycle nudge - above layout (or as toast when USE_NUDGE_TOAST) */}
           {USE_NUDGE_TOAST ? (
             <PayCycleNudgeToast
               nudge={nudge}
@@ -328,54 +378,106 @@ const FixedExpenses = () => {
               onReviewScroll={handleReviewScroll}
             />
           )}
-          {/* Calendar View - At the very top */}
-          <Calendar
-            currentMonth={currentMonth}
-            monthExpenses={currentMonthExpenses}
-            paycheckService={paycheckService}
-            paycheckDates={paycheckDates}
-            onPreviousMonth={handlePreviousMonth}
-            onNextMonth={handleNextMonth}
-            onToday={handleToday}
-            onReset={() => setShowResetPrompt(true)}
-          />
 
-          {/* Summary Cards */}
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-            <PaySummaryCard
-              summaryTotals={summaryTotals}
-              paycheckDates={paycheckDates}
-            />
-            <PayDateCountdownCard
-              nextPayDate={paycheckDates.nextPayDate}
-              followingPayDate={paycheckDates.followingPayDate}
-              daysUntilNextPay={paycheckDates.daysUntilNextPay}
-              daysUntilFollowingPay={paycheckDates.daysUntilFollowingPay}
-            />
-            <ProjectedBalanceCard
-              accounts={accounts}
-              creditCards={creditCards}
-              summaryTotals={summaryTotals}
-            />
+          {/* Two-column: left panel (35%) + right (calendar) */}
+          <div className='fixed-expenses-month-layout'>
+            {/* Left panel: cards, expense dist, fixed card, upcoming, spacer, New Cycle */}
+            <div className='fixed-expenses-left-panel'>
+              <div className='fixed-expenses-left-panel-cards'>
+                <PaySummaryCard
+                  summaryTotals={summaryTotals}
+                  paycheckDates={paycheckDates}
+                />
+                <PayDateCountdownCard
+                  nextPayDate={paycheckDates.nextPayDate}
+                  followingPayDate={paycheckDates.followingPayDate}
+                  daysUntilNextPay={paycheckDates.daysUntilNextPay}
+                  daysUntilFollowingPay={paycheckDates.daysUntilFollowingPay}
+                />
+                <ProjectedBalanceCard
+                  accounts={accounts}
+                  creditCards={creditCards}
+                  summaryTotals={summaryTotals}
+                />
+              </div>
+              <div className='fixed-expenses-left-panel-expense-dist'>
+                <CategoryExpenseSummary
+                  expenses={currentMonthExpenses}
+                  categories={categories}
+                  onCategoryClick={handleCategoryClick}
+                  compact
+                />
+              </div>
+              <div className='fixed-expenses-left-panel-fixed-card'>
+                <FixedExpensesSummaryCard
+                  totals={fixedExpenseSummaryTotals}
+                  categoryRows={fixedExpenseSummaryCategoryRows}
+                  onCategoryClick={handleCategoryClick}
+                />
+              </div>
+              <div className='fixed-expenses-left-panel-upcoming'>
+                <UpcomingRecurringWidget
+                  monthExpenses={currentMonthExpenses}
+                  alwaysExpanded
+                  onPayNow={handlePayNow}
+                />
+              </div>
+              <div className='fixed-expenses-left-panel-spacer' />
+              <div className='fixed-expenses-left-panel-new-cycle'>
+                {paycheckSettings?.lastPaycheckDate && (
+                  <p className='fixed-expenses-new-cycle-text'>
+                    Last reset:{' '}
+                    {DateUtils.formatShortDate(
+                      paycheckSettings.lastPaycheckDate,
+                    )}
+                  </p>
+                )}
+                {paycheckDates.nextPayDate && (
+                  <p className='fixed-expenses-new-cycle-text'>
+                    Next paycheck:{' '}
+                    {DateUtils.formatShortDate(paycheckDates.nextPayDate)}
+                  </p>
+                )}
+                <CalendarCycleButton
+                  onReset={() => setShowResetPrompt(true)}
+                  variant='ghost'
+                />
+              </div>
+            </div>
+
+            {/* Right column: calendar only */}
+            <div className='fixed-expenses-right-column'>
+              <Calendar
+                currentMonth={currentMonth}
+                monthExpenses={currentMonthExpenses}
+                paycheckService={paycheckService}
+                paycheckDates={paycheckDates}
+                onPreviousMonth={handlePreviousMonth}
+                onNextMonth={handleNextMonth}
+                onToday={handleToday}
+              />
+            </div>
           </div>
 
-          {/* Category Summary */}
-          <CategoryExpenseSummary
-            expenses={currentMonthExpenses}
-            categories={categories}
-            onCategoryClick={handleCategoryClick}
-          />
-
-          {/* Main Expenses Table */}
+          {/* Full-width table below two-column layout */}
           <div
             ref={expensesTableRef}
+            className='fixed-expenses-table-section'
             data-testid='fixed-expenses-table-container'
           >
             <FixedExpensesTable
               expenses={currentMonthExpenses}
               onCategoryClick={handleCategoryClick}
+              headerVariant='minimal'
             />
           </div>
+
+          <MarkAsPaidModal
+            expense={payNowExpense}
+            isOpen={!!payNowExpense}
+            onClose={() => setPayNowExpense(null)}
+            onConfirm={handleMarkAsPaidConfirm}
+          />
         </>
       ) : (
         <OneOffExpensesView

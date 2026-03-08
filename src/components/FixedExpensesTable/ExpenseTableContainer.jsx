@@ -36,6 +36,11 @@ import {
   useSetPanelOpen,
 } from '../../stores/useAppStore';
 import { createCategoryMap } from '../../utils/categoryUtils';
+import {
+  groupExpensesByCategory,
+  computeFixedExpenseTotals,
+  computeCategoryTotals,
+} from '../../utils/expenseUtils';
 import { logger } from '../../utils/logger';
 import AccountValidationAlert from '../AccountValidationAlert';
 import AddExpensePanel from '../AddExpensePanel';
@@ -56,7 +61,11 @@ const INIT_STATES = {
  * Main container component for the Fixed Expenses Table
  * Now uses Zustand store for state management instead of props
  */
-const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
+const ExpenseTableContainer = ({
+  expensesOverride,
+  onCategoryClick,
+  headerVariant = 'full',
+}) => {
   // 🔧 ROBUST INITIALIZATION STATE MACHINE
   const [initState, setInitState] = useState(INIT_STATES.LOADING);
   const [initError, setInitError] = useState(null);
@@ -187,82 +196,21 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
     });
   }, [fixedExpenses, expenseTypeFilter]);
 
-  // Recalculate expensesByCategory with filtered expenses
-  const filteredExpensesByCategory = useMemo(() => {
-    if (!filteredExpenses) return {};
+  // Recalculate expensesByCategory with filtered expenses (shared helper)
+  const filteredExpensesByCategory = useMemo(
+    () => groupExpensesByCategory(filteredExpenses),
+    [filteredExpenses],
+  );
 
-    const groups = {};
-    filteredExpenses.forEach(expense => {
-      const category = expense.category || 'Uncategorized';
-      if (!groups[category]) {
-        groups[category] = [];
-      }
-      groups[category].push(expense);
-    });
-
-    return groups;
-  }, [filteredExpenses]);
-
-  // Calculate totals and category totals from filtered expenses
-  const _totals = useMemo(() => {
-    if (!filteredExpenses) {
-      return {
-        totalAmount: 0,
-        totalPaid: 0,
-        totalRemaining: 0,
-        totalExpenses: 0,
-      };
-    }
-
-    const totalAmount = filteredExpenses.reduce(
-      (sum, expense) => sum + expense.amount,
-      0,
-    );
-    const totalPaid = filteredExpenses.reduce(
-      (sum, expense) => sum + (expense.paidAmount || 0),
-      0,
-    );
-    const totalRemaining = filteredExpenses.reduce((total, expense) => {
-      const remaining = expense.amount - (expense.paidAmount || 0);
-      return total + (remaining > 0 ? remaining : 0);
-    }, 0);
-
-    return {
-      totalAmount,
-      totalPaid,
-      totalRemaining,
-      totalExpenses: filteredExpenses.length,
-    };
-  }, [filteredExpenses]);
-
-  const _categoryTotals = useMemo(() => {
-    if (!filteredExpensesByCategory) return {};
-
-    const totals = {};
-    Object.entries(filteredExpensesByCategory).forEach(
-      ([category, categoryExpenses]) => {
-        const categoryTotal = categoryExpenses.reduce((sum, expense) => {
-          const remaining = expense.amount - (expense.paidAmount || 0);
-          return sum + (remaining > 0 ? remaining : 0);
-        }, 0);
-        const totalBudgeted = categoryExpenses.reduce(
-          (sum, expense) => sum + (expense.amount || 0),
-          0,
-        );
-
-        totals[category] = {
-          count: categoryExpenses.length,
-          total: categoryTotal,
-          totalBudgeted,
-          paid: categoryExpenses.filter(
-            e => (e.paidAmount || 0) >= e.amount && e.amount > 0,
-          ).length,
-        };
-      },
-    );
-
-    return totals;
-  }, [filteredExpensesByCategory]);
+  // Totals and category totals from filtered expenses (shared helpers)
+  const _totals = useMemo(
+    () => computeFixedExpenseTotals(filteredExpenses),
+    [filteredExpenses],
+  );
+  const _categoryTotals = useMemo(
+    () => computeCategoryTotals(filteredExpensesByCategory),
+    [filteredExpensesByCategory],
+  );
 
   // Use memoized calculations for sorting
   const { getSortedExpenses } = useMemoizedCalculations(
@@ -585,6 +533,7 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
         setExpenseTypeFilter={setExpenseTypeFilter}
         setIsPanelOpen={setPanelOpen}
         onCategoryClick={onCategoryClick}
+        variant={headerVariant}
       />
 
       {/* Main Table Content */}
@@ -673,10 +622,12 @@ const ExpenseTableContainer = ({ expensesOverride, onCategoryClick }) => {
 ExpenseTableContainer.propTypes = {
   expensesOverride: PropTypes.arrayOf(PropTypes.object),
   onCategoryClick: PropTypes.func,
+  headerVariant: PropTypes.oneOf(['full', 'minimal']),
 };
 
 ExpenseTableContainer.defaultProps = {
   expensesOverride: undefined,
+  headerVariant: 'full',
 };
 
 export default ExpenseTableContainer;

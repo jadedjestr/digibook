@@ -18,7 +18,7 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
     const { name, amount, paidAmount } = expense;
 
     // Truncate long names
-    const displayName = name.length > 12 ? `${name.substring(0, 12)}...` : name;
+    const displayName = name.length > 15 ? `${name.substring(0, 15)}...` : name;
 
     // Show payment status
     if (paidAmount > 0 && paidAmount < amount) {

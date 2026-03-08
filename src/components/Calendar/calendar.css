@@ -75,6 +75,11 @@
   gap: 0.75rem;
 }
 
+.calendar-legend--above-weekdays {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0 0.75rem;
+}
+
 .legend-title {
   @apply text-xs font-medium text-white/80;
   margin-right: 0.5rem;
@@ -83,14 +88,15 @@
 .legend-items {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  @apply text-xs text-white/70;
+  font-size: 0.75rem;
+  @apply text-white/70;
 }
 
 .legend-badge {
@@ -208,6 +214,19 @@
   box-shadow: var(--glass-elevation-0);
 }
 
+.calendar-cycle-button--ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.calendar-cycle-button--ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+
 .calendar-cycle-icon {
   width: 14px;
   height: 14px;
@@ -234,12 +253,12 @@
   gap: 2px;
 }
 
-/* Calendar Day */
+/* Calendar Day - lighter empty cells (border and opacity reduced) */
 .calendar-day {
   min-height: 100px;
   background: rgba(255, 255, 255, 0.02);
   backdrop-filter: blur(var(--glass-blur-light));
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 0.5px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
   padding: 0.5rem;
   cursor: pointer;
@@ -248,6 +267,18 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.calendar-day .calendar-day-number {
+  opacity: 0.35;
+}
+
+.calendar-day.has-expenses {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.calendar-day.has-expenses .calendar-day-number {
+  opacity: 1;
 }
 
 .calendar-day:hover {
@@ -278,7 +309,7 @@
 }
 
 .calendar-day--other-month {
-  opacity: 0.4;
+  opacity: 0.35;
 }
 
 .calendar-day--other-month .calendar-day-number {
@@ -567,7 +598,7 @@
 
   .legend-items {
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.75rem;
   }
 
   .calendar-grid-container {
@@ -1034,14 +1065,183 @@
   border-radius: var(--radius-sm);
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .calendar-actions {
+.upcoming-widget-header--label-only {
+  padding: 0.5rem 1rem;
+  cursor: default;
+}
+
+.upcoming-widget-header--label-only:hover {
+  background: transparent;
+}
+
+.upcoming-item-pay-now {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: rgba(34, 197, 94, 0.2);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: rgba(134, 239, 172, 1);
+  transition: all var(--duration-fast) var(--easing-standard);
+}
+
+.upcoming-item-pay-now:hover {
+  background: rgba(34, 197, 94, 0.3);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+/* Fixed Expenses month view: two-column layout (left panel + calendar column) */
+.fixed-expenses-month-layout {
+  display: flex;
+  flex-direction: row;
+  gap: 1.5rem;
+  align-items: stretch;
+  margin-top: 0.5rem;
+  min-height: 80vh;
+}
+
+.fixed-expenses-left-panel {
+  flex: 0 0 35%;
+  max-width: 35%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 80vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.fixed-expenses-left-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.fixed-expenses-left-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.fixed-expenses-left-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.fixed-expenses-left-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.fixed-expenses-left-panel-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  flex-shrink: 0;
+}
+
+.fixed-expenses-left-panel-expense-dist {
+  flex-shrink: 0;
+  margin-top: 1.5rem;
+}
+
+.fixed-expenses-left-panel-fixed-card {
+  flex-shrink: 0;
+  margin-top: 1rem;
+}
+
+.fixed-expenses-left-panel-upcoming {
+  flex-shrink: 0;
+  margin-top: 1rem;
+}
+
+.fixed-expenses-left-panel-spacer {
+  flex: 1;
+  min-height: 1rem;
+}
+
+.fixed-expenses-left-panel-new-cycle {
+  flex-shrink: 0;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fixed-expenses-new-cycle-text {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+.fixed-expenses-right-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.fixed-expenses-table-section {
+  margin-top: 1.5rem;
+}
+
+/* Compact Expense Distribution category table */
+.category-expense-summary-compact-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.category-expense-summary-compact-table th,
+.category-expense-summary-compact-table td {
+  padding: 0.375rem 0.5rem;
+}
+
+.category-expense-summary-compact-table th:first-child,
+.category-expense-summary-compact-table td:first-child {
+  padding-left: 0;
+}
+
+.category-expense-summary-compact-table th {
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+@media (max-width: 1024px) {
+  .fixed-expenses-month-layout {
     flex-direction: column;
-    gap: 0.75rem;
-    align-items: stretch;
+    min-height: 0;
   }
 
+  .fixed-expenses-left-panel {
+    flex: none;
+    max-width: none;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  /* Mobile order: Cards, Upcoming, Spacer, New Cycle, Expense Distribution, Fixed Expenses card */
+  .fixed-expenses-left-panel-cards {
+    order: 1;
+  }
+  .fixed-expenses-left-panel-upcoming {
+    order: 2;
+  }
+  .fixed-expenses-left-panel-spacer {
+    order: 3;
+  }
+  .fixed-expenses-left-panel-new-cycle {
+    order: 4;
+  }
+  .fixed-expenses-left-panel-expense-dist {
+    order: 5;
+  }
+  .fixed-expenses-left-panel-fixed-card {
+    order: 6;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
   .upcoming-recurring-widget {
     min-width: unset;
     width: 100%;
