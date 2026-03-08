@@ -11,6 +11,7 @@ import EnhancedCreditCard from '../components/EnhancedCreditCard';
 import MissingExpensesModal from '../components/MissingExpensesModal';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
+import { useFixedExpenses } from '../stores/useAppStore';
 import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
@@ -80,11 +81,73 @@ const CreditCards = ({
   const [defaultAccountIdForModal, setDefaultAccountIdForModal] =
     useState(null);
   const [isFundingModalLoading, setIsFundingModalLoading] = useState(false);
+  const [showChangeFundingModal, setShowChangeFundingModal] = useState(false);
+  const [changeFundingCardId, setChangeFundingCardId] = useState(null);
+  const [changeFundingCardName, setChangeFundingCardName] = useState('');
+  const [changeFundingDefaultAccountId, setChangeFundingDefaultAccountId] =
+    useState(null);
+  const [isChangeFundingLoading, setIsChangeFundingLoading] = useState(false);
+
+  const fixedExpenses = useFixedExpenses();
 
   const fundableAccounts = useMemo(
     () => accounts.filter(a => a.type === 'checking' || a.type === 'savings'),
     [accounts],
   );
+
+  const fundingByCardId = useMemo(() => {
+    const map = new Map();
+    if (!fixedExpenses || !accounts.length) return map;
+    for (const expense of fixedExpenses) {
+      if (
+        expense.category !== 'Credit Card Payment' ||
+        expense.targetCreditCardId == null
+      ) {
+        continue;
+      }
+      const cid = expense.targetCreditCardId;
+      if (map.has(cid)) continue;
+      const accountId =
+        expense.accountId != null ? Number(expense.accountId) : null;
+      const account = accounts.find(a => a.id === accountId);
+      map.set(cid, {
+        fundingSourceName: account ? account.name : null,
+        fundingAccountId: accountId,
+      });
+    }
+    return map;
+  }, [fixedExpenses, accounts]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const result = await dbHelpers.ensureCreditCardPaymentExpensesLinked();
+        if (
+          mounted &&
+          (result.createdCount > 0 ||
+            result.repairedTemplates > 0 ||
+            result.repairedExpenses > 0)
+        ) {
+          onDataChange();
+          if (result.createdCount > 0) {
+            notify.success(`Created ${result.createdCount} payment expense(s)`);
+          }
+          if (result.repairedTemplates > 0 || result.repairedExpenses > 0) {
+            notify.success('Repaired funding source(s)');
+          }
+        }
+      } catch (error) {
+        logger.error(
+          'Error ensuring credit card payment expenses linked:',
+          error,
+        );
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [onDataChange]);
 
   const loadCreditCards = useCallback(async () => {
     try {
@@ -237,6 +300,7 @@ const CreditCards = ({
     editingCard,
     accounts.length,
     fundableAccounts,
+    initialFundingAccountId,
     closeAddModalAndReset,
     loadCreditCards,
     onDataChange,
@@ -275,6 +339,49 @@ const CreditCards = ({
     setFundingModalCardId(null);
     setFundingModalCardName('');
     setDefaultAccountIdForModal(null);
+  }, []);
+
+  const handleChangeFundingClick = useCallback(
+    card => {
+      const info = fundingByCardId.get(card.id);
+      setChangeFundingCardId(card.id);
+      setChangeFundingCardName(card.name);
+      setChangeFundingDefaultAccountId(info?.fundingAccountId ?? null);
+      setShowChangeFundingModal(true);
+    },
+    [fundingByCardId],
+  );
+
+  const handleChangeFundingConfirm = useCallback(
+    async accountId => {
+      if (changeFundingCardId == null) return;
+      setIsChangeFundingLoading(true);
+      try {
+        await dbHelpers.updateFundingAccountForCard(
+          changeFundingCardId,
+          accountId,
+        );
+        notify.success('Funding source updated');
+        onDataChange();
+        setShowChangeFundingModal(false);
+        setChangeFundingCardId(null);
+        setChangeFundingCardName('');
+        setChangeFundingDefaultAccountId(null);
+      } catch (error) {
+        logger.error('Error updating funding source:', error);
+        notify.error('Failed to update funding source');
+      } finally {
+        setIsChangeFundingLoading(false);
+      }
+    },
+    [changeFundingCardId, onDataChange],
+  );
+
+  const handleChangeFundingCancel = useCallback(() => {
+    setShowChangeFundingModal(false);
+    setChangeFundingCardId(null);
+    setChangeFundingCardName('');
+    setChangeFundingDefaultAccountId(null);
   }, []);
 
   const handleAccountCreated = useCallback(async () => {
@@ -612,15 +719,24 @@ const CreditCards = ({
         </div>
       ) : (
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-          {sortedCreditCards.map((card, index) => (
-            <EnhancedCreditCard
-              key={card.id}
-              card={card}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              index={index}
-            />
-          ))}
+          {sortedCreditCards.map((card, index) => {
+            const funding = fundingByCardId.get(card.id);
+            return (
+              <EnhancedCreditCard
+                key={card.id}
+                card={card}
+                fundingSourceName={funding?.fundingSourceName ?? null}
+                onChangeFundingSource={
+                  fundableAccounts.length > 0
+                    ? () => handleChangeFundingClick(card)
+                    : undefined
+                }
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                index={index}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -915,6 +1031,18 @@ const CreditCards = ({
         onUseDefault={handleFundingUseDefault}
         onCancel={handleFundingCancel}
         isLoading={isFundingModalLoading}
+      />
+
+      <ChooseFundingAccountModal
+        isOpen={showChangeFundingModal}
+        cardName={changeFundingCardName}
+        cardId={changeFundingCardId ?? 0}
+        accounts={fundableAccounts}
+        defaultAccountId={changeFundingDefaultAccountId}
+        onConfirm={handleChangeFundingConfirm}
+        onUseDefault={() => {}}
+        onCancel={handleChangeFundingCancel}
+        isLoading={isChangeFundingLoading}
       />
     </div>
   );

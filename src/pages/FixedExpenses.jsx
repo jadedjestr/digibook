@@ -30,7 +30,7 @@ import { notify, showConfirmation } from '../utils/notifications.jsx';
 import { isUnpaidOrPartial } from '../utils/payCycleNudgeLogic';
 
 /** Set to true to show pay cycle nudge as toast instead of banner. */
-const USE_NUDGE_TOAST = false;
+const USE_NUDGE_TOAST = true;
 
 const addOneMonthToDate = dateString => {
   if (!dateString) return null;

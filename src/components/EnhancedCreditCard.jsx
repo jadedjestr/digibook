@@ -13,6 +13,8 @@ import StatusBadge from './StatusBadge';
 
 const EnhancedCreditCard = ({
   card,
+  fundingSourceName = null,
+  onChangeFundingSource,
   onEdit,
   onDelete,
   index = 0,
@@ -252,6 +254,21 @@ const EnhancedCreditCard = ({
             </PrivacyWrapper>
           </div>
         </div>
+        <div className='payment-item'>
+          <div className='credit-info-label'>Paid from</div>
+          <div className='payment-amount flex items-center gap-2'>
+            <span>{fundingSourceName || 'Not set'}</span>
+            {typeof onChangeFundingSource === 'function' && (
+              <button
+                type='button'
+                onClick={() => onChangeFundingSource(card.id)}
+                className='text-sm text-blue-400 hover:text-blue-300 underline focus:outline-none focus:ring-0'
+              >
+                Change
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Additional Info Section */}
@@ -301,6 +318,8 @@ EnhancedCreditCard.propTypes = {
     dueDate: PropTypes.string,
     statementClosingDate: PropTypes.string,
   }).isRequired,
+  fundingSourceName: PropTypes.string,
+  onChangeFundingSource: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   index: PropTypes.number,
@@ -308,6 +327,8 @@ EnhancedCreditCard.propTypes = {
 };
 
 EnhancedCreditCard.defaultProps = {
+  fundingSourceName: null,
+  onChangeFundingSource: undefined,
   index: 0,
   className: '',
 };

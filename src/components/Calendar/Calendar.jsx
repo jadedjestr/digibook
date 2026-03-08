@@ -180,9 +180,9 @@ const Calendar = ({
           onFocusChange={setFocusedDayIndex}
         />
 
-        {/* Calendar Actions - Upcoming Widget + New Cycle Button */}
+        {/* Calendar Actions - Upcoming Widget (unpaid expenses this month) + New Cycle Button */}
         <div className='calendar-actions'>
-          <UpcomingRecurringWidget />
+          <UpcomingRecurringWidget monthExpenses={monthExpenses} />
           <CalendarCycleButton onReset={onReset} />
         </div>
       </div>

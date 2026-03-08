@@ -153,48 +153,6 @@ export async function getTemplatesDueForGeneration() {
 }
 
 /**
- * Get upcoming recurring expenses (next occurrence only)
- */
-export async function getUpcomingRecurringExpenses() {
-  try {
-    const templates = await getActiveTemplates();
-    const todayString = DateUtils.today();
-    const today = DateUtils.parseDate(todayString);
-
-    const result = templates
-      .filter(template => {
-        // Filter out invalid templates
-        if (!template || !template.id) return false;
-
-        // Filter out templates that have passed their end date
-        if (template.endDate) {
-          const endDate = DateUtils.parseDate(template.endDate);
-          if (endDate && today && endDate < today) {
-            return false; // Template has expired
-          }
-        }
-
-        return true;
-      })
-      .map(template => ({
-        id: template.id,
-        name: template.name || 'Unnamed',
-        amount: template.baseAmount || 0,
-        nextDueDate: template.nextDueDate || null,
-        frequency: template.frequency || 'monthly',
-        frequencyLabel: getFrequencyLabel(template.frequency || 'monthly'),
-        isVariableAmount: template.isVariableAmount || false,
-        category: template.category || '',
-      }));
-
-    return result;
-  } catch (error) {
-    logger.error('Error fetching upcoming recurring expenses:', error);
-    throw error;
-  }
-}
-
-/**
  * Generate the next occurrence of a recurring expense
  */
 export async function generateNextOccurrence(templateId) {

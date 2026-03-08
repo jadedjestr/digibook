@@ -1,176 +1,149 @@
-import { Clock, Calendar, AlertCircle } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Calendar as CalendarIcon,
+} from 'lucide-react';
+import PropTypes from 'prop-types';
+import { useState, useMemo } from 'react';
 
-import { getUpcomingRecurringExpenses } from '../../services/recurringExpenseService';
-import { useAppStore } from '../../stores/useAppStore';
+import { formatCurrency } from '../../utils/accountUtils';
 import { DateUtils } from '../../utils/dateUtils';
-import { logger } from '../../utils/logger';
+import { isUnpaidOrPartial } from '../../utils/payCycleNudgeLogic';
 
 /**
- * Widget showing the next upcoming recurring expense
- * Displayed on the same line as the New Cycle button
+ * Widget showing upcoming payments for the current calendar month.
+ * Displays up to 3 unpaid expenses, soonest first, with the next-to-pay item visually distinct.
+ * Collapsible; shows empty state when nothing is due this month.
  */
-const UpcomingRecurringWidget = () => {
-  const [nextRecurring, setNextRecurring] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+const UpcomingRecurringWidget = ({ monthExpenses = [] }) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Watch for template refresh trigger from store
-  const templatesLastUpdated = useAppStore(state => state.templatesLastUpdated);
+  const upcomingList = useMemo(() => {
+    if (!Array.isArray(monthExpenses)) return [];
+    return monthExpenses
+      .filter(isUnpaidOrPartial)
+      .sort((a, b) => {
+        const dateA = DateUtils.parseDate(a.dueDate);
+        const dateB = DateUtils.parseDate(b.dueDate);
+        if (!dateA || !dateB) return 0;
+        return dateA - dateB;
+      })
+      .slice(0, 3);
+  }, [monthExpenses]);
 
-  // Load the next upcoming recurring expense
-  const loadNextRecurring = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null); // Clear any previous errors
-
-      const upcomingExpenses = await getUpcomingRecurringExpenses();
-
-      if (upcomingExpenses.length > 0) {
-        // Sort by next due date and get the closest one
-        const sortedExpenses = upcomingExpenses
-          .filter(expense => {
-            // Filter out expenses with invalid dates
-            if (!expense.nextDueDate) return false;
-            const date = DateUtils.parseDate(expense.nextDueDate);
-            return date && !isNaN(date.getTime());
-          })
-          .sort((a, b) => {
-            try {
-              const dateA = DateUtils.parseDate(a.nextDueDate);
-              const dateB = DateUtils.parseDate(b.nextDueDate);
-              if (!dateA || !dateB) return 0;
-              return dateA - dateB;
-            } catch (err) {
-              logger.error('Error sorting dates:', err);
-              return 0;
-            }
-          });
-
-        if (sortedExpenses.length > 0) {
-          setNextRecurring(sortedExpenses[0]);
-        } else {
-          setNextRecurring(null);
-        }
-      } else {
-        setNextRecurring(null);
-      }
-    } catch (err) {
-      logger.error(
-        'UpcomingRecurringWidget: Error loading recurring expenses:',
-        err,
-      );
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Load on mount and when templates are updated
-  useEffect(() => {
-    loadNextRecurring();
-  }, [loadNextRecurring, templatesLastUpdated]);
-
-  // Calculate days until next recurring expense
   const getDaysUntil = dateString => {
     try {
-      if (!dateString) return 999;
-      const today = DateUtils.today();
-      const days = DateUtils.daysBetween(today, dateString);
-
-      // DateUtils.daysBetween can return null, so check for both null and NaN
-      if (days === null || isNaN(days)) return 999;
-      return days;
-    } catch (error) {
-      logger.error('Error calculating days until:', error);
-      return 999;
+      if (!dateString) return null;
+      const days = DateUtils.daysBetween(DateUtils.today(), dateString);
+      return days !== null && !isNaN(days) ? days : null;
+    } catch {
+      return null;
     }
   };
 
-  // Format the time until display
-  const formatTimeUntil = days => {
+  const formatDueIn = days => {
+    if (days === null) return null;
     if (days < 0) return 'Overdue';
     if (days === 0) return 'Today';
     if (days === 1) return 'Tomorrow';
     if (days <= 7) return `${days} days`;
-    if (days <= 30) {
-      const weeks = Math.floor(days / 7);
-      return weeks === 1 ? '1 week' : `${weeks} weeks`;
-    }
-    const months = Math.floor(days / 30);
-    return months === 1 ? '1 month' : `${months} months`;
+    return null;
   };
 
-  // Get urgency styling based on days until
-  const getUrgencyClass = days => {
-    if (days < 0) return 'upcoming-urgent'; // Overdue
-    if (days <= 3) return 'upcoming-soon'; // Very soon
-    if (days <= 7) return 'upcoming-week'; // This week
-    return 'upcoming-normal'; // Normal
-  };
+  const handleToggleCollapse = () => setIsCollapsed(prev => !prev);
 
-  if (loading) {
-    return (
-      <div className='upcoming-recurring-widget upcoming-loading'>
-        <Clock size={16} className='animate-spin' />
-        <span>Loading...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className='upcoming-recurring-widget upcoming-error'>
-        <AlertCircle size={16} />
-        <span>Error loading</span>
-      </div>
-    );
-  }
-
-  if (!nextRecurring) {
-    return (
-      <div className='upcoming-recurring-widget upcoming-empty'>
-        <Clock size={16} />
-        <span>No recurring expenses</span>
-      </div>
-    );
-  }
-
-  const daysUntil = getDaysUntil(nextRecurring.nextDueDate);
-  const urgencyClass = getUrgencyClass(daysUntil);
-  const timeUntilText = formatTimeUntil(daysUntil);
+  const first = upcomingList[0];
+  const summary =
+    upcomingList.length === 0
+      ? 'Nothing due this month'
+      : (first &&
+          `Next: ${first.name} — ${DateUtils.formatShortDate(first.dueDate)}`) ||
+        '';
 
   return (
-    <div className={`upcoming-recurring-widget ${urgencyClass}`}>
-      <div className='upcoming-icon'>
-        <Clock size={16} />
-      </div>
+    <div className='upcoming-recurring-widget'>
+      <button
+        type='button'
+        className='upcoming-widget-header'
+        onClick={handleToggleCollapse}
+        aria-expanded={!isCollapsed}
+        aria-label={
+          isCollapsed
+            ? 'Expand upcoming payments'
+            : 'Collapse upcoming payments'
+        }
+      >
+        <span className='upcoming-label'>Upcoming payments</span>
+        {isCollapsed && summary && (
+          <span className='upcoming-collapsed-summary'>{summary}</span>
+        )}
+        <span className='upcoming-chevron'>
+          {isCollapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
+        </span>
+      </button>
 
-      <div className='upcoming-content'>
-        <div className='upcoming-header'>
-          <span className='upcoming-label'>Next Recurring:</span>
-          <span className='upcoming-time'>{timeUntilText}</span>
-        </div>
+      {!isCollapsed && (
+        <div className='upcoming-widget-body'>
+          {upcomingList.length === 0 ? (
+            <div className='upcoming-empty'>
+              <span>Nothing due this month</span>
+            </div>
+          ) : (
+            <ul
+              className='upcoming-list'
+              aria-label='Upcoming payments this month'
+            >
+              {upcomingList.map((expense, index) => {
+                const daysUntil = getDaysUntil(expense.dueDate);
+                const dueInText = index === 0 ? formatDueIn(daysUntil) : null;
+                const isFirst = index === 0;
 
-        <div className='upcoming-details'>
-          <span className='upcoming-name'>{nextRecurring.name}</span>
-          <span className='upcoming-amount'>
-            ${nextRecurring.amount?.toLocaleString()}
-            {nextRecurring.isVariableAmount && ' ~'}
-          </span>
+                return (
+                  <li
+                    key={expense.id}
+                    className={
+                      isFirst
+                        ? 'upcoming-item upcoming-item-next'
+                        : 'upcoming-item upcoming-item-secondary'
+                    }
+                  >
+                    <div className='upcoming-item-main'>
+                      {isFirst && (
+                        <span className='upcoming-badge-next'>Next</span>
+                      )}
+                      <span className='upcoming-item-name'>{expense.name}</span>
+                      <span className='upcoming-item-amount'>
+                        {formatCurrency(expense.amount ?? 0)}
+                      </span>
+                    </div>
+                    <div className='upcoming-item-meta'>
+                      <span className='upcoming-item-date'>
+                        <CalendarIcon size={12} aria-hidden />
+                        {DateUtils.formatShortDate(expense.dueDate)}
+                      </span>
+                      {dueInText && (
+                        <span className='upcoming-item-due-in'>
+                          {dueInText}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
-
-        <div className='upcoming-date'>
-          <Calendar size={12} />
-          <span>
-            {nextRecurring.nextDueDate
-              ? DateUtils.formatShortDate(nextRecurring.nextDueDate)
-              : 'Invalid date'}
-          </span>
-        </div>
-      </div>
+      )}
     </div>
   );
+};
+
+UpcomingRecurringWidget.propTypes = {
+  monthExpenses: PropTypes.arrayOf(PropTypes.object),
+};
+
+UpcomingRecurringWidget.defaultProps = {
+  monthExpenses: [],
 };
 
 export default UpcomingRecurringWidget;

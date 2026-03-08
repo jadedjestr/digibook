@@ -2063,6 +2063,87 @@ export const dbHelpers = {
     }
   },
 
+  /**
+   * Repair Credit Card Payment templates and fixed expenses that have missing or invalid accountId.
+   * Sets accountId to the default account so every payment expense has a funding source.
+   * @returns {{ repairedTemplates: number, repairedExpenses: number }}
+   */
+  async repairCreditCardPaymentFundingSource() {
+    try {
+      let defaultAccount = await this.getDefaultAccount();
+      if (!defaultAccount) {
+        const accounts = await db.accounts.toArray();
+        defaultAccount =
+          accounts.find(acc => acc.type === 'checking') || accounts[0];
+      }
+      if (!defaultAccount) {
+        logger.warn(
+          'No checking/savings account found. Cannot repair credit card payment funding.',
+        );
+        return { repairedTemplates: 0, repairedExpenses: 0 };
+      }
+
+      const accounts = await db.accounts.toArray();
+      const validAccountIds = new Set(accounts.map(a => a.id));
+      let repairedTemplates = 0;
+      let repairedExpenses = 0;
+
+      const templates = await db.recurringExpenseTemplates.toArray();
+      const ccTemplates = templates.filter(
+        t => t.category === 'Credit Card Payment' && t.isActive,
+      );
+      for (const template of ccTemplates) {
+        if (
+          template.accountId == null ||
+          !validAccountIds.has(Number(template.accountId))
+        ) {
+          await db.recurringExpenseTemplates.update(template.id, {
+            accountId: defaultAccount.id,
+          });
+          repairedTemplates++;
+        }
+      }
+
+      const expenses = await db.fixedExpenses.toArray();
+      const ccExpenses = expenses.filter(
+        e =>
+          e.category === 'Credit Card Payment' &&
+          (e.accountId == null || !validAccountIds.has(Number(e.accountId))),
+      );
+      for (const expense of ccExpenses) {
+        await db.fixedExpenses.update(expense.id, {
+          accountId: defaultAccount.id,
+        });
+        repairedExpenses++;
+      }
+
+      if (repairedTemplates > 0 || repairedExpenses > 0) {
+        logger.success(
+          `Repaired funding source: ${repairedTemplates} template(s), ${repairedExpenses} expense(s)`,
+        );
+      }
+      return { repairedTemplates, repairedExpenses };
+    } catch (error) {
+      logger.error('Error repairing credit card payment funding:', error);
+      return { repairedTemplates: 0, repairedExpenses: 0 };
+    }
+  },
+
+  /**
+   * Ensure every credit card has a payment expense and every payment expense has
+   * a valid funding source. Runs repair first, then creates any missing expenses.
+   * @returns {{ createdCount: number, repairedTemplates: number, repairedExpenses: number }}
+   */
+  async ensureCreditCardPaymentExpensesLinked() {
+    const repair = await this.repairCreditCardPaymentFundingSource();
+    const createdCount = await this.createMissingCreditCardExpenses();
+    return {
+      createdCount,
+      repairedTemplates: repair.repairedTemplates,
+      repairedExpenses: repair.repairedExpenses,
+    };
+  },
+
   // Insights and analytics helpers
   async getBudgetVsActualSummary() {
     try {
