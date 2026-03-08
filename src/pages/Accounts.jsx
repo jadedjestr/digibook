@@ -9,6 +9,7 @@ import {
 import { useCallback, useMemo, useState } from 'react';
 
 import InlineEdit from '../components/InlineEdit';
+import MissingExpensesModal from '../components/MissingExpensesModal';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
 import { useFinanceCalculations } from '../services/financeService';
@@ -19,6 +20,7 @@ import {
 } from '../stores/useAppStore';
 import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
+import { notify } from '../utils/notifications';
 
 const Accounts = () => {
   // Use Zustand store for data
@@ -34,6 +36,9 @@ const Accounts = () => {
     type: 'checking',
     currentBalance: 0,
   });
+  const [isMissingExpensesModalOpen, setIsMissingExpensesModalOpen] =
+    useState(false);
+  const [orphanedCards, setOrphanedCards] = useState([]);
 
   const { calculateLiquidBalance } = useFinanceCalculations(
     accounts,
@@ -111,7 +116,6 @@ const Accounts = () => {
 
     setIsLoading(true);
     try {
-      // Add a small delay to make loading state visible
       await new Promise(resolve => setTimeout(resolve, 500));
 
       await dbHelpers.addAccount(newAccount);
@@ -119,6 +123,12 @@ const Accounts = () => {
       setIsAddingAccount(false);
       setErrors({});
       reloadAccounts();
+
+      const orphans = await dbHelpers.getOrphanedCreditCards();
+      if (orphans.length > 0) {
+        setOrphanedCards(orphans);
+        setIsMissingExpensesModalOpen(true);
+      }
     } catch (error) {
       logger.error('Error adding account:', error);
       setErrors({ general: 'Failed to add account. Please try again.' });
@@ -418,6 +428,30 @@ const Accounts = () => {
           ))}
         </div>
       )}
+
+      <MissingExpensesModal
+        isOpen={isMissingExpensesModalOpen}
+        cards={orphanedCards}
+        onConfirm={async () => {
+          try {
+            const count = await dbHelpers.createMissingCreditCardExpenses();
+            if (count > 0) {
+              notify.success(`Created ${count} missing payment expense(s)`);
+            }
+            reloadAccounts();
+          } catch (error) {
+            logger.error('Error creating missing expenses:', error);
+            notify.error('Failed to create missing expenses');
+          } finally {
+            setIsMissingExpensesModalOpen(false);
+            setOrphanedCards([]);
+          }
+        }}
+        onSkip={() => {
+          setIsMissingExpensesModalOpen(false);
+          setOrphanedCards([]);
+        }}
+      />
     </div>
   );
 };

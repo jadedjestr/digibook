@@ -306,6 +306,9 @@ class DataManager {
           converted.creditCardId = row.creditCardId
             ? parseInt(row.creditCardId)
             : null;
+          converted.targetCreditCardId = row.targetCreditCardId
+            ? parseInt(row.targetCreditCardId) || null
+            : null;
           converted.isActive =
             row.isActive === 'true' ||
             row.isActive === '1' ||
@@ -355,6 +358,23 @@ class DataManager {
     });
   }
 
+  /**
+   * Shared: validate then write validated import data to DB.
+   * Used by importData and importDataSecure.
+   * @private
+   */
+  async _applyValidatedImport(validatedData, onProgress = () => {}) {
+    onProgress('Validating data structure...');
+    const validationResult = await this.validateImportData(validatedData);
+    if (!validationResult.isValid) {
+      throw new Error(
+        `Import validation failed: ${validationResult.errors.join(', ')}`,
+      );
+    }
+    onProgress('Applying import (atomic transaction)...');
+    await dbHelpers.importData(validatedData);
+  }
+
   // Import Process
   async importData(file, onProgress = () => {}) {
     try {
@@ -369,16 +389,7 @@ class DataManager {
       // Validate and migrate data to V4 format
       const validatedData = validateImportedDataV4(data);
 
-      onProgress('Validating data structure...');
-      const validationResult = await this.validateImportData(validatedData);
-      if (!validationResult.isValid) {
-        throw new Error(
-          `Import validation failed: ${validationResult.errors.join(', ')}`,
-        );
-      }
-
-      onProgress('Applying import (atomic transaction)...');
-      await dbHelpers.importData(validatedData);
+      await this._applyValidatedImport(validatedData, onProgress);
 
       onProgress('Import completed successfully!');
       logger.success(`Data imported successfully from ${fileType} file`);
@@ -388,7 +399,7 @@ class DataManager {
     }
   }
 
-  // Secure Import Process with decryption
+  // Reserved for future encrypted backup UI; not yet wired in the app.
   async importDataSecure(file, password, onProgress = () => {}) {
     try {
       onProgress('Reading encrypted file...');
@@ -412,16 +423,7 @@ class DataManager {
       // Validate and migrate data to V4 format
       const validatedData = validateImportedDataV4(decryptedData);
 
-      onProgress('Validating data structure...');
-      const validationResult = await this.validateImportData(validatedData);
-      if (!validationResult.isValid) {
-        throw new Error(
-          `Import validation failed: ${validationResult.errors.join(', ')}`,
-        );
-      }
-
-      onProgress('Applying import (atomic transaction)...');
-      await dbHelpers.importData(validatedData);
+      await this._applyValidatedImport(validatedData, onProgress);
 
       onProgress('Secure import completed successfully!');
       logger.success(
@@ -454,7 +456,7 @@ class DataManager {
     }
   }
 
-  // Secure Export Process with encryption
+  // Reserved for future encrypted backup UI; not yet wired in the app.
   async exportDataSecure(password, onProgress = () => {}) {
     try {
       onProgress('Preparing data...');

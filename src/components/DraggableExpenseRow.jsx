@@ -93,7 +93,11 @@ const DraggableExpenseRow = ({
   accounts,
   creditCards = [],
 }) => {
-  // Create payment source from expense for display
+  const isZeroBalanceCCPayment =
+    expense.category === 'Credit Card Payment' &&
+    expense.targetCreditCardId &&
+    expense.amount === 0;
+
   const currentPaymentSource = useMemo(() => {
     return createPaymentSource.fromExpense(expense);
   }, [expense]);
@@ -224,7 +228,17 @@ const DraggableExpenseRow = ({
           </div>
         </td>
         <td>
-          <div className='flex items-center space-x-1'>
+          <div
+            className='flex items-center space-x-1'
+            title={
+              isZeroBalanceCCPayment
+                ? 'No payment due this month (card has $0 balance)'
+                : expense.category === 'Credit Card Payment' &&
+                    expense.recurringTemplateId
+                  ? 'Recurring minimum payment; amount updates with card balance'
+                  : undefined
+            }
+          >
             {expense.recurringTemplateId ? (
               <>
                 <RefreshCw size={12} className='text-amber-400' />
@@ -245,13 +259,17 @@ const DraggableExpenseRow = ({
           />
         </td>
         <td>
-          <InlineEdit
-            value={expense.amount}
-            expense={expense}
-            fieldName='amount'
-            type='number'
-            onSave={handleAmountSave}
-          />
+          {isZeroBalanceCCPayment ? (
+            <span className='text-white/40 text-sm italic'>No payment due</span>
+          ) : (
+            <InlineEdit
+              value={expense.amount}
+              expense={expense}
+              fieldName='amount'
+              type='number'
+              onSave={handleAmountSave}
+            />
+          )}
         </td>
         <td>
           <div className='relative'>
@@ -285,7 +303,7 @@ const DraggableExpenseRow = ({
         </td>
         <td>
           <div className='flex space-x-2'>
-            {status !== 'Paid' && (
+            {status !== 'Paid' && !isZeroBalanceCCPayment && (
               <button
                 onClick={handleMarkAsPaidClick}
                 className='p-1 text-green-300 hover:text-green-200'
@@ -294,7 +312,7 @@ const DraggableExpenseRow = ({
                 <Check size={16} />
               </button>
             )}
-            {status === 'Paid' && (
+            {status === 'Paid' && !isZeroBalanceCCPayment && (
               <button
                 onClick={handleMarkAsUnpaidClick}
                 className='p-1 text-yellow-300 hover:text-yellow-200'
@@ -303,13 +321,15 @@ const DraggableExpenseRow = ({
                 <RotateCcw size={16} />
               </button>
             )}
-            <button
-              onClick={handleDuplicateClick}
-              className='p-1 text-blue-300 hover:text-blue-200'
-              title='Duplicate expense'
-            >
-              <Copy size={16} />
-            </button>
+            {!isZeroBalanceCCPayment && (
+              <button
+                onClick={handleDuplicateClick}
+                className='p-1 text-blue-300 hover:text-blue-200'
+                title='Duplicate expense'
+              >
+                <Copy size={16} />
+              </button>
+            )}
             {expense.recurringTemplateId && onEditRecurring && (
               <button
                 onClick={handleEditRecurringClick}

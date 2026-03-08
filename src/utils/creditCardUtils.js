@@ -92,6 +92,28 @@ const getUtilizationLevel = utilizationPercent => {
 };
 
 /**
+ * Single source of truth for default minimum payment amount.
+ * Used when auto-creating credit card payment expenses and for payment suggestions
+ * so the same rule applies everywhere.
+ *
+ * @param {Object} card - Credit card object
+ * @param {number} [card.minimumPayment] - Stored minimum payment (optional)
+ * @param {number} [card.balance] - Current balance (defaults to 0 if missing)
+ * @returns {number} Amount to use as the default minimum payment for this card
+ */
+export const getDefaultMinimumPaymentAmount = card => {
+  if (!card || typeof card !== 'object') {
+    return 25;
+  }
+  const stored = card.minimumPayment;
+  if (stored != null && Number(stored) > 0) {
+    return Number(stored);
+  }
+  const balance = Number(card.balance) || 0;
+  return balance > 0 ? Math.max(balance * 0.02, 25) : 25;
+};
+
+/**
  * Get minimum payment status information
  *
  * @param {number} balance - Current balance

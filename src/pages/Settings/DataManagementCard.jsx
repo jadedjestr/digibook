@@ -110,6 +110,11 @@ const DataManagementCard = ({
     }
   };
 
+  const refreshAfterDbReplace = async () => {
+    globalCategories.invalidateCache();
+    await onDataChange();
+  };
+
   const handleImport = async () => {
     if (!importFile) return;
 
@@ -122,10 +127,7 @@ const DataManagementCard = ({
       ) {
         await dataManager.importData(importFile, setImportProgress);
 
-        globalCategories.invalidateCache();
-
-        onDataChange();
-        await reloadExpenses();
+        await refreshAfterDbReplace();
         setPendingFutureCheck(true);
         setImportFile(null);
         alert('Data imported successfully');
@@ -148,10 +150,8 @@ const DataManagementCard = ({
         setImportProgress('Creating backup...');
         await dataManager.clearAllData();
 
-        globalCategories.invalidateCache();
-
+        await refreshAfterDbReplace();
         setImportProgress('All data cleared successfully!');
-        onDataChange();
         setTimeout(() => setImportProgress(''), 3000);
         alert(
           'All data cleared successfully. Default categories have been restored.',
@@ -178,10 +178,8 @@ const DataManagementCard = ({
         setImportProgress('Restoring backup...');
         await dataManager.backupManager.restoreBackup(backup.key);
 
-        globalCategories.invalidateCache();
-
+        await refreshAfterDbReplace();
         setImportProgress('Backup restored successfully!');
-        onDataChange();
         setTimeout(() => setImportProgress(''), 3000);
         alert('Data restored from backup successfully');
       } catch (error) {
@@ -354,6 +352,7 @@ const DataManagementCard = ({
       {/* Import Section */}
       <div>
         <h4 className='text-primary font-medium mb-3'>Import Data</h4>
+        {/* Type inferred from file extension (.json or .csv), not the dropdown. */}
         <div className='space-y-3'>
           <div className='flex space-x-3'>
             <select

@@ -38,7 +38,11 @@ const MobileExpenseCard = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState(null);
 
-  // Create payment source from expense for display
+  const isZeroBalanceCCPayment =
+    expense.category === 'Credit Card Payment' &&
+    expense.targetCreditCardId &&
+    expense.amount === 0;
+
   const currentPaymentSource = useMemo(() => {
     return createPaymentSource.fromExpense(expense);
   }, [expense]);
@@ -150,27 +154,41 @@ const MobileExpenseCard = ({
             <span className={`text-sm font-medium ${getStatusColor(status)}`}>
               {status}
             </span>
-            <span className='text-xs text-white/50'>
+            <span
+              className='text-xs text-white/50'
+              title={
+                isZeroBalanceCCPayment
+                  ? 'No payment due this month (card has $0 balance)'
+                  : expense.category === 'Credit Card Payment' &&
+                      expense.recurringTemplateId
+                    ? 'Recurring minimum payment; amount updates with card balance'
+                    : undefined
+              }
+            >
               {expense.recurringTemplateId ? 'Recurring' : 'One-time'}
             </span>
           </div>
         </div>
         <div className='flex space-x-1 ml-2'>
-          <button
-            onClick={() => onMarkAsPaid(expense.id)}
-            disabled={isUpdating}
-            className='p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-300 transition-colors'
-            title='Mark as paid'
-          >
-            <Check size={16} />
-          </button>
-          <button
-            onClick={() => onDuplicate(expense)}
-            className='p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors'
-            title='Duplicate'
-          >
-            <Copy size={16} />
-          </button>
+          {!isZeroBalanceCCPayment && (
+            <button
+              onClick={() => onMarkAsPaid(expense.id)}
+              disabled={isUpdating}
+              className='p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-300 transition-colors'
+              title='Mark as paid'
+            >
+              <Check size={16} />
+            </button>
+          )}
+          {!isZeroBalanceCCPayment && (
+            <button
+              onClick={() => onDuplicate(expense)}
+              className='p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors'
+              title='Duplicate'
+            >
+              <Copy size={16} />
+            </button>
+          )}
           {expense.recurringTemplateId && onEditRecurring && (
             <button
               onClick={() => onEditRecurring(expense)}
@@ -199,7 +217,11 @@ const MobileExpenseCard = ({
             <span className='text-sm font-medium text-secondary'>Amount</span>
           </div>
           <div className='text-right'>
-            {isEditing && editingField === 'amount' ? (
+            {isZeroBalanceCCPayment ? (
+              <span className='text-white/40 text-sm italic'>
+                No payment due
+              </span>
+            ) : isEditing && editingField === 'amount' ? (
               <div className='flex items-center space-x-2'>
                 <input
                   type='number'
@@ -402,24 +424,33 @@ const MobileExpenseCard = ({
       </div>
 
       {/* Progress Bar */}
-      <div className='mt-4'>
-        <div className='flex items-center justify-between mb-2'>
-          <span className='text-xs text-secondary'>Payment Progress</span>
-          <span className='text-xs text-secondary'>
-            {((expense.paidAmount / expense.amount) * 100).toFixed(0)}%
-          </span>
+      {isZeroBalanceCCPayment ? (
+        <div className='mt-4 text-center text-white/40 text-xs italic'>
+          No payment due — card has $0 balance
         </div>
-        <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
-          <div
-            className='bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-transform duration-300'
-            style={{
-              width: '100%',
-              transform: `scaleX(${Math.min((expense.paidAmount / expense.amount) * 100, 100) / 100})`,
-              transformOrigin: 'left',
-            }}
-          />
+      ) : (
+        <div className='mt-4'>
+          <div className='flex items-center justify-between mb-2'>
+            <span className='text-xs text-secondary'>Payment Progress</span>
+            <span className='text-xs text-secondary'>
+              {expense.amount > 0
+                ? ((expense.paidAmount / expense.amount) * 100).toFixed(0)
+                : 0}
+              %
+            </span>
+          </div>
+          <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
+            <div
+              className='bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-transform duration-300'
+              style={{
+                width: '100%',
+                transform: `scaleX(${expense.amount > 0 ? Math.min((expense.paidAmount / expense.amount) * 100, 100) / 100 : 0})`,
+                transformOrigin: 'left',
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

@@ -400,12 +400,106 @@ export const dbHelpers = {
     }
   },
 
+  async syncCreditCardToTemplates(cardId, updates) {
+    try {
+      const templates = await db.recurringExpenseTemplates
+        .filter(
+          t =>
+            t.targetCreditCardId === cardId &&
+            t.category === 'Credit Card Payment' &&
+            t.isActive,
+        )
+        .toArray();
+
+      if (!templates.length) return;
+
+      const card = await db.creditCards.get(cardId);
+      if (!card) return;
+
+      for (const template of templates) {
+        const templateUpdates = {};
+
+        if (
+          updates.balance !== undefined ||
+          updates.minimumPayment !== undefined
+        ) {
+          templateUpdates.baseAmount =
+            card.balance > 0 ? getDefaultMinimumPaymentAmount(card) : 0;
+        }
+
+        if (updates.dueDate !== undefined && updates.dueDate) {
+          templateUpdates.nextDueDate = updates.dueDate;
+        }
+
+        if (Object.keys(templateUpdates).length > 0) {
+          await db.recurringExpenseTemplates.update(template.id, {
+            ...templateUpdates,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      if (templates.length > 0) {
+        logger.success(
+          `Synced ${templates.length} recurring template(s) for card ${cardId}`,
+        );
+      }
+    } catch (error) {
+      logger.error('Error syncing credit card to templates:', error);
+    }
+  },
+
+  async updateFundingAccountForCard(cardId, accountId) {
+    try {
+      const templates = await db.recurringExpenseTemplates
+        .filter(
+          t =>
+            t.targetCreditCardId === cardId &&
+            t.category === 'Credit Card Payment' &&
+            t.isActive,
+        )
+        .toArray();
+
+      if (!templates.length) return;
+
+      const templateIds = new Set(templates.map(t => t.id));
+      const now = new Date().toISOString();
+
+      for (const template of templates) {
+        await db.recurringExpenseTemplates.update(template.id, {
+          accountId,
+          updatedAt: now,
+        });
+      }
+
+      const linkedExpenses = await db.fixedExpenses
+        .filter(
+          e =>
+            e.targetCreditCardId === cardId &&
+            templateIds.has(e.recurringTemplateId),
+        )
+        .toArray();
+
+      for (const expense of linkedExpenses) {
+        await db.fixedExpenses.update(expense.id, { accountId });
+      }
+
+      logger.success(
+        `Updated funding account for card ${cardId} (${templates.length} template(s), ${linkedExpenses.length} expense(s))`,
+      );
+    } catch (error) {
+      logger.error('Error updating funding account for card:', error);
+      throw error;
+    }
+  },
+
   async updateCreditCard(id, updates) {
     try {
       await db.creditCards.update(id, updates);
       if (updates.dueDate !== undefined) {
         await this.syncCreditCardDueDateToExpenses(id, updates.dueDate);
       }
+      await this.syncCreditCardToTemplates(id, updates);
       logger.success(`Credit card updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating credit card:', error);
@@ -887,18 +981,34 @@ export const dbHelpers = {
         intervalUnit: template.intervalUnit || 'months',
       };
 
-      // Create new fixed expense from template using V4 format
+      let expenseAmount = normalizedTemplate.baseAmount;
+      if (normalizedTemplate.targetCreditCardId) {
+        const card = await db.creditCards.get(
+          normalizedTemplate.targetCreditCardId,
+        );
+        if (card) {
+          if (card.balance <= 0) {
+            expenseAmount = 0;
+          } else if (normalizedTemplate.minimumPaymentOverride != null) {
+            expenseAmount = normalizedTemplate.minimumPaymentOverride;
+          } else {
+            expenseAmount = getDefaultMinimumPaymentAmount(card);
+          }
+        }
+      }
+
       const newExpense = {
         name: normalizedTemplate.name,
         dueDate: normalizedTemplate.nextDueDate,
-        amount: normalizedTemplate.baseAmount,
+        amount: expenseAmount,
         accountId: normalizedTemplate.accountId || null,
         creditCardId: normalizedTemplate.creditCardId || null,
-        targetCreditCardId: normalizedTemplate.targetCreditCardId || null, // credit card payments
+        targetCreditCardId: normalizedTemplate.targetCreditCardId || null,
         category: normalizedTemplate.category,
         paidAmount: 0,
         status: 'pending',
         recurringTemplateId: templateId,
+        isAutoCreated: normalizedTemplate.isAutoCreated || false,
       };
 
       const expenseId = await this.addFixedExpenseV4(newExpense);
@@ -1616,6 +1726,35 @@ export const dbHelpers = {
     }
   },
 
+  async getFundableAccounts() {
+    try {
+      const accounts = await db.accounts.toArray();
+      return accounts.filter(
+        a => a.type === 'checking' || a.type === 'savings',
+      );
+    } catch (error) {
+      logger.error('Error getting fundable accounts:', error);
+      return [];
+    }
+  },
+
+  async getFundingAccountIdForCard(cardId) {
+    try {
+      const templates = await db.recurringExpenseTemplates
+        .filter(
+          t =>
+            t.targetCreditCardId === cardId &&
+            t.category === 'Credit Card Payment' &&
+            t.isActive,
+        )
+        .toArray();
+      return templates.length > 0 ? templates[0].accountId : null;
+    } catch (error) {
+      logger.error('Error getting funding account for card:', error);
+      return null;
+    }
+  },
+
   async ensureDefaultAccount() {
     try {
       // First, clean up any existing placeholder default accounts
@@ -1800,14 +1939,87 @@ export const dbHelpers = {
     }
   },
 
+  async getOrphanedCreditCards() {
+    try {
+      const creditCards = await db.creditCards.toArray();
+      const expenses = await db.fixedExpenses.toArray();
+      const templates = await db.recurringExpenseTemplates.toArray();
+      return creditCards.filter(
+        card =>
+          !expenses.some(
+            e =>
+              e.category === 'Credit Card Payment' &&
+              e.targetCreditCardId === card.id,
+          ) &&
+          !templates.some(
+            t =>
+              t.category === 'Credit Card Payment' &&
+              t.targetCreditCardId === card.id &&
+              t.isActive,
+          ),
+      );
+    } catch (error) {
+      logger.error('Error getting orphaned credit cards:', error);
+      return [];
+    }
+  },
+
+  async createExpenseForCard(cardId, accountId) {
+    try {
+      const templates = await db.recurringExpenseTemplates
+        .filter(
+          t =>
+            t.targetCreditCardId === cardId &&
+            t.category === 'Credit Card Payment' &&
+            t.isActive,
+        )
+        .toArray();
+
+      if (templates.length > 0) {
+        await this.updateFundingAccountForCard(cardId, accountId);
+        return;
+      }
+
+      const card = await db.creditCards.get(cardId);
+      if (!card) {
+        throw new Error(`Credit card not found: ${cardId}`);
+      }
+
+      const startDate = card.dueDate || new Date().toISOString().split('T')[0];
+
+      const templateId = await this.addRecurringExpenseTemplate({
+        name: `${card.name} Payment`,
+        baseAmount: getDefaultMinimumPaymentAmount(card),
+        frequency: 'monthly',
+        intervalValue: 1,
+        intervalUnit: 'months',
+        startDate,
+        nextDueDate: startDate,
+        category: 'Credit Card Payment',
+        accountId,
+        targetCreditCardId: card.id,
+        isActive: true,
+        isVariableAmount: true,
+        isAutoCreated: true,
+      });
+
+      await this.generateRecurringExpense(templateId);
+      logger.success(
+        `Created payment expense for card "${card.name}" (template ${templateId})`,
+      );
+    } catch (error) {
+      logger.error('Error creating expense for card:', error);
+      throw error;
+    }
+  },
+
   async createMissingCreditCardExpenses() {
     try {
       const creditCards = await db.creditCards.toArray();
       const expenses = await db.fixedExpenses.toArray();
+      const templates = await db.recurringExpenseTemplates.toArray();
       let createdCount = 0;
 
-      // Funding source: single source of truth from DB default;
-      // fallback when no default set (backward compatibility)
       let defaultAccount = await this.getDefaultAccount();
       if (!defaultAccount) {
         const accounts = await db.accounts.toArray();
@@ -1823,34 +2035,27 @@ export const dbHelpers = {
       }
 
       for (const card of creditCards) {
-        // Check if there's already a credit card payment expense for this card
         const hasPaymentExpense = expenses.some(
-          expense =>
-            expense.category === 'Credit Card Payment' &&
-            expense.targetCreditCardId === card.id,
+          e =>
+            e.category === 'Credit Card Payment' &&
+            e.targetCreditCardId === card.id,
+        );
+        const hasPaymentTemplate = templates.some(
+          t =>
+            t.category === 'Credit Card Payment' &&
+            t.targetCreditCardId === card.id &&
+            t.isActive,
         );
 
-        if (!hasPaymentExpense) {
-          const expenseAmount = getDefaultMinimumPaymentAmount(card);
-
-          // Use V4 format with proper validation
-          await this.addFixedExpenseV4({
-            name: `${card.name} Payment`,
-            dueDate: card.dueDate || new Date().toISOString().split('T')[0],
-            amount: expenseAmount,
-            accountId: defaultAccount.id, // ← Funding source (checking/savings)
-            creditCardId: null, // ← Credit card payments don't use creditCardId
-            targetCreditCardId: card.id, // ← Target credit card to pay
-            category: 'Credit Card Payment', // ← Proper category for two-field system
-            paidAmount: 0,
-            status: 'pending',
-            isAutoCreated: true,
-          });
+        if (!hasPaymentExpense && !hasPaymentTemplate) {
+          await this.createExpenseForCard(card.id, defaultAccount.id);
           createdCount++;
         }
       }
 
-      logger.success(`Created ${createdCount} credit card payment expenses`);
+      logger.success(
+        `Created ${createdCount} recurring credit card payment template(s)`,
+      );
       return createdCount;
     } catch (error) {
       logger.error('Error creating missing credit card expenses:', error);
@@ -2479,6 +2684,19 @@ export const dbHelpers = {
         });
       }
 
+      // Sync funding account to template and linked expenses when CC payment accountId changes
+      if (
+        sanitizedUpdates.accountId !== undefined &&
+        currentExpense.category === 'Credit Card Payment' &&
+        currentExpense.recurringTemplateId &&
+        currentExpense.targetCreditCardId
+      ) {
+        await this.updateFundingAccountForCard(
+          currentExpense.targetCreditCardId,
+          sanitizedUpdates.accountId,
+        );
+      }
+
       logger.success(`Updated V4 expense ID: ${id}`);
     } catch (error) {
       logger.error('Error updating V4 expense:', error);
@@ -2712,6 +2930,17 @@ export const dbHelpers = {
                 ...(shouldDeactivate && { isActive: false }),
               });
               templateIdAdvanced = templateId;
+
+              if (template.targetCreditCardId) {
+                try {
+                  await this.generateRecurringExpense(templateId);
+                } catch (genError) {
+                  logger.error(
+                    'Error generating next CC payment occurrence:',
+                    genError,
+                  );
+                }
+              }
             }
           }
         }

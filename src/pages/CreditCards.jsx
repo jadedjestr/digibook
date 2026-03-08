@@ -3,9 +3,12 @@ import PropTypes from 'prop-types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
+import ChooseFundingAccountModal from '../components/ChooseFundingAccountModal';
+import CreateAccountModal from '../components/CreateAccountModal';
 import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
 import CreditCardMigrationModal from '../components/CreditCardMigrationModal';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';
+import MissingExpensesModal from '../components/MissingExpensesModal';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
 import { formatCurrency } from '../utils/accountUtils';
@@ -61,9 +64,27 @@ const CreditCards = ({
     dueDate: '',
     statementClosingDate: '',
     minimumPayment: '',
+    fundingAccountId: '',
   });
+  const [initialFundingAccountId, setInitialFundingAccountId] = useState(null);
   const [errors, setErrors] = useState({});
-  const [sortBy, setSortBy] = useState('name'); // 'name', 'dueDate', 'balance', 'utilization'
+  const [sortBy, setSortBy] = useState('name');
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [pendingCardData, setPendingCardData] = useState(null);
+  const [isMissingExpensesModalOpen, setIsMissingExpensesModalOpen] =
+    useState(false);
+  const [orphanedCards, setOrphanedCards] = useState([]);
+  const [showFundingModal, setShowFundingModal] = useState(false);
+  const [fundingModalCardId, setFundingModalCardId] = useState(null);
+  const [fundingModalCardName, setFundingModalCardName] = useState('');
+  const [defaultAccountIdForModal, setDefaultAccountIdForModal] =
+    useState(null);
+  const [isFundingModalLoading, setIsFundingModalLoading] = useState(false);
+
+  const fundableAccounts = useMemo(
+    () => accounts.filter(a => a.type === 'checking' || a.type === 'savings'),
+    [accounts],
+  );
 
   const loadCreditCards = useCallback(async () => {
     try {
@@ -123,6 +144,23 @@ const CreditCards = ({
     return Object.keys(newErrors).length === 0;
   }, [formData]);
 
+  const closeAddModalAndReset = useCallback(() => {
+    setIsAddModalOpen(false);
+    setEditingCard(null);
+    setFormData({
+      name: '',
+      balance: '',
+      creditLimit: '',
+      interestRate: '',
+      dueDate: '',
+      statementClosingDate: '',
+      minimumPayment: '',
+      fundingAccountId: '',
+    });
+    setInitialFundingAccountId(null);
+    setErrors({});
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (!validateForm()) {
       notify.error('Please fix the errors before saving');
@@ -131,55 +169,178 @@ const CreditCards = ({
 
     try {
       const cardData = {
-        ...formData,
+        name: formData.name,
         balance: parseFloat(formData.balance),
         creditLimit: parseFloat(formData.creditLimit),
         interestRate: parseFloat(formData.interestRate),
+        dueDate: formData.dueDate,
+        statementClosingDate: formData.statementClosingDate || '',
         minimumPayment: parseFloat(formData.minimumPayment),
       };
 
       if (editingCard) {
         await dbHelpers.updateCreditCard(editingCard.id, cardData);
-        notify.success('Credit card updated successfully');
-      } else {
-        await dbHelpers.addCreditCard(cardData);
-        notify.success('Credit card added successfully');
-
-        // Automatically create a minimum payment expense for new credit cards
-        try {
-          const createdCount =
-            await dbHelpers.createMissingCreditCardExpenses();
-          if (createdCount > 0) {
-            notify.success(
-              `Created ${createdCount} minimum payment expense(s)`,
-            );
-          }
-        } catch (error) {
-          logger.error('Error creating automatic credit card expenses:', error);
-
-          // Don't show error to user as the credit card was still added successfully
+        if (
+          formData.fundingAccountId !== '' &&
+          Number(formData.fundingAccountId) !== Number(initialFundingAccountId)
+        ) {
+          await dbHelpers.updateFundingAccountForCard(
+            editingCard.id,
+            Number(formData.fundingAccountId),
+          );
         }
+        notify.success('Credit card updated successfully');
+        closeAddModalAndReset();
+        loadCreditCards();
+        onDataChange();
+        return;
       }
 
-      setIsAddModalOpen(false);
-      setEditingCard(null);
-      setFormData({
-        name: '',
-        balance: '',
-        creditLimit: '',
-        interestRate: '',
-        dueDate: '',
-        statementClosingDate: '',
-        minimumPayment: '',
-      });
-      setErrors({});
+      if (accounts.length === 0) {
+        setPendingCardData(cardData);
+        setIsAccountModalOpen(true);
+        return;
+      }
+
+      const newId = await dbHelpers.addCreditCard(cardData);
+      notify.success('Credit card added successfully');
+
+      if (fundableAccounts.length === 1) {
+        await dbHelpers.createExpenseForCard(newId, fundableAccounts[0].id);
+        notify.success('Created minimum payment expense');
+        closeAddModalAndReset();
+        loadCreditCards();
+        onDataChange();
+        return;
+      }
+
+      const defaultAcct = await dbHelpers.getDefaultAccount();
+      setDefaultAccountIdForModal(
+        defaultAcct?.id ??
+          fundableAccounts.find(a => a.type === 'checking')?.id ??
+          fundableAccounts[0]?.id ??
+          null,
+      );
+      setFundingModalCardId(newId);
+      setFundingModalCardName(cardData.name);
+      setShowFundingModal(true);
+      closeAddModalAndReset();
       loadCreditCards();
       onDataChange();
     } catch (error) {
       logger.error('Error saving credit card:', error);
       notify.error('Failed to save credit card');
     }
-  }, [validateForm, formData, editingCard, loadCreditCards, onDataChange]);
+  }, [
+    validateForm,
+    formData,
+    editingCard,
+    accounts.length,
+    fundableAccounts,
+    closeAddModalAndReset,
+    loadCreditCards,
+    onDataChange,
+  ]);
+
+  const handleFundingConfirm = useCallback(
+    async accountId => {
+      if (fundingModalCardId == null) return;
+      setIsFundingModalLoading(true);
+      try {
+        await dbHelpers.createExpenseForCard(fundingModalCardId, accountId);
+        notify.success('Created minimum payment expense');
+        setShowFundingModal(false);
+        setFundingModalCardId(null);
+        setFundingModalCardName('');
+        setDefaultAccountIdForModal(null);
+        onDataChange();
+      } catch (error) {
+        logger.error('Error creating payment expense:', error);
+        notify.error('Failed to create payment expense');
+      } finally {
+        setIsFundingModalLoading(false);
+      }
+    },
+    [fundingModalCardId, onDataChange],
+  );
+
+  const handleFundingUseDefault = useCallback(async () => {
+    if (defaultAccountIdForModal != null) {
+      await handleFundingConfirm(defaultAccountIdForModal);
+    }
+  }, [defaultAccountIdForModal, handleFundingConfirm]);
+
+  const handleFundingCancel = useCallback(() => {
+    setShowFundingModal(false);
+    setFundingModalCardId(null);
+    setFundingModalCardName('');
+    setDefaultAccountIdForModal(null);
+  }, []);
+
+  const handleAccountCreated = useCallback(async () => {
+    setIsAccountModalOpen(false);
+    await onDataChange();
+
+    if (pendingCardData) {
+      try {
+        const newId = await dbHelpers.addCreditCard(pendingCardData);
+        notify.success('Credit card added successfully');
+
+        const fundable = await dbHelpers.getFundableAccounts();
+        if (fundable.length === 1) {
+          await dbHelpers.createExpenseForCard(newId, fundable[0].id);
+          notify.success('Created minimum payment expense');
+        } else if (fundable.length >= 2) {
+          const defaultAcct = await dbHelpers.getDefaultAccount();
+          setDefaultAccountIdForModal(
+            defaultAcct?.id ??
+              fundable.find(a => a.type === 'checking')?.id ??
+              fundable[0]?.id ??
+              null,
+          );
+          setFundingModalCardId(newId);
+          setFundingModalCardName(pendingCardData.name);
+          setShowFundingModal(true);
+        }
+
+        closeAddModalAndReset();
+        loadCreditCards();
+        onDataChange();
+
+        const orphans = await dbHelpers.getOrphanedCreditCards();
+        if (orphans.length > 0) {
+          setOrphanedCards(orphans);
+          setIsMissingExpensesModalOpen(true);
+        }
+      } catch (error) {
+        logger.error('Error saving pending credit card:', error);
+        notify.error('Failed to save credit card');
+      } finally {
+        setPendingCardData(null);
+      }
+    }
+  }, [pendingCardData, closeAddModalAndReset, loadCreditCards, onDataChange]);
+
+  const handleRetroConfirm = useCallback(async () => {
+    try {
+      const count = await dbHelpers.createMissingCreditCardExpenses();
+      if (count > 0) {
+        notify.success(`Created ${count} missing payment expense(s)`);
+      }
+      onDataChange();
+    } catch (error) {
+      logger.error('Error creating missing expenses:', error);
+      notify.error('Failed to create missing expenses');
+    } finally {
+      setIsMissingExpensesModalOpen(false);
+      setOrphanedCards([]);
+    }
+  }, [onDataChange]);
+
+  const handleRetroSkip = useCallback(() => {
+    setIsMissingExpensesModalOpen(false);
+    setOrphanedCards([]);
+  }, []);
 
   const resetAddEditModal = useCallback(() => {
     setIsAddModalOpen(false);
@@ -196,8 +357,11 @@ const CreditCards = ({
     setErrors({});
   }, []);
 
-  const handleEdit = useCallback(card => {
+  const handleEdit = useCallback(async card => {
     setEditingCard(card);
+    const fundingAccountId = await dbHelpers.getFundingAccountIdForCard(
+      card.id,
+    );
     setFormData({
       name: card.name,
       balance: card.balance.toString(),
@@ -206,7 +370,10 @@ const CreditCards = ({
       dueDate: card.dueDate,
       statementClosingDate: card.statementClosingDate || '',
       minimumPayment: card.minimumPayment.toString(),
+      fundingAccountId:
+        fundingAccountId != null ? String(fundingAccountId) : '',
     });
+    setInitialFundingAccountId(fundingAccountId ?? null);
     setIsAddModalOpen(true);
   }, []);
 
@@ -663,6 +830,39 @@ const CreditCards = ({
                     </p>
                   )}
                 </div>
+
+                {editingCard && (
+                  <div>
+                    <label
+                      htmlFor='credit-card-funding-account'
+                      className='block text-sm font-medium text-white mb-2'
+                    >
+                      Funding account
+                    </label>
+                    <select
+                      id='credit-card-funding-account'
+                      value={formData.fundingAccountId}
+                      onChange={e =>
+                        handleInputChange('fundingAccountId', e.target.value)
+                      }
+                      className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    >
+                      <option value=''>
+                        {fundableAccounts.length === 0
+                          ? 'No checking/savings accounts'
+                          : 'Select account'}
+                      </option>
+                      {fundableAccounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name} — {acc.type}
+                        </option>
+                      ))}
+                    </select>
+                    <p className='text-white/50 text-xs mt-1'>
+                      Account used to pay this card (synced with Fixed Expenses)
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className='flex space-x-3'>
@@ -701,6 +901,37 @@ const CreditCards = ({
         isOpen={migrationModal.isOpen}
         onClose={() => setMigrationModal({ isOpen: false })}
         onComplete={handleMigrationComplete}
+      />
+
+      {/* Inline Account Creation Modal */}
+      <CreateAccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => {
+          setIsAccountModalOpen(false);
+          setPendingCardData(null);
+        }}
+        onAccountCreated={handleAccountCreated}
+      />
+
+      {/* Retro-creation Confirmation Modal */}
+      <MissingExpensesModal
+        isOpen={isMissingExpensesModalOpen}
+        cards={orphanedCards}
+        onConfirm={handleRetroConfirm}
+        onSkip={handleRetroSkip}
+      />
+
+      {/* Choose funding account for new card (2+ accounts) */}
+      <ChooseFundingAccountModal
+        isOpen={showFundingModal}
+        cardName={fundingModalCardName}
+        cardId={fundingModalCardId ?? 0}
+        accounts={fundableAccounts}
+        defaultAccountId={defaultAccountIdForModal}
+        onConfirm={handleFundingConfirm}
+        onUseDefault={handleFundingUseDefault}
+        onCancel={handleFundingCancel}
+        isLoading={isFundingModalLoading}
       />
     </div>
   );

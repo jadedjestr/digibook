@@ -17,6 +17,7 @@ import {
   createPaymentSource as _createPaymentSource,
   PaymentSourceTypes,
 } from '../types/paymentSource';
+import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
 import { logger } from '../utils/logger';
 
 export class PaymentService {
@@ -422,7 +423,7 @@ export class PaymentService {
     // Payment info for UI display
     result.paymentInfo = {
       currentDebt: targetCreditCard.balance,
-      minimumPayment: targetCreditCard.minimumPayment || 0,
+      minimumPayment: getDefaultMinimumPaymentAmount(targetCreditCard),
       availableFunds: fundingAccount.currentBalance,
       afterPaymentDebt: targetCreditCard.balance - paymentAmount,
       fundingAccountName: fundingAccount.name,
@@ -443,7 +444,7 @@ export class PaymentService {
     const suggestions = [];
     const debt = creditCard.balance;
     const available = fundingAccount.currentBalance;
-    const minimum = creditCard.minimumPayment || 0;
+    const minimum = getDefaultMinimumPaymentAmount(creditCard);
 
     // Only suggest if there's actual debt
     if (debt <= 0) {

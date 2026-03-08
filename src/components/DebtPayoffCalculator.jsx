@@ -10,6 +10,7 @@ import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
+import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
 import { logger } from '../utils/logger';
 
 import PrivacyWrapper from './PrivacyWrapper';
@@ -34,12 +35,13 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
 
   useEffect(() => {
     if (selectedCard) {
+      const defaultMin = getDefaultMinimumPaymentAmount(selectedCard);
       setCalculatorData({
         balance: selectedCard.balance || 0,
-        payment: selectedCard.minimumPayment || 0,
+        payment: defaultMin,
         interestRate: selectedCard.interestRate || 18.99,
         creditLimit: selectedCard.creditLimit || 0,
-        minimumPayment: selectedCard.minimumPayment || 0,
+        minimumPayment: defaultMin,
       });
     }
   }, [selectedCard]);
