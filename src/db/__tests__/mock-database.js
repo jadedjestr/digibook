@@ -5,6 +5,8 @@
  * without the complexity of IndexedDB constraints.
  */
 
+import { DEFAULT_PAY_FREQUENCY } from '../../constants/payFrequency';
+
 export class MockDatabase {
   constructor() {
     this.data = {
@@ -265,7 +267,7 @@ export class MockDatabase {
       this.data.paycheckSettings.set(id, {
         id,
         lastPaycheckDate: '',
-        frequency: 'biweekly',
+        frequency: DEFAULT_PAY_FREQUENCY,
         createdAt: new Date().toISOString(),
       });
     }
@@ -450,5 +452,26 @@ export class MockDatabase {
     };
   }
 }
+
+/**
+ * Factory for mock paycheck settings. Use overrides for id, lastPaycheckDate, createdAt, etc.
+ * @param {string} [frequency=DEFAULT_PAY_FREQUENCY] - Pay frequency key
+ * @param {Object} [overrides] - Merged over base { lastPaycheckDate: '', frequency, createdAt }
+ */
+export function createMockPaycheckSettings(
+  frequency = DEFAULT_PAY_FREQUENCY,
+  overrides = {},
+) {
+  return {
+    lastPaycheckDate: '',
+    frequency,
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+export const mockPaycheckSettingsWeekly = createMockPaycheckSettings('weekly');
+export const mockPaycheckSettingsMonthly =
+  createMockPaycheckSettings('monthly');
 
 export default MockDatabase;

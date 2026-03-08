@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+import { DEFAULT_PAY_FREQUENCY } from '../../constants/payFrequency';
 import { db, dbHelpers } from '../database-clean';
+
+import { createMockPaycheckSettings } from './mock-database';
 
 vi.mock('../../utils/logger', () => ({
   logger: {
@@ -52,12 +55,11 @@ describe('dbHelpers.importData (atomic transaction)', () => {
       },
     ],
     paycheckSettings: [
-      {
+      createMockPaycheckSettings(DEFAULT_PAY_FREQUENCY, {
         id: 1,
         lastPaycheckDate: '2026-01-15',
-        frequency: 'biweekly',
         createdAt: now,
-      },
+      }),
     ],
     userPreferences: [],
     recurringExpenseTemplates: [
@@ -243,9 +245,12 @@ describe('dbHelpers.importData (atomic transaction)', () => {
     expect(sortById(await db.categories.toArray())).toEqual(
       importData.categories,
     );
-    expect(sortById(await db.paycheckSettings.toArray())).toEqual(
-      importData.paycheckSettings,
-    );
+
+    // Normalization turns empty paycheckSettings into one default row; DB may assign id
+    const paycheckSettingsAfter = await db.paycheckSettings.toArray();
+    expect(paycheckSettingsAfter).toHaveLength(1);
+    expect(paycheckSettingsAfter[0].frequency).toBe(DEFAULT_PAY_FREQUENCY);
+    expect(paycheckSettingsAfter[0].lastPaycheckDate).toBe('');
     expect(sortById(await db.recurringExpenseTemplates.toArray())).toEqual(
       importData.recurringExpenseTemplates,
     );
@@ -281,5 +286,41 @@ describe('dbHelpers.importData (atomic transaction)', () => {
     await dbHelpers.importData(largeImport);
     expect((await db.fixedExpenses.count()) > 1000).toBe(true);
     expect(await db.fixedExpenses.count()).toBe(1505);
+  });
+
+  // eslint-disable-next-line quotes -- string contains single quote, Prettier uses double quotes
+  it("preserves frequency: 'weekly' after import", async () => {
+    const importDataWithWeekly = {
+      ...importData,
+      paycheckSettings: [
+        createMockPaycheckSettings('weekly', {
+          id: 1,
+          lastPaycheckDate: '2026-01-20',
+          createdAt: now,
+        }),
+      ],
+    };
+    await dbHelpers.importData(importDataWithWeekly);
+    const settings = await db.paycheckSettings.toArray();
+    expect(settings).toHaveLength(1);
+    expect(settings[0].frequency).toBe('weekly');
+  });
+
+  // eslint-disable-next-line quotes -- string contains single quote, Prettier uses double quotes
+  it("preserves frequency: 'monthly' after import", async () => {
+    const importDataWithMonthly = {
+      ...importData,
+      paycheckSettings: [
+        createMockPaycheckSettings('monthly', {
+          id: 1,
+          lastPaycheckDate: '2026-01-31',
+          createdAt: now,
+        }),
+      ],
+    };
+    await dbHelpers.importData(importDataWithMonthly);
+    const settings = await db.paycheckSettings.toArray();
+    expect(settings).toHaveLength(1);
+    expect(settings[0].frequency).toBe('monthly');
   });
 });

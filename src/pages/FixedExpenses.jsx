@@ -13,7 +13,11 @@ import OneOffExpensesView from '../components/OneOffExpensesView.jsx';
 import PayDateCountdownCard from '../components/PayDateCountdownCard.jsx';
 import PaySummaryCard from '../components/PaySummaryCard.jsx';
 import ProjectedBalanceCard from '../components/ProjectedBalanceCard.jsx';
-import { DEFAULT_PAY_FREQUENCY } from '../constants/payFrequency';
+import {
+  advanceDueDateByFrequency,
+  DEFAULT_PAY_FREQUENCY,
+  PAY_FREQUENCIES,
+} from '../constants/payFrequency';
 import { dbHelpers } from '../db/database-clean';
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { usePaycheckCalculations } from '../hooks/usePaycheckCalculations';
@@ -42,14 +46,6 @@ import '../components/Calendar/calendar.css';
 /** Set to true to show pay cycle nudge as toast instead of banner. */
 const USE_NUDGE_TOAST = true;
 
-const addOneMonthToDate = dateString => {
-  if (!dateString) return null;
-  const date = DateUtils.parseDate(dateString);
-  if (!date) return null;
-  date.setMonth(date.getMonth() + 1);
-  return DateUtils.formatDate(date);
-};
-
 const FixedExpenses = () => {
   const [showResetPrompt, setShowResetPrompt] = useState(false);
   const [payNowExpense, setPayNowExpense] = useState(null);
@@ -76,10 +72,16 @@ const FixedExpenses = () => {
 
   const handleResetCycle = useCallback(async () => {
     try {
+      const currentFrequency =
+        paycheckSettings?.frequency || DEFAULT_PAY_FREQUENCY;
       const updatePromises = fixedExpenses.map(expense => {
         let newDueDate = expense.dueDate;
         if (expense.dueDate) {
-          newDueDate = addOneMonthToDate(expense.dueDate);
+          const advanced = advanceDueDateByFrequency(
+            expense.dueDate,
+            currentFrequency,
+          );
+          newDueDate = advanced !== null ? advanced : expense.dueDate;
         }
         return updateExpenseV4(
           expense.id,
@@ -505,7 +507,13 @@ const FixedExpenses = () => {
               <p>This will:</p>
               <ul className='list-disc list-inside space-y-1 ml-4'>
                 <li>Mark all expenses as unpaid</li>
-                <li>Advance all expense due dates by one month</li>
+                <li>
+                  Advance all expense due dates by one pay period (
+                  {PAY_FREQUENCIES[
+                    paycheckSettings?.frequency || DEFAULT_PAY_FREQUENCY
+                  ]?.label ?? 'Biweekly (every 2 weeks)'}
+                  )
+                </li>
                 <li>Update your last paycheck date to {nextPayDisplay}</li>
                 <li>Reset the calendar to show the new pay cycle</li>
               </ul>
