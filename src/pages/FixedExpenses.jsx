@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import Calendar from '../components/Calendar/Calendar.jsx';
+import PayCycleNudgeBanner from '../components/Calendar/PayCycleNudgeBanner.jsx';
+import PayCycleNudgeToast from '../components/Calendar/PayCycleNudgeToast.jsx';
 import CategoryExpenseSummary from '../components/CategoryExpenseSummary.jsx';
 import FixedExpensesTable from '../components/FixedExpensesTable.jsx';
 import OneOffExpensesView from '../components/OneOffExpensesView.jsx';
@@ -11,6 +13,7 @@ import { DEFAULT_PAY_FREQUENCY } from '../constants/payFrequency';
 import { dbHelpers } from '../db/database-clean';
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { usePaycheckCalculations } from '../hooks/usePaycheckCalculations';
+import { usePayCycleNudge } from '../hooks/usePayCycleNudge';
 import {
   useAccounts,
   useCategories,
@@ -23,7 +26,11 @@ import {
 } from '../stores/useAppStore';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
-import { notify } from '../utils/notifications.jsx';
+import { notify, showConfirmation } from '../utils/notifications.jsx';
+import { isUnpaidOrPartial } from '../utils/payCycleNudgeLogic';
+
+/** Set to true to show pay cycle nudge as toast instead of banner. */
+const USE_NUDGE_TOAST = false;
 
 const addOneMonthToDate = dateString => {
   if (!dateString) return null;
@@ -37,6 +44,7 @@ const FixedExpenses = () => {
   const [showResetPrompt, setShowResetPrompt] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'oneoffs'
+  const expensesTableRef = useRef(null);
 
   // Use Zustand store for data
   const accounts = useAccounts();
@@ -134,6 +142,43 @@ const FixedExpenses = () => {
       currentMonthExpenses: cache[formatMonthKey(currentMonth)] || [],
     };
   }, [currentMonth, fixedExpenses]);
+
+  const { nudge, dismiss } = usePayCycleNudge({
+    fixedExpenses,
+    currentMonth,
+    currentMonthExpenses,
+    paycheckDates,
+    paycheckService,
+  });
+
+  const handleReviewPastMonth = useCallback(monthKey => {
+    if (!monthKey) return;
+    const [y, m] = monthKey.split('-').map(Number);
+    setCurrentMonth(new Date(y, m - 1, 1));
+  }, []);
+
+  const handleMarkCurrentMonthPaid = useCallback(async () => {
+    const unpaid = currentMonthExpenses.filter(isUnpaidOrPartial);
+    if (unpaid.length === 0) return;
+    const confirmed = await showConfirmation(
+      `Mark ${unpaid.length} expense(s) as paid?`,
+    );
+    if (!confirmed) return;
+    try {
+      for (const exp of unpaid) {
+        await markAsPaid(exp.id);
+      }
+      await reloadExpenses();
+      notify.success(`Marked ${unpaid.length} expense(s) as paid`);
+    } catch (err) {
+      logger.error('Error marking expenses as paid', err);
+      notify.error('Failed to mark some expenses as paid');
+    }
+  }, [currentMonthExpenses, markAsPaid, reloadExpenses]);
+
+  const handleReviewScroll = useCallback(() => {
+    expensesTableRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
 
   const summaryTotals = useMemo(
     () =>
@@ -263,6 +308,26 @@ const FixedExpenses = () => {
 
       {viewMode === 'month' ? (
         <>
+          {/* Pay cycle nudge - above calendar (or as toast when USE_NUDGE_TOAST) */}
+          {USE_NUDGE_TOAST ? (
+            <PayCycleNudgeToast
+              nudge={nudge}
+              onReviewPastMonth={handleReviewPastMonth}
+              onStartReset={() => setShowResetPrompt(true)}
+              onDismiss={dismiss}
+              onMarkCurrentMonthPaid={handleMarkCurrentMonthPaid}
+              onReviewScroll={handleReviewScroll}
+            />
+          ) : (
+            <PayCycleNudgeBanner
+              nudge={nudge}
+              onReviewPastMonth={handleReviewPastMonth}
+              onStartReset={() => setShowResetPrompt(true)}
+              onDismiss={dismiss}
+              onMarkCurrentMonthPaid={handleMarkCurrentMonthPaid}
+              onReviewScroll={handleReviewScroll}
+            />
+          )}
           {/* Calendar View - At the very top */}
           <Calendar
             currentMonth={currentMonth}
@@ -302,10 +367,15 @@ const FixedExpenses = () => {
           />
 
           {/* Main Expenses Table */}
-          <FixedExpensesTable
-            expenses={currentMonthExpenses}
-            onCategoryClick={handleCategoryClick}
-          />
+          <div
+            ref={expensesTableRef}
+            data-testid='fixed-expenses-table-container'
+          >
+            <FixedExpensesTable
+              expenses={currentMonthExpenses}
+              onCategoryClick={handleCategoryClick}
+            />
+          </div>
         </>
       ) : (
         <OneOffExpensesView

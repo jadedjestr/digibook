@@ -396,23 +396,6 @@ const CreditCards = ({
     setDeletionModal({ isOpen: false, card: null });
   }, []);
 
-  const _handleCreateMissingExpenses = useCallback(async () => {
-    try {
-      const createdCount = await dbHelpers.createMissingCreditCardExpenses();
-      if (createdCount > 0) {
-        notify.success(`Created ${createdCount} missing credit card expenses`);
-        onDataChange(); // Refresh the data
-      } else {
-        notify.info(
-          'All credit cards already have corresponding fixed expenses',
-        );
-      }
-    } catch (error) {
-      logger.error('Error creating missing expenses:', error);
-      notify.error('Failed to create missing expenses');
-    }
-  }, [onDataChange]);
-
   const handleOpenMigration = useCallback(() => {
     setMigrationModal({ isOpen: true });
   }, []);
