@@ -93,6 +93,27 @@ export class DigibookDBClean extends Dexie {
         '++id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt',
       auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
     });
+
+    // Version 5: monthlyExpenseHistory compound primary key for upsert by [expenseId+month+year]
+    this.version(5)
+      .stores({
+        accounts: '++id, name, type, currentBalance, isDefault, createdAt',
+        pendingTransactions:
+          '++id, accountId, amount, category, description, createdAt',
+        fixedExpenses:
+          '++id, name, dueDate, amount, accountId, creditCardId, targetCreditCardId, category, paidAmount, status, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, recurringTemplateId, createdAt',
+        categories: '++id, name, color, icon, isDefault, createdAt',
+        creditCards:
+          '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
+        paycheckSettings: '++id, lastPaycheckDate, frequency, createdAt',
+        userPreferences: '++id, component, preferences, createdAt',
+        monthlyExpenseHistory:
+          '[expenseId+month+year], expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
+        recurringExpenseTemplates:
+          '++id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt',
+        auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
+      })
+      .upgrade(() => {});
   }
 }
 
@@ -2254,6 +2275,49 @@ export const dbHelpers = {
     } catch (error) {
       logger.error('Error getting monthly expense history:', error);
       return [];
+    }
+  },
+
+  /**
+   * Snapshot paid expense data into monthlyExpenseHistory (for pay cycle reset).
+   * Reads fresh from db.fixedExpenses; only expenses with paidAmount > 0 are written.
+   * Non-blocking: on failure logs and returns; never throws.
+   */
+  async snapshotExpensesForMonth() {
+    try {
+      await db.transaction(
+        'rw',
+        db.fixedExpenses,
+        db.monthlyExpenseHistory,
+        async () => {
+          const expenses = await db.fixedExpenses.toArray();
+          for (const expense of expenses) {
+            if ((expense.paidAmount || 0) <= 0) continue;
+            const parsed = DateUtils.parseDate(expense.dueDate);
+            if (!parsed) {
+              logger.warn('Snapshot skipping expense with invalid dueDate', {
+                expenseId: expense.id,
+              });
+              continue;
+            }
+            const month = parsed.getMonth() + 1;
+            const year = parsed.getFullYear();
+            const paid = expense.paidAmount || 0;
+            const record = {
+              expenseId: expense.id,
+              month,
+              year,
+              budgetAmount: expense.amount,
+              actualAmount: paid,
+              overpaymentAmount: Math.max(0, paid - expense.amount),
+              createdAt: new Date().toISOString(),
+            };
+            await db.monthlyExpenseHistory.put(record);
+          }
+        },
+      );
+    } catch (error) {
+      logger.error('Snapshot expenses for month failed', error);
     }
   },
 

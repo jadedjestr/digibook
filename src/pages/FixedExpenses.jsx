@@ -72,6 +72,11 @@ const FixedExpenses = () => {
 
   const handleResetCycle = useCallback(async () => {
     try {
+      try {
+        await dbHelpers.snapshotExpensesForMonth();
+      } catch (_) {
+        // Snapshot is best-effort; reset continues
+      }
       const currentFrequency =
         paycheckSettings?.frequency || DEFAULT_PAY_FREQUENCY;
       const updatePromises = fixedExpenses.map(expense => {
