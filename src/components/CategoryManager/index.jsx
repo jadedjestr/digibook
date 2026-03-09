@@ -1,4 +1,13 @@
-import { Plus, Search, Trash2, AlertTriangle } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Trash2,
+  AlertTriangle,
+  Shield,
+  CheckCircle,
+  Palette,
+  Smile,
+} from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 
@@ -9,6 +18,8 @@ import { logger } from '../../utils/logger';
 import { showConfirmation, notify } from '../../utils/notifications';
 import CategoryDeletionModal from '../CategoryDeletionModal';
 
+import BulkColorModal from './BulkColorModal';
+import BulkIconModal from './BulkIconModal';
 import { CategoryProvider, useCategoryContext } from './CategoryContext';
 import CategoryForm from './CategoryForm';
 import CategoryGrid from './CategoryGrid';
@@ -45,6 +56,8 @@ const CategoryManagerContent = () => {
   const [selectedCategories, setSelectedCategories] = useState(new Set());
   const [bulkOperationLoading, setBulkOperationLoading] = useState(false);
   const [pendingBulkDeletions, setPendingBulkDeletions] = useState([]);
+  const [bulkColorModalOpen, setBulkColorModalOpen] = useState(false);
+  const [bulkIconModalOpen, setBulkIconModalOpen] = useState(false);
 
   // Usage stats state
   const [categoryUsageStats, setCategoryUsageStats] = useState(new Map());
@@ -55,6 +68,19 @@ const CategoryManagerContent = () => {
   const [checkingOrphans, setCheckingOrphans] = useState(false);
   const [fixingOrphans, setFixingOrphans] = useState({});
   const [showOrphanSection, setShowOrphanSection] = useState(false);
+  const [orphanCheckRun, setOrphanCheckRun] = useState(false);
+
+  // Data Health panel state: 'idle' | 'clean' | 'orphans'
+  const dataHealthState = (() => {
+    if (!orphanCheckRun && !showOrphanSection) return 'idle';
+    if (orphanedExpenses.length === 0) return 'clean';
+    return 'orphans';
+  })();
+  const dataHealthBorderClass = {
+    idle: 'border-white/10',
+    clean: 'border-green-500/30',
+    orphans: 'border-yellow-500/30',
+  }[dataHealthState];
 
   // Filtered and sorted categories
   const filteredCategories = useMemo(() => {
@@ -94,6 +120,8 @@ const CategoryManagerContent = () => {
           };
           return getUsageCount(b) - getUsageCount(a); // Descending (most used first)
         }
+        case 'custom':
+          return (a.sortOrder ?? a.id) - (b.sortOrder ?? b.id);
         default:
           return 0;
       }
@@ -216,6 +244,57 @@ const CategoryManagerContent = () => {
     }, 100);
   }, [processNextPendingDeletion, refreshAfterMutation]);
 
+  const handleBulkUpdateColor = useCallback(
+    async hex => {
+      if (selectedCategories.size === 0) return;
+      try {
+        await dbHelpers.bulkUpdateCategories(Array.from(selectedCategories), {
+          color: hex,
+        });
+        await refreshAfterMutation();
+        setSelectedCategories(new Set());
+        setBulkColorModalOpen(false);
+        notify.success('Category colors updated');
+      } catch (error) {
+        logger.error('Error bulk updating category colors:', error);
+        notify.error('Failed to update colors. Please try again.', error);
+      }
+    },
+    [selectedCategories, refreshAfterMutation],
+  );
+
+  const handleReorder = useCallback(
+    async orderedIds => {
+      try {
+        await dbHelpers.updateCategorySortOrder(orderedIds);
+        await refreshAfterMutation();
+      } catch (error) {
+        logger.error('Error reordering categories:', error);
+        notify.error('Failed to reorder categories. Please try again.', error);
+      }
+    },
+    [refreshAfterMutation],
+  );
+
+  const handleBulkUpdateIcon = useCallback(
+    async icon => {
+      if (selectedCategories.size === 0) return;
+      try {
+        await dbHelpers.bulkUpdateCategories(Array.from(selectedCategories), {
+          icon,
+        });
+        await refreshAfterMutation();
+        setSelectedCategories(new Set());
+        setBulkIconModalOpen(false);
+        notify.success('Category icons updated');
+      } catch (error) {
+        logger.error('Error bulk updating category icons:', error);
+        notify.error('Failed to update icons. Please try again.', error);
+      }
+    },
+    [selectedCategories, refreshAfterMutation],
+  );
+
   const handleBulkDelete = useCallback(async () => {
     if (selectedCategories.size === 0) return;
 
@@ -296,6 +375,7 @@ const CategoryManagerContent = () => {
       const orphans = await dbHelpers.detectOrphanedExpenses();
       setOrphanedExpenses(orphans);
       setShowOrphanSection(true);
+      setOrphanCheckRun(true);
       if (orphans.length > 0) {
         notify.warning(
           `Found ${orphans.length} orphaned categor${orphans.length > 1 ? 'ies' : 'y'}`,
@@ -375,6 +455,7 @@ const CategoryManagerContent = () => {
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- omit categories, categoryUsageStats
   }, [
     sortBy,
     categories.length,
@@ -436,6 +517,7 @@ const CategoryManagerContent = () => {
                   <option value='name'>Sort by Name</option>
                   <option value='createdAt'>Sort by Date</option>
                   <option value='usage'>Sort by Usage</option>
+                  <option value='custom'>Custom Order</option>
                 </select>
               </div>
             </div>
@@ -482,6 +564,20 @@ const CategoryManagerContent = () => {
                 {selectedCategories.size > 0 && (
                   <div className='flex gap-2'>
                     <button
+                      onClick={() => setBulkColorModalOpen(true)}
+                      className='glass-button flex items-center space-x-2'
+                    >
+                      <Palette size={16} />
+                      <span>Change Color</span>
+                    </button>
+                    <button
+                      onClick={() => setBulkIconModalOpen(true)}
+                      className='glass-button flex items-center space-x-2'
+                    >
+                      <Smile size={16} />
+                      <span>Change Icon</span>
+                    </button>
+                    <button
                       onClick={handleBulkDelete}
                       disabled={bulkOperationLoading}
                       className='glass-button glass-button--danger flex items-center space-x-2 disabled:opacity-50'
@@ -519,13 +615,21 @@ const CategoryManagerContent = () => {
           />
         )}
 
-        {/* Data Validation Section */}
-        <div className='glass-panel border border-yellow-500/20'>
+        {/* Data Health Section */}
+        <div className={`glass-panel border ${dataHealthBorderClass}`}>
           <div className='flex items-center justify-between mb-4'>
             <div className='flex items-center gap-2'>
-              <AlertTriangle className='text-yellow-400' size={20} />
+              {dataHealthState === 'idle' && (
+                <Shield className='text-white/60' size={20} />
+              )}
+              {dataHealthState === 'clean' && (
+                <CheckCircle className='text-green-400' size={20} />
+              )}
+              {dataHealthState === 'orphans' && (
+                <AlertTriangle className='text-yellow-400' size={20} />
+              )}
               <h3 className='text-lg font-semibold text-primary'>
-                Data Validation
+                Data Health
               </h3>
             </div>
             <button
@@ -535,6 +639,17 @@ const CategoryManagerContent = () => {
               {showOrphanSection ? 'Hide' : 'Show'}
             </button>
           </div>
+
+          {!showOrphanSection && (
+            <p className='text-sm text-white/60'>
+              {dataHealthState === 'idle' &&
+                'Run a scan to check data integrity.'}
+              {dataHealthState === 'clean' &&
+                'All category references are healthy.'}
+              {dataHealthState === 'orphans' &&
+                `${orphanedExpenses.length} orphaned category reference${orphanedExpenses.length > 1 ? 's' : ''} found.`}
+            </p>
+          )}
 
           {showOrphanSection && (
             <div className='space-y-4'>
@@ -547,9 +662,7 @@ const CategoryManagerContent = () => {
                   disabled={checkingOrphans}
                   className='glass-button px-4 py-2 text-sm disabled:opacity-50'
                 >
-                  {checkingOrphans
-                    ? 'Checking...'
-                    : 'Check for Orphaned Expenses'}
+                  {checkingOrphans ? 'Checking...' : 'Run a scan'}
                 </button>
               </div>
 
@@ -571,7 +684,8 @@ const CategoryManagerContent = () => {
                           </p>
                           <p className='text-sm text-white/60'>
                             {orphan.expenseCount} expenses,{' '}
-                            {orphan.transactionCount} transactions
+                            {orphan.transactionCount} transactions,{' '}
+                            {orphan.templateCount ?? 0} templates
                           </p>
                         </div>
                         <div className='flex items-center gap-2'>
@@ -609,8 +723,8 @@ const CategoryManagerContent = () => {
 
               {orphanedExpenses.length === 0 && !checkingOrphans && (
                 <div className='text-center py-4 text-white/60 text-sm'>
-                  No orphaned expenses detected. Click &quot;Check for Orphaned
-                  Expenses&quot; to scan your data.
+                  No orphaned expenses detected. Click &quot;Run a scan&quot; to
+                  scan your data.
                 </div>
               )}
             </div>
@@ -628,6 +742,9 @@ const CategoryManagerContent = () => {
           operationLoading={operationLoading}
           selectedCategories={selectedCategories}
           onSelectCategory={handleSelectCategory}
+          sortBy={sortBy}
+          onReorder={handleReorder}
+          categoryUsageStats={categoryUsageStats}
         />
 
         {/* Add Category Button */}
@@ -643,6 +760,21 @@ const CategoryManagerContent = () => {
             </span>
           </button>
         )}
+
+        <BulkColorModal
+          isOpen={bulkColorModalOpen}
+          onClose={() => setBulkColorModalOpen(false)}
+          selectedCount={selectedCategories.size}
+          onApply={handleBulkUpdateColor}
+          colorOptions={colorOptions}
+        />
+        <BulkIconModal
+          isOpen={bulkIconModalOpen}
+          onClose={() => setBulkIconModalOpen(false)}
+          selectedCount={selectedCategories.size}
+          onApply={handleBulkUpdateIcon}
+          iconCategories={iconCategories}
+        />
 
         {/* Category Deletion Modal */}
         <CategoryDeletionModal

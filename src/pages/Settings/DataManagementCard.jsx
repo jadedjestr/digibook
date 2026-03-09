@@ -30,6 +30,9 @@ const DataManagementCard = ({
   const [importProgress, setImportProgress] = useState('');
   const [showFutureGenPrompt, setShowFutureGenPrompt] = useState(false);
   const [selectedHorizon, setSelectedHorizon] = useState(3);
+  const [lastExportDate, setLastExportDate] = useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const [backupList, setBackupList] = useState([]);
 
   useEffect(() => {
     if (shouldShowFuturePrompt) {
@@ -37,11 +40,47 @@ const DataManagementCard = ({
     }
   }, [shouldShowFuturePrompt]);
 
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [date, list] = await Promise.all([
+          dbHelpers.getLastExportDate(),
+          dataManager.backupManager.listBackups(),
+        ]);
+        setLastExportDate(date);
+        setBackupList(list || []);
+      } catch (err) {
+        logger.warn('Failed to load export/backup info:', err);
+      }
+    };
+    load();
+  }, []);
+
+  const latestBackup = backupList.length > 0 ? backupList[0] : null;
+  const showNudge =
+    !nudgeDismissed &&
+    (lastExportDate === null ||
+      (Date.now() - new Date(lastExportDate).getTime()) /
+        (24 * 60 * 60 * 1000) >
+        30);
+  const lastExportLabel =
+    lastExportDate === null
+      ? 'never'
+      : (() => {
+          const days = Math.floor(
+            (Date.now() - new Date(lastExportDate).getTime()) /
+              (24 * 60 * 60 * 1000),
+          );
+          return days === 0 ? 'today' : `${days} days ago`;
+        })();
+
   const handleExportJSON = async () => {
     setIsExporting(true);
     try {
       const result = await exportJSONData(setImportProgress);
-      if (!result.success) {
+      if (result.success) {
+        setLastExportDate(new Date().toISOString());
+      } else {
         alert(`Error exporting data: ${result.error}`);
       }
     } catch (error) {
@@ -176,9 +215,11 @@ const DataManagementCard = ({
         }
 
         setImportProgress('Restoring backup...');
-        await dataManager.backupManager.restoreBackup(backup.key);
+        await dataManager.backupManager.restoreBackup(backup.id);
 
         await refreshAfterDbReplace();
+        const list = await dataManager.backupManager.listBackups();
+        setBackupList(list || []);
         setImportProgress('Backup restored successfully!');
         setTimeout(() => setImportProgress(''), 3000);
         alert('Data restored from backup successfully');
@@ -289,8 +330,41 @@ const DataManagementCard = ({
     }
   };
 
+  const formatBackupTimestamp = ts =>
+    ts
+      ? new Date(ts).toLocaleString(undefined, {
+          dateStyle: 'short',
+          timeStyle: 'short',
+        })
+      : '—';
+
   return (
     <div className='space-y-6'>
+      {showNudge && (
+        <div className='glass-panel p-4 space-y-3 border border-amber-500/30'>
+          <p className='text-secondary text-sm'>
+            Your last file export was {lastExportLabel}. We recommend exporting
+            a backup file regularly to protect your data.
+          </p>
+          <div className='flex flex-wrap gap-2'>
+            <button
+              onClick={handleExportJSON}
+              disabled={isExporting}
+              className='glass-button glass-button--primary flex items-center space-x-2'
+            >
+              <Download size={16} />
+              <span>Export Now</span>
+            </button>
+            <button
+              onClick={() => setNudgeDismissed(true)}
+              className='glass-button flex items-center space-x-2'
+            >
+              <span>Dismiss</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Export Section */}
       <div>
         <h4 className='text-primary font-medium mb-3'>Export Data</h4>
@@ -470,12 +544,18 @@ const DataManagementCard = ({
         <h4 className='text-primary font-medium mb-3'>Backup Recovery</h4>
         <div className='space-y-3'>
           <p className='text-secondary text-sm'>
+            {backupList.length === 0
+              ? 'No backups stored yet. Backups are created automatically before import or clear.'
+              : `${backupList.length} backup(s) stored. Most recent: ${formatBackupTimestamp(latestBackup?.timestamp)} (${latestBackup?.reason ?? '—'}).`}
+          </p>
+          <p className='text-secondary text-sm'>
             If an import failed or you need to restore from a backup created
             before import.
           </p>
           <button
             onClick={handleRestoreFromBackup}
-            className='glass-button glass-button--secondary flex items-center space-x-2'
+            disabled={!latestBackup}
+            className='glass-button glass-button--secondary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed'
           >
             <Shield size={16} />
             <span>Restore from Backup</span>

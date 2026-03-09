@@ -1,5 +1,4 @@
 import { dbHelpers } from '../db/database-clean';
-import { secureDataHandling } from '../utils/crypto';
 import {
   validatePaymentSource,
   validateCreditCardPayment,
@@ -39,22 +38,19 @@ class DataManager {
   }
 
   /**
-   * Initialize the backup system with automatic scheduling
+   * Initialize the backup system with automatic scheduling and optional localStorage migration
    */
   initializeBackupSystem() {
     try {
-      // Schedule automatic backups
       this.backupManager.scheduleAutomaticBackups();
 
-      // Run backup testing on app startup (in development)
-      if (process.env.NODE_ENV === 'development') {
-        setTimeout(async () => {
-          try {
-            await this.backupManager.runAutomatedBackupTesting();
-          } catch (error) {
-            logger.warn('Automated backup testing failed on startup:', error);
-          }
-        }, 5000); // Wait 5 seconds after app startup
+      const keys = Object.keys(localStorage).filter(k =>
+        k.startsWith(BACKUP_PREFIX),
+      );
+      if (keys.length > 0) {
+        this.migrateLocalStorageBackups(keys).catch(err => {
+          logger.warn('LocalStorage backup migration failed:', err);
+        });
       }
 
       logger.info('Backup system initialized successfully');
@@ -63,17 +59,48 @@ class DataManager {
     }
   }
 
-  // Database Management
-  async deleteDatabase() {
-    try {
-      await dbHelpers.deleteDatabase();
-      logger.success('Database deleted successfully');
-    } catch (error) {
-      logger.error('Error deleting database:', error);
-      throw new Error(`Failed to delete database: ${error.message}`);
+  /**
+   * One-time migration: copy backups from localStorage to IndexedDB, then remove from localStorage
+   */
+  async migrateLocalStorageBackups(keys) {
+    let migrated = 0;
+    for (const key of keys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const backup = JSON.parse(raw);
+        if (
+          !backup.data ||
+          !backup.checksum ||
+          !backup.reason ||
+          !backup.timestamp ||
+          backup.version == null
+        ) {
+          logger.warn(`Skipping invalid backup at ${key}`);
+          continue;
+        }
+        await dbHelpers.saveBackup({
+          reason: backup.reason,
+          timestamp: backup.timestamp,
+          version: backup.version,
+          createdAt: backup.timestamp || new Date().toISOString(),
+          data: backup.data,
+          checksum: backup.checksum,
+        });
+        localStorage.removeItem(key);
+        migrated++;
+      } catch (err) {
+        logger.warn(`Failed to migrate backup ${key}:`, err);
+      }
+    }
+    if (migrated > 0) {
+      logger.success(
+        `Migrated ${migrated} backup(s) from localStorage to IndexedDB`,
+      );
     }
   }
 
+  // Database Management
   async clearAllData(createBackup = true) {
     try {
       if (createBackup) {
@@ -360,7 +387,7 @@ class DataManager {
 
   /**
    * Shared: validate then write validated import data to DB.
-   * Used by importData and importDataSecure.
+   * Used by importData.
    * @private
    */
   async _applyValidatedImport(validatedData, onProgress = () => {}) {
@@ -399,92 +426,25 @@ class DataManager {
     }
   }
 
-  // Reserved for future encrypted backup UI; not yet wired in the app.
-  async importDataSecure(file, password, onProgress = () => {}) {
-    try {
-      onProgress('Reading encrypted file...');
-      const { data, fileType } = await this.readImportFile(file);
-
-      // Check if it's an encrypted export
-      if (!data.encrypted) {
-        throw new Error(
-          'File is not encrypted. Use regular import for unencrypted files.',
-        );
-      }
-
-      onProgress('Creating backup...');
-      await this.backupManager.createBackup('pre_secure_import');
-
-      onProgress('Decrypting data...');
-      const decryptedData = await secureDataHandling.importData(data, password);
-
-      onProgress('Validating and migrating data to V4 format...');
-
-      // Validate and migrate data to V4 format
-      const validatedData = validateImportedDataV4(decryptedData);
-
-      await this._applyValidatedImport(validatedData, onProgress);
-
-      onProgress('Secure import completed successfully!');
-      logger.success(
-        `Encrypted data imported successfully from ${fileType} file`,
-      );
-    } catch (error) {
-      logger.error('Secure import failed:', error);
-      throw new Error(`Secure import failed: ${error.message}`);
-    }
-  }
-
   // Export Process
   async exportData(format = 'json', onProgress = () => {}) {
     try {
       onProgress('Preparing data...');
       const data = await dbHelpers.exportData();
 
-      // Add format version
       data.version = CURRENT_DATA_VERSION;
       data.exportedAt = new Date().toISOString();
 
       onProgress('Creating file...');
       if (format === 'json') {
-        return this.createJSONExport(data);
+        const result = this.createJSONExport(data);
+        await dbHelpers.updateLastExportDate(new Date().toISOString());
+        return result;
       }
       return this.createCSVExport(data);
     } catch (error) {
       logger.error('Export failed:', error);
       throw new Error(`Export failed: ${error.message}`);
-    }
-  }
-
-  // Reserved for future encrypted backup UI; not yet wired in the app.
-  async exportDataSecure(password, onProgress = () => {}) {
-    try {
-      onProgress('Preparing data...');
-      const data = await dbHelpers.exportData();
-
-      // Add format version and metadata
-      data.version = CURRENT_DATA_VERSION;
-      data.exportedAt = new Date().toISOString();
-
-      onProgress('Encrypting data...');
-      const encryptedExport = await secureDataHandling.exportData(
-        data,
-        password,
-      );
-
-      onProgress('Creating secure file...');
-      const blob = new Blob([JSON.stringify(encryptedExport, null, 2)], {
-        type: 'application/json',
-      });
-
-      return {
-        blob,
-        filename: `digibook_secure_backup_${new Date().toISOString().split('T')[0]}.json`,
-        encrypted: true,
-      };
-    } catch (error) {
-      logger.error('Secure export failed:', error);
-      throw new Error(`Secure export failed: ${error.message}`);
     }
   }
 
@@ -548,9 +508,10 @@ class DataManager {
   }
 }
 
+const BACKUP_PREFIX = 'digibook_backup_';
+
 class BackupManager {
   constructor() {
-    this.BACKUP_PREFIX = 'digibook_backup_';
     this.MAX_BACKUPS = 5;
   }
 
@@ -558,24 +519,21 @@ class BackupManager {
     try {
       const data = await dbHelpers.exportData();
 
-      // Compress backup data first
-      const compressedData = await this.compressData(data);
+      const cleanedData = await this.cleanExportData(data);
 
-      // Generate integrity checksum from compressed data (what we're actually storing)
-      const checksum = await this.generateChecksum(compressedData);
+      const checksum = await this.generateChecksum(cleanedData);
 
       const backup = {
-        data: compressedData,
+        data: cleanedData,
         checksum,
         reason,
         timestamp: new Date().toISOString(),
         version: CURRENT_DATA_VERSION,
         compressed: true,
-        size: JSON.stringify(compressedData).length,
+        size: JSON.stringify(cleanedData).length,
         originalSize: JSON.stringify(data).length,
       };
 
-      // Verify backup integrity before storing
       const verificationResult = await this.verifyBackupIntegrity(backup);
       if (!verificationResult.isValid) {
         throw new Error(
@@ -583,11 +541,15 @@ class BackupManager {
         );
       }
 
-      // Store backup
-      const key = `${this.BACKUP_PREFIX}${reason}_${backup.timestamp}`;
-      localStorage.setItem(key, JSON.stringify(backup));
+      const id = await dbHelpers.saveBackup({
+        reason: backup.reason,
+        timestamp: backup.timestamp,
+        version: backup.version,
+        createdAt: new Date().toISOString(),
+        data: backup.data,
+        checksum: backup.checksum,
+      });
 
-      // Rotate old backups
       await this.rotateBackups();
 
       const compressionRatio = backup.originalSize
@@ -598,7 +560,7 @@ class BackupManager {
       logger.success(
         `Backup created successfully (${backup.size} bytes, ${compressionPct}% compressed)`,
       );
-      return key;
+      return id;
     } catch (error) {
       logger.error('Failed to create backup:', error);
       throw new Error(`Failed to create backup: ${error.message}`);
@@ -607,45 +569,29 @@ class BackupManager {
 
   async rotateBackups() {
     try {
-      const backups = this.listBackups();
-      if (backups.length > this.MAX_BACKUPS) {
-        // Remove oldest backups
-        backups
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-          .slice(this.MAX_BACKUPS)
-          .forEach(backup => localStorage.removeItem(backup.key));
+      const backups = await dbHelpers.listBackups();
+      if (backups.length <= this.MAX_BACKUPS) return;
+      const excess = backups.slice(this.MAX_BACKUPS);
+      for (const backup of excess) {
+        await dbHelpers.deleteBackupById(backup.id);
       }
     } catch (error) {
       logger.warn('Failed to rotate backups:', error);
     }
   }
 
-  listBackups() {
-    const backups = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key.startsWith(this.BACKUP_PREFIX)) {
-        try {
-          const backup = JSON.parse(localStorage.getItem(key));
-          backups.push({ ...backup, key });
-        } catch (error) {
-          logger.warn(`Invalid backup found at ${key}:`, error);
-        }
-      }
-    }
-    return backups;
+  async listBackups() {
+    return await dbHelpers.listBackups();
   }
 
-  async restoreBackup(key) {
+  async restoreBackup(id) {
     try {
-      const backupJson = localStorage.getItem(key);
-      if (!backupJson) {
+      const backups = await dbHelpers.listBackups();
+      const backup = backups.find(b => b.id === id);
+      if (!backup) {
         throw new Error('Backup not found');
       }
 
-      const backup = JSON.parse(backupJson);
-
-      // Verify backup integrity
       const integrityResult = await this.verifyBackupIntegrity(backup);
       if (!integrityResult.isValid) {
         throw new Error(
@@ -653,15 +599,10 @@ class BackupManager {
         );
       }
 
-      // Create safety backup before restore
       await this.createBackup('pre_restore');
 
-      // Decompress data if needed
-      const dataToRestore = backup.compressed
-        ? await this.decompressData(backup.data)
-        : backup.data;
+      const dataToRestore = backup.data;
 
-      // Restore data
       await dbHelpers.importData(dataToRestore);
 
       logger.success('Backup restored successfully');
@@ -672,23 +613,8 @@ class BackupManager {
   }
 
   async getLatestBackup() {
-    const backups = this.listBackups();
-    if (backups.length === 0) {
-      return null;
-    }
-
-    return backups.sort(
-      (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
-    )[0];
+    return await dbHelpers.getLatestBackup();
   }
-
-  clearBackups() {
-    const backups = this.listBackups();
-    backups.forEach(backup => localStorage.removeItem(backup.key));
-    logger.success('All backups cleared');
-  }
-
-  // === ENHANCED BACKUP FEATURES ===
 
   /**
    * Generate checksum for data integrity verification
@@ -708,49 +634,25 @@ class BackupManager {
   }
 
   /**
-   * Compress backup data using simple compression techniques
+   * Clean export data by removing null/undefined and empty values
    */
-  async compressData(data) {
+  async cleanExportData(data) {
     try {
-      // Simple compression by removing unnecessary whitespace and null values
-      const compressed = JSON.parse(
+      const cleaned = JSON.parse(
         JSON.stringify(data, (key, value) => {
-          // Remove null/undefined values
           if (value === null || value === undefined) return undefined;
-
-          // Remove empty strings
           if (typeof value === 'string' && value.trim() === '')
             return undefined;
-
-          // Remove empty arrays
           if (Array.isArray(value) && value.length === 0) return undefined;
-
-          // Remove empty objects
           if (typeof value === 'object' && Object.keys(value).length === 0)
             return undefined;
           return value;
         }),
       );
-
-      return compressed;
+      return cleaned;
     } catch (error) {
-      logger.error('Error compressing data:', error);
-
-      // Return original data if compression fails
+      logger.error('Error cleaning export data:', error);
       return data;
-    }
-  }
-
-  /**
-   * Decompress backup data
-   */
-  async decompressData(compressedData) {
-    try {
-      // For now, compression is just cleanup, so no decompression needed
-      return compressedData;
-    } catch (error) {
-      logger.error('Error decompressing data:', error);
-      throw new Error('Failed to decompress data');
     }
   }
 
@@ -804,92 +706,6 @@ class BackupManager {
   }
 
   /**
-   * Test backup restore functionality
-   */
-  async testBackupRestore(backupKey) {
-    try {
-      logger.info(`Testing backup restore for: ${backupKey}`);
-
-      // Get the backup
-      const backupJson = localStorage.getItem(backupKey);
-      if (!backupJson) {
-        throw new Error('Backup not found');
-      }
-
-      const backup = JSON.parse(backupJson);
-
-      // Verify integrity
-      const integrityResult = await this.verifyBackupIntegrity(backup);
-      if (!integrityResult.isValid) {
-        throw new Error(
-          `Backup integrity check failed: ${integrityResult.errors.join(', ')}`,
-        );
-      }
-
-      // Decompress data
-      const decompressedData = await this.decompressData(backup.data);
-
-      // Validate data structure
-      const validationResult = await this.validateImportData(decompressedData);
-      if (!validationResult.isValid) {
-        throw new Error(
-          `Data validation failed: ${validationResult.errors.join(', ')}`,
-        );
-      }
-
-      logger.success(`Backup restore test passed for: ${backupKey}`);
-      return {
-        success: true,
-        message: 'Backup restore test completed successfully',
-      };
-    } catch (error) {
-      logger.error(`Backup restore test failed for ${backupKey}:`, error);
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-  }
-
-  /**
-   * Run automated backup testing on all backups
-   */
-  async runAutomatedBackupTesting() {
-    try {
-      logger.info('Running automated backup testing...');
-      const backups = this.listBackups();
-      const results = [];
-
-      for (const backup of backups) {
-        const testResult = await this.testBackupRestore(backup.key);
-        results.push({
-          key: backup.key,
-          timestamp: backup.timestamp,
-          reason: backup.reason,
-          ...testResult,
-        });
-      }
-
-      const successCount = results.filter(r => r.success).length;
-      const totalCount = results.length;
-
-      logger.info(
-        `Automated backup testing completed: ${successCount}/${totalCount} backups passed`,
-      );
-
-      return {
-        total: totalCount,
-        passed: successCount,
-        failed: totalCount - successCount,
-        results,
-      };
-    } catch (error) {
-      logger.error('Automated backup testing failed:', error);
-      throw new Error(`Automated backup testing failed: ${error.message}`);
-    }
-  }
-
-  /**
    * Schedule automatic backups
    */
   scheduleAutomaticBackups() {
@@ -939,17 +755,6 @@ class BackupManager {
       );
     } catch (error) {
       logger.error('Failed to schedule automatic backups:', error);
-    }
-  }
-
-  /**
-   * Stop automatic backup scheduling
-   */
-  stopAutomaticBackups() {
-    if (this.backupInterval) {
-      clearInterval(this.backupInterval);
-      this.backupInterval = null;
-      logger.info('Automatic backups stopped');
     }
   }
 }

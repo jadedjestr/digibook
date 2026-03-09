@@ -9,6 +9,8 @@ import { dataIntegrity } from '../utils/crypto';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 
+const MAX_AUDIT_LOG_ENTRIES = 500;
+
 /**
  * Clean Consolidated Digibook Database Schema
  *
@@ -114,6 +116,61 @@ export class DigibookDBClean extends Dexie {
         auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
       })
       .upgrade(() => {});
+
+    // Version 6: backups table, userPreferences.lastExportDate
+    this.version(6)
+      .stores({
+        accounts: '++id, name, type, currentBalance, isDefault, createdAt',
+        pendingTransactions:
+          '++id, accountId, amount, category, description, createdAt',
+        fixedExpenses:
+          '++id, name, dueDate, amount, accountId, creditCardId, targetCreditCardId, category, paidAmount, status, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, recurringTemplateId, createdAt',
+        categories: '++id, name, color, icon, isDefault, createdAt',
+        creditCards:
+          '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
+        paycheckSettings: '++id, lastPaycheckDate, frequency, createdAt',
+        userPreferences:
+          '++id, component, preferences, createdAt, lastExportDate',
+        monthlyExpenseHistory:
+          '[expenseId+month+year], expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
+        recurringExpenseTemplates:
+          '++id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt',
+        auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
+        backups: '++id, reason, timestamp, version, createdAt',
+      })
+      .upgrade(() => {});
+
+    // Version 7: categories.sortOrder for custom ordering
+    this.version(7)
+      .stores({
+        accounts: '++id, name, type, currentBalance, isDefault, createdAt',
+        pendingTransactions:
+          '++id, accountId, amount, category, description, createdAt',
+        fixedExpenses:
+          '++id, name, dueDate, amount, accountId, creditCardId, targetCreditCardId, category, paidAmount, status, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, recurringTemplateId, createdAt',
+        categories: '++id, name, color, icon, isDefault, createdAt, sortOrder',
+        creditCards:
+          '++id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt',
+        paycheckSettings: '++id, lastPaycheckDate, frequency, createdAt',
+        userPreferences:
+          '++id, component, preferences, createdAt, lastExportDate',
+        monthlyExpenseHistory:
+          '[expenseId+month+year], expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt',
+        recurringExpenseTemplates:
+          '++id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt',
+        auditLogs: '++id, timestamp, actionType, entityType, entityId, details',
+        backups: '++id, reason, timestamp, version, createdAt',
+      })
+      .upgrade(async tx => {
+        const categories = await tx.table('categories').toArray();
+        if (categories.length === 0) return;
+        const sorted = [...categories].sort((a, b) =>
+          (a.name || '').localeCompare(b.name || ''),
+        );
+        for (let i = 0; i < sorted.length; i++) {
+          await tx.table('categories').put({ ...sorted[i], sortOrder: i });
+        }
+      });
   }
 }
 
@@ -1279,6 +1336,7 @@ export const dbHelpers = {
         return {
           expensesUpdated: 0,
           transactionsUpdated: 0,
+          templatesUpdated: 0,
           totalUpdated: 0,
         };
       }
@@ -1316,73 +1374,57 @@ export const dbHelpers = {
         .equals(oldName)
         .toArray();
 
-      // Update category name first
-      await db.categories.update(categoryId, { name: newName });
+      // Find all recurring expense templates with the old category name
+      const templatesToUpdate = await db.recurringExpenseTemplates
+        .where('category')
+        .equals(oldName)
+        .toArray();
 
-      // Update all expenses using batch operations
-      let expensesUpdated = 0;
-      for (const expense of expensesToUpdate) {
-        try {
-          await this.updateFixedExpenseV4(expense.id, { category: newName });
-          expensesUpdated++;
-        } catch (error) {
-          logger.error(
-            `Failed to update expense ${expense.id} during category rename:`,
-            error,
-          );
+      await db.transaction(
+        'rw',
+        db.categories,
+        db.fixedExpenses,
+        db.pendingTransactions,
+        db.recurringExpenseTemplates,
+        async () => {
+          // Update category name first
+          await db.categories.update(categoryId, { name: newName });
 
-          // Rollback category name change
-          await db.categories.update(categoryId, { name: oldName });
-          throw new Error(
-            `Failed to update expense references. Category rename rolled back. Error: ${error.message}`,
-          );
-        }
-      }
-
-      // Update all pending transactions
-      let transactionsUpdated = 0;
-      for (const transaction of transactionsToUpdate) {
-        try {
-          await this.updatePendingTransaction(transaction.id, {
-            category: newName,
-          });
-          transactionsUpdated++;
-        } catch (error) {
-          logger.error(
-            `Failed to update transaction ${transaction.id} during category rename:`,
-            error,
-          );
-
-          // Rollback category name change
-          await db.categories.update(categoryId, { name: oldName });
-
-          // Rollback expense updates
-          for (const expense of expensesToUpdate.slice(0, expensesUpdated)) {
-            try {
-              await this.updateFixedExpenseV4(expense.id, {
-                category: oldName,
-              });
-            } catch (rollbackError) {
-              logger.error(
-                `Failed to rollback expense ${expense.id}:`,
-                rollbackError,
-              );
-            }
+          // Update all expenses using batch operations
+          for (const expense of expensesToUpdate) {
+            await this.updateFixedExpenseV4(expense.id, { category: newName });
           }
-          throw new Error(
-            `Failed to update transaction references. Category rename rolled back. Error: ${error.message}`,
-          );
-        }
-      }
 
-      const totalUpdated = expensesUpdated + transactionsUpdated;
+          // Update all pending transactions
+          for (const transaction of transactionsToUpdate) {
+            await this.updatePendingTransaction(transaction.id, {
+              category: newName,
+            });
+          }
+
+          // Update all recurring expense templates
+          for (const template of templatesToUpdate) {
+            await db.recurringExpenseTemplates.update(template.id, {
+              category: newName,
+            });
+          }
+        },
+      );
+
+      const expensesUpdated = expensesToUpdate.length;
+      const transactionsUpdated = transactionsToUpdate.length;
+      const templatesUpdated = templatesToUpdate.length;
+      const totalUpdated =
+        expensesUpdated + transactionsUpdated + templatesUpdated;
+
       logger.success(
-        `Category renamed from "${oldName}" to "${newName}". Updated ${expensesUpdated} expenses and ${transactionsUpdated} transactions.`,
+        `Category renamed from "${oldName}" to "${newName}". Updated ${expensesUpdated} expenses, ${transactionsUpdated} transactions, and ${templatesUpdated} templates.`,
       );
 
       return {
         expensesUpdated,
         transactionsUpdated,
+        templatesUpdated,
         totalUpdated,
       };
     } catch (error) {
@@ -1439,13 +1481,19 @@ export const dbHelpers = {
           .filter(Boolean),
       );
 
+      // Get all recurring expense templates and their category names
+      const allTemplates = await db.recurringExpenseTemplates.toArray();
+      const templateCategoryNames = new Set(
+        allTemplates.map(t => t.category).filter(Boolean),
+      );
+
       // Get all valid category names
       const allCategories = await db.categories.toArray();
       const validCategoryNames = new Set(
         allCategories.map(category => category.name),
       );
 
-      // Find orphaned category names
+      // Find orphaned category names; each entry has expenseCount, transactionCount, templateCount
       const orphanedCategories = new Map();
 
       // Check expense categories
@@ -1454,6 +1502,7 @@ export const dbHelpers = {
           const existing = orphanedCategories.get(categoryName) || {
             expenseCount: 0,
             transactionCount: 0,
+            templateCount: 0,
           };
           existing.expenseCount = allExpenses.filter(
             e => e.category === categoryName,
@@ -1468,8 +1517,24 @@ export const dbHelpers = {
           const existing = orphanedCategories.get(categoryName) || {
             expenseCount: 0,
             transactionCount: 0,
+            templateCount: 0,
           };
           existing.transactionCount = allTransactions.filter(
+            t => t.category === categoryName,
+          ).length;
+          orphanedCategories.set(categoryName, existing);
+        }
+      });
+
+      // Check template categories
+      templateCategoryNames.forEach(categoryName => {
+        if (!validCategoryNames.has(categoryName)) {
+          const existing = orphanedCategories.get(categoryName) || {
+            expenseCount: 0,
+            transactionCount: 0,
+            templateCount: 0,
+          };
+          existing.templateCount = allTemplates.filter(
             t => t.category === categoryName,
           ).length;
           orphanedCategories.set(categoryName, existing);
@@ -1480,7 +1545,11 @@ export const dbHelpers = {
         categoryName: name,
         expenseCount: counts.expenseCount,
         transactionCount: counts.transactionCount,
-        totalCount: counts.expenseCount + counts.transactionCount,
+        templateCount: counts.templateCount ?? 0,
+        totalCount:
+          (counts.expenseCount || 0) +
+          (counts.transactionCount || 0) +
+          (counts.templateCount || 0),
       }));
     } catch (error) {
       logger.error('Error detecting orphaned expenses:', error);
@@ -1517,6 +1586,12 @@ export const dbHelpers = {
         .equals(orphanedCategoryName)
         .toArray();
 
+      // Find all recurring expense templates with orphaned category
+      const orphanedTemplates = await db.recurringExpenseTemplates
+        .where('category')
+        .equals(orphanedCategoryName)
+        .toArray();
+
       // Update expenses
       let expensesFixed = 0;
       for (const expense of orphanedExpenses) {
@@ -1543,14 +1618,29 @@ export const dbHelpers = {
         }
       }
 
+      // Update recurring expense templates
+      let templatesFixed = 0;
+      for (const template of orphanedTemplates) {
+        try {
+          await db.recurringExpenseTemplates.update(template.id, {
+            category: targetCategoryName,
+          });
+          templatesFixed++;
+        } catch (error) {
+          logger.error(`Failed to fix template ${template.id}:`, error);
+        }
+      }
+
+      const totalFixed = expensesFixed + transactionsFixed + templatesFixed;
       logger.success(
-        `Fixed orphaned category "${orphanedCategoryName}": ${expensesFixed} expenses and ${transactionsFixed} transactions reassigned to "${targetCategoryName}"`,
+        `Fixed orphaned category "${orphanedCategoryName}": ${expensesFixed} expenses, ${transactionsFixed} transactions, and ${templatesFixed} templates reassigned to "${targetCategoryName}"`,
       );
 
       return {
         expensesFixed,
         transactionsFixed,
-        totalFixed: expensesFixed + transactionsFixed,
+        templatesFixed,
+        totalFixed,
       };
     } catch (error) {
       logger.error('Error fixing orphaned expenses:', error);
@@ -1590,6 +1680,20 @@ export const dbHelpers = {
         totalTransactionAmount: 0,
       };
     }
+  },
+
+  async updateCategorySortOrder(orderedIds) {
+    await db.transaction('rw', db.categories, async () => {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await db.categories.update(orderedIds[i], { sortOrder: i });
+      }
+    });
+  },
+
+  async bulkUpdateCategories(ids, updates) {
+    await db.transaction('rw', db.categories, async () => {
+      await db.categories.where('id').anyOf(ids).modify(updates);
+    });
   },
 
   // Initialize default categories
@@ -2345,6 +2449,7 @@ export const dbHelpers = {
         monthlyExpenseHistory: await db.monthlyExpenseHistory.toArray(),
         auditLogs: await db.auditLogs.toArray(),
         recurringExpenseTemplates: await db.recurringExpenseTemplates.toArray(),
+        backups: await db.backups.toArray(),
         exportDate: new Date().toISOString(),
       };
 
@@ -2384,6 +2489,7 @@ export const dbHelpers = {
         db.fixedExpenses,
         db.monthlyExpenseHistory,
         db.auditLogs,
+        db.backups,
         async () => {
           // Clear existing data (inline so failures abort the transaction)
           await db.accounts.clear();
@@ -2396,6 +2502,9 @@ export const dbHelpers = {
           await db.monthlyExpenseHistory.clear();
           await db.recurringExpenseTemplates.clear();
           await db.auditLogs.clear();
+          if (Array.isArray(data.backups)) {
+            await db.backups.clear();
+          }
 
           // Import core data first (order matters for app invariants)
           await bulkPutChunked(db.accounts, data.accounts);
@@ -2423,6 +2532,9 @@ export const dbHelpers = {
             data.monthlyExpenseHistory,
           );
           await bulkPutChunked(db.auditLogs, data.auditLogs);
+          if (Array.isArray(data.backups) && data.backups.length > 0) {
+            await bulkPutChunked(db.backups, data.backups);
+          }
         },
       );
 
@@ -2431,6 +2543,41 @@ export const dbHelpers = {
       logger.error('Error importing data:', error);
       throw new Error(`Failed to import data: ${error.message}`);
     }
+  },
+
+  async saveBackup(backupRecord) {
+    return await db.backups.add(backupRecord);
+  },
+
+  async listBackups() {
+    return await db.backups.orderBy('timestamp').reverse().toArray();
+  },
+
+  async deleteBackupById(id) {
+    await db.backups.delete(id);
+  },
+
+  async getLatestBackup() {
+    return await db.backups.orderBy('timestamp').last();
+  },
+
+  async updateLastExportDate(dateString) {
+    const first = await db.userPreferences.orderBy('id').first();
+    if (first) {
+      await db.userPreferences.update(first.id, { lastExportDate: dateString });
+    } else {
+      await db.userPreferences.add({
+        component: 'dataManagement',
+        preferences: {},
+        createdAt: new Date().toISOString(),
+        lastExportDate: dateString,
+      });
+    }
+  },
+
+  async getLastExportDate() {
+    const first = await db.userPreferences.orderBy('id').first();
+    return first?.lastExportDate ?? null;
   },
 
   async validateImportData(data) {
@@ -2463,6 +2610,7 @@ export const dbHelpers = {
         'monthlyExpenseHistory',
         'auditLogs',
         'recurringExpenseTemplates',
+        'backups',
       ];
       for (const field of optionalArrayFields) {
         if (data[field] !== undefined && data[field] !== null) {
@@ -2657,8 +2805,22 @@ export const dbHelpers = {
         entityId,
         details,
       });
+      void dbHelpers.trimAuditLogs();
     } catch (error) {
       logger.error('Error adding audit log:', error);
+    }
+  },
+
+  async trimAuditLogs() {
+    try {
+      const count = await db.auditLogs.count();
+      if (count <= MAX_AUDIT_LOG_ENTRIES) return;
+      const all = await db.auditLogs.orderBy('timestamp').toArray();
+      const toDelete = all.slice(0, count - MAX_AUDIT_LOG_ENTRIES);
+      const ids = toDelete.map(e => e.id);
+      await db.auditLogs.bulkDelete(ids);
+    } catch (error) {
+      logger.warn('Failed to trim audit logs', error);
     }
   },
 

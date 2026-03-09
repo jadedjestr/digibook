@@ -6,6 +6,8 @@ import { notify } from '../../utils/notifications.jsx';
 import { validateCategoryName } from '../../utils/validation';
 import IconSelector from '../IconSelector';
 
+import ColorPicker from './ColorPicker';
+
 const CategoryForm = ({
   mode = 'add',
   initialData = { name: '', color: '#3B82F6', icon: '📦' },
@@ -55,7 +57,7 @@ const CategoryForm = ({
   };
 
   return (
-    <div className='glass-panel border border-white/20 overflow-visible'>
+    <div className='glass-card border border-white/20 overflow-visible p-6 animate-in slide-in-from-top-2 duration-200'>
       <div className='flex items-center justify-between mb-4'>
         <h4 className='text-primary font-medium'>
           {mode === 'add' ? 'Add New Category' : 'Edit Category'}
@@ -65,8 +67,8 @@ const CategoryForm = ({
         </button>
       </div>
 
-      <div className='grid grid-cols-1 md:grid-cols-4 gap-4 overflow-visible'>
-        {/* Name Input */}
+      <div className='space-y-4 overflow-visible'>
+        {/* Row 1: Name full width */}
         <div>
           <label className='block text-sm font-medium text-white mb-2'>
             Name
@@ -98,57 +100,50 @@ const CategoryForm = ({
           </div>
         </div>
 
-        {/* Icon Selector */}
-        <label className='overflow-visible block'>
-          <span className='block text-sm font-medium text-white mb-2'>
-            Icon
-          </span>
-          <div className='relative'>
-            <IconSelector
-              value={formData.icon}
-              onChange={icon => handleChange('icon', icon)}
-              categories={iconCategories}
-            />
-          </div>
-          {errors.icon && (
-            <p className='text-sm text-red-500 mt-1'>{errors.icon}</p>
-          )}
-        </label>
-
-        {/* Color Selector */}
-        <div>
-          <label
-            htmlFor='category-form-color'
-            className='block text-sm font-medium text-white mb-2'
-          >
-            Color
+        {/* Row 2: Icon and Color side by side */}
+        <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+          <label className='overflow-visible block'>
+            <span className='block text-sm font-medium text-white mb-2'>
+              Icon
+            </span>
+            <div className='relative'>
+              <IconSelector
+                value={formData.icon}
+                onChange={icon => handleChange('icon', icon)}
+                categories={iconCategories}
+              />
+            </div>
+            {errors.icon && (
+              <p className='text-sm text-red-500 mt-1'>{errors.icon}</p>
+            )}
           </label>
-          <select
-            id='category-form-color'
-            value={formData.color}
-            onChange={e => handleChange('color', e.target.value)}
-            className={`glass-input w-full ${errors.color ? 'border-red-500' : ''}`}
-          >
-            {colorOptions.map(color => (
-              <option
-                key={color.id}
-                value={color.hex}
-                style={{ backgroundColor: color.hex }}
-              >
-                {color.swatch} {color.name}
-              </option>
-            ))}
-          </select>
-          {errors.color && (
-            <p className='text-sm text-red-500 mt-1'>{errors.color}</p>
-          )}
+          <div>
+            <label
+              htmlFor='category-form-color'
+              className='block text-sm font-medium text-white mb-2'
+            >
+              Color
+            </label>
+            <ColorPicker
+              id='category-form-color'
+              value={formData.color}
+              onChange={v => handleChange('color', v)}
+              colorOptions={colorOptions}
+            />
+            {errors.color && (
+              <p className='text-sm text-red-500 mt-1'>{errors.color}</p>
+            )}
+          </div>
         </div>
 
-        {/* Submit Button */}
-        <div className='flex items-end'>
+        {/* Row 3: Buttons right-aligned */}
+        <div className='flex justify-end gap-2 pt-2'>
+          <button type='button' onClick={onCancel} className='glass-button'>
+            Cancel
+          </button>
           <button
             onClick={handleSubmit}
-            className='glass-button flex items-center space-x-2 w-full'
+            className='glass-button flex items-center space-x-2'
           >
             <Save size={16} />
             <span>{mode === 'add' ? 'Add Category' : 'Update Category'}</span>

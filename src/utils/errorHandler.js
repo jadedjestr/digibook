@@ -38,24 +38,16 @@ export class ErrorHandler {
    * @param {Object} context.userId - ID of the user (if applicable)
    * @param {Object} options - Handling options
    * @param {boolean} options.showNotification - Show user notification (default: true)
-   * @param {boolean} options.attemptRecovery - Attempt automatic recovery (default: false)
    * @returns {Object} Error information object with categorization and severity
    */
   handle(error, context = {}, options = {}) {
     const errorInfo = this.categorizeError(error, context);
     const severity = this.determineSeverity(errorInfo);
 
-    // Log the error
     this.logError(errorInfo, severity);
 
-    // Show user notification if appropriate
     if (options.showNotification !== false) {
       this.showUserNotification(errorInfo, severity);
-    }
-
-    // Attempt recovery if possible
-    if (options.attemptRecovery !== false) {
-      this.attemptRecovery(errorInfo, context);
     }
 
     return {
@@ -251,66 +243,6 @@ export class ErrorHandler {
   }
 
   /**
-   * Attempt to recover from error
-   */
-  attemptRecovery(errorInfo, _context) {
-    const { type, message } = errorInfo;
-
-    // Database recovery strategies
-    if (type === this.errorTypes.DATABASE) {
-      if (message.includes('connection')) {
-        // Attempt to reconnect to database
-        this.attemptDatabaseReconnection();
-      } else if (message.includes('corruption')) {
-        // Attempt to restore from backup
-        this.attemptDataRestore();
-      }
-    }
-
-    // Network recovery strategies
-    if (type === this.errorTypes.NETWORK) {
-      // Could implement retry logic here
-      logger.info('Network error detected, user may need to retry manually');
-    }
-
-    // Validation recovery strategies
-    if (type === this.errorTypes.VALIDATION) {
-      // Could implement form reset or field highlighting
-      logger.info('Validation error detected, user needs to correct input');
-    }
-  }
-
-  /**
-   * Attempt database reconnection
-   */
-  async attemptDatabaseReconnection() {
-    try {
-      logger.info('Attempting database reconnection...');
-
-      // Implementation would depend on your database setup.
-      // For IndexedDB, check if the database is still accessible.
-      logger.success('Database reconnection successful');
-    } catch (error) {
-      logger.error('Database reconnection failed:', error);
-    }
-  }
-
-  /**
-   * Attempt data restore from backup
-   */
-  async attemptDataRestore() {
-    try {
-      logger.info('Attempting data restore from backup...');
-
-      // Implementation would involve restoring from localStorage backup
-      // or prompting user to restore from exported data
-      logger.success('Data restore successful');
-    } catch (error) {
-      logger.error('Data restore failed:', error);
-    }
-  }
-
-  /**
    * Error type detection methods
    */
   isValidationError(error) {
@@ -377,80 +309,9 @@ export class ErrorHandler {
       error.message.toLowerCase().includes(keyword),
     );
   }
-
-  /**
-   * Create error boundary handler for React components
-   */
-  createErrorBoundaryHandler(componentName) {
-    return (error, errorInfo) => {
-      this.handle(
-        error,
-        {
-          component: componentName,
-          action: 'render',
-          errorInfo,
-        },
-        {
-          showNotification: true,
-          attemptRecovery: false,
-        },
-      );
-    };
-  }
-
-  /**
-   * Create async operation handler
-   */
-  createAsyncHandler(operationName, context = {}) {
-    return async asyncFunction => {
-      try {
-        return await asyncFunction();
-      } catch (error) {
-        this.handle(error, {
-          component: context.component || 'unknown',
-          action: operationName,
-          ...context,
-        });
-        throw error; // Re-throw to allow caller to handle if needed
-      }
-    };
-  }
-
-  /**
-   * Create form validation handler
-   */
-  createValidationHandler(formName) {
-    return validationErrors => {
-      const error = new Error(
-        `Validation failed for ${formName}: ${Object.keys(validationErrors).join(', ')}`,
-      );
-      this.handle(
-        error,
-        {
-          component: formName,
-          action: 'validation',
-          validationErrors,
-        },
-        {
-          showNotification: true,
-          attemptRecovery: false,
-        },
-      );
-    };
-  }
 }
 
 // Create singleton instance
 export const errorHandler = new ErrorHandler();
-
-// Export convenience functions
-export const handleError = (error, context, options) =>
-  errorHandler.handle(error, context, options);
-export const createErrorBoundary = componentName =>
-  errorHandler.createErrorBoundaryHandler(componentName);
-export const createAsyncHandler = (operationName, context) =>
-  errorHandler.createAsyncHandler(operationName, context);
-export const createValidationHandler = formName =>
-  errorHandler.createValidationHandler(formName);
 
 export default errorHandler;
