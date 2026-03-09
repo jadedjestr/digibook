@@ -291,6 +291,19 @@ function normalizePaycheckSettings(data) {
 }
 
 /**
+ * Internal (non-exported) audit log add. Transaction-safe; does not call trim.
+ */
+async function addAuditLogEntry(actionType, entityType, entityId, details) {
+  await db.auditLogs.add({
+    timestamp: new Date().toISOString(),
+    actionType,
+    entityType,
+    entityId,
+    details: details ?? {},
+  });
+}
+
+/**
  * Database helper functions
  * These provide a clean API for all database operations
  */
@@ -669,12 +682,11 @@ export const dbHelpers = {
             });
 
             // Log the completion in audit logs
-            await db.auditLogs.add({
-              timestamp: new Date().toISOString(),
-              actionType: 'COMPLETE_TRANSACTION',
-              entityType: 'PendingTransaction',
-              entityId: id,
-              details: {
+            await addAuditLogEntry(
+              'COMPLETE_TRANSACTION',
+              'PendingTransaction',
+              id,
+              {
                 amount: transaction.amount,
                 accountId: transaction.accountId,
                 description: transaction.description,
@@ -682,7 +694,7 @@ export const dbHelpers = {
                 previousBalance,
                 newBalance,
               },
-            });
+            );
           } else {
             logger.warn(
               `Account ${transaction.accountId} not found for transaction ${id}`,
@@ -693,6 +705,7 @@ export const dbHelpers = {
           await db.pendingTransactions.delete(id);
         },
       );
+      void this.trimAuditLogs();
       logger.success(`Pending transaction completed successfully: ${id}`);
     } catch (error) {
       logger.error('Error completing pending transaction:', error);
@@ -2798,14 +2811,8 @@ export const dbHelpers = {
 
   async addAuditLog(actionType, entityType, entityId, details = {}) {
     try {
-      await db.auditLogs.add({
-        timestamp: new Date().toISOString(),
-        actionType,
-        entityType,
-        entityId,
-        details,
-      });
-      void dbHelpers.trimAuditLogs();
+      await addAuditLogEntry(actionType, entityType, entityId, details);
+      void this.trimAuditLogs();
     } catch (error) {
       logger.error('Error adding audit log:', error);
     }
@@ -3034,7 +3041,7 @@ export const dbHelpers = {
       '../utils/expenseValidation'
     );
 
-    return await db.transaction(
+    const result = await db.transaction(
       'rw',
       db.fixedExpenses,
       db.accounts,
@@ -3116,24 +3123,13 @@ export const dbHelpers = {
             balance: newCardBalance,
           });
 
-          // Best-effort audit log
-          try {
-            await db.auditLogs.add({
-              timestamp: new Date().toISOString(),
-              actionType: 'PAYMENT',
-              entityType: 'creditCardPayment',
-              entityId: expenseId,
-              details: {
-                amount: paymentDifference,
-                fundingAccountId: fundingAccount.id,
-                targetCreditCardId: targetCard.id,
-                newAccountBalance,
-                newCreditCardBalance: newCardBalance,
-              },
-            });
-          } catch (auditError) {
-            logger.error('Error adding payment audit log:', auditError);
-          }
+          await addAuditLogEntry('PAYMENT', 'creditCardPayment', expenseId, {
+            amount: paymentDifference,
+            fundingAccountId: fundingAccount.id,
+            targetCreditCardId: targetCard.id,
+            newAccountBalance,
+            newCreditCardBalance: newCardBalance,
+          });
         } else if (sanitizedExpense.accountId) {
           const account = await db.accounts.get(sanitizedExpense.accountId);
           if (!account) {
@@ -3144,21 +3140,11 @@ export const dbHelpers = {
             Number(account.currentBalance || 0) - paymentDifference;
           await db.accounts.update(account.id, { currentBalance: newBalance });
 
-          try {
-            await db.auditLogs.add({
-              timestamp: new Date().toISOString(),
-              actionType: 'PAYMENT',
-              entityType: 'account',
-              entityId: account.id,
-              details: {
-                expenseId,
-                amount: paymentDifference,
-                newBalance,
-              },
-            });
-          } catch (auditError) {
-            logger.error('Error adding payment audit log:', auditError);
-          }
+          await addAuditLogEntry('PAYMENT', 'account', account.id, {
+            expenseId,
+            amount: paymentDifference,
+            newBalance,
+          });
         } else if (sanitizedExpense.creditCardId) {
           const creditCard = await db.creditCards.get(
             sanitizedExpense.creditCardId,
@@ -3174,21 +3160,11 @@ export const dbHelpers = {
             Number(creditCard.balance || 0) + paymentDifference;
           await db.creditCards.update(creditCard.id, { balance: newBalance });
 
-          try {
-            await db.auditLogs.add({
-              timestamp: new Date().toISOString(),
-              actionType: 'PAYMENT',
-              entityType: 'creditCard',
-              entityId: creditCard.id,
-              details: {
-                expenseId,
-                amount: paymentDifference,
-                newBalance,
-              },
-            });
-          } catch (auditError) {
-            logger.error('Error adding payment audit log:', auditError);
-          }
+          await addAuditLogEntry('PAYMENT', 'creditCard', creditCard.id, {
+            expenseId,
+            amount: paymentDifference,
+            newBalance,
+          });
         } else {
           throw new Error(
             'No payment source specified (expected accountId or creditCardId)',
@@ -3255,6 +3231,8 @@ export const dbHelpers = {
         return { templateIdAdvanced };
       },
     );
+    void this.trimAuditLogs();
+    return result;
   },
 
   /**
