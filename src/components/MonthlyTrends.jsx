@@ -1,10 +1,54 @@
 import { TrendingUp, TrendingDown, BarChart3, Calendar } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useMemo } from 'react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 import PrivacyWrapper from './PrivacyWrapper';
 
-const MonthlyTrends = ({ history = [] }) => {
+const formatCurrency = amount =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+
+const MonthlyTrendsTooltip = ({ active, payload, label }) => {
+  const { isHidden } = usePrivacy();
+  if (!active || !payload?.length || !label) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  return (
+    <div className='glass-card p-3 shadow-lg border border-white/10'>
+      <p className='font-medium text-white mb-2'>{label}</p>
+      <div className='space-y-1 text-sm'>
+        <p className='text-white/80'>
+          Budget: {isHidden ? '••••••' : formatCurrency(d.totalBudget)}
+        </p>
+        <p className='text-white/80'>
+          Actual: {isHidden ? '••••••' : formatCurrency(d.totalActual)}
+        </p>
+        <p className='text-white/80'>
+          Overpayment:{' '}
+          {isHidden ? '••••••' : formatCurrency(d.totalOverpayment)}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const MonthlyTrends = ({ history = [], months = 12, onMonthsChange }) => {
   const monthlyData = useMemo(() => {
     if (!history || !Array.isArray(history) || history.length === 0) return [];
 
@@ -26,57 +70,36 @@ const MonthlyTrends = ({ history = [] }) => {
       acc[key].totalBudget += entry.budgetAmount || 0;
       acc[key].totalActual += entry.actualAmount || 0;
       acc[key].totalOverpayment += entry.overpaymentAmount || 0;
-      acc[key].expenseCount += 1;
+      acc[key].expenseCount += entry.expenseCount ?? 1;
 
       return acc;
     }, {});
 
-    // Convert to array and sort by date (newest first)
+    // Sort by date (oldest first), take last N months so chart shows oldest→newest
     return Object.values(grouped)
       .sort((a, b) => {
-        if (a.year !== b.year) return b.year - a.year;
-        return b.month - a.month;
+        if (a.year !== b.year) return a.year - b.year;
+        return a.month - b.month;
       })
-      .slice(0, 12); // Last 12 months
-  }, [history]);
+      .slice(-months);
+  }, [history, months]);
 
-  const formatCurrency = amount => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatMonth = (month, year) => {
-    const date = new Date(year, month - 1);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      year: 'numeric',
-    });
-  };
-
-  const getAccuracyColor = (actual, budget) => {
-    if (budget === 0) return 'text-white/50';
-    const accuracy = (actual / budget) * 100;
-    if (accuracy <= 100) return 'text-green-400';
-    if (accuracy <= 120) return 'text-yellow-400';
-    return 'text-red-400';
-  };
-
-  const _getTrendIcon = (current, previous) => {
-    if (!previous) return null;
-    if (current > previous) return TrendingUp;
-    if (current < previous) return TrendingDown;
-    return null;
-  };
+  const chartData = useMemo(
+    () =>
+      monthlyData.map(d => ({
+        ...d,
+        name: `${new Date(d.year, d.month - 1).toLocaleDateString('en-US', {
+          month: 'short',
+        })} ${String(d.year).slice(-2)}`,
+      })),
+    [monthlyData],
+  );
 
   const calculateTrends = () => {
     if (monthlyData.length < 2) return null;
 
-    const current = monthlyData[0];
-    const previous = monthlyData[1];
+    const current = monthlyData[monthlyData.length - 1];
+    const previous = monthlyData[monthlyData.length - 2];
 
     return {
       budgetTrend: current.totalBudget - previous.totalBudget,
@@ -95,25 +118,33 @@ const MonthlyTrends = ({ history = [] }) => {
           <Calendar className='w-12 h-12 text-white/30 mx-auto mb-4' />
           <p className='text-white/70'>No monthly data available yet.</p>
           <p className='text-white/50 text-sm mt-2'>
-            Start making payments to see trends over time.
+            Mark expenses as paid and complete a pay cycle to see monthly
+            trends.
           </p>
         </div>
       </div>
     );
   }
 
-  // Calculate max value for chart scaling
-  const maxValue = Math.max(
-    ...monthlyData.map(d => Math.max(d.totalBudget, d.totalActual)),
-  );
-
   return (
     <div className='glass-panel'>
-      <div className='flex items-center justify-between mb-6'>
+      <div className='flex items-center justify-between mb-6 flex-wrap gap-2'>
         <h2 className='text-xl font-bold text-white'>Monthly Trends</h2>
         <div className='flex items-center space-x-2'>
+          {onMonthsChange && (
+            <select
+              className='glass-input text-sm py-1.5 px-2 rounded-lg'
+              value={months}
+              onChange={e => onMonthsChange(Number(e.target.value))}
+              aria-label='Month range'
+            >
+              <option value={3}>3 months</option>
+              <option value={6}>6 months</option>
+              <option value={12}>12 months</option>
+            </select>
+          )}
           <BarChart3 className='w-5 h-5 text-purple-400' />
-          <span className='text-sm text-white/70'>Last 12 Months</span>
+          <span className='text-sm text-white/70'>Last {months} months</span>
         </div>
       </div>
 
@@ -206,142 +237,39 @@ const MonthlyTrends = ({ history = [] }) => {
         </div>
       )}
 
-      {/* Monthly Chart */}
-      <div className='space-y-4'>
-        <div className='flex items-center justify-between text-sm text-white/70'>
-          <span>Month</span>
-          <div className='flex items-center space-x-4'>
-            <div className='flex items-center space-x-2'>
-              <div className='w-3 h-3 bg-blue-400 rounded-full' />
-              <span>Budget</span>
-            </div>
-            <div className='flex items-center space-x-2'>
-              <div className='w-3 h-3 bg-purple-400 rounded-full' />
-              <span>Actual</span>
-            </div>
-            <div className='flex items-center space-x-2'>
-              <div className='w-3 h-3 bg-orange-400 rounded-full' />
-              <span>Overpayment</span>
-            </div>
-          </div>
-        </div>
-
-        {monthlyData.map((data, _index) => {
-          const budgetWidth =
-            maxValue > 0 ? (data.totalBudget / maxValue) * 100 : 0;
-          const actualWidth =
-            maxValue > 0 ? (data.totalActual / maxValue) * 100 : 0;
-          const overpaymentWidth =
-            maxValue > 0 ? (data.totalOverpayment / maxValue) * 100 : 0;
-          const accuracy =
-            data.totalBudget > 0
-              ? (data.totalActual / data.totalBudget) * 100
-              : 0;
-
-          return (
-            <div key={`${data.year}-${data.month}`} className='glass-card p-4'>
-              <div className='flex items-center justify-between mb-3'>
-                <div className='flex items-center space-x-3'>
-                  <span className='font-medium text-white min-w-[80px]'>
-                    {formatMonth(data.month, data.year)}
-                  </span>
-                  <span className='text-sm text-white/50'>
-                    {data.expenseCount} expenses
-                  </span>
-                </div>
-                <div className='text-right'>
-                  <PrivacyWrapper>
-                    <p className='text-sm text-white'>
-                      {formatCurrency(data.totalActual)} /{' '}
-                      {formatCurrency(data.totalBudget)}
-                    </p>
-                  </PrivacyWrapper>
-                  <p
-                    className={`text-xs font-medium ${getAccuracyColor(data.totalActual, data.totalBudget)}`}
-                  >
-                    {accuracy.toFixed(1)}% of budget
-                  </p>
-                </div>
-              </div>
-
-              {/* Stacked Bar Chart */}
-              <div className='space-y-2'>
-                {/* Budget Bar */}
-                <div className='relative'>
-                  <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
-                    <div
-                      className='h-2 rounded-full bg-blue-400 transition-transform duration-500'
-                      style={{
-                        width: '100%',
-                        transform: `scaleX(${budgetWidth / 100})`,
-                        transformOrigin: 'left',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Actual Bar */}
-                <div className='relative'>
-                  <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
-                    <div
-                      className='h-2 rounded-full bg-purple-400 transition-transform duration-500'
-                      style={{
-                        width: '100%',
-                        transform: `scaleX(${actualWidth / 100})`,
-                        transformOrigin: 'left',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Overpayment Bar */}
-                {data.totalOverpayment > 0 && (
-                  <div className='relative'>
-                    <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
-                      <div
-                        className='h-2 rounded-full bg-orange-400 transition-transform duration-500'
-                        style={{
-                          width: '100%',
-                          transform: `scaleX(${overpaymentWidth / 100})`,
-                          transformOrigin: 'left',
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Additional Info */}
-              {data.totalOverpayment > 0 && (
-                <div className='mt-2 text-xs text-orange-400'>
-                  Overpaid by{' '}
-                  <PrivacyWrapper>
-                    {formatCurrency(data.totalOverpayment)}
-                  </PrivacyWrapper>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Chart Scale */}
-      <div className='mt-4 flex justify-between text-xs text-white/50'>
-        <span>$0</span>
-        <span>
-          <PrivacyWrapper>{formatCurrency(maxValue)}</PrivacyWrapper>
-        </span>
-      </div>
+      {/* Recharts Bar Chart */}
+      <ResponsiveContainer width='100%' height={320}>
+        <BarChart
+          data={chartData}
+          margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+        >
+          <CartesianGrid strokeDasharray='3 3' stroke='rgba(255,255,255,0.1)' />
+          <XAxis dataKey='name' stroke='rgba(255,255,255,0.5)' fontSize={12} />
+          <YAxis
+            stroke='rgba(255,255,255,0.5)'
+            fontSize={12}
+            tickFormatter={v => `$${v.toLocaleString()}`}
+          />
+          <Tooltip content={<MonthlyTrendsTooltip />} />
+          <Legend />
+          <Bar dataKey='totalBudget' fill='#6366f1' name='Budget' />
+          <Bar dataKey='totalActual' fill='#8b5cf6' name='Actual' />
+          <Bar dataKey='totalOverpayment' fill='#f97316' name='Overpayment' />
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 };
 
 MonthlyTrends.propTypes = {
   history: PropTypes.arrayOf(PropTypes.object),
+  months: PropTypes.number,
+  onMonthsChange: PropTypes.func,
 };
 
 MonthlyTrends.defaultProps = {
   history: [],
+  months: 12,
 };
 
 export default MonthlyTrends;

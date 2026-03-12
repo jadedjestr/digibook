@@ -1,9 +1,56 @@
 import { TrendingUp, AlertCircle, DollarSign } from 'lucide-react';
 import PropTypes from 'prop-types';
+import {
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
+
+import { usePrivacy } from '../contexts/PrivacyContext';
 
 import PrivacyWrapper from './PrivacyWrapper';
 
-const OverpaymentAnalysis = ({ data }) => {
+const formatCurrency = amount =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+  }).format(amount);
+
+const OverpaymentTooltip = ({ active, payload }) => {
+  const { isHidden } = usePrivacy();
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  return (
+    <div className='glass-card p-3 shadow-lg border border-white/10'>
+      <p className='font-medium text-white mb-2'>{d.name}</p>
+      <div className='space-y-1 text-sm'>
+        <p className='text-white/80'>
+          Budget: {isHidden ? '••••••' : formatCurrency(d.totalBudget)}
+        </p>
+        <p className='text-white/80'>
+          Actual: {isHidden ? '••••••' : formatCurrency(d.totalActual)}
+        </p>
+        <p className='text-white/80'>
+          Overpayment:{' '}
+          {isHidden ? '••••••' : formatCurrency(d.totalOverpayment)}
+        </p>
+        <p className='text-white/80'>
+          Overpayment %:{' '}
+          {isHidden ? '••••••' : `${d.overpaymentPercentage?.toFixed(1) ?? 0}%`}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const OverpaymentAnalysis = ({ data, categories = [] }) => {
   if (!data || Object.keys(data).length === 0) {
     return (
       <div className='glass-panel'>
@@ -15,14 +62,6 @@ const OverpaymentAnalysis = ({ data }) => {
     );
   }
 
-  const formatCurrency = amount => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
-
   // Sort categories by overpayment amount (descending)
   const sortedCategories = Object.entries(data)
     .sort(([, a], [, b]) => b.totalOverpayment - a.totalOverpayment)
@@ -33,25 +72,17 @@ const OverpaymentAnalysis = ({ data }) => {
     0,
   );
 
-  const getCategoryIcon = category => {
-    const iconMap = {
-      'Credit Cards': '💳',
-      Utilities: '⚡',
-      Insurance: '🛡️',
-      Transportation: '🚗',
-      Housing: '🏠',
-      Food: '🍽️',
-      Healthcare: '🏥',
-      Entertainment: '🎬',
-      Shopping: '🛍️',
-      Education: '📚',
-      Miscellaneous: '📦',
-      Uncategorized: '❓',
-    };
-    return iconMap[category] || '📝';
-  };
+  const chartData = sortedCategories.map(([name, categoryData]) => ({
+    name,
+    ...categoryData,
+  }));
 
-  const getOverpaymentColor = percentage => {
+  const _getCategoryIcon = name =>
+    categories.find(c => c.name === name)?.icon ?? '📝';
+  const getCategoryColor = name =>
+    categories.find(c => c.name === name)?.color ?? '#6366f1';
+
+  const _getOverpaymentColor = percentage => {
     if (percentage >= 50) return 'text-red-400';
     if (percentage >= 20) return 'text-orange-400';
     if (percentage >= 10) return 'text-yellow-400';
@@ -79,94 +110,47 @@ const OverpaymentAnalysis = ({ data }) => {
           <p className='text-white/50 text-sm mt-2'>
             You&apos;re staying within budget! 🎉
           </p>
+          <p className='text-white/50 text-sm mt-1'>
+            Overpayments appear when you pay more than the budgeted amount for
+            an expense.
+          </p>
         </div>
       ) : (
-        <div className='space-y-4'>
-          {sortedCategories.map(([categoryName, categoryData]) => {
-            const overpaymentPercentage = categoryData.overpaymentPercentage;
-            const maxBarWidth = 100;
-            const barWidth = Math.min(
-              (categoryData.totalOverpayment / totalOverpayment) * maxBarWidth,
-              maxBarWidth,
-            );
-
-            return (
-              <div key={categoryName} className='glass-card p-4'>
-                <div className='flex items-center justify-between mb-3'>
-                  <div className='flex items-center space-x-3'>
-                    <span className='text-2xl'>
-                      {getCategoryIcon(categoryName)}
-                    </span>
-                    <div>
-                      <h3 className='font-medium text-white'>{categoryName}</h3>
-                      <p className='text-sm text-white/50'>
-                        {categoryData.expenseCount} expense
-                        {categoryData.expenseCount !== 1 ? 's' : ''}
-                        {categoryData.significantOverpayments > 0 && (
-                          <span className='text-orange-400 ml-2'>
-                            ({categoryData.significantOverpayments} significant)
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className='text-right'>
-                    <PrivacyWrapper>
-                      <p className='font-bold text-white'>
-                        {formatCurrency(categoryData.totalOverpayment)}
-                      </p>
-                    </PrivacyWrapper>
-                    <p
-                      className={`text-sm font-medium ${getOverpaymentColor(overpaymentPercentage)}`}
-                    >
-                      +{overpaymentPercentage.toFixed(1)}%
-                    </p>
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div className='relative'>
-                  <div className='w-full bg-white/10 rounded-full h-2 overflow-hidden'>
-                    <div
-                      className='h-2 rounded-full bg-gradient-to-r from-orange-500 to-red-400 transition-transform duration-500'
-                      style={{
-                        width: '100%',
-                        transform: `scaleX(${barWidth / 100})`,
-                        transformOrigin: 'left',
-                      }}
-                    />
-                  </div>
-                  <div className='flex justify-between mt-2 text-xs text-white/50'>
-                    <span>
-                      Budget:{' '}
-                      <PrivacyWrapper>
-                        {formatCurrency(categoryData.totalBudget)}
-                      </PrivacyWrapper>
-                    </span>
-                    <span>
-                      Actual:{' '}
-                      <PrivacyWrapper>
-                        {formatCurrency(categoryData.totalActual)}
-                      </PrivacyWrapper>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Significant Overpayment Warning */}
-                {overpaymentPercentage >= 20 && (
-                  <div className='mt-3 flex items-center space-x-2 text-orange-400'>
-                    <AlertCircle className='w-4 h-4' />
-                    <span className='text-sm'>
-                      Significant overpayment detected
-                      {categoryData.significantOverpayments > 1 &&
-                        ` (${categoryData.significantOverpayments} expenses)`}
-                    </span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <ResponsiveContainer
+          width='100%'
+          height={Math.max(200, sortedCategories.length * 60)}
+        >
+          <BarChart
+            layout='vertical'
+            data={chartData}
+            margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+          >
+            <CartesianGrid
+              strokeDasharray='3 3'
+              stroke='rgba(255,255,255,0.1)'
+            />
+            <XAxis
+              type='number'
+              stroke='rgba(255,255,255,0.5)'
+              fontSize={12}
+              tickFormatter={v => `$${v.toLocaleString()}`}
+            />
+            <YAxis
+              type='category'
+              dataKey='name'
+              stroke='rgba(255,255,255,0.5)'
+              fontSize={12}
+              width={100}
+            />
+            <Tooltip content={<OverpaymentTooltip />} />
+            <Bar dataKey='totalOverpayment' name='Overpayment'>
+              {chartData.map(entry => (
+                <Cell key={entry.name} fill={getCategoryColor(entry.name)} />
+              ))}
+            </Bar>
+            <Bar dataKey='totalBudget' fill='#6366f1' name='Budget' />
+          </BarChart>
+        </ResponsiveContainer>
       )}
 
       {/* Summary Insights */}
@@ -206,6 +190,11 @@ const OverpaymentAnalysis = ({ data }) => {
 
 OverpaymentAnalysis.propTypes = {
   data: PropTypes.object,
+  categories: PropTypes.arrayOf(PropTypes.object),
+};
+
+OverpaymentAnalysis.defaultProps = {
+  categories: [],
 };
 
 export default OverpaymentAnalysis;
