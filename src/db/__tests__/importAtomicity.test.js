@@ -15,7 +15,12 @@ vi.mock('../../utils/logger', () => ({
   },
 }));
 
-const sortById = items => [...items].sort((a, b) => (a.id || 0) - (b.id || 0));
+const sortById = items =>
+  [...items].sort((a, b) =>
+    String(a.id || '').localeCompare(String(b.id || ''), undefined, {
+      numeric: true,
+    }),
+  );
 
 describe('dbHelpers.importData (atomic transaction)', () => {
   const now = '2026-02-01T00:00:00.000Z';
@@ -23,17 +28,19 @@ describe('dbHelpers.importData (atomic transaction)', () => {
   const baseline = {
     accounts: [
       {
-        id: 1,
+        id: '1',
         name: 'Baseline Checking',
         type: 'checking',
         currentBalance: 100,
         isDefault: true,
         createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
       },
     ],
     creditCards: [
       {
-        id: 1,
+        id: '1',
         name: 'Baseline Card',
         balance: 50,
         creditLimit: 1000,
@@ -42,29 +49,36 @@ describe('dbHelpers.importData (atomic transaction)', () => {
         statementClosingDate: '2026-02-01',
         minimumPayment: 25,
         createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
       },
     ],
     categories: [
       {
-        id: 1,
+        id: '1',
         name: 'Housing',
         color: '#FF0000',
         icon: 'home',
         isDefault: true,
         createdAt: now,
+        sortOrder: 0,
+        updatedAt: now,
+        deletedAt: null,
       },
     ],
     paycheckSettings: [
       createMockPaycheckSettings(DEFAULT_PAY_FREQUENCY, {
-        id: 1,
+        id: '1',
         lastPaycheckDate: '2026-01-15',
         createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
       }),
     ],
     userPreferences: [],
     recurringExpenseTemplates: [
       {
-        id: 1,
+        id: '1',
         name: 'Baseline Rent',
         baseAmount: 1000,
         frequency: 'monthly',
@@ -73,7 +87,7 @@ describe('dbHelpers.importData (atomic transaction)', () => {
         startDate: '2026-02-01',
         nextDueDate: '2026-02-01',
         category: 'Housing',
-        accountId: 1,
+        accountId: '1',
         creditCardId: null,
         targetCreditCardId: null,
         notes: '',
@@ -81,31 +95,34 @@ describe('dbHelpers.importData (atomic transaction)', () => {
         isVariableAmount: false,
         createdAt: now,
         updatedAt: now,
+        deletedAt: null,
       },
     ],
     pendingTransactions: [
       {
-        id: 1,
-        accountId: 1,
+        id: '1',
+        accountId: '1',
         amount: 10,
         category: 'Housing',
         description: 'Baseline pending',
         createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
       },
     ],
     fixedExpenses: [
       {
-        id: 1,
+        id: '1',
         name: 'Baseline Rent',
         dueDate: '2026-02-05',
         amount: 1000,
-        accountId: 1,
+        accountId: '1',
         creditCardId: null,
         targetCreditCardId: null,
         category: 'Housing',
         paidAmount: 0,
         status: 'pending',
-        recurringTemplateId: 1,
+        recurringTemplateId: '1',
         createdAt: now,
       },
     ],
@@ -116,17 +133,19 @@ describe('dbHelpers.importData (atomic transaction)', () => {
   const importData = {
     accounts: [
       {
-        id: 1,
+        id: '1',
         name: 'Imported Checking',
         type: 'checking',
         currentBalance: 200,
         isDefault: true,
         createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
       },
     ],
     creditCards: [
       {
-        id: 1,
+        id: '1',
         name: 'Imported Card',
         balance: 75,
         creditLimit: 1500,
@@ -135,16 +154,21 @@ describe('dbHelpers.importData (atomic transaction)', () => {
         statementClosingDate: '2026-03-01',
         minimumPayment: 30,
         createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
       },
     ],
     categories: [
       {
-        id: 1,
+        id: '1',
         name: 'Utilities',
         color: '#00FF00',
         icon: 'zap',
         isDefault: false,
         createdAt: now,
+        sortOrder: 0,
+        updatedAt: now,
+        deletedAt: null,
       },
     ],
     paycheckSettings: [],
@@ -153,11 +177,11 @@ describe('dbHelpers.importData (atomic transaction)', () => {
     pendingTransactions: [],
     fixedExpenses: [
       {
-        id: 1,
+        id: '1',
         name: 'Imported Electric',
         dueDate: '2026-03-03',
         amount: 120,
-        accountId: 1,
+        accountId: '1',
         creditCardId: null,
         targetCreditCardId: null,
         category: 'Utilities',
@@ -264,11 +288,11 @@ describe('dbHelpers.importData (atomic transaction)', () => {
 
   it('handles large fixedExpenses imports via chunked bulkPut', async () => {
     const largeFixedExpenses = Array.from({ length: 1505 }, (_v, idx) => ({
-      id: idx + 1,
+      id: String(idx + 1),
       name: `Imported Expense ${idx + 1}`,
       dueDate: '2026-03-10',
       amount: 1,
-      accountId: 1,
+      accountId: '1',
       creditCardId: null,
       targetCreditCardId: null,
       category: 'Utilities',
@@ -294,9 +318,11 @@ describe('dbHelpers.importData (atomic transaction)', () => {
       ...importData,
       paycheckSettings: [
         createMockPaycheckSettings('weekly', {
-          id: 1,
+          id: '1',
           lastPaycheckDate: '2026-01-20',
           createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
         }),
       ],
     };
@@ -312,9 +338,11 @@ describe('dbHelpers.importData (atomic transaction)', () => {
       ...importData,
       paycheckSettings: [
         createMockPaycheckSettings('monthly', {
-          id: 1,
+          id: '1',
           lastPaycheckDate: '2026-01-31',
           createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
         }),
       ],
     };

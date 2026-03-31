@@ -97,7 +97,7 @@ const CategoryDeletionModal = ({
         if (key.startsWith('expense-')) {
           const expenseId = key.replace('expense-', '');
           const expense = affectedItems.fixedExpenses.find(
-            e => e.id === parseInt(expenseId),
+            e => e.id === expenseId,
           );
           if (expense) {
             await dbHelpers.updateFixedExpenseV4(expense.id, {
@@ -107,7 +107,7 @@ const CategoryDeletionModal = ({
         } else if (key.startsWith('transaction-')) {
           const transactionId = key.replace('transaction-', '');
           const transaction = affectedItems.pendingTransactions.find(
-            t => t.id === parseInt(transactionId),
+            t => t.id === transactionId,
           );
           if (transaction) {
             await dbHelpers.updatePendingTransaction(transaction.id, {

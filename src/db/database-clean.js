@@ -7,9 +7,16 @@ import {
 import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
 import { dataIntegrity } from '../utils/crypto';
 import { DateUtils } from '../utils/dateUtils';
+import { generateId } from '../utils/generateId';
 import { logger } from '../utils/logger';
 
 const MAX_AUDIT_LOG_ENTRIES = 500;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const nowIso = () => new Date().toISOString();
+const isValidUuid = value =>
+  typeof value === 'string' && UUID_REGEX.test(value.trim());
 
 /**
  * Clean Consolidated Digibook Database Schema
@@ -171,6 +178,34 @@ export class DigibookDBClean extends Dexie {
           await tx.table('categories').put({ ...sorted[i], sortOrder: i });
         }
       });
+
+    // Version 8: UUID string primary keys, soft deletes, categoryId, timestamps
+    this.version(8)
+      .stores({
+        accounts:
+          'id, name, type, currentBalance, isDefault, createdAt, updatedAt, deletedAt',
+        pendingTransactions:
+          'id, accountId, amount, category, description, createdAt, updatedAt, deletedAt, categoryId',
+        fixedExpenses:
+          'id, name, dueDate, amount, accountId, creditCardId, targetCreditCardId, category, paidAmount, status, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, recurringTemplateId, createdAt, updatedAt, deletedAt, categoryId',
+        categories:
+          'id, name, color, icon, isDefault, createdAt, sortOrder, updatedAt, deletedAt',
+        creditCards:
+          'id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt, updatedAt, deletedAt',
+        paycheckSettings:
+          'id, lastPaycheckDate, frequency, createdAt, updatedAt, deletedAt',
+        userPreferences:
+          'id, component, preferences, createdAt, lastExportDate, updatedAt, deletedAt',
+        monthlyExpenseHistory:
+          '[expenseId+month+year], expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt, updatedAt, deletedAt',
+        recurringExpenseTemplates:
+          'id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt, deletedAt, categoryId',
+        auditLogs:
+          'id, timestamp, actionType, entityType, entityId, details, updatedAt, deletedAt',
+        backups:
+          'id, reason, timestamp, version, createdAt, updatedAt, deletedAt',
+      })
+      .upgrade(() => {});
   }
 }
 
@@ -250,10 +285,12 @@ export async function initializeDatabase() {
  * @param {Object} data - Full import data object
  */
 function normalizePaycheckSettings(data) {
+  const ts = new Date().toISOString();
   const defaultRow = {
+    id: generateId(),
     lastPaycheckDate: '',
     frequency: DEFAULT_PAY_FREQUENCY,
-    createdAt: new Date().toISOString(),
+    createdAt: ts,
   };
 
   if (
@@ -276,16 +313,16 @@ function normalizePaycheckSettings(data) {
   const createdAt =
     first.createdAt && typeof first.createdAt === 'string'
       ? first.createdAt
-      : new Date().toISOString();
+      : ts;
+
+  const id = isValidUuid(first.id) ? first.id.trim() : generateId();
 
   const normalized = {
+    id,
     lastPaycheckDate,
     frequency,
     createdAt,
   };
-  if (first.id != null && Number.isFinite(Number(first.id))) {
-    normalized.id = first.id;
-  }
 
   data.paycheckSettings = [normalized];
 }
@@ -294,13 +331,31 @@ function normalizePaycheckSettings(data) {
  * Internal (non-exported) audit log add. Transaction-safe; does not call trim.
  */
 async function addAuditLogEntry(actionType, entityType, entityId, details) {
+  const ts = nowIso();
   await db.auditLogs.add({
-    timestamp: new Date().toISOString(),
+    id: generateId(),
+    timestamp: ts,
     actionType,
     entityType,
     entityId,
     details: details ?? {},
+    updatedAt: ts,
+    deletedAt: null,
   });
+}
+
+/**
+ * Resolve category UUID from display name (non-deleted category only).
+ * @param {string|null|undefined} categoryName
+ * @returns {Promise<string|null>}
+ */
+async function resolveCategoryIdByName(categoryName) {
+  if (!categoryName || typeof categoryName !== 'string') return null;
+  const trimmed = categoryName.trim();
+  if (!trimmed) return null;
+  const cat = await db.categories.where('name').equals(trimmed).first();
+  if (!cat || cat.deletedAt) return null;
+  return cat.id;
 }
 
 /**
@@ -436,13 +491,16 @@ export const dbHelpers = {
 
   // Account helpers
   async getAccounts() {
-    return await db.accounts.toArray();
+    const rows = await db.accounts.toArray();
+    return rows.filter(r => !r.deletedAt);
   },
 
   // Credit card helpers
   async getCreditCards() {
     try {
-      const creditCards = await db.creditCards.toArray();
+      const creditCards = (await db.creditCards.toArray()).filter(
+        c => !c.deletedAt,
+      );
       return creditCards.sort((a, b) => a.name.localeCompare(b.name));
     } catch (error) {
       logger.error('Error getting credit cards:', error);
@@ -454,10 +512,14 @@ export const dbHelpers = {
     try {
       const creditCardData = {
         ...creditCard,
-        createdAt: new Date().toISOString(),
+        id: generateId(),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        deletedAt: null,
       };
 
-      const id = await db.creditCards.add(creditCardData);
+      await db.creditCards.add(creditCardData);
+      const id = creditCardData.id;
       logger.success(`Credit card added successfully: ${id}`);
       return id;
     } catch (error) {
@@ -479,10 +541,11 @@ export const dbHelpers = {
     const linked = await db.fixedExpenses
       .where('targetCreditCardId')
       .equals(cardId)
-      .filter(e => e.category === 'Credit Card Payment')
+      .filter(e => e.category === 'Credit Card Payment' && !e.deletedAt)
       .toArray();
+    const ts = nowIso();
     for (const expense of linked) {
-      await db.fixedExpenses.update(expense.id, { dueDate });
+      await db.fixedExpenses.update(expense.id, { dueDate, updatedAt: ts });
     }
     if (linked.length > 0) {
       logger.success(
@@ -571,8 +634,9 @@ export const dbHelpers = {
         )
         .toArray();
 
+      const ts = nowIso();
       for (const expense of linkedExpenses) {
-        await db.fixedExpenses.update(expense.id, { accountId });
+        await db.fixedExpenses.update(expense.id, { accountId, updatedAt: ts });
       }
 
       logger.success(
@@ -586,7 +650,7 @@ export const dbHelpers = {
 
   async updateCreditCard(id, updates) {
     try {
-      await db.creditCards.update(id, updates);
+      await db.creditCards.update(id, { ...updates, updatedAt: nowIso() });
       if (updates.dueDate !== undefined) {
         await this.syncCreditCardDueDateToExpenses(id, updates.dueDate);
       }
@@ -600,7 +664,8 @@ export const dbHelpers = {
 
   async deleteCreditCard(id) {
     try {
-      await db.creditCards.delete(id);
+      const ts = nowIso();
+      await db.creditCards.update(id, { deletedAt: ts, updatedAt: ts });
       logger.success(`Credit card deleted successfully: ${id}`);
     } catch (error) {
       logger.error('Error deleting credit card:', error);
@@ -611,7 +676,9 @@ export const dbHelpers = {
   // Pending transaction helpers
   async getPendingTransactions() {
     try {
-      const transactions = await db.pendingTransactions.toArray();
+      const transactions = (await db.pendingTransactions.toArray()).filter(
+        t => !t.deletedAt,
+      );
       return transactions.sort(
         (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
       );
@@ -623,12 +690,20 @@ export const dbHelpers = {
 
   async addPendingTransaction(transaction) {
     try {
+      const categoryId =
+        transaction.categoryId ??
+        (await resolveCategoryIdByName(transaction.category));
       const transactionData = {
         ...transaction,
-        createdAt: new Date().toISOString(),
+        id: generateId(),
+        categoryId: categoryId ?? null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        deletedAt: null,
       };
 
-      const id = await db.pendingTransactions.add(transactionData);
+      await db.pendingTransactions.add(transactionData);
+      const id = transactionData.id;
       logger.success(`Pending transaction added successfully: ${id}`);
       return id;
     } catch (error) {
@@ -639,7 +714,14 @@ export const dbHelpers = {
 
   async updatePendingTransaction(id, updates) {
     try {
-      await db.pendingTransactions.update(id, updates);
+      const payload = { ...updates, updatedAt: nowIso() };
+      if (Object.prototype.hasOwnProperty.call(updates, 'category')) {
+        payload.categoryId =
+          updates.categoryId !== undefined
+            ? updates.categoryId
+            : await resolveCategoryIdByName(updates.category);
+      }
+      await db.pendingTransactions.update(id, payload);
       logger.success(`Pending transaction updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating pending transaction:', error);
@@ -649,7 +731,8 @@ export const dbHelpers = {
 
   async deletePendingTransaction(id) {
     try {
-      await db.pendingTransactions.delete(id);
+      const ts = nowIso();
+      await db.pendingTransactions.update(id, { deletedAt: ts, updatedAt: ts });
       logger.success(`Pending transaction deleted successfully: ${id}`);
     } catch (error) {
       logger.error('Error deleting pending transaction:', error);
@@ -679,6 +762,7 @@ export const dbHelpers = {
 
             await db.accounts.update(account.id, {
               currentBalance: newBalance,
+              updatedAt: nowIso(),
             });
 
             // Log the completion in audit logs
@@ -701,8 +785,11 @@ export const dbHelpers = {
             );
           }
 
-          // Finally, delete the pending transaction
-          await db.pendingTransactions.delete(id);
+          const ts = nowIso();
+          await db.pendingTransactions.update(id, {
+            deletedAt: ts,
+            updatedAt: ts,
+          });
         },
       );
       void this.trimAuditLogs();
@@ -716,7 +803,9 @@ export const dbHelpers = {
   // Fixed expense helpers
   async getFixedExpenses() {
     try {
-      const expenses = await db.fixedExpenses.toArray();
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
       return expenses.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
     } catch (error) {
       logger.error('Error getting fixed expenses:', error);
@@ -744,9 +833,15 @@ export const dbHelpers = {
         throw new Error('Missing required expense fields');
       }
 
+      const categoryId =
+        expense.categoryId ?? (await resolveCategoryIdByName(expense.category));
       const expenseData = {
         ...expense,
-        createdAt: new Date().toISOString(),
+        id: generateId(),
+        categoryId: categoryId ?? null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        deletedAt: null,
 
         // Ensure numeric fields are properly typed
         amount: parseFloat(expense.amount),
@@ -755,7 +850,8 @@ export const dbHelpers = {
         status: expense.status || 'pending',
       };
 
-      const id = await db.fixedExpenses.add(expenseData);
+      await db.fixedExpenses.add(expenseData);
+      const id = expenseData.id;
       logger.success(`Fixed expense added successfully: ${id}`);
       return id;
     } catch (error) {
@@ -773,7 +869,14 @@ export const dbHelpers = {
       'updateFixedExpense() is deprecated. Use updateFixedExpenseV4() instead for proper V4 format support.',
     );
     try {
-      await db.fixedExpenses.update(id, updates);
+      const payload = { ...updates, updatedAt: nowIso() };
+      if (Object.prototype.hasOwnProperty.call(updates, 'category')) {
+        payload.categoryId =
+          updates.categoryId !== undefined
+            ? updates.categoryId
+            : await resolveCategoryIdByName(updates.category);
+      }
+      await db.fixedExpenses.update(id, payload);
       logger.success(`Fixed expense updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating fixed expense:', error);
@@ -783,7 +886,8 @@ export const dbHelpers = {
 
   async deleteFixedExpense(id) {
     try {
-      await db.fixedExpenses.delete(id);
+      const ts = nowIso();
+      await db.fixedExpenses.update(id, { deletedAt: ts, updatedAt: ts });
       logger.success(`Fixed expense deleted successfully: ${id}`);
     } catch (error) {
       logger.error('Error deleting fixed expense:', error);
@@ -829,17 +933,24 @@ export const dbHelpers = {
         );
       }
 
+      const categoryId =
+        template.categoryId ??
+        (await resolveCategoryIdByName(template.category));
       const templateData = {
         ...template,
+        id: generateId(),
+        categoryId: categoryId ?? null,
         intervalUnit: template.intervalUnit || 'months', // Ensure intervalUnit is always set
         nextDueDate,
         lastGenerated: null,
         isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        deletedAt: null,
       };
 
-      const id = await db.recurringExpenseTemplates.add(templateData);
+      await db.recurringExpenseTemplates.add(templateData);
+      const id = templateData.id;
       logger.success(`Recurring expense template created: ${template.name}`);
       return id;
     } catch (error) {
@@ -871,8 +982,15 @@ export const dbHelpers = {
           updates.intervalUnit !== undefined
             ? updates.intervalUnit
             : normalizedTemplate.intervalUnit,
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso(),
       };
+
+      if (Object.prototype.hasOwnProperty.call(updates, 'category')) {
+        updateData.categoryId =
+          updates.categoryId !== undefined
+            ? updates.categoryId
+            : await resolveCategoryIdByName(updates.category);
+      }
 
       // If frequency or start date changed, recalculate next due date
       if (
@@ -899,7 +1017,11 @@ export const dbHelpers = {
 
   async deleteRecurringExpenseTemplate(id) {
     try {
-      await db.recurringExpenseTemplates.delete(id);
+      const ts = nowIso();
+      await db.recurringExpenseTemplates.update(id, {
+        deletedAt: ts,
+        updatedAt: ts,
+      });
       logger.success(`Recurring expense template deleted: ${id}`);
     } catch (error) {
       logger.error('Error deleting recurring expense template:', error);
@@ -940,7 +1062,7 @@ export const dbHelpers = {
       logger.debug('dbHelpers: Got all templates:', allTemplates);
 
       const result = allTemplates
-        .filter(template => template.isActive === true)
+        .filter(template => template.isActive === true && !template.deletedAt)
         .map(template => ({
           ...template,
 
@@ -960,6 +1082,9 @@ export const dbHelpers = {
   async getRecurringExpenseTemplate(id) {
     try {
       const template = await db.recurringExpenseTemplates.get(id);
+      if (template && template.deletedAt) {
+        return null;
+      }
       if (template) {
         // Normalize intervalUnit for backward compatibility
         return {
@@ -1141,14 +1266,18 @@ export const dbHelpers = {
   async setDefaultAccount(accountId) {
     try {
       const allAccounts = await db.accounts.toArray();
+      const ts = nowIso();
 
       for (const account of allAccounts) {
         if (account.isDefault === true) {
-          await db.accounts.update(account.id, { isDefault: false });
+          await db.accounts.update(account.id, {
+            isDefault: false,
+            updatedAt: ts,
+          });
         }
       }
 
-      await db.accounts.update(accountId, { isDefault: true });
+      await db.accounts.update(accountId, { isDefault: true, updatedAt: ts });
       logger.success(`Default account set successfully: ${accountId}`);
     } catch (error) {
       logger.error('Error setting default account:', error);
@@ -1177,11 +1306,15 @@ export const dbHelpers = {
 
       const accountData = {
         ...sanitizedAccount,
+        id: generateId(),
         isDefault: isFirstAccount,
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        deletedAt: null,
       };
 
-      const id = await db.accounts.add(accountData);
+      await db.accounts.add(accountData);
+      const id = accountData.id;
 
       // If this is the first real account, clean up any placeholder default accounts
       if (isFirstAccount) {
@@ -1198,7 +1331,7 @@ export const dbHelpers = {
 
   async updateAccount(id, updates) {
     try {
-      await db.accounts.update(id, updates);
+      await db.accounts.update(id, { ...updates, updatedAt: nowIso() });
       logger.success(`Account updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating account:', error);
@@ -1208,15 +1341,17 @@ export const dbHelpers = {
 
   async deleteAccount(id) {
     try {
-      const pendingCount = await db.pendingTransactions
+      const pendingRows = await db.pendingTransactions
         .where('accountId')
         .equals(id)
-        .count();
+        .toArray();
+      const pendingCount = pendingRows.filter(t => !t.deletedAt).length;
       if (pendingCount > 0) {
         throw new Error('Cannot delete account with pending transactions');
       }
 
-      await db.accounts.delete(id);
+      const ts = nowIso();
+      await db.accounts.update(id, { deletedAt: ts, updatedAt: ts });
       logger.success(`Account deleted successfully: ${id}`);
     } catch (error) {
       logger.error('Error deleting account:', error);
@@ -1227,11 +1362,25 @@ export const dbHelpers = {
   // Category helpers
   async getCategories() {
     try {
-      const categories = await db.categories.toArray();
+      const categories = (await db.categories.toArray()).filter(
+        c => !c.deletedAt,
+      );
       return categories;
     } catch (error) {
       logger.error('Error getting categories:', error);
       return [];
+    }
+  },
+
+  async getCategoryById(id) {
+    try {
+      if (id == null || id === '') return null;
+      const category = await db.categories.get(id);
+      if (!category || category.deletedAt) return null;
+      return category;
+    } catch (error) {
+      logger.error('Error getting category by id:', error);
+      return null;
     }
   },
 
@@ -1251,12 +1400,16 @@ export const dbHelpers = {
 
       const categoryData = {
         ...sanitizedCategory,
+        id: generateId(),
         name: trimmedName,
         isDefault: sanitizedCategory.isDefault || false,
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        deletedAt: null,
       };
 
-      const id = await db.categories.add(categoryData);
+      await db.categories.add(categoryData);
+      const id = categoryData.id;
       logger.success(`Category added successfully: ${id}`);
       return id;
     } catch (error) {
@@ -1267,7 +1420,7 @@ export const dbHelpers = {
 
   async updateCategory(id, updates) {
     try {
-      const payload = { ...updates };
+      const payload = { ...updates, updatedAt: nowIso() };
       if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
         const trimmedName = (updates.name || '').trim();
         payload.name = trimmedName;
@@ -1292,7 +1445,8 @@ export const dbHelpers = {
         .equals(category.name)
         .toArray();
 
-      await db.categories.delete(id);
+      const ts = nowIso();
+      await db.categories.update(id, { deletedAt: ts, updatedAt: ts });
       logger.success(`Category deleted successfully: ${id}`);
       return {
         affectedFixedExpenses,
@@ -1306,10 +1460,9 @@ export const dbHelpers = {
 
   async getExpensesByCategory(categoryName) {
     try {
-      const expenses = await db.fixedExpenses
-        .where('category')
-        .equals(categoryName)
-        .toArray();
+      const expenses = (
+        await db.fixedExpenses.where('category').equals(categoryName).toArray()
+      ).filter(e => !e.deletedAt);
       return expenses;
     } catch (error) {
       logger.error('Error getting expenses by category:', error);
@@ -1319,10 +1472,12 @@ export const dbHelpers = {
 
   async getTransactionsByCategory(categoryName) {
     try {
-      const transactions = await db.pendingTransactions
-        .where('category')
-        .equals(categoryName)
-        .toArray();
+      const transactions = (
+        await db.pendingTransactions
+          .where('category')
+          .equals(categoryName)
+          .toArray()
+      ).filter(t => !t.deletedAt);
       return transactions;
     } catch (error) {
       logger.error('Error getting transactions by category:', error);
@@ -1401,7 +1556,10 @@ export const dbHelpers = {
         db.recurringExpenseTemplates,
         async () => {
           // Update category name first
-          await db.categories.update(categoryId, { name: newName });
+          await db.categories.update(categoryId, {
+            name: newName,
+            updatedAt: nowIso(),
+          });
 
           // Update all expenses using batch operations
           for (const expense of expensesToUpdate) {
@@ -1419,6 +1577,8 @@ export const dbHelpers = {
           for (const template of templatesToUpdate) {
             await db.recurringExpenseTemplates.update(template.id, {
               category: newName,
+              categoryId,
+              updatedAt: nowIso(),
             });
           }
         },
@@ -1452,7 +1612,9 @@ export const dbHelpers = {
       const expenseIds =
         affectedItems.fixedExpenses?.map(expense => expense.id) || [];
       for (const expenseId of expenseIds) {
-        await db.fixedExpenses.update(expenseId, { category: newCategoryName });
+        await this.updateFixedExpenseV4(expenseId, {
+          category: newCategoryName,
+        });
       }
 
       // Update pending transactions
@@ -1460,7 +1622,7 @@ export const dbHelpers = {
         affectedItems.pendingTransactions?.map(transaction => transaction.id) ||
         [];
       for (const transactionId of transactionIds) {
-        await db.pendingTransactions.update(transactionId, {
+        await this.updatePendingTransaction(transactionId, {
           category: newCategoryName,
         });
       }
@@ -1481,13 +1643,17 @@ export const dbHelpers = {
   async detectOrphanedExpenses() {
     try {
       // Get all unique category names from expenses
-      const allExpenses = await db.fixedExpenses.toArray();
+      const allExpenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
       const expenseCategoryNames = new Set(
         allExpenses.map(expense => expense.category).filter(Boolean),
       );
 
       // Get all unique category names from pending transactions
-      const allTransactions = await db.pendingTransactions.toArray();
+      const allTransactions = (await db.pendingTransactions.toArray()).filter(
+        t => !t.deletedAt,
+      );
       const transactionCategoryNames = new Set(
         allTransactions
           .map(transaction => transaction.category)
@@ -1495,13 +1661,17 @@ export const dbHelpers = {
       );
 
       // Get all recurring expense templates and their category names
-      const allTemplates = await db.recurringExpenseTemplates.toArray();
+      const allTemplates = (
+        await db.recurringExpenseTemplates.toArray()
+      ).filter(t => !t.deletedAt);
       const templateCategoryNames = new Set(
         allTemplates.map(t => t.category).filter(Boolean),
       );
 
       // Get all valid category names
-      const allCategories = await db.categories.toArray();
+      const allCategories = (await db.categories.toArray()).filter(
+        c => !c.deletedAt,
+      );
       const validCategoryNames = new Set(
         allCategories.map(category => category.name),
       );
@@ -1696,16 +1866,23 @@ export const dbHelpers = {
   },
 
   async updateCategorySortOrder(orderedIds) {
+    const ts = nowIso();
     await db.transaction('rw', db.categories, async () => {
       for (let i = 0; i < orderedIds.length; i++) {
-        await db.categories.update(orderedIds[i], { sortOrder: i });
+        await db.categories.update(orderedIds[i], {
+          sortOrder: i,
+          updatedAt: ts,
+        });
       }
     });
   },
 
   async bulkUpdateCategories(ids, updates) {
     await db.transaction('rw', db.categories, async () => {
-      await db.categories.where('id').anyOf(ids).modify(updates);
+      await db.categories
+        .where('id')
+        .anyOf(ids)
+        .modify({ ...updates, updatedAt: nowIso() });
     });
   },
 
@@ -1748,7 +1925,10 @@ export const dbHelpers = {
       if (categoriesToAdd.length > 0) {
         const withTimestamps = categoriesToAdd.map(c => ({
           ...c,
-          createdAt: new Date().toISOString(),
+          id: generateId(),
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+          deletedAt: null,
         }));
         await db.categories.bulkAdd(withTimestamps);
         logger.success(`Added ${categoriesToAdd.length} default categories`);
@@ -1763,7 +1943,9 @@ export const dbHelpers = {
   // Paycheck settings helpers
   async getPaycheckSettings() {
     try {
-      const settings = await db.paycheckSettings.toArray();
+      const settings = (await db.paycheckSettings.toArray()).filter(
+        s => !s.deletedAt,
+      );
       return settings.length > 0 ? settings[0] : null;
     } catch (error) {
       logger.error('Error getting paycheck settings:', error);
@@ -1788,13 +1970,21 @@ export const dbHelpers = {
         throw new Error('Invalid frequency value');
       }
 
-      const existingSettings = await db.paycheckSettings.toArray();
+      const existingSettings = (await db.paycheckSettings.toArray()).filter(
+        s => !s.deletedAt,
+      );
       if (existingSettings.length > 0) {
-        await db.paycheckSettings.update(existingSettings[0].id, settings);
+        await db.paycheckSettings.update(existingSettings[0].id, {
+          ...settings,
+          updatedAt: nowIso(),
+        });
       } else {
         await db.paycheckSettings.add({
           ...settings,
-          createdAt: new Date().toISOString(),
+          id: generateId(),
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+          deletedAt: null,
         });
       }
       logger.success('Paycheck settings updated successfully');
@@ -1808,9 +1998,11 @@ export const dbHelpers = {
   // User preferences helpers
   async getUserPreferences(component) {
     try {
-      const preferences = await db.userPreferences
-        .filter(pref => pref.component === component)
-        .toArray();
+      const preferences = (
+        await db.userPreferences
+          .filter(pref => pref.component === component)
+          .toArray()
+      ).filter(p => !p.deletedAt);
       return preferences.length > 0 ? preferences[0].preferences : null;
     } catch (error) {
       logger.error('Error getting user preferences:', error);
@@ -1820,11 +2012,25 @@ export const dbHelpers = {
 
   async setUserPreferences(component, preferences) {
     try {
-      await db.userPreferences.put({
-        component,
-        preferences,
-        createdAt: new Date().toISOString(),
-      });
+      const existing = await db.userPreferences
+        .filter(pref => pref.component === component && !pref.deletedAt)
+        .first();
+      const ts = nowIso();
+      if (existing) {
+        await db.userPreferences.update(existing.id, {
+          preferences,
+          updatedAt: ts,
+        });
+      } else {
+        await db.userPreferences.add({
+          id: generateId(),
+          component,
+          preferences,
+          createdAt: ts,
+          updatedAt: ts,
+          deletedAt: null,
+        });
+      }
     } catch (error) {
       logger.error('Error setting user preferences:', error);
     }
@@ -1833,15 +2039,22 @@ export const dbHelpers = {
   async updateUserPreferences(preferences, component) {
     try {
       const existing = await db.userPreferences
-        .filter(pref => pref.component === component)
+        .filter(pref => pref.component === component && !pref.deletedAt)
         .first();
       if (existing) {
-        await db.userPreferences.update(existing.id, { preferences });
+        await db.userPreferences.update(existing.id, {
+          preferences,
+          updatedAt: nowIso(),
+        });
       } else {
+        const ts = nowIso();
         await db.userPreferences.add({
+          id: generateId(),
           component,
           preferences,
-          createdAt: new Date().toISOString(),
+          createdAt: ts,
+          updatedAt: ts,
+          deletedAt: null,
         });
       }
       logger.success('User preferences updated successfully');
@@ -1855,7 +2068,7 @@ export const dbHelpers = {
   async getDefaultAccount() {
     try {
       const defaultAccount = await db.accounts
-        .filter(account => account.isDefault === true)
+        .filter(account => account.isDefault === true && !account.deletedAt)
         .first();
       return defaultAccount || null;
     } catch (error) {
@@ -1868,7 +2081,7 @@ export const dbHelpers = {
     try {
       const accounts = await db.accounts.toArray();
       return accounts.filter(
-        a => a.type === 'checking' || a.type === 'savings',
+        a => !a.deletedAt && (a.type === 'checking' || a.type === 'savings'),
       );
     } catch (error) {
       logger.error('Error getting fundable accounts:', error);
@@ -1883,7 +2096,8 @@ export const dbHelpers = {
           t =>
             t.targetCreditCardId === cardId &&
             t.category === 'Credit Card Payment' &&
-            t.isActive,
+            t.isActive &&
+            !t.deletedAt,
         )
         .toArray();
       return templates.length > 0 ? templates[0].accountId : null;
@@ -1905,9 +2119,15 @@ export const dbHelpers = {
       // Don't create a default account if no accounts exist - let users start fresh
       if (totalAccounts > 0 && !defaultAccount) {
         // If there are accounts but no default, make the first one the default
-        const firstAccount = await db.accounts.orderBy('createdAt').first();
+        const active = (await db.accounts.toArray()).filter(a => !a.deletedAt);
+        const firstAccount = active.sort(
+          (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+        )[0];
         if (firstAccount) {
-          await db.accounts.update(firstAccount.id, { isDefault: true });
+          await db.accounts.update(firstAccount.id, {
+            isDefault: true,
+            updatedAt: nowIso(),
+          });
           logger.info(`Set ${firstAccount.name} as default account`);
         }
       }
@@ -1922,16 +2142,22 @@ export const dbHelpers = {
   // Clean up duplicate default accounts and remove placeholder defaults
   async cleanupDuplicateDefaults() {
     try {
-      const allAccounts = await db.accounts.toArray();
+      const allAccounts = (await db.accounts.toArray()).filter(
+        a => !a.deletedAt,
+      );
       const defaultAccounts = allAccounts.filter(
         account => account.isDefault === true,
       );
+      const ts = nowIso();
 
       // If there are multiple default accounts, keep only the first one
       if (defaultAccounts.length > 1) {
         const accountsToUpdate = defaultAccounts.slice(1);
         for (const account of accountsToUpdate) {
-          await db.accounts.update(account.id, { isDefault: false });
+          await db.accounts.update(account.id, {
+            isDefault: false,
+            updatedAt: ts,
+          });
         }
         logger.info(
           `Cleaned up ${accountsToUpdate.length} duplicate default accounts`,
@@ -1950,21 +2176,29 @@ export const dbHelpers = {
         );
 
         for (const placeholder of defaultAccountPlaceholders) {
-          await db.accounts.delete(placeholder.id);
+          await db.accounts.update(placeholder.id, {
+            deletedAt: ts,
+            updatedAt: ts,
+          });
           logger.info(
             `Removed placeholder Default Account (ID: ${placeholder.id})`,
           );
         }
 
         // No default after removing placeholders: use first real account
-        const remainingAccounts = await db.accounts.toArray();
+        const remainingAccounts = (await db.accounts.toArray()).filter(
+          a => !a.deletedAt,
+        );
         const hasDefault = remainingAccounts.some(
           account => account.isDefault === true,
         );
 
         if (!hasDefault && remainingAccounts.length > 0) {
           const firstAccount = remainingAccounts[0];
-          await db.accounts.update(firstAccount.id, { isDefault: true });
+          await db.accounts.update(firstAccount.id, {
+            isDefault: true,
+            updatedAt: ts,
+          });
           logger.info(`Set ${firstAccount.name} as default account`);
         }
       }
@@ -1976,8 +2210,12 @@ export const dbHelpers = {
   // Credit card migration helpers
   async detectCreditCardExpenses() {
     try {
-      const expenses = await db.fixedExpenses.toArray();
-      const creditCards = await db.creditCards.toArray();
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const creditCards = (await db.creditCards.toArray()).filter(
+        c => !c.deletedAt,
+      );
 
       const mappings = [];
       for (const expense of expenses) {
@@ -2048,7 +2286,9 @@ export const dbHelpers = {
 
   async cleanupDuplicateCreditCardExpenses() {
     try {
-      const expenses = await db.fixedExpenses.toArray();
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
       const duplicates = [];
 
       // Find duplicates based on name and amount
@@ -2063,8 +2303,12 @@ export const dbHelpers = {
       }
 
       // Remove duplicates
+      const ts = nowIso();
       for (const duplicate of duplicates) {
-        await db.fixedExpenses.delete(duplicate.id);
+        await db.fixedExpenses.update(duplicate.id, {
+          deletedAt: ts,
+          updatedAt: ts,
+        });
       }
 
       logger.success(
@@ -2079,9 +2323,15 @@ export const dbHelpers = {
 
   async getOrphanedCreditCards() {
     try {
-      const creditCards = await db.creditCards.toArray();
-      const expenses = await db.fixedExpenses.toArray();
-      const templates = await db.recurringExpenseTemplates.toArray();
+      const creditCards = (await db.creditCards.toArray()).filter(
+        c => !c.deletedAt,
+      );
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const templates = (await db.recurringExpenseTemplates.toArray()).filter(
+        t => !t.deletedAt,
+      );
       return creditCards.filter(
         card =>
           !expenses.some(
@@ -2230,13 +2480,15 @@ export const dbHelpers = {
       const ccTemplates = templates.filter(
         t => t.category === 'Credit Card Payment' && t.isActive,
       );
+      const ts = nowIso();
       for (const template of ccTemplates) {
         if (
           template.accountId == null ||
-          !validAccountIds.has(Number(template.accountId))
+          !validAccountIds.has(template.accountId)
         ) {
           await db.recurringExpenseTemplates.update(template.id, {
             accountId: defaultAccount.id,
+            updatedAt: ts,
           });
           repairedTemplates++;
         }
@@ -2246,11 +2498,13 @@ export const dbHelpers = {
       const ccExpenses = expenses.filter(
         e =>
           e.category === 'Credit Card Payment' &&
-          (e.accountId == null || !validAccountIds.has(Number(e.accountId))),
+          !e.deletedAt &&
+          (e.accountId == null || !validAccountIds.has(e.accountId)),
       );
       for (const expense of ccExpenses) {
         await db.fixedExpenses.update(expense.id, {
           accountId: defaultAccount.id,
+          updatedAt: ts,
         });
         repairedExpenses++;
       }
@@ -2285,9 +2539,16 @@ export const dbHelpers = {
   // Insights and analytics helpers
   async getBudgetVsActualSummary() {
     try {
-      const expenses = await db.fixedExpenses.toArray();
+      const { month, year } = await this.getCurrentCycleMonth();
+      const allExpenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const expenses = allExpenses.filter(e => {
+        const d = new Date(e.dueDate);
+        return d.getMonth() + 1 === month && d.getFullYear() === year;
+      });
 
-      // Calculate totals across all expenses
+      // Calculate totals for current cycle
       const totalBudget = expenses.reduce(
         (sum, expense) => sum + expense.amount,
         0,
@@ -2332,24 +2593,193 @@ export const dbHelpers = {
     }
   },
 
+  async getCurrentCycleMonth() {
+    try {
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const now = new Date();
+      if (expenses.length === 0) {
+        return { month: now.getMonth() + 1, year: now.getFullYear() };
+      }
+      const countByKey = {};
+      const keysWithCounts = [];
+      for (const expense of expenses) {
+        const d = new Date(expense.dueDate);
+        const m = d.getMonth() + 1;
+        const y = d.getFullYear();
+        const key = `${y}-${m}`;
+        countByKey[key] = (countByKey[key] || 0) + 1;
+        if (!keysWithCounts.some(([k]) => k === key)) {
+          keysWithCounts.push([key, y, m]);
+        }
+      }
+      const maxCount = Math.max(...Object.values(countByKey));
+      const tied = keysWithCounts.filter(
+        ([key]) => countByKey[key] === maxCount,
+      );
+      const best = tied.reduce((b, [k, y, m]) => {
+        if (!b) return [k, y, m];
+        const [, by, bm] = b;
+        if (y > by) return [k, y, m];
+        if (y === by && m > bm) return [k, y, m];
+        return b;
+      }, null);
+      return { month: best[2], year: best[1] };
+    } catch (error) {
+      logger.error('Error getting current cycle month:', error);
+      const now = new Date();
+      return { month: now.getMonth() + 1, year: now.getFullYear() };
+    }
+  },
+
+  async getBudgetVsActualSummaryForMonth(month, year) {
+    try {
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const now = new Date();
+      let currentMonth, currentYear;
+      if (expenses.length === 0) {
+        currentMonth = now.getMonth() + 1;
+        currentYear = now.getFullYear();
+      } else {
+        const countByKey = {};
+        const keysWithCounts = [];
+        for (const expense of expenses) {
+          const d = new Date(expense.dueDate);
+          const m = d.getMonth() + 1;
+          const y = d.getFullYear();
+          const key = `${y}-${m}`;
+          countByKey[key] = (countByKey[key] || 0) + 1;
+          if (!keysWithCounts.some(([k]) => k === key)) {
+            keysWithCounts.push([key, y, m]);
+          }
+        }
+        const maxCount = Math.max(...Object.values(countByKey));
+        const tied = keysWithCounts.filter(
+          ([key]) => countByKey[key] === maxCount,
+        );
+        const best = tied.reduce((b, [k, y, m]) => {
+          if (!b) return [k, y, m];
+          const [, by, bm] = b;
+          if (y > by) return [k, y, m];
+          if (y === by && m > bm) return [k, y, m];
+          return b;
+        }, null);
+        currentMonth = best[2];
+        currentYear = best[1];
+      }
+
+      if (month === currentMonth && year === currentYear) {
+        return await this.getBudgetVsActualSummary();
+      }
+
+      const historyRecords = await db.monthlyExpenseHistory.toArray();
+      const forMonth = historyRecords.filter(
+        r => r.month === month && r.year === year,
+      );
+      if (forMonth.length === 0) {
+        return {
+          totalBudget: 0,
+          totalActual: 0,
+          totalOverpayment: 0,
+          budgetAccuracy: 0,
+          significantOverpayments: 0,
+        };
+      }
+
+      const totalBudget = forMonth.reduce(
+        (s, r) => s + (r.budgetAmount || 0),
+        0,
+      );
+      const totalActual = forMonth.reduce(
+        (s, r) => s + (r.actualAmount || 0),
+        0,
+      );
+      const totalOverpayment = forMonth.reduce(
+        (s, r) => s + (r.overpaymentAmount || 0),
+        0,
+      );
+      const budgetAccuracy =
+        totalBudget > 0 ? (totalActual / totalBudget) * 100 : 0;
+      const significantOverpayments = forMonth.filter(r => {
+        const b = r.budgetAmount || 0;
+        if (b <= 0) return false;
+        const over = (r.actualAmount || 0) - b;
+        return (over / b) * 100 > 20;
+      }).length;
+
+      return {
+        totalBudget,
+        totalActual,
+        totalOverpayment,
+        budgetAccuracy,
+        significantOverpayments,
+      };
+    } catch (error) {
+      logger.error('Error getting budget vs actual summary for month:', error);
+      return {
+        totalBudget: 0,
+        totalActual: 0,
+        totalOverpayment: 0,
+        budgetAccuracy: 0,
+        significantOverpayments: 0,
+      };
+    }
+  },
+
   async getOverpaymentByCategory() {
     try {
-      const expenses = await db.fixedExpenses.toArray();
-      const overpayments = {};
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const byCategory = {};
 
       for (const expense of expenses) {
-        if (expense.paidAmount > expense.amount) {
-          const overpayment = expense.paidAmount - expense.amount;
-          const category = expense.category || 'Uncategorized';
+        if ((expense.paidAmount || 0) <= expense.amount) continue;
 
-          if (!overpayments[category]) {
-            overpayments[category] = 0;
-          }
-          overpayments[category] += overpayment;
+        const category = expense.category || 'Uncategorized';
+        if (!byCategory[category]) {
+          byCategory[category] = {
+            totalBudget: 0,
+            totalActual: 0,
+            totalOverpayment: 0,
+            expenseCount: 0,
+            significantOverpayments: 0,
+          };
+        }
+
+        const amount = expense.amount;
+        const paid = expense.paidAmount || 0;
+        const overpayment = Math.max(0, paid - amount);
+
+        byCategory[category].totalBudget += amount;
+        byCategory[category].totalActual += paid;
+        byCategory[category].totalOverpayment += overpayment;
+        byCategory[category].expenseCount += 1;
+
+        if (amount > 0 && (overpayment / amount) * 100 > 20) {
+          byCategory[category].significantOverpayments += 1;
         }
       }
 
-      return overpayments;
+      const result = {};
+      for (const [name, data] of Object.entries(byCategory)) {
+        if (data.totalOverpayment <= 0) continue;
+        result[name] = {
+          totalBudget: data.totalBudget,
+          totalActual: data.totalActual,
+          totalOverpayment: data.totalOverpayment,
+          overpaymentPercentage:
+            data.totalBudget > 0
+              ? (data.totalOverpayment / data.totalBudget) * 100
+              : 0,
+          expenseCount: data.expenseCount,
+          significantOverpayments: data.significantOverpayments,
+        };
+      }
+      return result;
     } catch (error) {
       logger.error('Error getting overpayment by category:', error);
       return {};
@@ -2358,37 +2788,117 @@ export const dbHelpers = {
 
   async getMonthlyExpenseHistory(months = 12) {
     try {
-      const expenses = await db.fixedExpenses.toArray();
-      const history = {};
-
-      // Generate last N months
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
       const now = new Date();
+
+      // Current cycle month: most common dueDate month across fixedExpenses;
+      // tie-break = most recent.
+      let currentMonth, currentYear;
+      if (expenses.length === 0) {
+        currentMonth = now.getMonth() + 1;
+        currentYear = now.getFullYear();
+      } else {
+        const countByKey = {};
+        const keysWithCounts = [];
+        for (const expense of expenses) {
+          const d = new Date(expense.dueDate);
+          const m = d.getMonth() + 1;
+          const y = d.getFullYear();
+          const key = `${y}-${m}`;
+          countByKey[key] = (countByKey[key] || 0) + 1;
+          if (!keysWithCounts.some(([k]) => k === key)) {
+            keysWithCounts.push([key, y, m]);
+          }
+        }
+        const maxCount = Math.max(...Object.values(countByKey));
+        const tied = keysWithCounts.filter(
+          ([key]) => countByKey[key] === maxCount,
+        );
+        const [_, pickY, pickM] = tied.reduce((best, [k, y, m]) => {
+          if (!best) return [k, y, m];
+          const [_, by, bm] = best;
+          if (y > by) return [k, y, m];
+          if (y === by && m > bm) return [k, y, m];
+          return best;
+        }, null);
+        currentMonth = pickM;
+        currentYear = pickY;
+      }
+
+      // Build list of (month, year) for last N months
+      const monthList = [];
       for (let i = 0; i < months; i++) {
         const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-
-        history[monthKey] = {
+        monthList.push({
           month: date.getMonth() + 1,
           year: date.getFullYear(),
-          totalBudget: 0,
-          totalPaid: 0,
-          expenseCount: 0,
-        };
+        });
       }
 
-      // Calculate totals for each month
-      for (const expense of expenses) {
-        const expenseDate = new Date(expense.dueDate);
-        const monthKey = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}`;
+      // For completed cycles, load monthlyExpenseHistory once.
+      // Current cycle always comes from fixedExpenses only, and any history
+      // for that month is ignored by design.
+      const historyRecords = await db.monthlyExpenseHistory.toArray();
 
-        if (history[monthKey]) {
-          history[monthKey].totalBudget += expense.amount;
-          history[monthKey].totalPaid += expense.paidAmount || 0;
-          history[monthKey].expenseCount += 1;
+      const result = monthList.map(({ month, year }) => {
+        const isCurrentCycle = month === currentMonth && year === currentYear;
+
+        if (isCurrentCycle) {
+          const inMonth = expenses.filter(e => {
+            const d = new Date(e.dueDate);
+            return d.getMonth() + 1 === month && d.getFullYear() === year;
+          });
+          let budgetAmount = 0;
+          let actualAmount = 0;
+          let overpaymentAmount = 0;
+          for (const e of inMonth) {
+            budgetAmount += e.amount;
+            actualAmount += e.paidAmount || 0;
+            overpaymentAmount += Math.max(0, (e.paidAmount || 0) - e.amount);
+          }
+          return {
+            month,
+            year,
+            budgetAmount,
+            actualAmount,
+            overpaymentAmount,
+            expenseCount: inMonth.length,
+          };
         }
-      }
 
-      return Object.values(history);
+        const forMonth = historyRecords.filter(
+          r => r.month === month && r.year === year,
+        );
+        const budgetAmount = forMonth.reduce(
+          (s, r) => s + (r.budgetAmount || 0),
+          0,
+        );
+        const actualAmount = forMonth.reduce(
+          (s, r) => s + (r.actualAmount || 0),
+          0,
+        );
+        const overpaymentAmount = forMonth.reduce(
+          (s, r) => s + (r.overpaymentAmount || 0),
+          0,
+        );
+        return {
+          month,
+          year,
+          budgetAmount,
+          actualAmount,
+          overpaymentAmount,
+          expenseCount: forMonth.length,
+        };
+      });
+
+      // Sort oldest to newest
+      result.sort((a, b) => {
+        if (a.year !== b.year) return a.year - b.year;
+        return a.month - b.month;
+      });
+      return result;
     } catch (error) {
       logger.error('Error getting monthly expense history:', error);
       return [];
@@ -2407,7 +2917,9 @@ export const dbHelpers = {
         db.fixedExpenses,
         db.monthlyExpenseHistory,
         async () => {
-          const expenses = await db.fixedExpenses.toArray();
+          const expenses = (await db.fixedExpenses.toArray()).filter(
+            e => !e.deletedAt,
+          );
           for (const expense of expenses) {
             if ((expense.paidAmount || 0) <= 0) continue;
             const parsed = DateUtils.parseDate(expense.dueDate);
@@ -2420,6 +2932,7 @@ export const dbHelpers = {
             const month = parsed.getMonth() + 1;
             const year = parsed.getFullYear();
             const paid = expense.paidAmount || 0;
+            const snapTs = nowIso();
             const record = {
               expenseId: expense.id,
               month,
@@ -2427,7 +2940,9 @@ export const dbHelpers = {
               budgetAmount: expense.amount,
               actualAmount: paid,
               overpaymentAmount: Math.max(0, paid - expense.amount),
-              createdAt: new Date().toISOString(),
+              createdAt: snapTs,
+              updatedAt: snapTs,
+              deletedAt: null,
             };
             await db.monthlyExpenseHistory.put(record);
           }
@@ -2559,11 +3074,22 @@ export const dbHelpers = {
   },
 
   async saveBackup(backupRecord) {
-    return await db.backups.add(backupRecord);
+    const ts = nowIso();
+    const row = {
+      ...backupRecord,
+      id: backupRecord?.id ?? generateId(),
+      createdAt: backupRecord?.createdAt ?? ts,
+      updatedAt: ts,
+      deletedAt: null,
+    };
+    return await db.backups.add(row);
   },
 
   async listBackups() {
-    return await db.backups.orderBy('timestamp').reverse().toArray();
+    const rows = (
+      await db.backups.orderBy('timestamp').reverse().toArray()
+    ).filter(b => !b.deletedAt);
+    return rows;
   },
 
   async deleteBackupById(id) {
@@ -2575,22 +3101,30 @@ export const dbHelpers = {
   },
 
   async updateLastExportDate(dateString) {
-    const first = await db.userPreferences.orderBy('id').first();
+    const all = (await db.userPreferences.toArray()).filter(p => !p.deletedAt);
+    const first = all[0];
+    const ts = nowIso();
     if (first) {
-      await db.userPreferences.update(first.id, { lastExportDate: dateString });
+      await db.userPreferences.update(first.id, {
+        lastExportDate: dateString,
+        updatedAt: ts,
+      });
     } else {
       await db.userPreferences.add({
+        id: generateId(),
         component: 'dataManagement',
         preferences: {},
-        createdAt: new Date().toISOString(),
+        createdAt: ts,
+        updatedAt: ts,
+        deletedAt: null,
         lastExportDate: dateString,
       });
     }
   },
 
   async getLastExportDate() {
-    const first = await db.userPreferences.orderBy('id').first();
-    return first?.lastExportDate ?? null;
+    const all = (await db.userPreferences.toArray()).filter(p => !p.deletedAt);
+    return all[0]?.lastExportDate ?? null;
   },
 
   async validateImportData(data) {
@@ -2640,27 +3174,29 @@ export const dbHelpers = {
       }
 
       // Basic referential integrity checks (fail-fast)
-      const toId = value => {
+      const toRefId = value => {
         if (value === null || value === undefined || value === '') return null;
-        const n =
-          typeof value === 'number' ? value : Number.parseInt(value, 10);
-        return Number.isFinite(n) ? n : null;
+        if (typeof value === 'string' && value.trim().length > 0) {
+          return value.trim();
+        }
+        return null;
       };
 
-      const accountIds = new Set((data.accounts || []).map(a => toId(a.id)));
-      accountIds.delete(null);
+      const accountIds = new Set(
+        (data.accounts || []).map(a => toRefId(a?.id)).filter(Boolean),
+      );
       const creditCardIds = new Set(
-        (data.creditCards || []).map(c => toId(c.id)),
+        (data.creditCards || []).map(c => toRefId(c?.id)).filter(Boolean),
       );
-      creditCardIds.delete(null);
       const templateIds = new Set(
-        (data.recurringExpenseTemplates || []).map(t => toId(t.id)),
+        (data.recurringExpenseTemplates || [])
+          .map(t => toRefId(t?.id))
+          .filter(Boolean),
       );
-      templateIds.delete(null);
 
       // Pending transactions must reference an account
       for (const [idx, txn] of (data.pendingTransactions || []).entries()) {
-        const accountId = toId(txn?.accountId);
+        const accountId = toRefId(txn?.accountId);
         if (!accountId || !accountIds.has(accountId)) {
           errors.push(
             `pendingTransactions[${idx}]: invalid accountId (${txn?.accountId})`,
@@ -2672,10 +3208,10 @@ export const dbHelpers = {
 
       // Fixed expenses must reference exactly one payment source, and valid IDs
       for (const [idx, exp] of (data.fixedExpenses || []).entries()) {
-        const accountId = toId(exp?.accountId);
-        const creditCardId = toId(exp?.creditCardId);
-        const targetCreditCardId = toId(exp?.targetCreditCardId);
-        const recurringTemplateId = toId(exp?.recurringTemplateId);
+        const accountId = toRefId(exp?.accountId);
+        const creditCardId = toRefId(exp?.creditCardId);
+        const targetCreditCardId = toRefId(exp?.targetCreditCardId);
+        const recurringTemplateId = toRefId(exp?.recurringTemplateId);
 
         const hasAccount = hasValue(accountId);
         const hasCreditCard = hasValue(creditCardId);
@@ -2738,9 +3274,9 @@ export const dbHelpers = {
       for (const [idx, tpl] of (
         data.recurringExpenseTemplates || []
       ).entries()) {
-        const accountId = toId(tpl?.accountId);
-        const creditCardId = toId(tpl?.creditCardId);
-        const targetCreditCardId = toId(tpl?.targetCreditCardId);
+        const accountId = toRefId(tpl?.accountId);
+        const creditCardId = toRefId(tpl?.creditCardId);
+        const targetCreditCardId = toRefId(tpl?.targetCreditCardId);
 
         const hasAccount = hasValue(accountId);
         const hasCreditCard = hasValue(creditCardId);
@@ -2801,7 +3337,7 @@ export const dbHelpers = {
   // Audit log helpers
   async getAuditLogs() {
     try {
-      const logs = await db.auditLogs.toArray();
+      const logs = (await db.auditLogs.toArray()).filter(l => !l.deletedAt);
       return logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     } catch (error) {
       logger.error('Error getting audit logs:', error);
@@ -2873,6 +3409,7 @@ export const dbHelpers = {
             months,
             finalBalance: remainingBalance,
             payoffDate: null,
+            monthlyInterest: interestPayment,
           };
         }
       }
@@ -2904,10 +3441,14 @@ export const dbHelpers = {
 
       const paycheckSettingsCount = await db.paycheckSettings.count();
       if (paycheckSettingsCount === 0) {
+        const ts = nowIso();
         await db.paycheckSettings.add({
+          id: generateId(),
           lastPaycheckDate: '',
           frequency: DEFAULT_PAY_FREQUENCY,
-          createdAt: new Date().toISOString(),
+          createdAt: ts,
+          updatedAt: ts,
+          deletedAt: null,
         });
       }
 
@@ -2944,13 +3485,22 @@ export const dbHelpers = {
       const sanitizedData = sanitizeExpenseData(expenseData);
       validateExpense(sanitizedData);
 
-      const id = await db.fixedExpenses.add({
+      const categoryId =
+        sanitizedData.categoryId ??
+        (await resolveCategoryIdByName(sanitizedData.category));
+      const ts = nowIso();
+      const row = {
         ...sanitizedData,
-        createdAt: new Date().toISOString(),
-      });
+        id: generateId(),
+        categoryId: categoryId ?? null,
+        createdAt: ts,
+        updatedAt: ts,
+        deletedAt: null,
+      };
+      await db.fixedExpenses.add(row);
 
       logger.success(`Added V4 expense: ${sanitizedData.name}`);
-      return id;
+      return row.id;
     } catch (error) {
       logger.error('Error adding V4 expense:', error);
       throw error;
@@ -2960,7 +3510,7 @@ export const dbHelpers = {
   /**
    * Update fixed expense with V4 validation (dual foreign key)
    *
-   * @param {number} id - Expense ID to update
+   * @param {string} id - Expense ID to update
    * @param {Object} updates - Fields to update
    * @param {Object} [options={}] - Optional validation options
    * @param {boolean} [options.skipPaymentSourceValidation=false] - Skip
@@ -2975,7 +3525,7 @@ export const dbHelpers = {
 
       // Get current expense to merge with updates
       const currentExpense = await db.fixedExpenses.get(id);
-      if (!currentExpense) {
+      if (!currentExpense || currentExpense.deletedAt) {
         throw new Error(`Expense with ID ${id} not found`);
       }
 
@@ -2986,7 +3536,16 @@ export const dbHelpers = {
 
       // Only update the fields that were actually changed
       const sanitizedUpdates = sanitizeExpenseData(updates);
-      await db.fixedExpenses.update(id, sanitizedUpdates);
+      if (Object.prototype.hasOwnProperty.call(updates, 'category')) {
+        sanitizedUpdates.categoryId =
+          updates.categoryId !== undefined
+            ? updates.categoryId
+            : await resolveCategoryIdByName(updates.category);
+      }
+      await db.fixedExpenses.update(id, {
+        ...sanitizedUpdates,
+        updatedAt: nowIso(),
+      });
 
       // Sync due date to credit card when a CC payment expense due date changes
       if (
@@ -3024,7 +3583,7 @@ export const dbHelpers = {
    * This prevents partial commits where balances update but the expense does not
    * (or vice versa). Audit log is best-effort by design.
    *
-   * @param {number} expenseId - Expense ID to update
+   * @param {string} expenseId - Expense ID to update
    * @param {Object} updates - Fields to update (must include paidAmount)
    * @param {Object} [options={}] - Optional validation options for validateExpense
    */
@@ -3051,7 +3610,7 @@ export const dbHelpers = {
       async () => {
         let templateIdAdvanced = null;
         const currentExpense = await db.fixedExpenses.get(expenseId);
-        if (!currentExpense) {
+        if (!currentExpense || currentExpense.deletedAt) {
           throw new Error(`Expense with ID ${expenseId} not found`);
         }
 
@@ -3077,7 +3636,11 @@ export const dbHelpers = {
 
         // Persist expense first (within the same transaction).
         const sanitizedUpdates = sanitizeExpenseData(updatesWithDerived);
-        await db.fixedExpenses.update(expenseId, sanitizedUpdates);
+        const ts = nowIso();
+        await db.fixedExpenses.update(expenseId, {
+          ...sanitizedUpdates,
+          updatedAt: ts,
+        });
 
         // No balance change needed.
         if (paymentDifference === 0) {
@@ -3118,18 +3681,24 @@ export const dbHelpers = {
 
           await db.accounts.update(fundingAccount.id, {
             currentBalance: newAccountBalance,
+            updatedAt: ts,
           });
           await db.creditCards.update(targetCard.id, {
             balance: newCardBalance,
+            updatedAt: ts,
           });
 
-          await addAuditLogEntry('PAYMENT', 'creditCardPayment', expenseId, {
-            amount: paymentDifference,
-            fundingAccountId: fundingAccount.id,
-            targetCreditCardId: targetCard.id,
-            newAccountBalance,
-            newCreditCardBalance: newCardBalance,
-          });
+          try {
+            await addAuditLogEntry('PAYMENT', 'creditCardPayment', expenseId, {
+              amount: paymentDifference,
+              fundingAccountId: fundingAccount.id,
+              targetCreditCardId: targetCard.id,
+              newAccountBalance,
+              newCreditCardBalance: newCardBalance,
+            });
+          } catch (auditErr) {
+            logger.warn('Audit log (credit card payment) failed:', auditErr);
+          }
         } else if (sanitizedExpense.accountId) {
           const account = await db.accounts.get(sanitizedExpense.accountId);
           if (!account) {
@@ -3138,13 +3707,20 @@ export const dbHelpers = {
 
           const newBalance =
             Number(account.currentBalance || 0) - paymentDifference;
-          await db.accounts.update(account.id, { currentBalance: newBalance });
-
-          await addAuditLogEntry('PAYMENT', 'account', account.id, {
-            expenseId,
-            amount: paymentDifference,
-            newBalance,
+          await db.accounts.update(account.id, {
+            currentBalance: newBalance,
+            updatedAt: ts,
           });
+
+          try {
+            await addAuditLogEntry('PAYMENT', 'account', account.id, {
+              expenseId,
+              amount: paymentDifference,
+              newBalance,
+            });
+          } catch (auditErr) {
+            logger.warn('Audit log (account payment) failed:', auditErr);
+          }
         } else if (sanitizedExpense.creditCardId) {
           const creditCard = await db.creditCards.get(
             sanitizedExpense.creditCardId,
@@ -3158,13 +3734,20 @@ export const dbHelpers = {
           // Credit card charges increase debt.
           const newBalance =
             Number(creditCard.balance || 0) + paymentDifference;
-          await db.creditCards.update(creditCard.id, { balance: newBalance });
-
-          await addAuditLogEntry('PAYMENT', 'creditCard', creditCard.id, {
-            expenseId,
-            amount: paymentDifference,
-            newBalance,
+          await db.creditCards.update(creditCard.id, {
+            balance: newBalance,
+            updatedAt: ts,
           });
+
+          try {
+            await addAuditLogEntry('PAYMENT', 'creditCard', creditCard.id, {
+              expenseId,
+              amount: paymentDifference,
+              newBalance,
+            });
+          } catch (auditErr) {
+            logger.warn('Audit log (credit card charge) failed:', auditErr);
+          }
         } else {
           throw new Error(
             'No payment source specified (expected accountId or creditCardId)',
@@ -3241,7 +3824,7 @@ export const dbHelpers = {
   async getFixedExpenseV4(id) {
     try {
       const expense = await db.fixedExpenses.get(id);
-      if (!expense) {
+      if (!expense || expense.deletedAt) {
         logger.warn(`Expense with ID ${id} not found`);
         return null;
       }
@@ -3258,7 +3841,9 @@ export const dbHelpers = {
    */
   async getFixedExpensesV4() {
     try {
-      const expenses = await db.fixedExpenses.toArray();
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
       return expenses;
     } catch (error) {
       logger.error('Error getting V4 expenses:', error);
@@ -3274,14 +3859,14 @@ export const dbHelpers = {
     try {
       if (expense.accountId) {
         const account = await db.accounts.get(expense.accountId);
-        if (!account) {
+        if (!account || account.deletedAt) {
           throw new Error(`Account with ID ${expense.accountId} not found`);
         }
       }
 
       if (expense.creditCardId) {
         const creditCard = await db.creditCards.get(expense.creditCardId);
-        if (!creditCard) {
+        if (!creditCard || creditCard.deletedAt) {
           throw new Error(
             `Credit card with ID ${expense.creditCardId} not found`,
           );
@@ -3292,7 +3877,7 @@ export const dbHelpers = {
         const targetCreditCard = await db.creditCards.get(
           expense.targetCreditCardId,
         );
-        if (!targetCreditCard) {
+        if (!targetCreditCard || targetCreditCard.deletedAt) {
           throw new Error(
             `Target credit card with ID ${expense.targetCreditCardId} not found`,
           );
@@ -3307,66 +3892,6 @@ export const dbHelpers = {
   },
 
   /**
-   * Migrate V3 expense to V4 format
-   * Converts old accountId format to new dual foreign key format
-   */
-  async migrateExpenseToV4(expenseId) {
-    try {
-      const expense = await db.fixedExpenses.get(expenseId);
-      if (!expense) {
-        throw new Error(`Expense with ID ${expenseId} not found`);
-      }
-
-      // Check if accountId is in old format (string with cc- prefix)
-      if (
-        typeof expense.accountId === 'string' &&
-        expense.accountId.startsWith('cc-')
-      ) {
-        // Convert to new format
-        const creditCardId = parseInt(expense.accountId.slice(3));
-
-        await this.updateFixedExpenseV4(expenseId, {
-          accountId: null,
-          creditCardId,
-        });
-
-        logger.success(`Migrated expense ${expenseId} from V3 to V4 format`);
-      }
-
-      return true;
-    } catch (error) {
-      logger.error('Error migrating expense to V4:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Bulk migrate all expenses from V3 to V4 format
-   */
-  async migrateAllExpensesToV4() {
-    try {
-      const expenses = await db.fixedExpenses.toArray();
-      let migratedCount = 0;
-
-      for (const expense of expenses) {
-        if (
-          typeof expense.accountId === 'string' &&
-          expense.accountId.startsWith('cc-')
-        ) {
-          await this.migrateExpenseToV4(expense.id);
-          migratedCount++;
-        }
-      }
-
-      logger.success(`Migrated ${migratedCount} expenses from V3 to V4 format`);
-      return migratedCount;
-    } catch (error) {
-      logger.error('Error bulk migrating expenses to V4:', error);
-      throw error;
-    }
-  },
-
-  /**
    * Audit expenses to check for legacy format issues
    * Identifies expenses that need migration to V4 format
    *
@@ -3374,9 +3899,13 @@ export const dbHelpers = {
    */
   async auditExpenseFormat() {
     try {
-      const expenses = await db.fixedExpenses.toArray();
-      const accounts = await db.accounts.toArray();
-      const creditCards = await db.creditCards.toArray();
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const accounts = (await db.accounts.toArray()).filter(a => !a.deletedAt);
+      const creditCards = (await db.creditCards.toArray()).filter(
+        c => !c.deletedAt,
+      );
 
       const accountIds = new Set(accounts.map(acc => acc.id));
       const creditCardIds = new Set(creditCards.map(card => card.id));
@@ -3388,21 +3917,11 @@ export const dbHelpers = {
           missingCreditCardId: [],
           bothFieldsSet: [],
           noPaymentSource: [],
-          stringAccountId: [],
         },
         summary: {},
       };
 
       expenses.forEach(expense => {
-        // Check for string accountId (V3 format with "cc-" prefix)
-        if (typeof expense.accountId === 'string') {
-          report.issues.stringAccountId.push({
-            id: expense.id,
-            name: expense.name,
-            accountId: expense.accountId,
-          });
-        }
-
         // Check for expenses with both accountId and creditCardId set
         if (expense.accountId && expense.creditCardId) {
           report.issues.bothFieldsSet.push({
@@ -3421,30 +3940,24 @@ export const dbHelpers = {
           });
         }
 
-        // Check if accountId matches a credit card ID (legacy numeric format)
+        // accountId holds a credit card ID (should be in creditCardId instead)
         if (
           expense.accountId &&
-          typeof expense.accountId === 'number' &&
-          !expense.creditCardId
+          !expense.creditCardId &&
+          creditCardIds.has(expense.accountId) &&
+          !accountIds.has(expense.accountId)
         ) {
-          if (
-            creditCardIds.has(expense.accountId) &&
-            !accountIds.has(expense.accountId)
-          ) {
-            report.issues.accountIdMatchesCreditCard.push({
-              id: expense.id,
-              name: expense.name,
-              accountId: expense.accountId,
-              shouldBeCreditCardId: expense.accountId,
-            });
-          }
+          report.issues.accountIdMatchesCreditCard.push({
+            id: expense.id,
+            name: expense.name,
+            accountId: expense.accountId,
+            shouldBeCreditCardId: expense.accountId,
+          });
         }
 
-        // Check for expenses that should have creditCardId but don't
-        // (This is harder to detect, but we can check if accountId doesn't match any account)
+        // accountId does not reference any account or card
         if (
           expense.accountId &&
-          typeof expense.accountId === 'number' &&
           !expense.creditCardId &&
           !accountIds.has(expense.accountId) &&
           !creditCardIds.has(expense.accountId)
@@ -3464,14 +3977,12 @@ export const dbHelpers = {
           report.issues.accountIdMatchesCreditCard.length +
           report.issues.missingCreditCardId.length +
           report.issues.bothFieldsSet.length +
-          report.issues.noPaymentSource.length +
-          report.issues.stringAccountId.length,
+          report.issues.noPaymentSource.length,
         accountIdMatchesCreditCard:
           report.issues.accountIdMatchesCreditCard.length,
         missingCreditCardId: report.issues.missingCreditCardId.length,
         bothFieldsSet: report.issues.bothFieldsSet.length,
         noPaymentSource: report.issues.noPaymentSource.length,
-        stringAccountId: report.issues.stringAccountId.length,
       };
 
       // Log summary
@@ -3499,9 +4010,13 @@ export const dbHelpers = {
    */
   async migrateExpensesToV4Format() {
     try {
-      const expenses = await db.fixedExpenses.toArray();
-      const accounts = await db.accounts.toArray();
-      const creditCards = await db.creditCards.toArray();
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const accounts = (await db.accounts.toArray()).filter(a => !a.deletedAt);
+      const creditCards = (await db.creditCards.toArray()).filter(
+        c => !c.deletedAt,
+      );
 
       const accountIds = new Set(accounts.map(acc => acc.id));
       const creditCardIds = new Set(creditCards.map(card => card.id));
@@ -3526,49 +4041,24 @@ export const dbHelpers = {
             continue;
           }
 
-          // Check if accountId is a string with "cc-" prefix (V3 format)
-          if (
-            typeof expense.accountId === 'string' &&
-            expense.accountId.startsWith('cc-')
-          ) {
-            const creditCardId = parseInt(expense.accountId.slice(3));
-            if (creditCardIds.has(creditCardId)) {
-              await this.updateFixedExpenseV4(expense.id, {
-                accountId: null,
-                creditCardId,
-              });
-              report.migrated.push({
-                id: expense.id,
-                name: expense.name,
-                from: `accountId: "${expense.accountId}"`,
-                to: `creditCardId: ${creditCardId}`,
-              });
-              continue;
-            }
-          }
-
-          // Check if numeric accountId matches a credit card ID (legacy numeric format)
+          // accountId is a credit card ID: move to creditCardId
           if (
             expense.accountId &&
-            typeof expense.accountId === 'number' &&
-            !expense.creditCardId
+            !expense.creditCardId &&
+            creditCardIds.has(expense.accountId) &&
+            !accountIds.has(expense.accountId)
           ) {
-            if (
-              creditCardIds.has(expense.accountId) &&
-              !accountIds.has(expense.accountId)
-            ) {
-              await this.updateFixedExpenseV4(expense.id, {
-                accountId: null,
-                creditCardId: expense.accountId,
-              });
-              report.migrated.push({
-                id: expense.id,
-                name: expense.name,
-                from: `accountId: ${expense.accountId} (credit card ID)`,
-                to: `creditCardId: ${expense.accountId}`,
-              });
-              continue;
-            }
+            await this.updateFixedExpenseV4(expense.id, {
+              accountId: null,
+              creditCardId: expense.accountId,
+            });
+            report.migrated.push({
+              id: expense.id,
+              name: expense.name,
+              from: `accountId: ${expense.accountId} (credit card ID)`,
+              to: `creditCardId: ${expense.accountId}`,
+            });
+            continue;
           }
 
           // Skip if accountId matches a valid account (correct format)

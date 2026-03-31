@@ -183,9 +183,7 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
             id='debt-calc-credit-card'
             value={selectedCard?.id || ''}
             onChange={e => {
-              const card = creditCards.find(
-                c => c.id === parseInt(e.target.value),
-              );
+              const card = creditCards.find(c => c.id === e.target.value);
               setSelectedCard(card);
             }}
             className='glass-input w-full'

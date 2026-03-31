@@ -7,12 +7,11 @@ export const useFinanceCalculations = (
 ) => {
   const calculateProjectedBalance = useMemo(() => {
     return accountId => {
-      const numericAccountId = parseInt(accountId);
-      const account = accounts.find(a => a.id === numericAccountId);
+      const account = accounts.find(a => a.id === accountId);
       if (!account) return 0;
 
       const pendingForAccount = pendingTransactions
-        .filter(t => parseInt(t.accountId) === numericAccountId)
+        .filter(t => t.accountId === accountId)
         .reduce((sum, t) => sum + t.amount, 0);
 
       // Add pending amount to get projected balance (expenses or income)
@@ -27,9 +26,8 @@ export const useFinanceCalculations = (
   const getAccountProjectedBalances = useMemo(() => {
     const balances = {};
     accounts.forEach(account => {
-      const numericAccountId = parseInt(account.id);
       const pendingForAccount = pendingTransactions
-        .filter(t => parseInt(t.accountId) === numericAccountId)
+        .filter(t => t.accountId === account.id)
         .reduce((sum, t) => sum + t.amount, 0);
       balances[account.id] = account.currentBalance + pendingForAccount;
     });
@@ -45,7 +43,7 @@ export const useFinanceCalculations = (
     if (!defaultAccount) return 0;
 
     const pendingForAccount = pendingTransactions
-      .filter(t => parseInt(t.accountId) === defaultAccount.id)
+      .filter(t => t.accountId === defaultAccount.id)
       .reduce((sum, t) => sum + t.amount, 0);
 
     return defaultAccount.currentBalance + pendingForAccount;
@@ -53,16 +51,14 @@ export const useFinanceCalculations = (
 
   const getAccountName = useMemo(() => {
     return accountId => {
-      const numericAccountId = parseInt(accountId);
-
       // First, look in regular accounts
-      const account = accounts.find(a => a.id === numericAccountId);
+      const account = accounts.find(a => a.id === accountId);
       if (account) {
         return account.name;
       }
 
       // If not found, look in credit cards
-      const creditCard = creditCards.find(cc => cc.id === numericAccountId);
+      const creditCard = creditCards.find(cc => cc.id === accountId);
       if (creditCard) {
         return creditCard.name;
       }

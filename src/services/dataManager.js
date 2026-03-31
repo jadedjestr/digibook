@@ -281,7 +281,7 @@ class DataManager {
             row.isDefault === 'Yes';
           break;
         case 'pendingTransactions':
-          converted.accountId = parseInt(row.accountId) || 0;
+          converted.accountId = row.accountId;
           converted.amount = parseFloat(row.amount) || 0;
           converted.createdAt = row.createdAt
             ? new Date(row.createdAt).toISOString()
@@ -292,15 +292,9 @@ class DataManager {
           converted.paidAmount = parseFloat(row.paidAmount) || 0;
 
           // V4 format: handle both accountId and creditCardId
-          converted.accountId = row.accountId
-            ? parseInt(row.accountId) || null
-            : null;
-          converted.creditCardId = row.creditCardId
-            ? parseInt(row.creditCardId) || null
-            : null;
-          converted.targetCreditCardId = row.targetCreditCardId
-            ? parseInt(row.targetCreditCardId) || null
-            : null;
+          converted.accountId = row.accountId || null;
+          converted.creditCardId = row.creditCardId || null;
+          converted.targetCreditCardId = row.targetCreditCardId || null;
           converted.dueDate = row.dueDate
             ? new Date(row.dueDate).toISOString()
             : '';
@@ -329,13 +323,9 @@ class DataManager {
           converted.intervalValue = parseInt(row.intervalValue) || 1;
 
           // V4 format: handle both accountId and creditCardId
-          converted.accountId = row.accountId ? parseInt(row.accountId) : null;
-          converted.creditCardId = row.creditCardId
-            ? parseInt(row.creditCardId)
-            : null;
-          converted.targetCreditCardId = row.targetCreditCardId
-            ? parseInt(row.targetCreditCardId) || null
-            : null;
+          converted.accountId = row.accountId || null;
+          converted.creditCardId = row.creditCardId || null;
+          converted.targetCreditCardId = row.targetCreditCardId || null;
           converted.isActive =
             row.isActive === 'true' ||
             row.isActive === '1' ||
@@ -806,20 +796,6 @@ export const validateExpenseDataV4 = expense => {
 export const convertV3ToV4Expense = v3Expense => {
   const v4Expense = { ...v3Expense };
 
-  // Check if accountId is in old V3 format (string with cc- prefix)
-  if (
-    typeof v3Expense.accountId === 'string' &&
-    v3Expense.accountId.startsWith('cc-')
-  ) {
-    // Convert cc-1 → creditCardId: 1, accountId: null
-    v4Expense.creditCardId = parseInt(v3Expense.accountId.slice(3));
-    v4Expense.accountId = null;
-
-    logger.debug(
-      `Converted V3 expense "${v4Expense.name}" from credit card format`,
-    );
-  }
-
   // Ensure V4 format compliance
   return validateExpenseDataV4(v4Expense);
 };
@@ -871,24 +847,6 @@ export const fixCommonExpenseIssues = expense => {
       );
       fixedExpense.creditCardId = null;
     }
-  }
-
-  // Issue 4: Invalid ID types
-  if (fixedExpense.accountId && typeof fixedExpense.accountId !== 'number') {
-    fixedExpense.accountId = parseInt(fixedExpense.accountId) || null;
-  }
-  if (
-    fixedExpense.creditCardId &&
-    typeof fixedExpense.creditCardId !== 'number'
-  ) {
-    fixedExpense.creditCardId = parseInt(fixedExpense.creditCardId) || null;
-  }
-  if (
-    fixedExpense.targetCreditCardId &&
-    typeof fixedExpense.targetCreditCardId !== 'number'
-  ) {
-    fixedExpense.targetCreditCardId =
-      parseInt(fixedExpense.targetCreditCardId) || null;
   }
 
   logger.debug(`Fixed expense data issues for: ${fixedExpense.name}`);

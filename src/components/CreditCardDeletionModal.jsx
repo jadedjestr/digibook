@@ -85,9 +85,7 @@ const CreditCardDeletionModal = ({
           reassignmentMap,
         )) {
           if (newAccountId) {
-            const expense = linkedExpenses.find(
-              e => e.id === parseInt(expenseId),
-            );
+            const expense = linkedExpenses.find(e => e.id === expenseId);
             if (expense) {
               // Determine which field to update based on how the expense was linked
               const updateData = {};
@@ -100,10 +98,7 @@ const CreditCardDeletionModal = ({
                 // For credit card payment expenses, reassign target credit card
                 updateData.targetCreditCardId = newAccountId;
               }
-              await dbHelpers.updateFixedExpenseV4(
-                parseInt(expenseId),
-                updateData,
-              );
+              await dbHelpers.updateFixedExpenseV4(expenseId, updateData);
               logger.info(`Reassigned expense ${expenseId} to ${newAccountId}`);
             }
           }
@@ -111,9 +106,7 @@ const CreditCardDeletionModal = ({
       } else if (deletionOption === 'unlink') {
         // Remove payment source mapping from all expenses
         for (const expenseId of Object.keys(reassignmentMap)) {
-          const expense = linkedExpenses.find(
-            e => e.id === parseInt(expenseId),
-          );
+          const expense = linkedExpenses.find(e => e.id === expenseId);
           if (expense) {
             const updateData = {};
             if (expense.accountId === creditCard.id) {
@@ -125,11 +118,9 @@ const CreditCardDeletionModal = ({
             if (expense.targetCreditCardId === creditCard.id) {
               updateData.targetCreditCardId = null;
             }
-            await dbHelpers.updateFixedExpenseV4(
-              parseInt(expenseId),
-              updateData,
-              { skipPaymentSourceValidation: true },
-            );
+            await dbHelpers.updateFixedExpenseV4(expenseId, updateData, {
+              skipPaymentSourceValidation: true,
+            });
             logger.info(`Unlinked expense ${expenseId} from credit card`);
           }
         }

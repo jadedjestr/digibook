@@ -195,7 +195,7 @@ const PendingTransactions = ({
                 onChange={e =>
                   setNewTransaction({
                     ...newTransaction,
-                    accountId: parseInt(e.target.value) || '',
+                    accountId: e.target.value || '',
                   })
                 }
                 className={`glass-input w-full ${errors.accountId ? 'glass-error' : ''}`}
@@ -390,11 +390,9 @@ const PendingTransactions = ({
             </thead>
             <tbody>
               {pendingTransactions.map(transaction => {
-                const account = accountMap.get(parseInt(transaction.accountId));
+                const account = accountMap.get(transaction.accountId);
                 const projectedBalance =
-                  getAccountProjectedBalances[
-                    parseInt(transaction.accountId)
-                  ] ?? 0;
+                  getAccountProjectedBalances[transaction.accountId] ?? 0;
 
                 return (
                   <tr key={transaction.id}>
@@ -403,7 +401,7 @@ const PendingTransactions = ({
                         value={transaction.accountId}
                         onSave={accountId =>
                           handleUpdateTransaction(transaction.id, {
-                            accountId: parseInt(accountId) || 0,
+                            accountId: accountId || '',
                           })
                         }
                         options={accountOptions}

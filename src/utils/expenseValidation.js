@@ -12,8 +12,8 @@ import { logger } from './logger';
  * Validates that an expense has exactly one payment source
  *
  * @param {Object} expense - The expense object to validate
- * @param {number|null} expense.accountId - Account ID for checking/savings
- * @param {number|null} expense.creditCardId - Credit card ID for credit card
+ * @param {string|null} expense.accountId - Account ID for checking/savings
+ * @param {string|null} expense.creditCardId - Credit card ID for credit card
  * @returns {boolean} True if valid
  * @throws {Error} If validation fails
  */
@@ -82,17 +82,19 @@ export const validateCreditCardPayment = expense => {
 };
 
 /**
- * Validates that account and credit card IDs are valid numbers
+ * Validates that account and credit card IDs are non-empty strings
  *
  * @param {Object} expense - The expense object to validate
  * @returns {boolean} True if valid
  * @throws {Error} If validation fails
  */
+const isValidId = id => typeof id === 'string' && id.trim().length > 0;
+
 export const validatePaymentSourceIds = expense => {
   // Validate accountId if present
   if (expense.accountId !== null && expense.accountId !== undefined) {
-    if (!Number.isInteger(expense.accountId) || expense.accountId <= 0) {
-      const error = `Invalid accountId: ${expense.accountId}. Must be a positive integer.`;
+    if (!isValidId(expense.accountId)) {
+      const error = `Invalid accountId: ${expense.accountId}. Must be a non-empty string.`;
       logger.error('Payment source ID validation failed:', error);
       throw new Error(error);
     }
@@ -100,8 +102,8 @@ export const validatePaymentSourceIds = expense => {
 
   // Validate creditCardId if present
   if (expense.creditCardId !== null && expense.creditCardId !== undefined) {
-    if (!Number.isInteger(expense.creditCardId) || expense.creditCardId <= 0) {
-      const error = `Invalid creditCardId: ${expense.creditCardId}. Must be a positive integer.`;
+    if (!isValidId(expense.creditCardId)) {
+      const error = `Invalid creditCardId: ${expense.creditCardId}. Must be a non-empty string.`;
       logger.error('Payment source ID validation failed:', error);
       throw new Error(error);
     }
@@ -112,11 +114,8 @@ export const validatePaymentSourceIds = expense => {
     expense.targetCreditCardId !== null &&
     expense.targetCreditCardId !== undefined
   ) {
-    if (
-      !Number.isInteger(expense.targetCreditCardId) ||
-      expense.targetCreditCardId <= 0
-    ) {
-      const error = `Invalid targetCreditCardId: ${expense.targetCreditCardId}. Must be a positive integer.`;
+    if (!isValidId(expense.targetCreditCardId)) {
+      const error = `Invalid targetCreditCardId: ${expense.targetCreditCardId}. Must be a non-empty string.`;
       logger.error('Payment source ID validation failed:', error);
       throw new Error(error);
     }

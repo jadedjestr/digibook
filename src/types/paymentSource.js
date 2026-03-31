@@ -25,13 +25,13 @@ export const createPaymentSource = {
   /**
    * Create a payment source for an account (checking/savings)
    *
-   * @param {number} accountId - The account ID
+   * @param {string} accountId - The account ID
    * @returns {Object} Payment source object
    */
   account: accountId => {
-    if (!accountId || !Number.isInteger(accountId) || accountId <= 0) {
+    if (typeof accountId !== 'string' || accountId.trim().length === 0) {
       throw new Error(
-        `Invalid accountId: ${accountId}. Must be a positive integer.`,
+        `Invalid accountId: ${accountId}. Must be a non-empty string.`,
       );
     }
 
@@ -45,13 +45,13 @@ export const createPaymentSource = {
   /**
    * Create a payment source for a credit card
    *
-   * @param {number} creditCardId - The credit card ID
+   * @param {string} creditCardId - The credit card ID
    * @returns {Object} Payment source object
    */
   creditCard: creditCardId => {
-    if (!creditCardId || !Number.isInteger(creditCardId) || creditCardId <= 0) {
+    if (typeof creditCardId !== 'string' || creditCardId.trim().length === 0) {
       throw new Error(
-        `Invalid creditCardId: ${creditCardId}. Must be a positive integer.`,
+        `Invalid creditCardId: ${creditCardId}. Must be a non-empty string.`,
       );
     }
 
@@ -142,7 +142,7 @@ export const PaymentSourceUtils = {
    * Get the ID from a payment source (regardless of type)
    *
    * @param {Object} paymentSource - The payment source
-   * @returns {number|null} The ID or null if empty
+   * @returns {string|null} The ID or null if empty
    */
   getId: paymentSource => {
     if (!paymentSource) return null;

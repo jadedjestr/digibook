@@ -477,7 +477,11 @@ const ExpenseTableContainer = ({
 
   const handleAddPanelDataChange = useCallback(
     async newExpenseId => {
-      if (newExpenseId && typeof newExpenseId === 'number') {
+      if (
+        newExpenseId &&
+        typeof newExpenseId === 'string' &&
+        newExpenseId.trim().length > 0
+      ) {
         setNewExpenseId(newExpenseId);
       }
       await reloadExpenses();

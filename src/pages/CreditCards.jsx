@@ -107,8 +107,7 @@ const CreditCards = ({
       }
       const cid = expense.targetCreditCardId;
       if (map.has(cid)) continue;
-      const accountId =
-        expense.accountId != null ? Number(expense.accountId) : null;
+      const accountId = expense.accountId != null ? expense.accountId : null;
       const account = accounts.find(a => a.id === accountId);
       map.set(cid, {
         fundingSourceName: account ? account.name : null,
@@ -245,11 +244,11 @@ const CreditCards = ({
         await dbHelpers.updateCreditCard(editingCard.id, cardData);
         if (
           formData.fundingAccountId !== '' &&
-          Number(formData.fundingAccountId) !== Number(initialFundingAccountId)
+          formData.fundingAccountId !== initialFundingAccountId
         ) {
           await dbHelpers.updateFundingAccountForCard(
             editingCard.id,
-            Number(formData.fundingAccountId),
+            formData.fundingAccountId,
           );
         }
         notify.success('Credit card updated successfully');
