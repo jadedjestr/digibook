@@ -172,7 +172,7 @@ const Accounts = () => {
   return (
     <div className='space-y-6'>
       {/* Header */}
-      <div className='flex items-center justify-between'>
+      <div className='flex items-center justify-between pl-14 lg:pl-0'>
         <div>
           <h1 className='text-3xl font-bold text-primary text-shadow-lg'>
             Accounts
@@ -336,8 +336,8 @@ const Accounts = () => {
               </div>
 
               {/* Accounts Table for this type */}
-              <div className='overflow-x-auto -mx-1'>
-                <table className='glass-table min-w-full'>
+              <div className='overflow-x-auto w-full'>
+                <table className='glass-table min-w-max w-full'>
                   <thead>
                     <tr>
                       <th>Account</th>

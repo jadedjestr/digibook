@@ -52,7 +52,7 @@ const Insights = ({
   if (isLoading) {
     return (
       <div className='space-y-6'>
-        <div className='flex items-center justify-between'>
+        <div className='flex items-center justify-between pl-14 lg:pl-0'>
           <div>
             <h1 className='text-3xl font-bold text-white text-shadow-lg'>
               Insights
@@ -75,7 +75,7 @@ const Insights = ({
   return (
     <div className='space-y-6'>
       {/* Header */}
-      <div className='flex items-center justify-between'>
+      <div className='flex items-center justify-between pl-14 lg:pl-0'>
         <div>
           <h1 className='text-3xl font-bold text-white text-shadow-lg'>
             Insights

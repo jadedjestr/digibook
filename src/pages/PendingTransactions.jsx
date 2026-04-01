@@ -164,7 +164,7 @@ const PendingTransactions = ({
   return (
     <div className='space-y-6'>
       {/* Header */}
-      <div className='flex items-center justify-between'>
+      <div className='flex items-center justify-between pl-14 lg:pl-0'>
         <div>
           <h1 className='text-3xl font-bold text-primary text-shadow-lg'>
             Pending Transactions

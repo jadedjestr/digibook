@@ -589,7 +589,7 @@ const CreditCards = ({
   return (
     <div className='space-y-6'>
       {/* Header */}
-      <div className='flex justify-between items-center mb-6'>
+      <div className='flex justify-between items-center mb-6 pl-14 lg:pl-0'>
         <h1 className='text-3xl font-semibold text-white text-shadow'>
           Credit Cards
         </h1>
