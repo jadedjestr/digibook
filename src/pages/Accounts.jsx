@@ -336,94 +336,98 @@ const Accounts = () => {
               </div>
 
               {/* Accounts Table for this type */}
-              <table className='glass-table'>
-                <thead>
-                  <tr>
-                    <th>Account</th>
-                    <th>Current Balance</th>
-                    <th>Projected Balance</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {typeAccounts.map(account => {
-                    const projectedBalance = calculateProjectedBalance(account);
-                    const _isEditing = editingId === account.id;
+              <div className='overflow-x-auto -mx-1'>
+                <table className='glass-table min-w-full'>
+                  <thead>
+                    <tr>
+                      <th>Account</th>
+                      <th>Current Balance</th>
+                      <th>Projected Balance</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {typeAccounts.map(account => {
+                      const projectedBalance =
+                        calculateProjectedBalance(account);
+                      const _isEditing = editingId === account.id;
 
-                    logger.debug('Account data:', account);
+                      logger.debug('Account data:', account);
 
-                    return (
-                      <tr key={account.id}>
-                        <td>
-                          <InlineEdit
-                            value={account.name}
-                            onSave={name =>
-                              handleUpdateAccount(account.id, { name })
-                            }
-                            showEditIcon
-                          />
-                        </td>
-                        <td>
-                          <InlineEdit
-                            value={account.currentBalance}
-                            onSave={currentBalance =>
-                              handleUpdateAccount(account.id, {
-                                currentBalance: parseFloat(currentBalance) || 0,
-                              })
-                            }
-                            type='number'
-                            showEditIcon
-                          />
-                        </td>
-                        <td>
-                          <span
-                            className={`font-semibold ${
-                              projectedBalance < account.currentBalance
-                                ? 'text-yellow-400'
-                                : 'text-primary'
-                            }`}
-                          >
-                            <PrivacyWrapper>
-                              {formatCurrency(projectedBalance)}
-                            </PrivacyWrapper>
-                          </span>
-                        </td>
-                        <td>
-                          <div className='flex items-center space-x-2'>
-                            <button
-                              onClick={() => handleSetDefault(account.id)}
-                              className={`p-1 rounded transition-all duration-200 ${
-                                account.isDefault
-                                  ? 'text-yellow-400 bg-yellow-500/20'
-                                  : 'text-muted hover:text-white hover:bg-white/10'
-                              }`}
-                              title={
-                                account.isDefault
-                                  ? 'Default Account'
-                                  : 'Set as Default'
+                      return (
+                        <tr key={account.id}>
+                          <td>
+                            <InlineEdit
+                              value={account.name}
+                              onSave={name =>
+                                handleUpdateAccount(account.id, { name })
                               }
+                              showEditIcon
+                            />
+                          </td>
+                          <td>
+                            <InlineEdit
+                              value={account.currentBalance}
+                              onSave={currentBalance =>
+                                handleUpdateAccount(account.id, {
+                                  currentBalance:
+                                    parseFloat(currentBalance) || 0,
+                                })
+                              }
+                              type='number'
+                              showEditIcon
+                            />
+                          </td>
+                          <td>
+                            <span
+                              className={`font-semibold ${
+                                projectedBalance < account.currentBalance
+                                  ? 'text-yellow-400'
+                                  : 'text-primary'
+                              }`}
                             >
-                              <Star
-                                size={16}
-                                fill={
-                                  account.isDefault ? 'currentColor' : 'none'
+                              <PrivacyWrapper>
+                                {formatCurrency(projectedBalance)}
+                              </PrivacyWrapper>
+                            </span>
+                          </td>
+                          <td>
+                            <div className='flex items-center space-x-2'>
+                              <button
+                                onClick={() => handleSetDefault(account.id)}
+                                className={`p-1 rounded transition-all duration-200 ${
+                                  account.isDefault
+                                    ? 'text-yellow-400 bg-yellow-500/20'
+                                    : 'text-muted hover:text-white hover:bg-white/10'
+                                }`}
+                                title={
+                                  account.isDefault
+                                    ? 'Default Account'
+                                    : 'Set as Default'
                                 }
-                              />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteAccount(account.id)}
-                              className='p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all duration-200'
-                              title='Delete Account'
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                              >
+                                <Star
+                                  size={16}
+                                  fill={
+                                    account.isDefault ? 'currentColor' : 'none'
+                                  }
+                                />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteAccount(account.id)}
+                                className='p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all duration-200'
+                                title='Delete Account'
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ))}
         </div>

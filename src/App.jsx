@@ -234,7 +234,7 @@ function App() {
               isLocked={isLocked}
             />
             <main className='flex-1 overflow-auto lg:ml-0'>
-              <div className='p-4 lg:p-6 pt-16 lg:pt-6'>
+              <div className='p-4 lg:p-6 pt-16 lg:pt-6 pl-20 lg:pl-6'>
                 <Suspense fallback={<LoadingSpinner />}>
                   {renderPage()}
                 </Suspense>
