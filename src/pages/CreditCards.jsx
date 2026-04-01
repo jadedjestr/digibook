@@ -872,14 +872,17 @@ const CreditCards = ({
                   >
                     Due Date
                   </label>
-                  <input
-                    id='credit-card-due-date'
-                    type='date'
-                    value={formData.dueDate}
-                    onChange={e => handleInputChange('dueDate', e.target.value)}
-                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
-                    style={{ maxWidth: '100%', boxSizing: 'border-box' }}
-                  />
+                  <div style={{ overflow: 'hidden', width: '100%' }}>
+                    <input
+                      id='credit-card-due-date'
+                      type='date'
+                      value={formData.dueDate}
+                      onChange={e =>
+                        handleInputChange('dueDate', e.target.value)
+                      }
+                      className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    />
+                  </div>
                   {errors.dueDate && (
                     <p className='text-red-400 text-sm mt-1'>
                       {errors.dueDate}
@@ -894,16 +897,20 @@ const CreditCards = ({
                   >
                     Statement Closing Date (Optional)
                   </label>
-                  <input
-                    id='credit-card-statement-closing-date'
-                    type='date'
-                    value={formData.statementClosingDate}
-                    onChange={e =>
-                      handleInputChange('statementClosingDate', e.target.value)
-                    }
-                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
-                    style={{ maxWidth: '100%', boxSizing: 'border-box' }}
-                  />
+                  <div style={{ overflow: 'hidden', width: '100%' }}>
+                    <input
+                      id='credit-card-statement-closing-date'
+                      type='date'
+                      value={formData.statementClosingDate}
+                      onChange={e =>
+                        handleInputChange(
+                          'statementClosingDate',
+                          e.target.value,
+                        )
+                      }
+                      className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    />
+                  </div>
                 </div>
 
                 <div>
