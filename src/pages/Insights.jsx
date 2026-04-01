@@ -86,7 +86,7 @@ const Insights = ({
         </div>
         <button
           onClick={handleDataRefresh}
-          className='glass-button px-4 py-2 text-sm'
+          className='glass-button glass-button--primary px-4 py-2 text-sm'
         >
           Refresh Data
         </button>

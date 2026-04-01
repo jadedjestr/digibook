@@ -175,7 +175,7 @@ const PendingTransactions = ({
         </div>
         <button
           onClick={() => setIsAddingTransaction(true)}
-          className='glass-button flex items-center space-x-2'
+          className='glass-button glass-button--primary flex items-center space-x-2'
         >
           <Plus size={20} />
           <span>Add Transaction</span>
