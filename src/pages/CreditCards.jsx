@@ -660,9 +660,9 @@ const CreditCards = ({
 
       {/* Sorting Controls */}
       {creditCards.length > 0 && (
-        <div className='flex items-center space-x-4 mb-4'>
+        <div className='flex flex-wrap items-center gap-2 mb-4'>
           <span className='text-white/70 text-sm'>Sort by:</span>
-          <div className='flex items-center space-x-2'>
+          <div className='flex flex-wrap items-center gap-2'>
             <button
               onClick={() => setSortBy('name')}
               className={`glass-button glass-button--filter text-sm ${
@@ -743,7 +743,7 @@ const CreditCards = ({
       {isAddModalOpen &&
         createPortal(
           <div
-            className='fixed bg-black/50 backdrop-blur-sm flex items-center justify-center z-50'
+            className='fixed bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 overflow-y-auto py-8'
             style={{
               top: 0,
               left: 0,
@@ -766,7 +766,7 @@ const CreditCards = ({
               }
             }}
           >
-            <div className='glass-panel rounded-2xl p-8 w-full max-w-md space-y-6'>
+            <div className='glass-panel rounded-2xl p-8 w-full max-w-md space-y-6 my-auto'>
               <h2 className='text-xl font-semibold text-white'>
                 {editingCard ? 'Edit Credit Card' : 'Add Credit Card'}
               </h2>
@@ -878,6 +878,7 @@ const CreditCards = ({
                     value={formData.dueDate}
                     onChange={e => handleInputChange('dueDate', e.target.value)}
                     className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    style={{ maxWidth: '100%', boxSizing: 'border-box' }}
                   />
                   {errors.dueDate && (
                     <p className='text-red-400 text-sm mt-1'>
@@ -901,6 +902,7 @@ const CreditCards = ({
                       handleInputChange('statementClosingDate', e.target.value)
                     }
                     className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    style={{ maxWidth: '100%', boxSizing: 'border-box' }}
                   />
                 </div>
 
