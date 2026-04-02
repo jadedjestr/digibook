@@ -1,6 +1,5 @@
 import {
   Calculator,
-  CreditCard,
   Calendar,
   DollarSign,
   TrendingDown,
@@ -13,6 +12,8 @@ import { dbHelpers } from '../db/database-clean';
 import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
 import { logger } from '../utils/logger';
 
+import EmptyState from './EmptyState';
+import DebtPayoffEmptyIllustration from './illustrations/DebtPayoffEmptyIllustration';
 import PrivacyWrapper from './PrivacyWrapper';
 
 const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
@@ -136,16 +137,14 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
   if (creditCards.length === 0) {
     return (
       <div className='glass-panel'>
-        <h2 className='text-xl font-bold text-white mb-4'>
+        <h2 className='text-xl font-bold text-white mb-2'>
           Debt Payoff Calculator
         </h2>
-        <div className='text-center py-8'>
-          <CreditCard className='w-12 h-12 text-white/30 mx-auto mb-4' />
-          <p className='text-white/70'>No credit cards found.</p>
-          <p className='text-white/50 text-sm mt-2'>
-            Add credit cards to use the payoff calculator.
-          </p>
-        </div>
+        <EmptyState
+          illustration={<DebtPayoffEmptyIllustration />}
+          title='No cards to calculate'
+          subtitle='Add credit cards to unlock the debt payoff calculator'
+        />
       </div>
     );
   }

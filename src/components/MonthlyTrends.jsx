@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, BarChart3, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useMemo } from 'react';
 import {
@@ -14,6 +14,8 @@ import {
 
 import { usePrivacy } from '../contexts/PrivacyContext';
 
+import EmptyState from './EmptyState';
+import MonthlyTrendsEmptyIllustration from './illustrations/MonthlyTrendsEmptyIllustration';
 import PrivacyWrapper from './PrivacyWrapper';
 
 const formatCurrency = amount =>
@@ -113,15 +115,12 @@ const MonthlyTrends = ({ history = [], months = 12, onMonthsChange }) => {
   if (!monthlyData || monthlyData.length === 0) {
     return (
       <div className='glass-panel'>
-        <h2 className='text-xl font-bold text-white mb-4'>Monthly Trends</h2>
-        <div className='text-center py-8'>
-          <Calendar className='w-12 h-12 text-white/30 mx-auto mb-4' />
-          <p className='text-white/70'>No monthly data available yet.</p>
-          <p className='text-white/50 text-sm mt-2'>
-            Mark expenses as paid and complete a pay cycle to see monthly
-            trends.
-          </p>
-        </div>
+        <h2 className='text-xl font-bold text-white mb-2'>Monthly Trends</h2>
+        <EmptyState
+          illustration={<MonthlyTrendsEmptyIllustration />}
+          title='No history yet'
+          subtitle='Complete a pay cycle to start seeing your monthly trends'
+        />
       </div>
     );
   }

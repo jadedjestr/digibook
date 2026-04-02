@@ -1,4 +1,4 @@
-import { TrendingUp, AlertCircle, DollarSign } from 'lucide-react';
+import { TrendingUp, DollarSign } from 'lucide-react';
 import PropTypes from 'prop-types';
 import {
   BarChart,
@@ -13,6 +13,8 @@ import {
 
 import { usePrivacy } from '../contexts/PrivacyContext';
 
+import EmptyState from './EmptyState';
+import OverpaymentEmptyIllustration from './illustrations/OverpaymentEmptyIllustration';
 import PrivacyWrapper from './PrivacyWrapper';
 
 const formatCurrency = amount =>
@@ -54,10 +56,14 @@ const OverpaymentAnalysis = ({ data, categories = [] }) => {
   if (!data || Object.keys(data).length === 0) {
     return (
       <div className='glass-panel'>
-        <h2 className='text-xl font-bold text-white mb-4'>
+        <h2 className='text-xl font-bold text-white mb-2'>
           Overpayment Analysis
         </h2>
-        <p className='text-white/70'>No overpayment data available.</p>
+        <EmptyState
+          illustration={<OverpaymentEmptyIllustration />}
+          title='Within budget!'
+          subtitle='No overpayment data available for this cycle'
+        />
       </div>
     );
   }
@@ -104,17 +110,11 @@ const OverpaymentAnalysis = ({ data, categories = [] }) => {
       </div>
 
       {sortedCategories.length === 0 ? (
-        <div className='text-center py-8'>
-          <AlertCircle className='w-12 h-12 text-white/30 mx-auto mb-4' />
-          <p className='text-white/70'>No overpayments detected this cycle.</p>
-          <p className='text-white/50 text-sm mt-2'>
-            You&apos;re staying within budget! 🎉
-          </p>
-          <p className='text-white/50 text-sm mt-1'>
-            Overpayments appear when you pay more than the budgeted amount for
-            an expense.
-          </p>
-        </div>
+        <EmptyState
+          illustration={<OverpaymentEmptyIllustration />}
+          title='Within budget!'
+          subtitle="No overpayments this cycle — you're managing spending well"
+        />
       ) : (
         <ResponsiveContainer
           width='100%'

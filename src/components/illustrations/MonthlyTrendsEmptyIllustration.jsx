@@ -1,0 +1,90 @@
+const MonthlyTrendsEmptyIllustration = () => (
+  <svg
+    width='96'
+    height='88'
+    viewBox='0 0 80 72'
+    fill='none'
+    xmlns='http://www.w3.org/2000/svg'
+  >
+    <line
+      x1='12'
+      y1='60'
+      x2='68'
+      y2='60'
+      stroke='rgba(59,130,246,0.25)'
+      strokeWidth='1'
+    />
+    <line
+      x1='12'
+      y1='60'
+      x2='12'
+      y2='12'
+      stroke='rgba(59,130,246,0.25)'
+      strokeWidth='1'
+    />
+    <rect
+      x='18'
+      y='50'
+      width='10'
+      height='10'
+      rx='2'
+      fill='rgba(59,130,246,0.35)'
+      stroke='rgba(59,130,246,0.5)'
+      strokeWidth='0.75'
+    />
+    <rect
+      x='32'
+      y='42'
+      width='10'
+      height='18'
+      rx='2'
+      fill='rgba(59,130,246,0.25)'
+      stroke='rgba(59,130,246,0.4)'
+      strokeWidth='0.75'
+    />
+    <rect
+      x='46'
+      y='34'
+      width='10'
+      height='26'
+      rx='2'
+      fill='rgba(59,130,246,0.18)'
+      stroke='rgba(59,130,246,0.3)'
+      strokeWidth='0.75'
+    />
+    <rect
+      x='60'
+      y='22'
+      width='10'
+      height='38'
+      rx='2'
+      fill='rgba(59,130,246,0.12)'
+      stroke='rgba(59,130,246,0.22)'
+      strokeWidth='0.75'
+      strokeDasharray='2 2'
+    />
+    <circle
+      cx='65'
+      cy='16'
+      r='7'
+      fill='rgba(59,130,246,0.15)'
+      stroke='rgba(59,130,246,0.35)'
+      strokeWidth='0.75'
+    />
+    <text
+      x='65'
+      y='19'
+      textAnchor='middle'
+      fontSize='7'
+      fill='rgba(147,197,253,0.7)'
+      fontFamily='system-ui'
+    >
+      ?
+    </text>
+    <circle cx='18' cy='8' r='2' fill='rgba(59,130,246,0.2)' />
+    <circle cx='28' cy='8' r='2' fill='rgba(59,130,246,0.2)' />
+    <circle cx='38' cy='8' r='2' fill='rgba(59,130,246,0.2)' />
+  </svg>
+);
+
+export default MonthlyTrendsEmptyIllustration;
