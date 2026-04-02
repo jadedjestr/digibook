@@ -896,6 +896,8 @@
     @apply text-white;
     @apply text-shadow-lg;
     @apply tracking-wide;
+    isolation: isolate;
+    transform: translateZ(0);
   }
 
   .balance-display.warning {
