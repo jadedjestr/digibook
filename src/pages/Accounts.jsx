@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 
+import EmptyState from '../components/EmptyState';
+import AccountsEmptyIllustration from '../components/illustrations/AccountsEmptyIllustration';
 import InlineEdit from '../components/InlineEdit';
 import MissingExpensesModal from '../components/MissingExpensesModal';
 import PrivacyWrapper from '../components/PrivacyWrapper';
@@ -301,23 +303,16 @@ const Accounts = () => {
       {/* Grouped Accounts Display */}
       {accounts.length === 0 ? (
         <div className='glass-panel'>
-          <div className='empty-state'>
-            <div className='empty-state-icon'>🏦</div>
-            <h3 className='text-xl font-semibold text-primary mb-2'>
-              Ready to track your finances?
-            </h3>
-            <p className='text-secondary max-w-md mx-auto mb-6'>
-              Add your first account below to start managing your money with
-              precision and style.
-            </p>
-            <button
-              onClick={() => setIsAddingAccount(true)}
-              className='glass-button flex items-center space-x-2 mx-auto'
-            >
-              <Wallet size={20} />
-              <span>Add Your First Account</span>
-            </button>
-          </div>
+          <EmptyState
+            illustration={<AccountsEmptyIllustration />}
+            title='No accounts yet'
+            subtitle='Add your first account to start building your financial picture'
+            action={{
+              label: 'Add Your First Account',
+              onClick: () => setIsAddingAccount(true),
+              icon: <Wallet size={16} />,
+            }}
+          />
         </div>
       ) : (
         <div className='space-y-6'>

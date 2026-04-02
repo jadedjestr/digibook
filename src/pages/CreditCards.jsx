@@ -1,4 +1,4 @@
-import { Plus, CreditCard } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -7,7 +7,9 @@ import ChooseFundingAccountModal from '../components/ChooseFundingAccountModal';
 import CreateAccountModal from '../components/CreateAccountModal';
 import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
 import CreditCardMigrationModal from '../components/CreditCardMigrationModal';
+import EmptyState from '../components/EmptyState';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';
+import CreditCardsEmptyIllustration from '../components/illustrations/CreditCardsEmptyIllustration';
 import MissingExpensesModal from '../components/MissingExpensesModal';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
@@ -701,21 +703,15 @@ const CreditCards = ({
 
       {/* Credit Cards Grid */}
       {creditCards.length === 0 ? (
-        <div className='text-center py-12'>
-          <CreditCard size={48} className='mx-auto text-white/50 mb-4' />
-          <h3 className='text-lg font-medium text-white/70 mb-2'>
-            No Credit Cards
-          </h3>
-          <p className='text-white/50 mb-4'>
-            Add your first credit card to start tracking your debt
-          </p>
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className='glass-button'
-          >
-            Add Credit Card
-          </button>
-        </div>
+        <EmptyState
+          illustration={<CreditCardsEmptyIllustration />}
+          title='No credit cards yet'
+          subtitle='Add a card to protect your score and track every balance'
+          action={{
+            label: 'Add Credit Card',
+            onClick: () => setIsAddModalOpen(true),
+          }}
+        />
       ) : (
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
           {sortedCreditCards.map((card, index) => {

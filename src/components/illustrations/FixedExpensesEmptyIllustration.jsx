@@ -1,0 +1,125 @@
+const FixedExpensesEmptyIllustration = () => (
+  <svg
+    width='96'
+    height='88'
+    viewBox='0 0 88 80'
+    fill='none'
+    xmlns='http://www.w3.org/2000/svg'
+  >
+    <circle
+      cx='44'
+      cy='40'
+      r='28'
+      fill='none'
+      stroke='rgba(59,130,246,0.12)'
+      strokeWidth='0.75'
+      strokeDasharray='2 3'
+    />
+    <circle
+      cx='44'
+      cy='40'
+      r='20'
+      fill='none'
+      stroke='rgba(59,130,246,0.1)'
+      strokeWidth='0.75'
+      strokeDasharray='2 4'
+    />
+    <circle
+      cx='44'
+      cy='12'
+      r='5'
+      fill='rgba(59,130,246,0.25)'
+      stroke='rgba(59,130,246,0.5)'
+      strokeWidth='1'
+    />
+    <circle cx='44' cy='12' r='2' fill='rgba(147,197,253,0.6)' />
+    <circle
+      cx='72'
+      cy='26'
+      r='4'
+      fill='rgba(59,130,246,0.18)'
+      stroke='rgba(59,130,246,0.38)'
+      strokeWidth='1'
+    />
+    <circle cx='72' cy='26' r='1.5' fill='rgba(147,197,253,0.4)' />
+    <circle
+      cx='72'
+      cy='54'
+      r='4'
+      fill='rgba(59,130,246,0.18)'
+      stroke='rgba(59,130,246,0.38)'
+      strokeWidth='1'
+    />
+    <circle cx='72' cy='54' r='1.5' fill='rgba(147,197,253,0.4)' />
+    <circle
+      cx='44'
+      cy='68'
+      r='4'
+      fill='rgba(59,130,246,0.18)'
+      stroke='rgba(59,130,246,0.38)'
+      strokeWidth='1'
+    />
+    <circle cx='44' cy='68' r='1.5' fill='rgba(147,197,253,0.4)' />
+    <circle
+      cx='16'
+      cy='54'
+      r='3.5'
+      fill='rgba(59,130,246,0.1)'
+      stroke='rgba(59,130,246,0.25)'
+      strokeWidth='0.75'
+    />
+    <circle
+      cx='16'
+      cy='26'
+      r='3.5'
+      fill='rgba(59,130,246,0.1)'
+      stroke='rgba(59,130,246,0.25)'
+      strokeWidth='0.75'
+    />
+    <circle
+      cx='30'
+      cy='20'
+      r='2.5'
+      fill='rgba(59,130,246,0.08)'
+      stroke='rgba(59,130,246,0.2)'
+      strokeWidth='0.75'
+    />
+    <circle
+      cx='58'
+      cy='20'
+      r='2.5'
+      fill='rgba(59,130,246,0.08)'
+      stroke='rgba(59,130,246,0.2)'
+      strokeWidth='0.75'
+    />
+    <circle
+      cx='44'
+      cy='40'
+      r='8'
+      fill='rgba(59,130,246,0.15)'
+      stroke='rgba(59,130,246,0.4)'
+      strokeWidth='1'
+    />
+    <circle cx='44' cy='40' r='3' fill='rgba(147,197,253,0.5)' />
+    <line
+      x1='44'
+      y1='40'
+      x2='44'
+      y2='33'
+      stroke='#60a5fa'
+      strokeWidth='1.5'
+      strokeLinecap='round'
+    />
+    <line
+      x1='44'
+      y1='40'
+      x2='49'
+      y2='40'
+      stroke='#60a5fa'
+      strokeWidth='1.25'
+      strokeLinecap='round'
+    />
+  </svg>
+);
+
+export default FixedExpensesEmptyIllustration;

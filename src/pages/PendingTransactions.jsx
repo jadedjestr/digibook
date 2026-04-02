@@ -2,6 +2,8 @@ import { Plus, Check, Trash2, Clock } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
+import EmptyState from '../components/EmptyState';
+import PendingEmptyIllustration from '../components/illustrations/PendingEmptyIllustration';
 import InlineEdit from '../components/InlineEdit';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
@@ -358,23 +360,16 @@ const PendingTransactions = ({
       {/* Transactions Table */}
       <div className='glass-panel'>
         {pendingTransactions.length === 0 ? (
-          <div className='empty-state'>
-            <div className='empty-state-icon'>⏳</div>
-            <h3 className='text-xl font-semibold text-primary mb-2'>
-              No pending transactions
-            </h3>
-            <p className='text-secondary max-w-md mx-auto mb-6'>
-              Add your first pending transaction to start tracking upcoming
-              payments and their impact on your balances.
-            </p>
-            <button
-              onClick={() => setIsAddingTransaction(true)}
-              className='glass-button flex items-center space-x-2 mx-auto'
-            >
-              <Clock size={20} />
-              <span>Add Your First Transaction</span>
-            </button>
-          </div>
+          <EmptyState
+            illustration={<PendingEmptyIllustration />}
+            title='All clear'
+            subtitle='No pending transactions — your balances are up to date'
+            action={{
+              label: 'Add Transaction',
+              onClick: () => setIsAddingTransaction(true),
+              icon: <Clock size={16} />,
+            }}
+          />
         ) : (
           <table className='glass-table'>
             <thead>

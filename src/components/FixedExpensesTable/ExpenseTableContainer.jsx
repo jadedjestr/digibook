@@ -45,6 +45,8 @@ import { logger } from '../../utils/logger';
 import AccountValidationAlert from '../AccountValidationAlert';
 import AddExpensePanel from '../AddExpensePanel';
 import DuplicateExpenseModal from '../DuplicateExpenseModal';
+import EmptyState from '../EmptyState';
+import FixedExpensesEmptyIllustration from '../illustrations/FixedExpensesEmptyIllustration';
 import RecurringExpenseModal from '../RecurringExpenseModal';
 
 import ExpenseCategoryGroup from './ExpenseCategoryGroup';
@@ -578,12 +580,15 @@ const ExpenseTableContainer = ({
           </div>
         </DndContext>
       ) : (
-        <div className='text-center p-8'>
-          <div className='text-white/70 mb-4'>No expenses found</div>
-          <button onClick={() => setPanelOpen(true)} className='glass-button'>
-            Add Your First Expense
-          </button>
-        </div>
+        <EmptyState
+          illustration={<FixedExpensesEmptyIllustration />}
+          title='No expenses yet'
+          subtitle='Add recurring expenses to plan your monthly budget'
+          action={{
+            label: 'Add Your First Expense',
+            onClick: () => setPanelOpen(true),
+          }}
+        />
       )}
 
       {/* Duplicate Modal */}
