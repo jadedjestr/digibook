@@ -762,7 +762,7 @@ const CreditCards = ({
               }
             }}
           >
-            <div className='glass-panel rounded-2xl p-8 w-full max-w-md space-y-6 my-auto'>
+            <div className='glass-panel rounded-2xl p-8 w-full max-w-md space-y-6 my-auto modal-panel-enter'>
               <h2 className='text-xl font-semibold text-white'>
                 {editingCard ? 'Edit Credit Card' : 'Add Credit Card'}
               </h2>

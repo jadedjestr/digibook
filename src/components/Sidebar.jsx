@@ -235,9 +235,13 @@ const Sidebar = ({ navigation, onToggleLock, isLocked }) => {
       {/* Mobile Sidebar */}
       <div
         className={`
-        lg:hidden fixed top-0 left-0 h-full z-50 transform transition-transform duration-300 ease-in-out
+        lg:hidden fixed top-0 left-0 h-full z-50 transform transition-transform
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
       `}
+        style={{
+          transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+          transitionDuration: '250ms',
+        }}
       >
         <SidebarContent
           defaultAccount={defaultAccount}

@@ -651,6 +651,36 @@
     height: 200px;
   }
 
+  .glass-button:active {
+    transform: scale(0.97) translateZ(0);
+    transition-duration: var(--duration-fast);
+  }
+
+  .page-transition {
+    animation: slideInUp var(--duration-snappy) var(--easing-spring) both;
+  }
+
+  .modal-panel-enter {
+    animation: slideIn 220ms var(--easing-spring) both;
+  }
+
+  .glass-card-enter {
+    animation: fadeIn var(--duration-normal) var(--easing-standard) both;
+  }
+
+  .glass-card-enter:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .glass-card-enter:nth-child(2) {
+    animation-delay: 60ms;
+  }
+  .glass-card-enter:nth-child(3) {
+    animation-delay: 120ms;
+  }
+  .glass-card-enter:nth-child(4) {
+    animation-delay: 180ms;
+  }
+
   /* Enhanced Glass Input System */
   .glass-input {
     @apply glass-surface;
@@ -1111,7 +1141,10 @@
     .fade-in--delay-1,
     .fade-in--delay-2,
     .scale-in,
-    .glass-pulse {
+    .glass-pulse,
+    .page-transition,
+    .modal-panel-enter,
+    .glass-card-enter {
       animation: none;
     }
 

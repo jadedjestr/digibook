@@ -236,7 +236,9 @@ function App() {
             <main className='flex-1 overflow-auto lg:ml-0'>
               <div className='p-4 lg:p-6 pt-4 lg:pt-6'>
                 <Suspense fallback={<LoadingSpinner />}>
-                  {renderPage()}
+                  <div key={currentPage} className='page-transition'>
+                    {renderPage()}
+                  </div>
                 </Suspense>
               </div>
             </main>
