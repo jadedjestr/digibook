@@ -19,13 +19,13 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: ['./src/test/setup.js'],
     css: true,
     projects: [
       {
         extends: true,
         test: {
           name: 'unit',
+          setupFiles: ['./src/test/setup.js'],
           include: ['src/**/*.{test,spec}.{js,jsx}'],
           exclude: ['src/**/*.stories.{js,jsx}', 'src/**/*.mdx'],
         },

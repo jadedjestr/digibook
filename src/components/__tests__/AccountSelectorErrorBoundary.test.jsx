@@ -84,15 +84,15 @@ describe('AccountSelectorErrorBoundary', () => {
 
     expect(screen.getByText('Account Selection Error')).toBeInTheDocument();
 
-    const retryButton = screen.getByText('Retry');
-    fireEvent.click(retryButton);
-
-    // Rerender with no error
+    // Fix the underlying issue, then retry to recover
     rerender(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={false} />
       </AccountSelectorErrorBoundary>,
     );
+
+    const retryButton = screen.getByText('Retry');
+    fireEvent.click(retryButton);
 
     expect(screen.getByText('No error')).toBeInTheDocument();
   });
@@ -127,7 +127,7 @@ describe('AccountSelectorErrorBoundary', () => {
       </AccountSelectorErrorBoundary>,
     );
 
-    // First retry
+    // First retry (underlying issue still present, so it errors again)
     const retryButton = screen.getByText('Retry');
     fireEvent.click(retryButton);
 
@@ -138,16 +138,15 @@ describe('AccountSelectorErrorBoundary', () => {
       </AccountSelectorErrorBoundary>,
     );
 
-    // Click reset
-    const resetButton = screen.getByText('Reset');
-    fireEvent.click(resetButton);
-
-    // Rerender with no error
+    // Fix the underlying issue, then reset to recover
     rerender(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={false} />
       </AccountSelectorErrorBoundary>,
     );
+
+    const resetButton = screen.getByText('Reset');
+    fireEvent.click(resetButton);
 
     expect(screen.getByText('No error')).toBeInTheDocument();
   });
@@ -215,15 +214,13 @@ describe('AccountSelectorErrorBoundary', () => {
     // First error
     expect(screen.getByText('Account Selection Error')).toBeInTheDocument();
 
-    // Retry
-    fireEvent.click(screen.getByText('Retry'));
-
-    // Rerender with no error
+    // Fix the underlying issue, then retry to recover
     rerender(
       <AccountSelectorErrorBoundary>
         <ThrowError shouldThrow={false} />
       </AccountSelectorErrorBoundary>,
     );
+    fireEvent.click(screen.getByText('Retry'));
 
     expect(screen.getByText('No error')).toBeInTheDocument();
 

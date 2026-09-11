@@ -2,9 +2,14 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+import { PrivacyProvider } from '../../contexts/PrivacyContext';
 import ExpenseBar from '../ExpenseBar';
 
 describe('ExpenseBar', () => {
+  const renderWithPrivacy = ui => {
+    return render(<PrivacyProvider>{ui}</PrivacyProvider>);
+  };
+
   const mockExpense = {
     name: 'Housing',
     amount: 1200,
@@ -13,11 +18,20 @@ describe('ExpenseBar', () => {
   };
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    // shouldAdvanceTime keeps React's own internal scheduling (and
+    // userEvent's internal waits) ticking in real time alongside the fake
+    // timers this file advances manually — without it, userEvent's async
+    // interactions deadlock against a fully-frozen clock.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+
+    // Fake timers don't get cleared by restoreAllMocks: leaving them active
+    // here freezes the next test's real-timer-dependent global setup hook
+    // (the IndexedDB reset in src/test/setup.js), timing it out.
+    vi.useRealTimers();
   });
 
   describe('Accessibility', () => {
@@ -25,7 +39,7 @@ describe('ExpenseBar', () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const handleClick = vi.fn();
 
-      render(
+      renderWithPrivacy(
         <ExpenseBar
           expense={mockExpense}
           index={0}
@@ -48,7 +62,7 @@ describe('ExpenseBar', () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const handleClick = vi.fn();
 
-      render(
+      renderWithPrivacy(
         <ExpenseBar
           expense={mockExpense}
           index={0}
@@ -72,7 +86,7 @@ describe('ExpenseBar', () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const handleClick = vi.fn();
 
-      render(
+      renderWithPrivacy(
         <ExpenseBar
           expense={mockExpense}
           index={0}
@@ -93,7 +107,7 @@ describe('ExpenseBar', () => {
     });
 
     it('should have proper aria-label', () => {
-      render(
+      renderWithPrivacy(
         <ExpenseBar
           expense={mockExpense}
           index={0}
@@ -116,7 +130,9 @@ describe('ExpenseBar', () => {
     it('should handle missing onCategoryClick prop gracefully', async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
-      render(<ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />);
+      renderWithPrivacy(
+        <ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />,
+      );
 
       // Wait for animation to complete
       vi.advanceTimersByTime(300);
@@ -131,14 +147,18 @@ describe('ExpenseBar', () => {
 
   describe('Rendering', () => {
     it('should render with correct data', () => {
-      render(<ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />);
+      renderWithPrivacy(
+        <ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />,
+      );
 
       expect(screen.getByText('Housing')).toBeInTheDocument();
       expect(screen.getByText('75.5%')).toBeInTheDocument();
     });
 
     it('should animate on mount', () => {
-      render(<ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />);
+      renderWithPrivacy(
+        <ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />,
+      );
 
       // Initially should be invisible
       const bar = screen.getByRole('button');
@@ -156,13 +176,17 @@ describe('ExpenseBar', () => {
     });
 
     it('should show correct percentage', () => {
-      render(<ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />);
+      renderWithPrivacy(
+        <ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />,
+      );
 
       expect(screen.getByText('75.5%')).toBeInTheDocument();
     });
 
     it('should format currency correctly', () => {
-      render(<ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />);
+      renderWithPrivacy(
+        <ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />,
+      );
 
       // Currency should be formatted (privacy wrapper may hide it)
       expect(screen.getByText('Housing')).toBeInTheDocument();
@@ -177,7 +201,9 @@ describe('ExpenseBar', () => {
         percentage: 0,
       };
 
-      render(<ExpenseBar expense={zeroExpense} index={0} totalAmount={1500} />);
+      renderWithPrivacy(
+        <ExpenseBar expense={zeroExpense} index={0} totalAmount={1500} />,
+      );
 
       expect(screen.getByText('0.0%')).toBeInTheDocument();
     });
@@ -186,10 +212,13 @@ describe('ExpenseBar', () => {
       const largeExpense = {
         ...mockExpense,
         amount: 10000,
-        percentage: 99.99,
+
+        // 99.9 (not 99.99) keeps this unambiguous: toFixed(1) rounds 99.99
+        // up to "100.0", which belongs to the 100%-exactly case below.
+        percentage: 99.9,
       };
 
-      render(
+      renderWithPrivacy(
         <ExpenseBar expense={largeExpense} index={0} totalAmount={10000} />,
       );
 
@@ -203,19 +232,23 @@ describe('ExpenseBar', () => {
         percentage: 100,
       };
 
-      render(<ExpenseBar expense={fullExpense} index={0} totalAmount={1500} />);
+      renderWithPrivacy(
+        <ExpenseBar expense={fullExpense} index={0} totalAmount={1500} />,
+      );
 
       expect(screen.getByText('100.0%')).toBeInTheDocument();
     });
 
     it('should handle different index values for staggered animation', () => {
-      const { rerender } = render(
+      const { rerender } = renderWithPrivacy(
         <ExpenseBar expense={mockExpense} index={0} totalAmount={1500} />,
       );
 
       // Change index
       rerender(
-        <ExpenseBar expense={mockExpense} index={2} totalAmount={1500} />,
+        <PrivacyProvider>
+          <ExpenseBar expense={mockExpense} index={2} totalAmount={1500} />
+        </PrivacyProvider>,
       );
 
       expect(screen.getByText('Housing')).toBeInTheDocument();
