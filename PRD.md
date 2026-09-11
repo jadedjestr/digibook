@@ -171,7 +171,7 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 │  │  ┌───────────────────────▼──────────────────────────────┐    │   │
 │  │  │          Database Layer (database-clean.js)            │    │   │
 │  │  │  dbHelpers → Dexie.js → IndexedDB                     │    │   │
-│  │  │  Schema V1-V4 | Atomic transactions | Audit logging    │    │   │
+│  │  │  Schema V1-V8 | Atomic transactions | Audit logging    │    │   │
 │  │  └──────────────────────────────────────────────────────┘    │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
@@ -209,7 +209,7 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 - **Engine:** IndexedDB (browser-native)
 - **ORM:** Dexie.js
 - **Database Name:** `DigibookDB_Fresh`
-- **Current Schema Version:** 4
+- **Current Schema Version:** 8
 
 ### Schema Evolution
 
@@ -219,6 +219,10 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 | V2 | Added `recurringExpenseTemplates` table and `recurringTemplateId` on `fixedExpenses` |
 | V3 | Added `targetCreditCardId` on `fixedExpenses` for explicit credit card payment tracking |
 | V4 | **Dual Foreign Key Architecture** — added `creditCardId` on `fixedExpenses`; expenses now use either `accountId` OR `creditCardId`, never both |
+| V5 | `monthlyExpenseHistory` switched to a compound primary key `[expenseId+month+year]` to support upsert-by-period |
+| V6 | Added `backups` table; added `lastExportDate` on `userPreferences` |
+| V7 | Added `sortOrder` on `categories` for custom drag-and-drop ordering (existing categories backfilled alphabetically on upgrade) |
+| V8 | **UUID migration** — all tables switched from auto-increment integer `id` to string UUID primary keys; added soft-delete support (`deletedAt`) and `updatedAt` timestamps on every table; added `categoryId` on `fixedExpenses`, `pendingTransactions`, and `recurringExpenseTemplates` |
 
 ### Tables
 
@@ -227,19 +231,21 @@ Bank accounts (checking and savings).
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
+| `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `name` | string | Yes | Account display name |
 | `type` | string | Yes | `"checking"` or `"savings"` |
 | `currentBalance` | number | Yes | Current balance in dollars |
 | `isDefault` | boolean | Yes | Whether this is the default account shown in sidebar |
 | `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 #### `creditCards`
 Credit card accounts.
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
+| `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `name` | string | Yes | Card display name |
 | `balance` | number | Yes | Current outstanding balance |
 | `creditLimit` | number | Yes | Credit limit |
@@ -248,23 +254,26 @@ Credit card accounts.
 | `statementClosingDate` | string | Yes | Statement closing date (YYYY-MM-DD) |
 | `minimumPayment` | number | Yes | Minimum monthly payment |
 | `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 #### `fixedExpenses`
 All bills and expenses. The core of the V4 dual foreign key model.
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
+| `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `name` | string | Yes | Expense name |
 | `dueDate` | string | Yes | Due date (YYYY-MM-DD) |
 | `amount` | number | Yes | Budget/expected amount |
-| `accountId` | number \| null | Yes | Funding bank account (mutually exclusive with `creditCardId`) |
-| `creditCardId` | number \| null | Yes | Credit card to charge (mutually exclusive with `accountId`) |
-| `targetCreditCardId` | number \| null | Yes | For "Credit Card Payment" category only — the card being paid |
+| `accountId` | string \| null | Yes | Funding bank account (mutually exclusive with `creditCardId`) |
+| `creditCardId` | string \| null | Yes | Credit card to charge (mutually exclusive with `accountId`) |
+| `targetCreditCardId` | string \| null | Yes | For "Credit Card Payment" category only — the card being paid |
 | `category` | string | Yes | Category name (e.g., "Utilities", "Credit Card Payment") |
+| `categoryId` | string \| null | Yes | Category reference by id (V8, alongside legacy `category` name) |
 | `paidAmount` | number | Yes | Amount paid so far |
 | `status` | string | Yes | `"pending"`, `"paid"`, `"overdue"` |
-| `recurringTemplateId` | number \| null | Yes | Link to recurring template that generated this expense |
+| `recurringTemplateId` | string \| null | Yes | Link to recurring template that generated this expense |
 | `overpaymentAmount` | number | Yes | Amount paid over budget |
 | `overpaymentPercentage` | number | Yes | Overpayment as % of budget |
 | `budgetSatisfied` | boolean | Yes | Whether budget amount was met |
@@ -274,6 +283,8 @@ All bills and expenses. The core of the V4 dual foreign key model.
 | `mappingConfidence` | number | Yes | Confidence score for auto-mapping |
 | `mappedAt` | string | Yes | When mapping occurred |
 | `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 **V4 Dual Foreign Key Rules:**
 
@@ -288,24 +299,30 @@ Uncleared deposits, checks, and payments that affect projected balances.
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
-| `accountId` | number | Yes | Associated bank account |
+| `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
+| `accountId` | string | Yes | Associated bank account |
 | `amount` | number | Yes | Transaction amount (negative for expenses, positive for income) |
 | `category` | string | Yes | Category name |
+| `categoryId` | string \| null | Yes | Category reference by id (V8, alongside legacy `category` name) |
 | `description` | string | Yes | Transaction description |
 | `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 #### `categories`
 User-defined expense categories with visual properties.
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
+| `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `name` | string | Yes | Category name |
 | `color` | string | Yes | Hex color code |
 | `icon` | string | Yes | Emoji or icon identifier |
 | `isDefault` | boolean | Yes | Whether this is a system default |
+| `sortOrder` | number | Yes | Custom display order (V7) |
 | `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 **Default categories seeded on first run:** Utilities, Subscriptions, Insurance, Housing, Transportation, Food, Health, Entertainment, Credit Card Payment, and others.
 
@@ -314,7 +331,7 @@ Templates that auto-generate future expense instances.
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
+| `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `name` | string | Yes | Template name |
 | `baseAmount` | number | Yes | Default amount for generated expenses |
 | `frequency` | string | Yes | `"monthly"`, `"quarterly"`, `"biannually"`, `"annually"`, `"custom"` |
@@ -325,60 +342,86 @@ Templates that auto-generate future expense instances.
 | `lastGenerated` | string \| null | Yes | Date of last generated occurrence |
 | `nextDueDate` | string | Yes | Next occurrence to generate |
 | `category` | string | Yes | Category for generated expenses |
-| `accountId` | number \| null | Yes | Default funding account |
-| `creditCardId` | number \| null | — | Default credit card |
-| `targetCreditCardId` | number \| null | — | For credit card payment templates |
+| `categoryId` | string \| null | Yes | Category reference by id (V8, alongside legacy `category` name) |
+| `accountId` | string \| null | Yes | Default funding account |
+| `creditCardId` | string \| null | — | Default credit card |
+| `targetCreditCardId` | string \| null | — | For credit card payment templates |
 | `notes` | string | Yes | Template notes |
 | `isActive` | boolean | Yes | Whether template is active |
 | `isVariableAmount` | boolean | Yes | Whether amount varies per occurrence |
 | `createdAt` | ISO string | Yes | Creation timestamp |
 | `updatedAt` | ISO string | Yes | Last update timestamp |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 #### `paycheckSettings`
 Single-row table storing the user's pay schedule.
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
+| `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `lastPaycheckDate` | string | Yes | Date of last paycheck (YYYY-MM-DD) |
 | `frequency` | string | Yes | Currently only `"biweekly"` (14-day intervals) |
 | `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 #### `userPreferences`
 Per-component UI preferences.
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
+| `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `component` | string | Yes | Component identifier |
 | `preferences` | object | Yes | JSON preferences blob |
 | `createdAt` | ISO string | Yes | Creation timestamp |
+| `lastExportDate` | ISO string | Yes | Timestamp of last data export (V6) |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 #### `monthlyExpenseHistory`
 Historical tracking of budget vs. actual spending per expense per month.
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
-| `expenseId` | number | Yes | Associated fixed expense |
+| `[expenseId+month+year]` | compound | PK | Compound primary key enabling upsert-by-period (V5) |
+| `expenseId` | string | Yes | Associated fixed expense |
 | `month` | number | Yes | Month (1-12) |
 | `year` | number | Yes | Year |
 | `budgetAmount` | number | Yes | Budgeted amount |
 | `actualAmount` | number | Yes | Actual amount spent |
 | `overpaymentAmount` | number | Yes | Amount over budget |
 | `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 #### `auditLogs`
 Comprehensive change-tracking for all data mutations.
 
 | Column | Type | Indexed | Description |
 |---|---|---|---|
-| `id` | auto-increment | PK | Unique identifier |
+| `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `timestamp` | ISO string | Yes | When the action occurred |
 | `actionType` | string | Yes | e.g., `"PAYMENT"`, `"CREATE"`, `"UPDATE"`, `"DELETE"` |
 | `entityType` | string | Yes | e.g., `"account"`, `"creditCard"`, `"creditCardPayment"` |
-| `entityId` | number | Yes | ID of the affected entity |
+| `entityId` | string | Yes | ID of the affected entity |
 | `details` | object | Yes | JSON with action-specific data |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
+
+**Retention:** Capped at `MAX_AUDIT_LOG_ENTRIES` (500) in `database-clean.js`; oldest entries are pruned once the cap is exceeded.
+
+#### `backups`
+Metadata for locally-stored backup snapshots (added V6). Backup payloads themselves live in `localStorage`, keyed by these records' `id`/`timestamp`.
+
+| Column | Type | Indexed | Description |
+|---|---|---|---|
+| `id` | UUID string | PK | Unique identifier |
+| `reason` | string | Yes | What triggered the backup, e.g. `"pre-import"`, `"pre-clear"`, `"manual"` |
+| `timestamp` | ISO string | Yes | When the backup was created |
+| `version` | number | Yes | Schema version the backup was taken at |
+| `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
 ### Entity Relationships
 
