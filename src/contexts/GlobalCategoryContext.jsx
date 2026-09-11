@@ -60,7 +60,7 @@ export const GlobalCategoryProvider = ({ children }) => {
       categoryCache.invalidate(); // Invalidate cache after mutation
       notify.success('Category deleted successfully');
     } catch (error) {
-      notify.error('Failed to delete category. Please try again.', error);
+      notify.error(error.message || 'Failed to delete category.', error);
       throw error;
     }
   }, []);

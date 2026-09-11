@@ -16,6 +16,13 @@ import { notify, showConfirmation } from '../../utils/notifications.jsx';
 import { categoryReducer, initialState, ACTIONS } from './categoryReducer';
 import CategoryRenameModal from './CategoryRenameModal';
 
+// Optimistic category adds are assigned a `temp-<timestamp>` id (see
+// ADD_CATEGORY_OPTIMISTIC below) until the real database write resolves and
+// replaces it with the actual id. Anything that mutates a category by id
+// needs to check this first, or it'll look up a row that doesn't exist yet.
+const isOptimisticCategoryId = id =>
+  typeof id === 'string' && id.startsWith('temp-');
+
 const CategoryContext = createContext(null);
 
 export const useCategoryContext = () => {
@@ -139,7 +146,10 @@ export const CategoryProvider = ({ children, onDataChange }) => {
             // Replace optimistic category with real one
             dispatch({
               type: ACTIONS.CONFIRM_CATEGORY_ADD,
-              payload: { ...optimisticCategory, id },
+              payload: {
+                tempId: optimisticCategory.id,
+                category: { ...optimisticCategory, id },
+              },
             });
           } catch (error) {
             // Revert optimistic update on error
@@ -230,6 +240,18 @@ export const CategoryProvider = ({ children, onDataChange }) => {
       try {
         setOperationLoading(prev => ({ ...prev, deleting: true }));
 
+        // The category may still be an optimistic placeholder (see
+        // ADD_CATEGORY_OPTIMISTIC above) whose `temp-<timestamp>` id hasn't
+        // been replaced with the real database id yet. Deleting it now
+        // would look up a row that doesn't exist and fail confusingly.
+        if (isOptimisticCategoryId(category.id)) {
+          notify.info(
+            `"${category.name}" is still saving — please wait a moment and try deleting it again.`,
+          );
+          setOperationLoading(prev => ({ ...prev, deleting: false }));
+          return;
+        }
+
         // Prevent deletion of default categories
         if (category.isDefault) {
           notify.error(
@@ -296,12 +318,23 @@ export const CategoryProvider = ({ children, onDataChange }) => {
           categoryIds.includes(cat.id),
         );
 
+        // Skip categories still saving from an optimistic add - their id
+        // isn't a real database id yet, so deleting them now would fail.
+        const pendingCategories = categoriesToCheck.filter(cat =>
+          isOptimisticCategoryId(cat.id),
+        );
+        if (pendingCategories.length > 0) {
+          notify.info(
+            `${pendingCategories.length} categor${pendingCategories.length > 1 ? 'ies are' : 'y is'} still saving and ${pendingCategories.length > 1 ? 'were' : 'was'} skipped — try again in a moment.`,
+          );
+        }
+
         // Filter out default categories
         const defaultCategories = categoriesToCheck.filter(
-          cat => cat.isDefault,
+          cat => cat.isDefault && !isOptimisticCategoryId(cat.id),
         );
         const customCategories = categoriesToCheck.filter(
-          cat => !cat.isDefault,
+          cat => !cat.isDefault && !isOptimisticCategoryId(cat.id),
         );
 
         if (defaultCategories.length > 0) {

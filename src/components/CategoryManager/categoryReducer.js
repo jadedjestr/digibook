@@ -102,10 +102,13 @@ export const categoryReducer = (state, action) => {
       };
 
     case ACTIONS.CONFIRM_CATEGORY_ADD:
+      // action.payload.category.id is the *new* real id, so matching
+      // against it here would never find the optimistic placeholder
+      // still sitting in state under its old tempId - match on tempId.
       return {
         ...state,
         categories: state.categories.map(cat =>
-          cat.id === action.payload.id ? action.payload : cat,
+          cat.id === action.payload.tempId ? action.payload.category : cat,
         ),
       };
 

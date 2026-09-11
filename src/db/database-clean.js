@@ -1436,6 +1436,14 @@ export const dbHelpers = {
   async deleteCategory(id) {
     try {
       const category = await db.categories.get(id);
+      if (!category) {
+        // Can happen if the caller still holds an optimistic-add placeholder
+        // id (see CategoryContext's `temp-${Date.now()}`) instead of the
+        // real id assigned once the add finishes.
+        throw new Error(
+          'Category not found. It may still be saving — please try again in a moment.',
+        );
+      }
       const affectedFixedExpenses = await db.fixedExpenses
         .where('category')
         .equals(category.name)
@@ -1454,7 +1462,7 @@ export const dbHelpers = {
       };
     } catch (error) {
       logger.error('Error deleting category:', error);
-      throw new Error('Failed to delete category');
+      throw new Error(`Failed to delete category: ${error.message}`);
     }
   },
 
