@@ -274,8 +274,11 @@ const CreditCardMigrationModal = ({ isOpen, onClose, onComplete }) => {
               {migrationResults.results.length > 0 && (
                 <div className='space-y-3'>
                   <h4 className='font-medium text-white'>Applied Mappings:</h4>
-                  {migrationResults.results.map((result, index) => (
-                    <div key={index} className='bg-white/5 rounded-lg p-3'>
+                  {migrationResults.results.map(result => (
+                    <div
+                      key={result.expenseId}
+                      className='bg-white/5 rounded-lg p-3'
+                    >
                       <div className='flex items-center justify-between'>
                         <div>
                           <div className='text-white text-sm'>

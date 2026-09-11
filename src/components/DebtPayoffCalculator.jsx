@@ -48,29 +48,29 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
   }, [selectedCard]);
 
   useEffect(() => {
+    const calculatePayoff = async () => {
+      const { balance, payment, interestRate } = calculatorData;
+
+      if (balance <= 0 || payment <= 0) {
+        setPayoffResult(null);
+        return;
+      }
+
+      try {
+        const result = await dbHelpers.calculateDebtPayoff(
+          balance,
+          payment,
+          interestRate,
+        );
+        setPayoffResult(result);
+      } catch (error) {
+        logger.error('Error calculating debt payoff:', error);
+        setPayoffResult(null);
+      }
+    };
+
     calculatePayoff();
   }, [calculatorData]);
-
-  const calculatePayoff = async () => {
-    const { balance, payment, interestRate } = calculatorData;
-
-    if (balance <= 0 || payment <= 0) {
-      setPayoffResult(null);
-      return;
-    }
-
-    try {
-      const result = await dbHelpers.calculateDebtPayoff(
-        balance,
-        payment,
-        interestRate,
-      );
-      setPayoffResult(result);
-    } catch (error) {
-      logger.error('Error calculating debt payoff:', error);
-      setPayoffResult(null);
-    }
-  };
 
   const handleInputChange = (field, value) => {
     setCalculatorData(prev => ({

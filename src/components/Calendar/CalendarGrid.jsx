@@ -81,7 +81,7 @@ const CalendarGrid = forwardRef(
         <div className='calendar-grid' ref={ref}>
           {calendarData.map((dayData, index) => (
             <CalendarDay
-              key={`${dayData.dateString}-${index}`}
+              key={dayData.dateString}
               dayData={dayData}
               paycheckService={paycheckService}
               paycheckDates={paycheckDates}

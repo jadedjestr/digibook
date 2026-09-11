@@ -1,6 +1,6 @@
 import { X, CreditCard, PiggyBank, Building2 } from 'lucide-react';
 import PropTypes from 'prop-types';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 import { dbHelpers } from '../db/database-clean';
@@ -143,18 +143,7 @@ const AddExpensePanel = ({
     }
   }, [isOpen]);
 
-  // Escape key handler
-  useEffect(() => {
-    const handleEscape = e => {
-      if (e.key === 'Escape' && isOpen) {
-        handleClose();
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen]);
-
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setFormData({
       name: '',
       dueDate: '',
@@ -167,7 +156,18 @@ const AddExpensePanel = ({
     setMakeRecurring(false);
     setShowRecurringModal(false);
     onClose();
-  };
+  }, [onClose]);
+
+  // Escape key handler
+  useEffect(() => {
+    const handleEscape = e => {
+      if (e.key === 'Escape' && isOpen) {
+        handleClose();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, handleClose]);
 
   const handleSaveRecurring = async recurringData => {
     try {

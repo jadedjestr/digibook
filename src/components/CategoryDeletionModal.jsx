@@ -19,41 +19,41 @@ const CategoryDeletionModal = ({
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      loadCategories();
-      initializeIndividualAssignments();
-    }
-  }, [isOpen, affectedItems]);
+    if (!isOpen) return;
 
-  const loadCategories = async () => {
-    try {
-      const categoriesData = await dbHelpers.getCategories();
+    const loadCategories = async () => {
+      try {
+        const categoriesData = await dbHelpers.getCategories();
 
-      // Filter out the category being deleted
-      const availableCategories = categoriesData.filter(
-        cat => cat.name !== categoryToDelete.name,
-      );
-      setCategories(availableCategories);
-    } catch (error) {
-      logger.error('Error loading categories:', error);
-    }
-  };
+        // Filter out the category being deleted
+        const availableCategories = categoriesData.filter(
+          cat => cat.name !== categoryToDelete.name,
+        );
+        setCategories(availableCategories);
+      } catch (error) {
+        logger.error('Error loading categories:', error);
+      }
+    };
 
-  const initializeIndividualAssignments = () => {
-    const assignments = {};
+    const initializeIndividualAssignments = () => {
+      const assignments = {};
 
-    // Initialize fixed expenses
-    affectedItems.fixedExpenses.forEach(expense => {
-      assignments[`expense-${expense.id}`] = '';
-    });
+      // Initialize fixed expenses
+      affectedItems.fixedExpenses.forEach(expense => {
+        assignments[`expense-${expense.id}`] = '';
+      });
 
-    // Initialize pending transactions
-    affectedItems.pendingTransactions.forEach(transaction => {
-      assignments[`transaction-${transaction.id}`] = '';
-    });
+      // Initialize pending transactions
+      affectedItems.pendingTransactions.forEach(transaction => {
+        assignments[`transaction-${transaction.id}`] = '';
+      });
 
-    setIndividualAssignments(assignments);
-  };
+      setIndividualAssignments(assignments);
+    };
+
+    loadCategories();
+    initializeIndividualAssignments();
+  }, [isOpen, affectedItems, categoryToDelete]);
 
   const handleBulkReassign = async () => {
     if (!bulkCategory) return;

@@ -79,6 +79,12 @@ const DragOverlay = ({ isDragging, expense, status }) => {
   );
 };
 
+DragOverlay.propTypes = {
+  isDragging: PropTypes.bool.isRequired,
+  expense: PropTypes.object.isRequired,
+  status: PropTypes.string.isRequired,
+};
+
 const DraggableExpenseRow = ({
   expense,
   status,
@@ -97,6 +103,19 @@ const DraggableExpenseRow = ({
     expense.category === 'Credit Card Payment' &&
     expense.targetCreditCardId &&
     expense.amount === 0;
+
+  const getRecurringTooltip = () => {
+    if (isZeroBalanceCCPayment) {
+      return 'No payment due this month (card has $0 balance)';
+    }
+    if (
+      expense.category === 'Credit Card Payment' &&
+      expense.recurringTemplateId
+    ) {
+      return 'Recurring minimum payment; amount updates with card balance';
+    }
+    return undefined;
+  };
 
   const currentPaymentSource = useMemo(() => {
     return createPaymentSource.fromExpense(expense);
@@ -230,14 +249,7 @@ const DraggableExpenseRow = ({
         <td>
           <div
             className='flex items-center space-x-1'
-            title={
-              isZeroBalanceCCPayment
-                ? 'No payment due this month (card has $0 balance)'
-                : expense.category === 'Credit Card Payment' &&
-                    expense.recurringTemplateId
-                  ? 'Recurring minimum payment; amount updates with card balance'
-                  : undefined
-            }
+            title={getRecurringTooltip()}
           >
             {expense.recurringTemplateId ? (
               <>

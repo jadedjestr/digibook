@@ -52,6 +52,21 @@ const OverpaymentTooltip = ({ active, payload }) => {
   );
 };
 
+OverpaymentTooltip.propTypes = {
+  active: PropTypes.bool,
+  payload: PropTypes.arrayOf(
+    PropTypes.shape({
+      payload: PropTypes.shape({
+        name: PropTypes.string,
+        totalBudget: PropTypes.number,
+        totalActual: PropTypes.number,
+        totalOverpayment: PropTypes.number,
+        overpaymentPercentage: PropTypes.number,
+      }),
+    }),
+  ),
+};
+
 const OverpaymentAnalysis = ({ data, categories = [] }) => {
   if (!data || Object.keys(data).length === 0) {
     return (

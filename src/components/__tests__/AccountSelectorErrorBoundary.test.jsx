@@ -25,12 +25,10 @@ ThrowError.propTypes = { shouldThrow: PropTypes.bool };
 // Mock console.error to avoid React error boundary noise in test output
 const originalConsoleError = console.error;
 beforeAll(() => {
-  // eslint-disable-next-line no-restricted-syntax -- test mock for React error boundary output
   console.error = vi.fn();
 });
 
 afterAll(() => {
-  // eslint-disable-next-line no-restricted-syntax -- restore after test mock
   console.error = originalConsoleError;
 });
 

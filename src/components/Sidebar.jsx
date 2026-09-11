@@ -26,6 +26,11 @@ const MobileMenuButton = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => (
   </button>
 );
 
+MobileMenuButton.propTypes = {
+  isMobileMenuOpen: PropTypes.bool.isRequired,
+  setIsMobileMenuOpen: PropTypes.func.isRequired,
+};
+
 // Mobile overlay backdrop
 const MobileOverlay = ({ isMobileMenuOpen, setIsMobileMenuOpen }) =>
   isMobileMenuOpen && (
@@ -43,6 +48,11 @@ const MobileOverlay = ({ isMobileMenuOpen, setIsMobileMenuOpen }) =>
       aria-label='Close menu'
     />
   );
+
+MobileOverlay.propTypes = {
+  isMobileMenuOpen: PropTypes.bool.isRequired,
+  setIsMobileMenuOpen: PropTypes.func.isRequired,
+};
 
 // Sidebar content
 const SidebarContent = ({
@@ -141,6 +151,33 @@ const SidebarContent = ({
     </div>
   </div>
 );
+
+SidebarContent.propTypes = {
+  defaultAccount: PropTypes.shape({
+    isDefault: PropTypes.bool,
+    currentBalance: PropTypes.number,
+    name: PropTypes.string,
+  }),
+  projectedBalance: PropTypes.number,
+  navigation: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      name: PropTypes.string.isRequired,
+      icon: PropTypes.elementType.isRequired,
+    }),
+  ).isRequired,
+  currentPage: PropTypes.string.isRequired,
+  handlePageChange: PropTypes.func.isRequired,
+  toggleHidden: PropTypes.func.isRequired,
+  isHidden: PropTypes.bool.isRequired,
+  onToggleLock: PropTypes.func.isRequired,
+  isLocked: PropTypes.bool.isRequired,
+};
+
+SidebarContent.defaultProps = {
+  defaultAccount: null,
+  projectedBalance: 0,
+};
 
 const Sidebar = ({ navigation, onToggleLock, isLocked }) => {
   // Use Zustand store for data

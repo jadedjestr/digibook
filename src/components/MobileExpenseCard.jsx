@@ -43,6 +43,60 @@ const MobileExpenseCard = ({
     expense.targetCreditCardId &&
     expense.amount === 0;
 
+  const getRecurringTooltip = () => {
+    if (isZeroBalanceCCPayment) {
+      return 'No payment due this month (card has $0 balance)';
+    }
+    if (
+      expense.category === 'Credit Card Payment' &&
+      expense.recurringTemplateId
+    ) {
+      return 'Recurring minimum payment; amount updates with card balance';
+    }
+    return undefined;
+  };
+
+  const renderAmountField = () => {
+    if (isZeroBalanceCCPayment) {
+      return (
+        <span className='text-white/40 text-sm italic'>No payment due</span>
+      );
+    }
+    if (isEditing && editingField === 'amount') {
+      return (
+        <div className='flex items-center space-x-2'>
+          <input
+            type='number'
+            step='0.01'
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            className='glass-input w-24 text-right'
+          />
+          <button
+            onClick={handleSave}
+            className='p-1 text-green-400 hover:text-green-300'
+          >
+            <Check size={14} />
+          </button>
+          <button
+            onClick={handleCancel}
+            className='p-1 text-red-400 hover:text-red-300'
+          >
+            <X size={14} />
+          </button>
+        </div>
+      );
+    }
+    return (
+      <button
+        onClick={() => handleEdit('amount', expense.amount)}
+        className='text-lg font-bold text-primary hover:text-white transition-colors'
+      >
+        <PrivacyWrapper>${formatAmount(expense.amount)}</PrivacyWrapper>
+      </button>
+    );
+  };
+
   const currentPaymentSource = useMemo(() => {
     return createPaymentSource.fromExpense(expense);
   }, [expense]);
@@ -156,14 +210,7 @@ const MobileExpenseCard = ({
             </span>
             <span
               className='text-xs text-white/50'
-              title={
-                isZeroBalanceCCPayment
-                  ? 'No payment due this month (card has $0 balance)'
-                  : expense.category === 'Credit Card Payment' &&
-                      expense.recurringTemplateId
-                    ? 'Recurring minimum payment; amount updates with card balance'
-                    : undefined
-              }
+              title={getRecurringTooltip()}
             >
               {expense.recurringTemplateId ? 'Recurring' : 'One-time'}
             </span>
@@ -216,42 +263,7 @@ const MobileExpenseCard = ({
             <DollarSign size={16} className='text-primary' />
             <span className='text-sm font-medium text-secondary'>Amount</span>
           </div>
-          <div className='text-right'>
-            {isZeroBalanceCCPayment ? (
-              <span className='text-white/40 text-sm italic'>
-                No payment due
-              </span>
-            ) : isEditing && editingField === 'amount' ? (
-              <div className='flex items-center space-x-2'>
-                <input
-                  type='number'
-                  step='0.01'
-                  value={editValue}
-                  onChange={e => setEditValue(e.target.value)}
-                  className='glass-input w-24 text-right'
-                />
-                <button
-                  onClick={handleSave}
-                  className='p-1 text-green-400 hover:text-green-300'
-                >
-                  <Check size={14} />
-                </button>
-                <button
-                  onClick={handleCancel}
-                  className='p-1 text-red-400 hover:text-red-300'
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => handleEdit('amount', expense.amount)}
-                className='text-lg font-bold text-primary hover:text-white transition-colors'
-              >
-                <PrivacyWrapper>${formatAmount(expense.amount)}</PrivacyWrapper>
-              </button>
-            )}
-          </div>
+          <div className='text-right'>{renderAmountField()}</div>
         </div>
 
         {/* Due Date */}
@@ -469,6 +481,7 @@ MobileExpenseCard.propTypes = {
     ]),
     accountId: PropTypes.string,
     creditCardId: PropTypes.string,
+    targetCreditCardId: PropTypes.string,
   }).isRequired,
   status: PropTypes.string.isRequired,
   account: PropTypes.object,

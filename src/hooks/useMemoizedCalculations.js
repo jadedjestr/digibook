@@ -112,7 +112,7 @@ export const useMemoizedCalculations = (
         percentage:
           expense.amount > 0
             ? ((expense.paidAmount || 0) / expense.amount) * 100
-            : 0, // eslint-disable-line operator-linebreak
+            : 0,
       };
     });
   }, [expenses]);

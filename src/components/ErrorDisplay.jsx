@@ -363,9 +363,9 @@ export const ErrorSummary = ({
 
   return (
     <div className={`space-y-3 ${className}`}>
-      {criticalErrors.map((error, index) => (
+      {criticalErrors.map(error => (
         <CriticalError
-          key={`critical-${index}`}
+          key={`${error.title}-${error.message}`}
           title={error.title}
           message={error.message}
           onRetry={onRetry}
@@ -374,9 +374,9 @@ export const ErrorSummary = ({
         />
       ))}
 
-      {highErrors.map((error, index) => (
+      {highErrors.map(error => (
         <DatabaseError
-          key={`high-${index}`}
+          key={`${error.title}-${error.message}`}
           message={error.message}
           onRetry={onRetry}
           onDismiss={onDismiss}
@@ -384,9 +384,9 @@ export const ErrorSummary = ({
         />
       ))}
 
-      {mediumErrors.map((error, index) => (
+      {mediumErrors.map(error => (
         <ErrorDisplay
-          key={`medium-${index}`}
+          key={`${error.title}-${error.message}`}
           title={error.title}
           message={error.message}
           severity={ERROR_SEVERITY.MEDIUM}
@@ -395,9 +395,9 @@ export const ErrorSummary = ({
         />
       ))}
 
-      {lowErrors.map((error, index) => (
+      {lowErrors.map(error => (
         <ErrorDisplay
-          key={`low-${index}`}
+          key={`${error.title}-${error.message}`}
           title={error.title}
           message={error.message}
           severity={ERROR_SEVERITY.LOW}

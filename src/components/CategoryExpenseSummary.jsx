@@ -50,13 +50,12 @@ const CategoryExpenseSummaryBase = ({
 
   // Input validation - default to empty arrays if null/undefined
   const safeExpenses = expenses || [];
-  const safeCategories = categories || [];
   const hasExplicitExpensesProp = expenses !== null && expenses !== undefined;
 
   // Create categoryMap for O(1) lookups
   const categoryMap = useMemo(
-    () => createCategoryMap(safeCategories),
-    [safeCategories],
+    () => createCategoryMap(categories || []),
+    [categories],
   );
 
   // Treat expenses as already scoped by the parent view (month/range)
@@ -127,18 +126,9 @@ const CategoryExpenseSummaryBase = ({
     setSelectedCategory(null);
   };
 
-  return (
-    <div className='glass-card p-6'>
-      <h3
-        className={`font-semibold text-primary ${
-          compact ? 'text-base mb-3' : 'text-lg mb-4'
-        }`}
-      >
-        Expense Distribution
-      </h3>
-
-      {/* Show appropriate message based on state */}
-      {safeExpenses.length === 0 ? (
+  const renderBody = () => {
+    if (safeExpenses.length === 0) {
+      return (
         <div className='text-center py-4'>
           <p className='text-white/60'>
             {hasExplicitExpensesProp
@@ -151,9 +141,12 @@ const CategoryExpenseSummaryBase = ({
               : 'Add expenses to see the distribution breakdown.'}
           </p>
         </div>
-      ) : compact ? (
-        // eslint-disable-next-line lines-around-comment -- compact layout comment
-        /* Compact: donut on top, category table full width below */
+      );
+    }
+
+    if (compact) {
+      // Compact: donut on top, category table full width below
+      return (
         <div
           className='category-expense-summary-compact'
           style={{
@@ -229,47 +222,61 @@ const CategoryExpenseSummaryBase = ({
             </div>
           )}
         </div>
-      ) : (
-        <div
-          className='relative overflow-hidden'
-          style={{ minHeight: '400px' }}
-        >
-          {/* Donut Chart View */}
-          <div
-            className={`absolute inset-0 transition-transform duration-500 ease-in-out ${
-              selectedCategory === null
-                ? 'translate-x-0 opacity-100'
-                : '-translate-x-full opacity-0'
-            }`}
-          >
-            <DonutChart
-              data={expenseData}
-              totalAmount={totalAmount}
-              onSegmentClick={handleSegmentClick}
-              size={300}
-              showTotalUnderLegend={true}
-            />
-          </div>
+      );
+    }
 
-          {/* Category Detail View */}
-          <div
-            className={`absolute inset-0 transition-transform duration-500 ease-in-out ${
-              selectedCategory !== null
-                ? 'translate-x-0 opacity-100'
-                : 'translate-x-full opacity-0'
-            }`}
-            style={{ pointerEvents: selectedCategory ? 'auto' : 'none' }}
-          >
-            {selectedCategory && (
-              <CategoryDetailView
-                categoryName={selectedCategory}
-                categoryData={getCategoryDetails(selectedCategory)}
-                onBack={handleBackClick}
-              />
-            )}
-          </div>
+    return (
+      <div className='relative overflow-hidden' style={{ minHeight: '400px' }}>
+        {/* Donut Chart View */}
+        <div
+          className={`absolute inset-0 transition-transform duration-500 ease-in-out ${
+            selectedCategory === null
+              ? 'translate-x-0 opacity-100'
+              : '-translate-x-full opacity-0'
+          }`}
+        >
+          <DonutChart
+            data={expenseData}
+            totalAmount={totalAmount}
+            onSegmentClick={handleSegmentClick}
+            size={300}
+            showTotalUnderLegend={true}
+          />
         </div>
-      )}
+
+        {/* Category Detail View */}
+        <div
+          className={`absolute inset-0 transition-transform duration-500 ease-in-out ${
+            selectedCategory !== null
+              ? 'translate-x-0 opacity-100'
+              : 'translate-x-full opacity-0'
+          }`}
+          style={{ pointerEvents: selectedCategory ? 'auto' : 'none' }}
+        >
+          {selectedCategory && (
+            <CategoryDetailView
+              categoryName={selectedCategory}
+              categoryData={getCategoryDetails(selectedCategory)}
+              onBack={handleBackClick}
+            />
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className='glass-card p-6'>
+      <h3
+        className={`font-semibold text-primary ${
+          compact ? 'text-base mb-3' : 'text-lg mb-4'
+        }`}
+      >
+        Expense Distribution
+      </h3>
+
+      {/* Show appropriate message based on state */}
+      {renderBody()}
     </div>
   );
 };

@@ -50,6 +50,20 @@ const MonthlyTrendsTooltip = ({ active, payload, label }) => {
   );
 };
 
+MonthlyTrendsTooltip.propTypes = {
+  active: PropTypes.bool,
+  payload: PropTypes.arrayOf(
+    PropTypes.shape({
+      payload: PropTypes.shape({
+        totalBudget: PropTypes.number,
+        totalActual: PropTypes.number,
+        totalOverpayment: PropTypes.number,
+      }),
+    }),
+  ),
+  label: PropTypes.string,
+};
+
 const MonthlyTrends = ({ history = [], months = 12, onMonthsChange }) => {
   const monthlyData = useMemo(() => {
     if (!history || !Array.isArray(history) || history.length === 0) return [];

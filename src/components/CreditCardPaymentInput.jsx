@@ -227,9 +227,9 @@ const CreditCardPaymentInput = ({
         {validationResult && (
           <div className='mt-2 space-y-1'>
             {/* Errors */}
-            {validationResult.errors.map((error, index) => (
+            {validationResult.errors.map(error => (
               <div
-                key={`error-${index}`}
+                key={error}
                 className='flex items-start space-x-2 text-red-400 text-sm animate-in slide-in-from-left-2 duration-300'
               >
                 <AlertTriangle
@@ -241,9 +241,9 @@ const CreditCardPaymentInput = ({
             ))}
 
             {/* Warnings */}
-            {validationResult.warnings.map((warning, index) => (
+            {validationResult.warnings.map(warning => (
               <div
-                key={`warning-${index}`}
+                key={warning}
                 className='flex items-start space-x-2 text-yellow-400 text-sm animate-in slide-in-from-left-2 duration-300'
               >
                 <AlertTriangle size={14} className='mt-0.5 flex-shrink-0' />
@@ -305,9 +305,9 @@ const CreditCardPaymentInput = ({
             Payment Suggestions
           </legend>
           <div className='flex flex-wrap gap-2'>
-            {suggestions.map((suggestion, index) => (
+            {suggestions.map(suggestion => (
               <button
-                key={index}
+                key={suggestion.type}
                 onClick={() => handleSuggestionClick(suggestion)}
                 disabled={suggestion.type === 'info'}
                 className={getEnhancedSuggestionClass(suggestion)}

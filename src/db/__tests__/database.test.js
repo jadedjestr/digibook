@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-import MockDatabase from './mock-database';
+import { MockDatabase } from './mock-database';
 
 // Mock logger to reduce noise in tests
 vi.mock('../../utils/logger', () => ({

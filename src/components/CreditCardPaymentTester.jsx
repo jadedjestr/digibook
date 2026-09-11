@@ -278,9 +278,9 @@ const CreditCardPaymentTester = () => {
             {validationResult.errors.length > 0 && (
               <div className='space-y-2'>
                 <h4 className='text-sm font-medium text-red-400'>Errors:</h4>
-                {validationResult.errors.map((error, index) => (
+                {validationResult.errors.map(error => (
                   <div
-                    key={index}
+                    key={error}
                     className='flex items-start space-x-2 text-sm text-red-300'
                   >
                     <AlertTriangle size={16} className='mt-0.5 flex-shrink-0' />
@@ -296,9 +296,9 @@ const CreditCardPaymentTester = () => {
                 <h4 className='text-sm font-medium text-yellow-400'>
                   Warnings:
                 </h4>
-                {validationResult.warnings.map((warning, index) => (
+                {validationResult.warnings.map(warning => (
                   <div
-                    key={index}
+                    key={warning}
                     className='flex items-start space-x-2 text-sm text-yellow-300'
                   >
                     <AlertTriangle size={16} className='mt-0.5 flex-shrink-0' />

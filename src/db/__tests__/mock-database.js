@@ -473,5 +473,3 @@ export function createMockPaycheckSettings(
 export const mockPaycheckSettingsWeekly = createMockPaycheckSettings('weekly');
 export const mockPaycheckSettingsMonthly =
   createMockPaycheckSettings('monthly');
-
-export default MockDatabase;
