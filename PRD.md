@@ -1,7 +1,7 @@
 # Digibook - Product Requirements Document
 
-**Document Version:** 2.0
-**Last Updated:** March 7, 2026
+**Document Version:** 3.0
+**Last Updated:** September 11, 2026
 **Product Owner:** Adrian Garcia
 **Status:** Live / Active Development
 
@@ -35,13 +35,13 @@
 
 ## 1. Executive Summary
 
-Digibook is a **local-first personal finance tracker** built as a single-page application that runs entirely in the browser. All financial data is stored client-side in **IndexedDB** — there is no backend server, no cloud sync, and no data ever leaves the user's device.
+Digibook is a **local-first personal finance tracker** built as a single-page application that runs entirely in the browser. All financial data is stored client-side in **IndexedDB** — there is no backend server, no cloud sync, and no data ever leaves the user's device. The app is also installable as a **Progressive Web App**, so it can run offline and be added to a phone or desktop home screen — but this only makes the app shell available offline; it does not change where financial data lives.
 
 The app helps users:
 
 - Track bank account balances (checking and savings)
 - Manage credit card debt, utilization, and payments
-- Plan and track fixed/recurring expenses against a paycheck cycle
+- Plan and track fixed/recurring expenses against a paycheck cycle (weekly, biweekly, or monthly)
 - Visualize financial health through analytics and insights
 - Import/export data for backup and portability
 
@@ -59,9 +59,9 @@ Digibook is designed for a single user who wants full control of their financial
 
 | Principle | Description |
 |---|---|
-| **Local-First** | All data lives in the browser via IndexedDB. Zero network calls for data. |
+| **Local-First** | All data lives in the browser via IndexedDB. Zero network calls for data. A service worker caches the app shell for offline use and home-screen installation, but this is purely a delivery mechanism — it never touches financial data. |
 | **Privacy by Design** | PIN lock, privacy mode to hide values, encrypted exports. No analytics or telemetry. |
-| **Pay-Cycle Centric** | The expense management workflow is organized around biweekly paycheck cycles, not arbitrary calendar months. |
+| **Pay-Cycle Centric** | The expense management workflow is organized around a paycheck cycle (weekly, biweekly, or monthly) rather than arbitrary calendar months. |
 | **Dual Foreign Key Architecture** | Expenses can be funded from bank accounts OR charged to credit cards — never both. Credit card *payments* use a separate two-field system (funding account + target card). |
 | **Optimistic Updates** | The UI updates immediately on user actions; database writes happen in the background with rollback on failure. |
 | **Zero Configuration** | New users set a PIN, add an account, and are immediately productive. Default categories are seeded automatically. |
@@ -72,7 +72,7 @@ Digibook is designed for a single user who wants full control of their financial
 
 ### Primary Persona: Budget-Conscious Individual
 
-A person who gets paid biweekly and wants to map every dollar of their paycheck to specific bills, track credit card debt, and know their projected balance after all obligations are met.
+A person who gets paid on a regular cycle and wants to map every dollar of their paycheck to specific bills, track credit card debt, and know their projected balance after all obligations are met.
 
 ### Jobs to Be Done
 
@@ -82,6 +82,7 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 4. **"I want to record pending transactions (deposits, checks) to see my real projected balance."**
 5. **"I want my financial data to stay on my device — no cloud, no third parties."**
 6. **"I want to back up and restore my data easily."**
+7. **"I want to install the app on my phone and still see my numbers if I lose signal."**
 
 ---
 
@@ -93,11 +94,12 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 |---|---|---|
 | `react` | 18.x | UI framework |
 | `react-dom` | 18.x | DOM rendering |
-| `dexie` | 4.x | IndexedDB wrapper (database ORM) |
+| `dexie` | 3.x | IndexedDB wrapper (database ORM) |
 | `zustand` | 5.x | Lightweight global state management |
 | `lucide-react` | latest | Icon library |
 | `papaparse` | 5.x | CSV import/export parsing |
 | `react-toastify` | 11.x | Toast notification system |
+| `recharts` | 2.x | Chart library (Insights page trends and breakdowns) |
 | `@dnd-kit/core` | latest | Drag-and-drop primitives |
 | `@dnd-kit/sortable` | latest | Sortable drag-and-drop |
 | `@dnd-kit/utilities` | latest | Drag-and-drop utilities |
@@ -107,23 +109,24 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 | Tool | Purpose |
 |---|---|
 | Vite 7 | Build tool and dev server |
+| `vite-plugin-pwa` | Generates the service worker and web app manifest wiring for offline support and installability (Workbox under the hood) |
 | Tailwind CSS | Utility-first CSS framework with custom Liquid Glass theme |
 | PostCSS + Autoprefixer | CSS post-processing |
 | ESLint | JavaScript/JSX linting |
 | Prettier | Code formatting |
-| Husky | Git hooks (pre-commit) |
+| Husky | Git hooks (pre-commit, commit-msg) |
 | lint-staged | Run linters on staged files only |
-| Commitlint | Enforce conventional commit messages |
+| Commitlint | Enforce conventional commit messages (type/scope/subject rules; see [Section 20](#20-developer-tooling--code-quality)) |
 
 ### Testing
 
 | Tool | Purpose |
 |---|---|
-| Vitest | Test runner (unit tests with jsdom environment) |
+| Vitest | Test runner, split into two projects (see [Section 19](#19-testing-strategy)): jsdom unit tests, and real-browser Storybook story tests |
 | React Testing Library | Component testing utilities |
-| Playwright | Browser-based integration tests |
-| fake-indexeddb | IndexedDB mock for unit tests |
-| Storybook 9 | Component documentation and visual testing |
+| Playwright | Provides the real Chromium instance Vitest's browser-mode project renders Storybook stories in |
+| fake-indexeddb | IndexedDB mock for jsdom unit tests |
+| Storybook 9 | Component documentation and visual testing (`@storybook/addon-vitest` runs stories as tests) |
 
 ---
 
@@ -151,7 +154,8 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 │  │  ┌──────────────────────────────────────────────────────┐    │   │
 │  │  │              Custom Hooks Layer                       │    │   │
 │  │  │  useExpenseOperations | useAccountOperations |        │    │   │
-│  │  │  usePaycheckCalculations | useMemoizedCalculations    │    │   │
+│  │  │  usePaycheckCalculations | useMemoizedCalculations |  │    │   │
+│  │  │  usePayCycleNudge                                      │    │   │
 │  │  └───────────────────────┬──────────────────────────────┘    │   │
 │  │                          │                                    │   │
 │  │  ┌───────────────────────▼──────────────────────────────┐    │   │
@@ -173,10 +177,16 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 │  │  │  dbHelpers → Dexie.js → IndexedDB                     │    │   │
 │  │  │  Schema V1-V8 | Atomic transactions | Audit logging    │    │   │
 │  │  └──────────────────────────────────────────────────────┘    │   │
+│  │                                                              │   │
+│  │  ┌──────────────────────────────────────────────────────┐   │   │
+│  │  │        Service Worker (vite-plugin-pwa / Workbox)      │   │   │
+│  │  │  Caches app shell assets for offline load + install    │   │   │
+│  │  └──────────────────────────────────────────────────────┘   │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐   │
-│  │  localStorage: Zustand UI state, backups, PIN hash           │   │
+│  │  localStorage: Zustand UI state, backups, PIN hash,           │   │
+│  │                nudge dismissal state                          │   │
 │  │  IndexedDB:    All financial data (DigibookDB_Fresh)          │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
@@ -185,9 +195,10 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 ### Data Flow
 
 1. **App boot:** `main.jsx` → `App.jsx` → load PIN from secure storage → if no PIN or locked, show `PINLock` → else `loadData()`.
-2. **`loadData()`:** `initializeDatabase()` → `ensureDefaultData()` → `ensureDefaultAccount()` → run V4 migration if needed → parallel fetch all 7 tables into Zustand → background pre-generate recurring expenses (non-blocking).
+2. **`loadData()`:** `initializeDatabase()` → `ensureDefaultData()` → `ensureDefaultAccount()` → run legacy accountId-format migration if needed → parallel fetch all tables into Zustand → background pre-generate recurring expenses (non-blocking).
 3. **User action (e.g., mark expense as paid):** Component calls hook (e.g., `useExpenseOperations.markAsPaid`) → optimistic store update → `dbHelpers.applyExpensePaymentChangeAtomic()` → update expense + account/credit card balances in a single Dexie transaction → audit log → reload store slices.
 4. **Navigation:** `Sidebar` calls `setCurrentPage(id)` → Zustand updates `currentPage` (persisted to localStorage) → `App.renderPage()` switch statement renders the matching lazy-loaded page.
+5. **New record IDs:** every `dbHelpers` create path calls `generateId()` (`crypto.randomUUID()`) to assign the primary key *before* insert, rather than relying on Dexie's auto-increment — see [Section 6](#6-database-structure).
 
 ### Key Architectural Decisions
 
@@ -199,6 +210,8 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 | Zustand over Redux/Context | Minimal boilerplate, built-in selectors that prevent unnecessary re-renders, and native `persist` middleware for UI state. |
 | Optimistic updates | Instant UI feedback; reverts on DB error via `reloadExpenses()` / `reloadAccounts()`. |
 | Service layer pattern | Business logic (payment routing, paycheck calculations, recurring generation) is decoupled from React components and database operations. |
+| App-generated UUID primary keys (V8) | This is a single-user, local-only app with no existing installed base to migrate, so the schema bump to UUID string ids (instead of auto-increment integers) required no data backfill — it just changes what new records look like going forward. The main payoff is removing the risk of ID collisions if multi-device sync is ever built. |
+| PWA via `vite-plugin-pwa` | Installability and offline app-shell loading were worth adding without touching the local-first data model — the service worker only caches static assets, not IndexedDB data. |
 
 ---
 
@@ -222,7 +235,7 @@ A person who gets paid biweekly and wants to map every dollar of their paycheck 
 | V5 | `monthlyExpenseHistory` switched to a compound primary key `[expenseId+month+year]` to support upsert-by-period |
 | V6 | Added `backups` table; added `lastExportDate` on `userPreferences` |
 | V7 | Added `sortOrder` on `categories` for custom drag-and-drop ordering (existing categories backfilled alphabetically on upgrade) |
-| V8 | **UUID migration** — all tables switched from auto-increment integer `id` to string UUID primary keys; added soft-delete support (`deletedAt`) and `updatedAt` timestamps on every table; added `categoryId` on `fixedExpenses`, `pendingTransactions`, and `recurringExpenseTemplates` |
+| V8 | **UUID migration** — all tables switched from auto-increment integer `id` to string UUID primary keys (assigned application-side via `generateId()` on every new record — the schema upgrade itself does no data backfill); added soft-delete support (`deletedAt`) and `updatedAt` timestamps on every table; added `categoryId` on `fixedExpenses`, `pendingTransactions`, and `recurringExpenseTemplates` |
 
 ### Tables
 
@@ -353,6 +366,8 @@ Templates that auto-generate future expense instances.
 | `updatedAt` | ISO string | Yes | Last update timestamp |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
+**Frequency note:** this table's own `frequency`/`intervalValue`/`intervalUnit` fields (monthly/quarterly/biannually/annually/custom) describe *how often a bill recurs* (e.g. a quarterly insurance premium) and are independent of the user's *paycheck* frequency described below in `paycheckSettings`.
+
 #### `paycheckSettings`
 Single-row table storing the user's pay schedule.
 
@@ -360,7 +375,7 @@ Single-row table storing the user's pay schedule.
 |---|---|---|---|
 | `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `lastPaycheckDate` | string | Yes | Date of last paycheck (YYYY-MM-DD) |
-| `frequency` | string | Yes | Currently only `"biweekly"` (14-day intervals) |
+| `frequency` | string | Yes | `"weekly"`, `"biweekly"`, or `"monthly"` — see the `payFrequency.js` contract in [Section 13](#13-utilities) |
 | `createdAt` | ISO string | Yes | Creation timestamp |
 | `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
@@ -401,14 +416,14 @@ Comprehensive change-tracking for all data mutations.
 |---|---|---|---|
 | `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `timestamp` | ISO string | Yes | When the action occurred |
-| `actionType` | string | Yes | e.g., `"PAYMENT"`, `"CREATE"`, `"UPDATE"`, `"DELETE"` |
-| `entityType` | string | Yes | e.g., `"account"`, `"creditCard"`, `"creditCardPayment"` |
+| `actionType` | string | Yes | e.g., `"PAYMENT"`, `"CREATE"`, `"UPDATE"`, `"DELETE"`, `"COMPLETE_TRANSACTION"` |
+| `entityType` | string | Yes | e.g., `"account"`, `"creditCard"`, `"creditCardPayment"`, `"fixedExpense"`, `"PendingTransaction"` |
 | `entityId` | string | Yes | ID of the affected entity |
 | `details` | object | Yes | JSON with action-specific data |
 | `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
-**Retention:** Capped at `MAX_AUDIT_LOG_ENTRIES` (500) in `database-clean.js`; oldest entries are pruned once the cap is exceeded.
+**Retention:** capped at 500 entries (`MAX_AUDIT_LOG_ENTRIES` in `database-clean.js`); oldest entries are pruned once the cap is exceeded.
 
 #### `backups`
 Metadata for locally-stored backup snapshots (added V6). Backup payloads themselves live in `localStorage`, keyed by these records' `id`/`timestamp`.
@@ -464,7 +479,7 @@ monthlyExpenseHistory ──► fixedExpenses (expenseId)
       <Sidebar />
       <main>
         <Suspense fallback={<LoadingSpinner />}>
-          {renderPage()}  // switch on currentPage
+          {renderPage()}  // switch on currentPage, wrapped for page-transition animation
         </Suspense>
       </main>
     </GlobalCategoryProvider>
@@ -484,7 +499,7 @@ monthlyExpenseHistory ──► fixedExpenses (expenseId)
 | `insights` | Insights | BarChart3 | Yes |
 | `settings` | Settings | Settings | No |
 
-Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). The `Sidebar` component calls `setCurrentPage(id)` on click. There is no URL-based routing.
+Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). The `Sidebar` component calls `setCurrentPage(id)` on click. There is no URL-based routing. Each page transition plays the `.page-transition` spring animation (see [Section 15](#15-design-system)).
 
 ### Sidebar Features
 
@@ -492,7 +507,7 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 - **Navigation items:** Icon + label, active state has glass highlight
 - **Hide/Show values button:** Toggles privacy mode (Cmd+Shift+H shortcut)
 - **Lock button:** Locks the app, requiring PIN re-entry
-- **Responsive:** Desktop sidebar is fixed; mobile uses a hamburger menu with slide-in drawer and backdrop overlay
+- **Responsive:** Desktop sidebar is fixed; mobile uses a hamburger menu with a spring-eased slide-in drawer and backdrop overlay
 
 ### Global Keyboard Shortcuts
 
@@ -520,8 +535,9 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 - **Set Default Account:** Star icon to designate the primary account (shown in sidebar)
 - **Delete Account:** With confirmation dialog
 - **Projected Balance column:** Current balance + sum of pending transactions for that account. Highlighted in yellow when projected is lower than current.
+- **Missing payment expenses check:** On load, if any credit card lacks a linked "Credit Card Payment" expense, `MissingExpensesModal` prompts to create the missing expense(s) so nothing silently goes untracked.
 - **Privacy wrapper:** All monetary values wrapped in `<PrivacyWrapper>` for privacy mode
-- **Empty state:** Friendly illustration and "Add Your First Account" CTA when no accounts exist
+- **Empty state:** `EmptyState` + `AccountsEmptyIllustration` with an "Add Your First Account" CTA when no accounts exist
 
 ### 8.2 Pending Transactions Page
 
@@ -538,7 +554,7 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 - **Complete transaction:** Check icon button — applies the transaction to the account balance
 - **Delete transaction:** Trash icon with confirmation
 - **Category selector:** Populated from the categories table
-- **Empty state:** "No pending transactions" with illustrative icon and CTA
+- **Empty state:** `EmptyState` + `PendingEmptyIllustration` with a contextual CTA
 
 ### 8.3 Fixed Expenses Page
 
@@ -552,11 +568,13 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 
 #### Month View
 
+**Layout:** a left panel (`FixedExpensesSummaryCard` — expense count, Total/Paid/Remaining, category breakdown) alongside a full-width expenses table, replacing an earlier single-column layout.
+
 - **Calendar Component** (`Calendar/Calendar.jsx`):
-  - Full month calendar grid with expense badges on due dates
+  - Full month calendar grid with expense badges on due dates (badge shows name and amount separately)
   - Color-coded badges by payment status (paid, unpaid, overdue)
   - Quick actions on click (mark paid, edit)
-  - Upcoming Recurring Widget showing next scheduled expenses
+  - Upcoming Recurring Widget showing next scheduled expenses, with an optional funding-account subtitle per item
   - Month navigation (previous/next/today)
   - Pay cycle reset button
 
@@ -565,24 +583,27 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
   - **PayDateCountdownCard:** Days until next paycheck, days until following paycheck
   - **ProjectedBalanceCard:** Discretionary spending amount (default account balance minus remaining expenses)
 
-- **Category Expense Summary:** Visual breakdown by category with clickable segments that scroll to the corresponding table section
+- **Category Expense Summary:** Visual breakdown by category (via `ExpenseBar` rows) with clickable segments that scroll to the corresponding table section
 
-- **Fixed Expenses Table** (`FixedExpensesTable.jsx`):
+- **Fixed Expenses Table** (`FixedExpensesTable/` — see [Section 12](#12-component-inventory) for the component breakdown):
   - Grouped by category with collapsible sections
   - Columns: Name, Due Date, Amount, Paid Amount, Status, Payment Source, Actions
-  - Inline editing for all editable fields
+  - Inline editing for all editable fields, with a compact table header
   - Quick-add row for adding new expenses
   - Drag-and-drop reordering within categories (via @dnd-kit)
   - Status badges: Paid (green), Partially Paid (yellow), Overdue (red), Pay This Week (orange), Pay with Next Check (blue), Pay with Following Check (gray)
   - Payment source display: Shows which account or credit card funds each expense
+  - **Mark as Paid modal:** "Pay Now" quick action opens `MarkAsPaidModal` for full or partial payment, rather than only inline editing
+  - **Account validation:** `AccountValidationAlert` surfaces any expense whose `accountId` no longer points to an existing account, with a one-click path to Settings to fix it
   - Mobile responsive: Card-based layout on small screens
 
 - **Pay Cycle Reset:** Modal confirmation that:
-  1. Resets all expense `paidAmount` to 0 and `status` to "pending"
-  2. Advances all due dates by one month
-  3. Updates `lastPaycheckDate` to the next pay date
+  1. Snapshots paid expenses into `monthlyExpenseHistory` before resetting
+  2. Resets all expense `paidAmount` to 0 and `status` to "pending"
+  3. Advances all due dates by one pay period (frequency-aware — see [Section 9.2](#92-paycheckservice))
+  4. Updates `lastPaycheckDate` to the next pay date
 
-- **Pay Cycle Nudge (Month view):** A single non-intrusive banner (or optional toast) shown above the calendar when conditions are met. Priority order: (1) **Past month** — user has expenses from the previous calendar month that are not marked paid (e.g. after importing February data while in March); action: "Review [Month]" navigates to that month, or Dismiss. (2) **Catch-up** — near end of current month and current month has unpaid/partially paid expenses; action: "Mark as paid" (with confirmation), "Review" (scrolls to table), or Dismiss. (3) **Reset** — all current-month expenses are paid or overdue and next paycheck is in a new month (`shouldPromptReset`); action: "Start new cycle" opens the reset modal, or "Not yet". Dismissal can be session-only or "Don't show again this month". Implemented as S3 logic (`getPayCycleNudge`, `usePayCycleNudge`, `nudgeDismissal`) plus S2 UI (`PayCycleNudgeBanner`; optional `PayCycleNudgeToast`).
+- **Pay Cycle Nudge (Month view):** A single non-intrusive banner (or optional toast) shown above the calendar when conditions are met. Priority order: (1) **Past month** — user has expenses from the previous calendar month that are not marked paid (e.g. after importing February data while in March); action: "Review [Month]" navigates to that month, or Dismiss. (2) **Catch-up** — near end of current month and current month has unpaid/partially paid expenses; action: "Mark as paid" (with confirmation), "Review" (scrolls to table), or Dismiss. (3) **Reset** — all current-month expenses are paid or overdue and next paycheck is in a new month (`shouldPromptReset`); action: "Start new cycle" opens the reset modal, or "Not yet". Dismissal can be session-only or "Don't show again this month". Implemented as logic in `payCycleNudgeLogic.js` + the `usePayCycleNudge` hook, plus UI in `PayCycleNudgeBanner` (and an optional `PayCycleNudgeToast`).
 
 #### One-Off Expenses View
 - Filtered list of future expenses without recurring templates
@@ -615,7 +636,11 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 - **Add/Edit Modal:** Full-screen portal modal with fields:
   - Name, Current Balance, Credit Limit, Interest Rate (%), Due Date, Statement Closing Date (optional), Minimum Payment
 
-- **Auto-create Payment Expenses:** When a new credit card is added, the system automatically creates a corresponding "Credit Card Payment" fixed expense (via `dbHelpers.createMissingCreditCardExpenses()`)
+- **Auto-create Payment Expenses with explicit funding:** When a new credit card is added, `ChooseFundingAccountModal` asks which checking/savings account will fund the payment (with a "use default account" shortcut when one exists and there are 2+ accounts), then `dbHelpers.createMissingCreditCardExpenses()` creates the corresponding "Credit Card Payment" fixed expense. If no accounts exist yet, `CreateAccountModal` lets the user create one inline without leaving the flow.
+
+- **Change funding source:** Each card has a "change funding account" action (`EnhancedCreditCard` → `onChangeFundingSource`) that reopens `ChooseFundingAccountModal` — pre-selected to the card's current funding account — to repoint its payment expense at a different account after the fact.
+
+- **Missing payment expenses check:** Same `MissingExpensesModal` used on the Accounts page — flags any card without a linked payment expense and offers to create it.
 
 - **Smart Link Expenses** button: Opens `CreditCardMigrationModal` to automatically match orphaned expenses to credit cards based on name similarity
 
@@ -626,7 +651,7 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 
 - **Due Date Sync:** When a credit card's due date is updated, all linked "Credit Card Payment" expenses have their due dates automatically synced
 
-- **Empty state:** Icon and CTA to add first credit card
+- **Empty state:** `EmptyState` + `CreditCardsEmptyIllustration` with a CTA to add the first credit card
 
 ### 8.5 Insights Page
 
@@ -639,6 +664,7 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 - **Budget vs. Actual Dashboard** (`BudgetVsActualDashboard.jsx`):
   - Summary cards: Total Budgeted, Total Actual, Net Difference
   - Per-category breakdown showing budget vs. actual with difference highlighting
+  - Empty state: `EmptyState` + a dedicated illustration when there's no history yet
 
 - **Credit Card Debt Table** (`CreditCardDebtTable.jsx`):
   - All credit cards with balance, limit, utilization %, interest rate, minimum payment
@@ -647,16 +673,19 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 - **Overpayment Analysis** (`OverpaymentAnalysis.jsx`):
   - Per-category analysis of where spending exceeds budget
   - Total overpayment amount
+  - Empty state: `EmptyState` + `OverpaymentEmptyIllustration`
 
 - **Debt Payoff Calculator** (`DebtPayoffCalculator.jsx`):
   - Supports **Snowball** (smallest balance first) and **Avalanche** (highest rate first) strategies
   - Input: Extra monthly payment amount
   - Output per card: Months to payoff, payoff date, total interest paid
   - Summary: Total months to debt-free, total interest cost
+  - Empty state: `EmptyState` + `DebtPayoffEmptyIllustration` when there are no credit cards to calculate against
 
 - **Monthly Trends** (`MonthlyTrends.jsx`):
-  - Last 12 months of expense history
-  - Budget vs. actual trend visualization
+  - Last 12 months of expense history, in correct chronological order
+  - Budget vs. actual trend visualization (Recharts), with overpayment bars colored to match the rest of the app's status palette
+  - Empty state: `EmptyState` + `MonthlyTrendsEmptyIllustration`
 
 - **Refresh Data** button to reload all analytics data
 
@@ -672,8 +701,8 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 
 **1. Paycheck Management** (`PaycheckManager.jsx`)
 - Set last paycheck date
-- Set frequency (currently biweekly only)
-- Displays calculated next and following pay dates
+- Set frequency via a dropdown driven by `PAY_FREQUENCIES` — **Weekly**, **Biweekly**, or **Monthly** (monthly advances by calendar month, correctly clamping e.g. Jan 31 → Feb 28/29)
+- Displays calculated next and following pay dates for the selected frequency
 
 **2. Data Management** (`DataManagementCard.jsx`)
 - **Export:** JSON (full backup), CSV (per-table files), Credit Cards CSV
@@ -686,8 +715,11 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 - Grid of category cards showing name, color, icon, usage count
 - Add new category (name, color picker, icon selector)
 - Edit category (inline rename, color/icon change)
+- **Bulk selection:** select multiple categories, then bulk-apply a new color (`BulkColorModal`) or icon (`BulkIconModal`) across all of them at once
 - Delete category with reassignment flow (choose target category for orphaned expenses)
-- Drag-and-drop reordering
+- Drag-and-drop reordering (persisted via `categories.sortOrder`)
+- Wrapped in its own `CategoryManagerErrorBoundary` so a rendering error here doesn't take down the rest of Settings
+- Internally driven by a `useReducer` (`categoryReducer.js`) that models loading state, form mode (add/edit), and optimistic add/update/revert transitions explicitly as actions, rather than several independent `useState` calls
 
 **4. Recurring Templates Management** (`RecurringTemplatesManager.jsx`)
 - List of all recurring expense templates
@@ -697,9 +729,10 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 - Manual regeneration of future occurrences
 
 **5. Audit Log** (`AuditLogCard.jsx`)
-- Chronological list of all data mutations
-- Shows action type, entity, timestamp, and details
-- Clear audit log button
+- Search box (matches action type, entity type, or JSON-serialized details)
+- Filter by action type (CREATE / UPDATE / DELETE / PAYMENT / COMPLETE_TRANSACTION) and time range (Today / Last 7 Days / Last 30 Days / All Time)
+- Each entry shows an action-type icon, an entity-type icon, a relative timestamp ("Just now", "3 hours ago", falling back to a full date/time), and a human-readable summary of `details` (e.g. "Credit card payment of $250. Account balance: $1,200. Card balance: $3,750.")
+- Clear audit log button (with confirmation)
 
 **6. Privacy & Security**
 - PIN Lock status (always enabled)
@@ -735,17 +768,19 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 **Path:** `src/services/paycheckService.js`
 **Pattern:** Class-based, instantiated with paycheck settings
 
-**Responsibility:** Calculate paycheck dates and determine expense payment statuses relative to the pay cycle.
+**Responsibility:** Calculate paycheck dates and determine expense payment statuses relative to the pay cycle, for whichever frequency the user has configured.
 
 **Key Methods:**
 
 | Method | Description |
 |---|---|
-| `calculatePaycheckDates()` | From `lastPaycheckDate`, calculates `nextPayDate` and `followingPayDate` (14-day intervals), advancing past today if needed |
+| `calculatePaycheckDates()` | From `lastPaycheckDate` and `frequency`, calculates `nextPayDate` and `followingPayDate` via the shared pay-frequency contract (weekly = +7 days, biweekly = +14 days, monthly = +1 calendar month), advancing past today if needed |
 | `calculateExpenseStatus(expense, paycheckDates)` | Returns one of: Paid, Partially Paid, Overdue, Pay This Week, Pay with Next Check, Pay with Following Check |
 | `getStatusColor(status)` | Maps status to Tailwind color classes |
 | `calculateSummaryTotals(expenses, paycheckDates)` | Aggregates remaining amounts by status bucket (this week, next check, overdue) |
 | `shouldPromptReset(expenses, paycheckDates)` | Returns true when all expenses are paid/overdue AND next paycheck is in a new month |
+
+The interval math itself (weekly/biweekly day-count advance, monthly calendar advance with day clamping) lives in `src/constants/payFrequency.js` as a single `PAY_FREQUENCIES` contract, so `PaycheckService` and the pay-cycle-reset flow share one implementation instead of duplicating interval logic.
 
 ### 9.3 RecurringExpenseService
 
@@ -770,7 +805,7 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 | `convertFixedExpenseToRecurring(expenseId, recurringData)` | Converts a one-off expense into a recurring template |
 | `calculateUpcomingOccurrences(template, count)` | Calculates the next N occurrence dates without persisting |
 
-**Frequency Options:** monthly, quarterly (3mo), biannually (6mo), annually (12mo), custom
+**Frequency Options (bill recurrence, not paycheck frequency):** monthly, quarterly (3mo), biannually (6mo), annually (12mo), custom
 
 ### 9.4 DataManager
 
@@ -790,8 +825,9 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
   - Rotation policy: maximum 5 backups
   - Auto-backup before destructive operations (import, clear, restore)
   - Backup restoration with integrity verification
-- **V3→V4 Migration:** Converts legacy `accountId` values like `"cc-1"` to `creditCardId: 1, accountId: null`
+- **V3→V4 Migration:** Converts legacy `accountId` values like `"cc-1"` to `creditCardId: 1, accountId: null` (a data-shape migration, independent of the V8 UUID primary-key change)
 - **Validation:** `validateExpenseDataV4()`, `validateImportedDataV4()`, `fixCommonExpenseIssues()`
+- **Audit log access:** `getAuditLogs()` / `clearAuditLogs()` back the Settings Audit Log card
 
 ### 9.5 financeService
 
@@ -837,7 +873,7 @@ The primary interface for all expense mutations. Wraps database operations with 
 | `updateExpense(id, updates)` / `updateExpenseV4(id, updates)` | Update with optimistic UI, V4 validation, self-healing for legacy data |
 | `deleteExpense(id)` | Delete with optimistic removal |
 | `duplicateExpense(original, overrides)` | Clone expense with reset payment status |
-| `markAsPaid(id)` | Set `paidAmount` = `amount`, trigger balance updates |
+| `markAsPaid(id)` | Set `paidAmount` = `amount`, trigger balance updates — used both by inline "mark paid" actions and by `MarkAsPaidModal`'s full/partial payment flow |
 | `getPaymentSourceInfo(expense)` | Display info for expense's funding source |
 | `getCreditCardPaymentInfo(expense)` | Two-field display info for CC payment expenses |
 | `validateExpensePaymentSources(expense)` | Validate referenced entities exist |
@@ -878,13 +914,21 @@ Heavy computation memoization for expense views.
 
 Account and credit card CRUD with optimistic updates.
 
-### 10.5 `usePersistedState`
+### 10.5 `usePayCycleNudge`
+
+**Path:** `src/hooks/usePayCycleNudge.js`
+
+Wraps the pure `getPayCycleNudge()` logic (`src/utils/payCycleNudgeLogic.js`) as a memoized hook for the Fixed Expenses Month view. Re-derives the active nudge (if any) from `fixedExpenses`, the viewed month, paycheck dates, and session/monthly dismissal state (`src/utils/nudgeDismissal.js`, backed by `sessionStorage`).
+
+**Returns:** `{ nudge, dismiss }` — `nudge` is `null` or one of the `past_month` / `catch_up` / `reset` shapes described in [Section 8.3](#83-fixed-expenses-page); `dismiss(dismissKey, dontShowAgainThisMonth)` records the dismissal and fires the optional `onNudgeDismissed` callback.
+
+### 10.6 `usePersistedState`
 
 **Path:** `src/hooks/usePersistedState.js`
 
 Persists UI state to both localStorage and IndexedDB (userPreferences table).
 
-### 10.6 `usePerformanceMonitor`
+### 10.7 `usePerformanceMonitor`
 
 **Path:** `src/hooks/usePerformanceMonitor.js`
 
@@ -907,7 +951,7 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 
 **Keyboard Shortcut:** Cmd+Shift+H / Ctrl+Shift+H (does not trigger when input is focused)
 
-**Consumer:** `<PrivacyWrapper>` component wraps any monetary display. When `isHidden` is true, it replaces content with `••••••`.
+**Consumer:** `<PrivacyWrapper>` component wraps any monetary display. When `isHidden` is true, it replaces content with `••••••`. Any component that renders one must have a `PrivacyProvider` ancestor — it throws if used outside one, which is guaranteed in the real app tree ([Section 7](#7-application-shell--navigation)) but is a common gap to catch in tests.
 
 ### 11.2 GlobalCategoryContext
 
@@ -952,22 +996,25 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | `CalendarDay` | `src/components/Calendar/CalendarDay.jsx` | Individual day cell with expense badges |
 | `CalendarHeader` | `src/components/Calendar/CalendarHeader.jsx` | Day-of-week headers |
 | `CalendarCycleButton` | `src/components/Calendar/CalendarCycleButton.jsx` | Pay cycle reset trigger |
-| `ExpenseBadge` | `src/components/Calendar/ExpenseBadge.jsx` | Expense indicator on calendar days |
+| `ExpenseBadge` | `src/components/Calendar/ExpenseBadge.jsx` | Expense indicator on calendar days (name/amount split) |
 | `QuickActions` | `src/components/Calendar/QuickActions.jsx` | Quick action popup on day click |
-| `UpcomingRecurringWidget` | `src/components/Calendar/UpcomingRecurringWidget.jsx` | Shows next scheduled recurring expenses |
+| `UpcomingRecurringWidget` | `src/components/Calendar/UpcomingRecurringWidget.jsx` | Shows next scheduled recurring expenses, with optional funding-account subtitle |
+| `PayCycleNudgeBanner` | `src/components/Calendar/PayCycleNudgeBanner.jsx` | Renders the active pay-cycle nudge (see [Section 10.5](#105-usepaycyclenudge)) above the calendar |
+| `PayCycleNudgeToast` | `src/components/Calendar/PayCycleNudgeToast.jsx` | Optional toast presentation of the same nudge |
 
 ### Expenses Table System
 
 | Component | Path | Description |
 |---|---|---|
 | `FixedExpensesTable` | `src/components/FixedExpensesTable.jsx` | Main table orchestrator |
-| `ExpenseTableContainer` | `src/components/ExpenseTableContainer.jsx` | Table wrapper with overflow handling |
-| `ExpenseTableHeader` | `src/components/ExpenseTableHeader.jsx` | Column headers |
-| `ExpenseTableBody` | `src/components/ExpenseTableBody.jsx` | Table body with category grouping |
-| `ExpenseCategoryGroup` | `src/components/ExpenseCategoryGroup.jsx` | Collapsible category section |
+| `ExpenseTableContainer` | `src/components/FixedExpensesTable/ExpenseTableContainer.jsx` | Table wrapper with overflow handling, account validation, and top-level state |
+| `ExpenseTableHeader` | `src/components/FixedExpensesTable/ExpenseTableHeader.jsx` | Column headers and controls |
+| `ExpenseTableBody` | `src/components/FixedExpensesTable/ExpenseTableBody.jsx` | Table body with category grouping |
+| `ExpenseCategoryGroup` | `src/components/FixedExpensesTable/ExpenseCategoryGroup.jsx` | Collapsible category section |
+| `FixedExpensesSummaryCard` | `src/components/FixedExpensesTable/FixedExpensesSummaryCard.jsx` | Left-panel summary: count, Total/Paid/Remaining, category breakdown |
+| `QuickAddRow` | `src/components/FixedExpensesTable/QuickAddRow.jsx` | Inline row for adding new expenses |
 | `DraggableExpenseRow` | `src/components/DraggableExpenseRow.jsx` | Individual expense row with DnD |
-| `QuickAddRow` | `src/components/QuickAddRow.jsx` | Inline row for adding new expenses |
-| `ExpenseMobileView` | `src/components/ExpenseMobileView.jsx` | Card-based layout for mobile |
+| `ExpenseMobileView` | `src/components/FixedExpensesTable/ExpenseMobileView.jsx` | Card-based layout for mobile |
 | `MobileExpenseCard` | `src/components/MobileExpenseCard.jsx` | Single expense card for mobile |
 | `OneOffExpensesView` | `src/components/OneOffExpensesView.jsx` | Future one-off expenses list |
 
@@ -976,6 +1023,8 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | Component | Path | Description |
 |---|---|---|
 | `AddExpensePanel` | `src/components/AddExpensePanel.jsx` | Slide-out panel for adding expenses |
+| `MarkAsPaidModal` | `src/components/MarkAsPaidModal.jsx` | Full/partial "Pay Now" confirmation, used by the Upcoming Payments widget and table row actions |
+| `MissingExpensesModal` | `src/components/MissingExpensesModal.jsx` | Warns when a credit card has no linked payment expense; offers to create it |
 | `RecurringExpenseModal` | `src/components/RecurringExpenseModal.jsx` | Convert expense to recurring template |
 | `DuplicateExpenseModal` | `src/components/DuplicateExpenseModal.jsx` | Duplicate an expense with modifications |
 | `RecurringTemplatesManager` | `src/components/RecurringTemplatesManager.jsx` | Full templates CRUD interface |
@@ -984,9 +1033,11 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 
 | Component | Path | Description |
 |---|---|---|
-| `EnhancedCreditCard` | `src/components/EnhancedCreditCard.jsx` | Visual credit card component with stats |
+| `EnhancedCreditCard` | `src/components/EnhancedCreditCard.jsx` | Visual credit card component with stats; exposes a "change funding account" action alongside edit/delete |
 | `CreditCardSelector` | `src/components/CreditCardSelector.jsx` | Dropdown selector for credit cards |
 | `CreditCardPaymentInput` | `src/components/CreditCardPaymentInput.jsx` | Specialized input for CC payment amounts |
+| `ChooseFundingAccountModal` | `src/components/ChooseFundingAccountModal.jsx` | Picks which account funds a card's payment expense — used both when auto-creating a new card's payment (with a "use default" shortcut) and when changing an existing card's funding source |
+| `CreateAccountModal` | `src/components/CreateAccountModal.jsx` | Inline "create an account" fallback inside the credit-card funding flow when no accounts exist yet |
 | `CreditCardDeletionModal` | `src/components/CreditCardDeletionModal.jsx` | Enhanced deletion with expense reassignment |
 | `CreditCardMigrationModal` | `src/components/CreditCardMigrationModal.jsx` | Auto-link expenses to credit cards |
 | `CreditCardPaymentTester` | `src/components/CreditCardPaymentTester.jsx` | Dev tool for testing payment flows |
@@ -1001,9 +1052,13 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | `CategoryCard` | `src/components/CategoryManager/CategoryCard.jsx` | Individual category display |
 | `CategoryForm` | `src/components/CategoryManager/CategoryForm.jsx` | Add/edit category form |
 | `CategoryContext` | `src/components/CategoryManager/CategoryContext.jsx` | Local context for CategoryManager |
+| `ColorPicker` | `src/components/CategoryManager/ColorPicker.jsx` | Named swatch picker (portal-based popover) used by both single-category and bulk color editing |
+| `BulkColorModal` | `src/components/CategoryManager/BulkColorModal.jsx` | Applies one color to every selected category |
+| `BulkIconModal` | `src/components/CategoryManager/BulkIconModal.jsx` | Searchable, grouped emoji picker; applies one icon to every selected category |
 | `CategoryRenameModal` | `src/components/CategoryManager/CategoryRenameModal.jsx` | Rename category modal |
 | `CategoryDeletionModal` | `src/components/CategoryManager/CategoryDeletionModal.jsx` | Delete with reassignment |
 | `CategoryDropZone` | `src/components/CategoryManager/CategoryDropZone.jsx` | DnD drop target |
+| `CategoryManagerErrorBoundary` | `src/components/CategoryManager/CategoryManagerErrorBoundary.jsx` | Isolates Category Manager crashes from the rest of Settings |
 | `CategoryExpenseSummary` | `src/components/CategoryExpenseSummary.jsx` | Visual category breakdown |
 | `CategoryDetailView` | `src/components/CategoryDetailView.jsx` | Detailed category analytics |
 
@@ -1022,6 +1077,20 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | `OverpaymentAnalysis` | `src/components/OverpaymentAnalysis.jsx` | Where spending exceeds budget |
 | `CreditCardDebtTable` | `src/components/CreditCardDebtTable.jsx` | Credit card debt overview table |
 | `DonutChart` | `src/components/DonutChart.jsx` | SVG donut chart visualization |
+| `ExpenseBar` | `src/components/ExpenseBar.jsx` | Animated horizontal bar row (name, amount, %) used in category expense summaries; requires a `PrivacyProvider` ancestor for its amount display |
+
+### Empty States & Illustrations
+
+| Component | Path | Description |
+|---|---|---|
+| `EmptyState` | `src/components/EmptyState.jsx` | Shared empty-state layout: illustration + title + optional subtitle + optional CTA button |
+| `AccountsEmptyIllustration` | `src/components/illustrations/AccountsEmptyIllustration.jsx` | SVG illustration for the Accounts empty state |
+| `CreditCardsEmptyIllustration` | `src/components/illustrations/CreditCardsEmptyIllustration.jsx` | SVG illustration for the Credit Cards empty state |
+| `FixedExpensesEmptyIllustration` | `src/components/illustrations/FixedExpensesEmptyIllustration.jsx` | SVG illustration for the Fixed Expenses empty state |
+| `PendingEmptyIllustration` | `src/components/illustrations/PendingEmptyIllustration.jsx` | SVG illustration for the Pending Transactions empty state |
+| `DebtPayoffEmptyIllustration` | `src/components/illustrations/DebtPayoffEmptyIllustration.jsx` | SVG illustration for the Debt Payoff Calculator empty state |
+| `MonthlyTrendsEmptyIllustration` | `src/components/illustrations/MonthlyTrendsEmptyIllustration.jsx` | SVG illustration for the Monthly Trends empty state |
+| `OverpaymentEmptyIllustration` | `src/components/illustrations/OverpaymentEmptyIllustration.jsx` | SVG illustration for the Overpayment Analysis empty state |
 
 ### Shared UI Components
 
@@ -1034,8 +1103,10 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | `StatusBadge` | `src/components/StatusBadge.jsx` | Colored status pill |
 | `ErrorDisplay` | `src/components/ErrorDisplay.jsx` | Error message display |
 | `AccountSelector` | `src/components/AccountSelector.jsx` | Account dropdown with smart filtering |
+| `AccountSelectorErrorBoundary` | `src/components/AccountSelectorErrorBoundary.jsx` | Isolates `AccountSelector` crashes with a retry/reset UI |
+| `AccountValidationAlert` | `src/components/AccountValidationAlert.jsx` | Flags fixed expenses pointing at a deleted account, with a link to fix them |
 | `PaymentSourceSelector` | `src/components/PaymentSourceSelector.jsx` | Combined account/credit card selector |
-| `PaycheckManager` | `src/components/PaycheckManager.jsx` | Paycheck settings editor |
+| `PaycheckManager` | `src/components/PaycheckManager.jsx` | Paycheck settings editor (date + frequency) |
 | `PrivacyWrapper` | `src/components/PrivacyWrapper.jsx` | Conditionally hides content in privacy mode |
 
 ---
@@ -1060,6 +1131,42 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
 | `isPast(str)` | Is the date before today? |
 | `isToday(str)` | Is the date today? |
 | `isValidDate(str)` | Validates YYYY-MM-DD format and round-trips correctly |
+
+### `payFrequency.js`
+
+**Path:** `src/constants/payFrequency.js`
+
+The single source of truth for pay-frequency interval math, shared by `PaycheckService` and the pay-cycle-reset flow so the logic isn't duplicated.
+
+| Export | Description |
+|---|---|
+| `PAY_FREQUENCIES` | `{ weekly, biweekly, monthly }`, each with an `intervalDays` (or `null` for calendar-month), a display `label`, and an `advanceDueDate(dateString)` function |
+| `DEFAULT_PAY_FREQUENCY` | `'biweekly'` |
+| `VALID_PAY_FREQUENCIES` | `Object.keys(PAY_FREQUENCIES)` |
+| `advanceDueDateByFrequency(dateString, frequency)` | Advances a single due date by one pay period for the given frequency |
+| `calculateNextPayDates(lastPaycheckDate, frequency)` | Pure function returning `{ nextPayDate, followingPayDate, daysUntilNextPay, daysUntilFollowingPay }`, always rolled forward past today |
+
+### `payCycleNudgeLogic.js` / `payCycleNudgeConfig.js` / `payCycleNudgeTypes.js`
+
+**Paths:** `src/utils/payCycleNudgeLogic.js`, `src/utils/payCycleNudgeConfig.js`, `src/constants/payCycleNudgeTypes.js`
+
+Pure logic behind the Pay Cycle Nudge feature ([Section 8.3](#83-fixed-expenses-page)):
+
+| Export | Description |
+|---|---|
+| `getPayCycleNudge(options)` | Priority-ordered decision function: past_month → catch_up → reset, or `{ nudge: null }` |
+| `getMonthKey` / `getLastMonthKey` | `YYYY-MM` helpers for month comparisons |
+| `getExpensesInMonth(expenses, monthKey)` | Filters expenses due within a given month |
+| `isUnpaidOrPartial(expense)` | `paidAmount < amount` |
+| `isNearEndOfMonth(today, currentMonth, config)` | True within `config.daysNearEndOfMonth` (default 7) of month-end |
+| `PAY_CYCLE_NUDGE_CONFIG` | Tunable thresholds (e.g. `daysNearEndOfMonth`) |
+| `NUDGE_TYPES`, `NUDGE_DEFAULT_COPY` | Registry of nudge types and their default title/message/action copy |
+
+### `nudgeDismissal.js`
+
+**Path:** `src/utils/nudgeDismissal.js`
+
+Tracks which nudges the user has dismissed, backed by `sessionStorage` (session-only) with an optional "don't show again this month" tier. Read by `usePayCycleNudge`.
 
 ### `validation.js`
 
@@ -1101,6 +1208,18 @@ Account-related display and lookup helpers.
 | `findSelectedAccount(accounts, id)` | Find account by ID |
 | `validateAccount(data)` | Validate account object |
 
+### `categoryUtils.js`
+
+| Function | Description |
+|---|---|
+| `createCategoryMap(categories)` | Creates a `Map<name, category>` for O(1) category lookups by name |
+
+### `expenseUtils.js`
+
+| Function | Description |
+|---|---|
+| `findPaymentSource(expense, accounts, creditCards)` | Resolves an expense's funding source under the V4 dual foreign key format |
+
 ### `creditCardUtils.js`
 
 Credit card calculation helpers.
@@ -1122,6 +1241,12 @@ Security utilities.
 | `securePINStorage` | PIN hashing, storage, and verification using browser crypto API |
 | `dataIntegrity` | Validate and sanitize account, expense, transaction, category data |
 | `secureDataHandling` | Encrypt/decrypt data exports |
+
+### `generateId.js`
+
+| Function | Description |
+|---|---|
+| `generateId()` | `crypto.randomUUID()` — the primary-key generator used by every `dbHelpers` create path since the V8 UUID migration |
 
 ### `exportUtils.js`
 
@@ -1223,7 +1348,7 @@ Every state slice and action has a dedicated selector hook (e.g., `useAccounts()
 
 #### Persistence Strategy
 
-Only `currentPage` and `isPanelOpen` are persisted to localStorage via Zustand's `persist` middleware. All financial data is loaded fresh from IndexedDB on every app boot.
+Only `currentPage` and `isPanelOpen` are persisted to localStorage via Zustand's `persist` middleware. All financial data is loaded fresh from IndexedDB on every app boot. Pay-cycle-nudge dismissal state is tracked separately in `sessionStorage` (see [`nudgeDismissal.js`](#nudgedismissaljs)), not in this store.
 
 ---
 
@@ -1231,7 +1356,7 @@ Only `currentPage` and `isPanelOpen` are persisted to localStorage via Zustand's
 
 ### Liquid Glass
 
-Digibook uses a custom "Liquid Glass" design system inspired by Apple's iOS glassmorphism aesthetic.
+Digibook uses a custom "Liquid Glass" design system inspired by Apple's iOS glassmorphism aesthetic, implemented as a layered token system: a small Tailwind theme extension for the original glass utilities, plus a larger CSS custom-property system in `src/index.css` (added in the "liquid glass token refresh") that most components actually draw from — glass surfaces, elevation, and animation are all driven by CSS variables rather than one-off values.
 
 #### Tailwind Theme Extensions
 
@@ -1245,10 +1370,6 @@ colors: {
     400: 'rgba(255, 255, 255, 0.25)',
     500: 'rgba(255, 255, 255, 0.3)',
   },
-  backdrop: {
-    light: 'rgba(255, 255, 255, 0.8)',
-    dark:  'rgba(0, 0, 0, 0.8)',
-  },
 }
 backdropBlur: { glass: '14px' }
 borderRadius: { glass: '24px' }
@@ -1258,14 +1379,26 @@ boxShadow: {
 }
 ```
 
+#### CSS Custom Property Tokens (`src/index.css`)
+
+| Token group | Examples | Purpose |
+|---|---|---|
+| Glass blur | `--glass-blur-light` (8px), `--glass-blur-medium` (14px), `--glass-blur-heavy` (20px) | Backdrop blur strength per surface |
+| Glass opacity | `--glass-opacity-subtle` (0.03) through `--glass-opacity-heavy` (0.2) | Surface fill opacity scale |
+| Glass border | `--glass-border-opacity`, `-hover`, `-focus` | Border opacity by interaction state |
+| Elevation | `--glass-elevation-0` through `--glass-elevation-3` | Layered box-shadow presets, from flat to modal-level depth, each paired with an inner-glow highlight |
+| Duration | `--duration-fast` (150ms), `--duration-snappy` (200ms), `--duration-normal` (300ms), `--duration-slow` (500ms) | Standard animation/transition durations |
+| Easing | `--easing-standard`, `--easing-decelerate`, `--easing-accelerate`, `--easing-bounce` / `--easing-spring` (same curve, `cubic-bezier(0.34, 1.56, 0.64, 1)`) | Standard easing curves; the spring curve is used for anything that should feel "alive" (page transitions, modal entrances, the sidebar drawer) |
+
 #### CSS Component Classes (defined in `index.css`)
 
 | Class | Usage |
 |---|---|
+| `.glass-surface` | Base glass treatment (blur + gradient fill + border + elevation shadow + inner glow) that other glass classes build on |
 | `.glass-card` | Content cards with backdrop blur |
 | `.glass-panel` | Larger content panels |
 | `.glass-sidebar` | Sidebar with fixed glass styling |
-| `.glass-button` | Standard button with glass effect |
+| `.glass-button` | Standard button with glass effect; `:active` scales to 0.97 on the fast duration for tactile press feedback |
 | `.glass-button--primary` | Primary action button |
 | `.glass-button--danger` | Destructive action button |
 | `.glass-button--secondary` | Secondary action button |
@@ -1276,19 +1409,22 @@ boxShadow: {
 | `.glass-loading` | Loading state overlay |
 | `.glass-focus` | Focus ring for accessibility |
 | `.balance-display` | Large monetary value display |
-| `.text-primary` | Primary text color |
-| `.text-secondary` | Secondary text color |
-| `.text-muted` | Muted text color |
-| `.empty-state` | Empty state container |
-| `.empty-state-icon` | Empty state illustration |
+| `.text-primary` / `.text-secondary` / `.text-muted` | Text color hierarchy |
+| `.empty-state` / `.empty-state-icon` | Empty state container and icon slot (see also the dedicated `EmptyState` component, [Section 12](#12-component-inventory)) |
 
 #### Animations
 
-| Animation | Description |
-|---|---|
-| `ripple` | Button press feedback (0.4s scale + fade) |
-| `fade-in` | Content entry (0.3s opacity) |
-| `slide-in` | Sidebar/panel entry (0.3s translateX) |
+| Animation class | Keyframe / effect | Used for |
+|---|---|---|
+| `.page-transition` | `slideInUp`, snappy duration, spring easing | Route/page changes in the main content area |
+| `.modal-panel-enter` | `slideIn`, 220ms, spring easing | Modal and slide-out panel entrances |
+| `.glass-card-enter` | `fadeIn`, normal duration, staggered by up to 180ms across the first 4 children | Card grids appearing together (e.g. credit card grid, category grid) |
+| `.glass-button:active` | `scale(0.97)`, fast duration | Button press feedback |
+| `glassEntrance` keyframe | Bounce easing, staggered up to 0.4s | Glass surface entrance sequences |
+| `slideInUp` / `fadeIn` / `scaleIn` keyframes | Decelerate/standard/bounce easing | General content and list entrance animations, several with a staggered variant |
+| `progressFill` | Decelerate easing, 0.5s delay | Progress/utilization bars filling in after mount |
+| `shimmer` / `glassPulse` | Continuous loop | Loading-state skeletons and subtle idle pulses |
+| `prefers-reduced-motion` | — | All of the above are disabled (durations dropped to ~0) when the user has reduced-motion enabled |
 
 #### Responsive Breakpoints
 
@@ -1335,6 +1471,7 @@ Legacy data where `accountId` was a string like `"cc-1"` is automatically migrat
 - `accountId: "cc-1"` → `creditCardId: 1, accountId: null`
 - Runs on app boot if V4-incompatible data is detected
 - Non-blocking; failures are logged but don't prevent app load
+- This is unrelated to the V8 UUID primary-key change ([Section 6](#6-database-structure)) — one migrates a data *shape*, the other changes what new *ids* look like.
 
 ---
 
@@ -1358,6 +1495,7 @@ Legacy data where `accountId` was a string like `"cc-1"` is automatically migrat
 
 - **Zero network calls** for financial data (no API, no analytics, no telemetry)
 - All data stored in browser IndexedDB and localStorage
+- The PWA service worker only caches static app-shell assets (JS/CSS/HTML/icons) for offline load — it never caches or transmits IndexedDB data
 - Export encryption available via `secureDataHandling` (AES encryption for exported files)
 - Data integrity validation on import via checksums
 
@@ -1385,40 +1523,48 @@ All user inputs are sanitized before storage:
 | Optimistic updates | `useExpenseOperations` | UI updates immediately; DB writes async with rollback |
 | Background pre-generation | `useAppStore.loadData()` | Recurring expense generation is non-blocking after initial load |
 | Pending transaction Map | `Accounts.jsx` | Pre-computed `pendingByAccount` Map for O(1) per-account lookups |
+| Offline asset caching | `vite-plugin-pwa` (Workbox) | Precaches the app shell so repeat loads (and offline loads) skip the network entirely |
 
 ---
 
 ## 19. Testing Strategy
 
+### Vitest Project Split
+
+`vitest.config.js` defines two projects under one config, each with its own environment and setup file:
+
+| Project | Environment | Setup file | Covers |
+|---|---|---|---|
+| `unit` | jsdom | `src/test/setup.js` (fake-indexeddb, mocked `console`/`localStorage`) | `src/**/*.{test,spec}.{js,jsx}` |
+| `storybook` | Real Chromium via Playwright, headless | `.storybook/vitest.setup.js` | Every `*.stories.{js,jsx}` file, run as an actual test via `@storybook/addon-vitest` |
+
+The two projects intentionally do **not** share a setup file — the jsdom-oriented mocks in `src/test/setup.js` (e.g. `global.indexedDB`, `global.console`) don't apply to a real browser environment, so `setupFiles` is scoped to the `unit` project only.
+
 ### Unit Tests (Vitest + jsdom)
 
 - **Location:** `src/**/*.test.js`, `src/**/*.spec.js`
 - **Environment:** jsdom with `fake-indexeddb` for IndexedDB mocking
-- **Setup:** `src/test/setup.js`
 - **Focus:** Services, utilities, database helpers, custom hooks
 
 ### Component Tests (React Testing Library)
 
 - **Focus:** Component rendering, user interactions, state changes
 - **Pattern:** Render component → simulate user action → assert DOM changes
+- Components that render `<PrivacyWrapper>` (e.g. `ExpenseBar`) must be rendered inside a `<PrivacyProvider>` in tests, matching the real app's provider tree
 
-### Visual Tests (Storybook)
+### Visual / Story Tests (Storybook, real browser)
 
 - **Location:** `src/stories/`
-- **Framework:** Storybook 9 with Chromatic
+- **Framework:** Storybook 9, stories executed as Vitest tests in real Chromium via `@storybook/addon-vitest` + Playwright
 - **Addons:** a11y (accessibility), docs, onboarding, vitest integration
-
-### Browser Tests (Playwright)
-
-- **Integration:** Storybook test runner with Playwright (Chromium)
-- **Focus:** Full-page interaction flows
+- Requires the Playwright Chromium and Chromium-headless-shell browser binaries to be installed locally (`npx playwright install`) — without them, `npm run test:run` fails at the config level before any test runs
 
 ### Commands
 
 | Command | Description |
 |---|---|
 | `npm test` | Run tests in watch mode |
-| `npm run test:run` | Single test run |
+| `npm run test:run` | Single run of both Vitest projects |
 | `npm run test:coverage` | Run with coverage report |
 | `npm run test:ui` | Open Vitest UI |
 | `npm run storybook` | Start Storybook dev server |
@@ -1429,15 +1575,15 @@ All user inputs are sanitized before storage:
 
 ### Code Style
 
-- **ESLint:** `eslintrc.cjs` with React, accessibility, and Prettier plugins
+- **ESLint:** `.eslintrc.cjs` with React, accessibility, and Prettier plugins; `npm run lint` runs with `--max-warnings 0`, so any warning fails the command, not just errors
 - **Prettier:** Consistent formatting (config in `.prettierrc`)
-- **Commitlint:** Conventional commits enforced (`feat:`, `fix:`, `docs:`, `refactor:`, etc.)
+- **Commitlint:** Conventional commits enforced (`commitlint.config.cjs`) — type must be one of `feat`/`fix`/`docs`/`style`/`refactor`/`perf`/`test`/`chore`/`ci`/`build`/`revert`, and the type, scope, and subject must all be lower-case
 
 ### Git Hooks (Husky)
 
 | Hook | Action |
 |---|---|
-| `pre-commit` | Runs lint-staged (ESLint + Prettier on staged files) |
+| `pre-commit` | Runs lint-staged (ESLint `--fix` + Prettier on staged files) |
 | `commit-msg` | Validates commit message format via commitlint |
 
 ### Quality Gate
@@ -1469,10 +1615,13 @@ npm run quality  # Runs: lint → format:check → test:run
 | **Discretionary Balance** | Default account projected balance minus total remaining unpaid expenses |
 | **Dual Foreign Key** | V4 architecture where expenses use either `accountId` or `creditCardId`, never both |
 | **Credit Card Payment** | Special expense category where money moves from a bank account to a credit card |
-| **Pay Cycle** | The period between two paychecks (14 days for biweekly) |
+| **Pay Cycle** | The period between two paychecks — 7, 14, or ~30 days depending on the user's configured pay frequency (weekly, biweekly, or monthly) |
+| **Pay Cycle Nudge** | A priority-ordered banner/toast (past-month → catch-up → reset) that proactively surfaces unpaid expenses or an available cycle reset on the Fixed Expenses Month view |
 | **Recurring Template** | A template that auto-generates future expense instances on a schedule |
 | **Optimistic Update** | Updating the UI immediately before the database confirms the write |
 | **Glass Morphism** | Design style using backdrop blur and transparency for a frosted glass effect |
 | **V4 Migration** | Automatic conversion of V3 data (where credit card IDs were stored as `"cc-N"` strings in accountId) to the V4 dual foreign key format |
+| **V8 UUID Migration** | Schema change from auto-increment integer ids to app-generated `crypto.randomUUID()` string ids on every table, done without a data backfill since there was no existing installed base to migrate |
 | **Self-Healing** | The system's ability to auto-infer missing data (e.g., matching a Credit Card Payment to its target card by name) |
 | **Pre-Generation** | Creating future expense instances from recurring templates up to N months ahead |
+| **PWA (Progressive Web App)** | The installable, offline-capable delivery mode added via `vite-plugin-pwa` — caches the app shell only, never financial data |
