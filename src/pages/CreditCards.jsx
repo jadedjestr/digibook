@@ -128,7 +128,8 @@ const CreditCards = ({
           mounted &&
           (result.createdCount > 0 ||
             result.repairedTemplates > 0 ||
-            result.repairedExpenses > 0)
+            result.repairedExpenses > 0 ||
+            result.duplicatesRemoved > 0)
         ) {
           onDataChange();
           if (result.createdCount > 0) {
@@ -136,6 +137,11 @@ const CreditCards = ({
           }
           if (result.repairedTemplates > 0 || result.repairedExpenses > 0) {
             notify.success('Repaired funding source(s)');
+          }
+          if (result.duplicatesRemoved > 0) {
+            notify.success(
+              `Cleaned up ${result.duplicatesRemoved} duplicate payment record(s)`,
+            );
           }
         }
       } catch (error) {

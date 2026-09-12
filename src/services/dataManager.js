@@ -42,6 +42,7 @@ class DataManager {
    */
   initializeBackupSystem() {
     try {
+      void this.backupManager.catchUpMissedBackup();
       this.backupManager.scheduleAutomaticBackups();
 
       const keys = Object.keys(localStorage).filter(k =>
@@ -592,6 +593,30 @@ class BackupManager {
 
   async listBackups() {
     return await dbHelpers.listBackups();
+  }
+
+  /**
+   * If no tab was open for the scheduled 2am backup, create one now.
+   * Runs once per app load, alongside scheduleAutomaticBackups().
+   */
+  async catchUpMissedBackup() {
+    try {
+      const backups = await dbHelpers.listBackups();
+      const lastScheduled = backups.find(b => b.reason === 'scheduled_daily');
+
+      const MISSED_THRESHOLD_MS = 25 * 60 * 60 * 1000; // 25 hours
+      const isMissed =
+        !lastScheduled ||
+        Date.now() - new Date(lastScheduled.timestamp).getTime() >
+          MISSED_THRESHOLD_MS;
+
+      if (isMissed) {
+        await this.createBackup('scheduled_daily');
+        logger.success('Caught up on missed scheduled daily backup');
+      }
+    } catch (error) {
+      logger.error('Failed to catch up on missed backup:', error);
+    }
   }
 
   async restoreBackup(id) {

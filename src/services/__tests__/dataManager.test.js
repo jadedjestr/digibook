@@ -142,6 +142,60 @@ describe('dataManager', () => {
     });
   });
 
+  describe('BackupManager.catchUpMissedBackup (Bug: missed scheduled backups)', () => {
+    it('creates a backup when no scheduled_daily backup has ever run', async () => {
+      await dataManager.backupManager.catchUpMissedBackup();
+
+      const backups = await db.backups.toArray();
+      expect(backups.filter(b => b.reason === 'scheduled_daily')).toHaveLength(
+        1,
+      );
+    });
+
+    it('creates a backup when the last one is more than 25 hours old', async () => {
+      const twentySixHoursMs = 26 * 60 * 60 * 1000;
+      const staleTimestamp = new Date(
+        Date.now() - twentySixHoursMs,
+      ).toISOString();
+      await db.backups.add({
+        id: 'stale-backup',
+        reason: 'scheduled_daily',
+        timestamp: staleTimestamp,
+        version: 5,
+        createdAt: staleTimestamp,
+        data: { accounts: [] },
+        checksum: 'irrelevant',
+      });
+
+      await dataManager.backupManager.catchUpMissedBackup();
+
+      const backups = await db.backups.toArray();
+      const scheduled = backups.filter(b => b.reason === 'scheduled_daily');
+      expect(scheduled).toHaveLength(2);
+    });
+
+    it('does not create a backup when a recent one already exists', async () => {
+      const oneHourMs = 60 * 60 * 1000;
+      const recentTimestamp = new Date(Date.now() - oneHourMs).toISOString();
+      await db.backups.add({
+        id: 'recent-backup',
+        reason: 'scheduled_daily',
+        timestamp: recentTimestamp,
+        version: 5,
+        createdAt: recentTimestamp,
+        data: { accounts: [] },
+        checksum: 'irrelevant',
+      });
+
+      await dataManager.backupManager.catchUpMissedBackup();
+
+      const backups = await db.backups.toArray();
+      const scheduled = backups.filter(b => b.reason === 'scheduled_daily');
+      expect(scheduled).toHaveLength(1);
+      expect(scheduled[0].id).toBe('recent-backup');
+    });
+  });
+
   describe('importData - CSV vs JSON branching (Bug #2: non-functional CSV import)', () => {
     it('merges a single-table CSV import into only the matching table', async () => {
       const csvText = [

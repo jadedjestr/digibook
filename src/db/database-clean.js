@@ -492,6 +492,12 @@ async function resolveCategoryIdByName(categoryName) {
   return cat.id;
 }
 
+// Collapses concurrent same-tick calls to ensureCreditCardPaymentExpensesLinked
+// (e.g. React StrictMode's double-invoked mount effect) into one shared run.
+// Not a general mutex - see createExpenseForCard's own transaction for the
+// real cross-entry-point race fix.
+let ensureCreditCardPaymentExpensesLinkedPromise = null;
+
 /**
  * Database helper functions
  * These provide a clean API for all database operations
@@ -2584,15 +2590,20 @@ export const dbHelpers = {
 
   async cleanupDuplicateCreditCardExpenses() {
     try {
+      // Scoped to Credit Card Payment expenses only, and keyed to include
+      // dueDate - a bare name+amount key (with no category/date scoping)
+      // would risk conflating separate months of a legitimate recurring
+      // expense like rent that happens to share a name and amount.
       const expenses = (await db.fixedExpenses.toArray()).filter(
-        e => !e.deletedAt,
+        e => !e.deletedAt && e.category === 'Credit Card Payment',
       );
       const duplicates = [];
 
-      // Find duplicates based on name and amount
       const seen = new Map();
       for (const expense of expenses) {
-        const key = `${expense.name}-${expense.amount}`;
+        const key = expense.recurringTemplateId
+          ? `${expense.recurringTemplateId}-${expense.dueDate}`
+          : `${expense.name}-${expense.amount}-${expense.dueDate}`;
         if (seen.has(key)) {
           duplicates.push(expense);
         } else {
@@ -2600,7 +2611,6 @@ export const dbHelpers = {
         }
       }
 
-      // Remove duplicates
       const ts = nowIso();
       for (const duplicate of duplicates) {
         await db.fixedExpenses.update(duplicate.id, {
@@ -2615,6 +2625,47 @@ export const dbHelpers = {
       return duplicates;
     } catch (error) {
       logger.error('Error cleaning up duplicate credit card expenses:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Deactivate duplicate active Credit Card Payment templates for the same
+   * card (e.g. created by a race before createExpenseForCard's atomic
+   * check-and-create fix). Keeps the oldest template, deactivates the rest.
+   */
+  async cleanupDuplicateCreditCardTemplates() {
+    try {
+      const templates = (await db.recurringExpenseTemplates.toArray()).filter(
+        t => !t.deletedAt && t.isActive && t.category === 'Credit Card Payment',
+      );
+      const byCard = new Map();
+      for (const template of templates) {
+        const list = byCard.get(template.targetCreditCardId) || [];
+        list.push(template);
+        byCard.set(template.targetCreditCardId, list);
+      }
+
+      const deactivated = [];
+      for (const list of byCard.values()) {
+        if (list.length <= 1) continue;
+        list.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        for (const extra of list.slice(1)) {
+          await this.updateRecurringExpenseTemplate(extra.id, {
+            isActive: false,
+          });
+          deactivated.push(extra);
+        }
+      }
+
+      if (deactivated.length > 0) {
+        logger.success(
+          `Deactivated ${deactivated.length} duplicate credit card payment template(s)`,
+        );
+      }
+      return deactivated;
+    } catch (error) {
+      logger.error('Error cleaning up duplicate credit card templates:', error);
       return [];
     }
   },
@@ -2652,46 +2703,70 @@ export const dbHelpers = {
 
   async createExpenseForCard(cardId, accountId) {
     try {
-      const templates = await db.recurringExpenseTemplates
-        .filter(
-          t =>
-            t.targetCreditCardId === cardId &&
-            t.category === 'Credit Card Payment' &&
-            t.isActive,
-        )
-        .toArray();
+      // The existence-check and template-insert must be atomic to prevent a
+      // race (e.g. React StrictMode's double-invoked mount effect, or two
+      // page visits close together) from both seeing "no template yet" and
+      // both creating one. generateRecurringExpense() is deliberately kept
+      // OUTSIDE this transaction - it calls addFixedExpenseV4(), which does
+      // a dynamic `await import(...)` partway through, and running a
+      // dynamic import mid-transaction can throw TransactionInactiveError
+      // (the same reason applyExpensePaymentChangeAtomic hoists its own
+      // validator import above its transaction).
+      const result = await db.transaction(
+        'rw',
+        db.recurringExpenseTemplates,
+        db.creditCards,
+        db.categories,
+        async () => {
+          const existingTemplates = await db.recurringExpenseTemplates
+            .filter(
+              t =>
+                t.targetCreditCardId === cardId &&
+                t.category === 'Credit Card Payment' &&
+                t.isActive,
+            )
+            .toArray();
 
-      if (templates.length > 0) {
+          if (existingTemplates.length > 0) {
+            return { created: false };
+          }
+
+          const card = await db.creditCards.get(cardId);
+          if (!card) {
+            throw new Error(`Credit card not found: ${cardId}`);
+          }
+
+          const startDate =
+            card.dueDate || new Date().toISOString().split('T')[0];
+
+          const templateId = await this.addRecurringExpenseTemplate({
+            name: `${card.name} Payment`,
+            baseAmount: getDefaultMinimumPaymentAmount(card),
+            frequency: 'monthly',
+            intervalValue: 1,
+            intervalUnit: 'months',
+            startDate,
+            nextDueDate: startDate,
+            category: 'Credit Card Payment',
+            accountId,
+            targetCreditCardId: card.id,
+            isActive: true,
+            isVariableAmount: true,
+            isAutoCreated: true,
+          });
+
+          return { created: true, templateId, cardName: card.name };
+        },
+      );
+
+      if (!result.created) {
         await this.updateFundingAccountForCard(cardId, accountId);
         return;
       }
 
-      const card = await db.creditCards.get(cardId);
-      if (!card) {
-        throw new Error(`Credit card not found: ${cardId}`);
-      }
-
-      const startDate = card.dueDate || new Date().toISOString().split('T')[0];
-
-      const templateId = await this.addRecurringExpenseTemplate({
-        name: `${card.name} Payment`,
-        baseAmount: getDefaultMinimumPaymentAmount(card),
-        frequency: 'monthly',
-        intervalValue: 1,
-        intervalUnit: 'months',
-        startDate,
-        nextDueDate: startDate,
-        category: 'Credit Card Payment',
-        accountId,
-        targetCreditCardId: card.id,
-        isActive: true,
-        isVariableAmount: true,
-        isAutoCreated: true,
-      });
-
-      await this.generateRecurringExpense(templateId);
+      await this.generateRecurringExpense(result.templateId);
       logger.success(
-        `Created payment expense for card "${card.name}" (template ${templateId})`,
+        `Created payment expense for card "${result.cardName}" (template ${result.templateId})`,
       );
     } catch (error) {
       logger.error('Error creating expense for card:', error);
@@ -2702,7 +2777,9 @@ export const dbHelpers = {
   async createMissingCreditCardExpenses() {
     try {
       const creditCards = await db.creditCards.toArray();
-      const expenses = await db.fixedExpenses.toArray();
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
       const templates = await db.recurringExpenseTemplates.toArray();
       let createdCount = 0;
 
@@ -2821,17 +2898,34 @@ export const dbHelpers = {
 
   /**
    * Ensure every credit card has a payment expense and every payment expense has
-   * a valid funding source. Runs repair first, then creates any missing expenses.
-   * @returns {{ createdCount: number, repairedTemplates: number, repairedExpenses: number }}
+   * a valid funding source. Runs repair first, creates any missing expenses,
+   * then self-heals any duplicate templates/expenses left over from before
+   * createExpenseForCard's atomic check-and-create fix.
+   * @returns {{ createdCount: number, repairedTemplates: number,
+   *   repairedExpenses: number, duplicatesRemoved: number }}
    */
   async ensureCreditCardPaymentExpensesLinked() {
-    const repair = await this.repairCreditCardPaymentFundingSource();
-    const createdCount = await this.createMissingCreditCardExpenses();
-    return {
-      createdCount,
-      repairedTemplates: repair.repairedTemplates,
-      repairedExpenses: repair.repairedExpenses,
-    };
+    if (ensureCreditCardPaymentExpensesLinkedPromise) {
+      return ensureCreditCardPaymentExpensesLinkedPromise;
+    }
+    ensureCreditCardPaymentExpensesLinkedPromise = (async () => {
+      const repair = await this.repairCreditCardPaymentFundingSource();
+      const createdCount = await this.createMissingCreditCardExpenses();
+      const duplicateTemplates =
+        await this.cleanupDuplicateCreditCardTemplates();
+      const duplicateExpenses = await this.cleanupDuplicateCreditCardExpenses();
+      return {
+        createdCount,
+        repairedTemplates: repair.repairedTemplates,
+        repairedExpenses: repair.repairedExpenses,
+        duplicatesRemoved: duplicateTemplates.length + duplicateExpenses.length,
+      };
+    })();
+    try {
+      return await ensureCreditCardPaymentExpensesLinkedPromise;
+    } finally {
+      ensureCreditCardPaymentExpensesLinkedPromise = null;
+    }
   },
 
   // Insights and analytics helpers
