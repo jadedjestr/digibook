@@ -798,7 +798,30 @@ export const dbHelpers = {
   async deleteCreditCard(id) {
     try {
       const ts = nowIso();
-      await db.creditCards.update(id, { deletedAt: ts, updatedAt: ts });
+      await db.transaction(
+        'rw',
+        db.creditCards,
+        db.recurringExpenseTemplates,
+        async () => {
+          // Deactivate any recurring templates that would otherwise keep
+          // manufacturing new expenses against (or paying into) a card
+          // that no longer exists.
+          const templates = await db.recurringExpenseTemplates.toArray();
+          const linkedActiveTemplates = templates.filter(
+            t =>
+              !t.deletedAt &&
+              t.isActive &&
+              (t.creditCardId === id || t.targetCreditCardId === id),
+          );
+          for (const template of linkedActiveTemplates) {
+            await this.updateRecurringExpenseTemplate(template.id, {
+              isActive: false,
+            });
+          }
+
+          await db.creditCards.update(id, { deletedAt: ts, updatedAt: ts });
+        },
+      );
       logger.success(`Credit card deleted successfully: ${id}`);
     } catch (error) {
       logger.error('Error deleting credit card:', error);
@@ -1307,6 +1330,23 @@ export const dbHelpers = {
       const template = await db.recurringExpenseTemplates.get(templateId);
       if (!template || !template.isActive) {
         throw new Error('Template not found or inactive');
+      }
+
+      // Self-heal: stop generating from a template whose linked credit
+      // card has since been (soft-)deleted - covers installs where the
+      // card was deleted before deleteCreditCard started deactivating
+      // linked templates.
+      const linkedCardId = template.targetCreditCardId || template.creditCardId;
+      if (linkedCardId) {
+        const linkedCard = await db.creditCards.get(linkedCardId);
+        if (!linkedCard || linkedCard.deletedAt) {
+          await this.updateRecurringExpenseTemplate(templateId, {
+            isActive: false,
+          });
+          throw new Error(
+            'Linked credit card has been deleted; template deactivated',
+          );
+        }
       }
 
       // Check if template has an end date and if we've passed it
@@ -3825,7 +3865,7 @@ export const dbHelpers = {
           const targetCard = await db.creditCards.get(
             sanitizedExpense.targetCreditCardId,
           );
-          if (!targetCard) {
+          if (!targetCard || targetCard.deletedAt) {
             throw new Error(
               `Target credit card not found: ${sanitizedExpense.targetCreditCardId}`,
             );
@@ -3882,7 +3922,7 @@ export const dbHelpers = {
           const creditCard = await db.creditCards.get(
             sanitizedExpense.creditCardId,
           );
-          if (!creditCard) {
+          if (!creditCard || creditCard.deletedAt) {
             throw new Error(
               `Credit card not found: ${sanitizedExpense.creditCardId}`,
             );

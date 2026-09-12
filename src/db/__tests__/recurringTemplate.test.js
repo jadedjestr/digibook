@@ -91,3 +91,77 @@ describe('addRecurringExpenseTemplate - nextDueDate', () => {
     expect(template.nextDueDate).toBe(expected);
   });
 });
+
+describe('generateRecurringExpense - deleted credit card self-heal', () => {
+  const now = '2026-02-01T00:00:00.000Z';
+
+  beforeEach(async () => {
+    await Promise.all([
+      db.recurringExpenseTemplates.clear(),
+      db.creditCards.clear(),
+      db.fixedExpenses.clear(),
+    ]);
+  });
+
+  const baseTemplate = {
+    name: 'Card Payment',
+    baseAmount: 25,
+    frequency: 'monthly',
+    intervalValue: 1,
+    intervalUnit: 'months',
+    startDate: '2026-02-01',
+    nextDueDate: '2026-02-01',
+    category: 'Credit Card Payment',
+    accountId: 'acc-1',
+    creditCardId: null,
+    targetCreditCardId: 'card-1',
+    isActive: true,
+    isVariableAmount: true,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+  };
+
+  it('deactivates and refuses to generate when the linked card was soft-deleted', async () => {
+    await db.creditCards.bulkPut([
+      {
+        id: 'card-1',
+        name: 'Card',
+        balance: 50,
+        creditLimit: 1000,
+        interestRate: 19.99,
+        dueDate: '2026-02-15',
+        statementClosingDate: '2026-02-01',
+        minimumPayment: 25,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: now,
+      },
+    ]);
+    await db.recurringExpenseTemplates.bulkPut([
+      { id: 'tpl-1', ...baseTemplate },
+    ]);
+
+    await expect(dbHelpers.generateRecurringExpense('tpl-1')).rejects.toThrow(
+      /Failed to generate recurring expense/i,
+    );
+
+    const template = await db.recurringExpenseTemplates.get('tpl-1');
+    expect(template.isActive).toBe(false);
+    expect(await db.fixedExpenses.count()).toBe(0);
+  });
+
+  it('deactivates and refuses to generate when the linked card no longer exists', async () => {
+    await db.recurringExpenseTemplates.bulkPut([
+      { id: 'tpl-2', ...baseTemplate },
+    ]);
+
+    await expect(dbHelpers.generateRecurringExpense('tpl-2')).rejects.toThrow(
+      /Failed to generate recurring expense/i,
+    );
+
+    const template = await db.recurringExpenseTemplates.get('tpl-2');
+    expect(template.isActive).toBe(false);
+    expect(await db.fixedExpenses.count()).toBe(0);
+  });
+});

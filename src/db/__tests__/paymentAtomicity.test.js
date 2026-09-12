@@ -297,6 +297,72 @@ describe('dbHelpers.applyExpensePaymentChangeAtomic (atomic paidAmount)', () => 
     expect(expense.status).toBe('paid');
   });
 
+  it('rejects paying a Credit Card Payment expense whose target card was deleted, with no balance movement', async () => {
+    await db.fixedExpenses.bulkPut([
+      {
+        id: '1',
+        name: 'Pay Card',
+        dueDate: '2026-02-05',
+        amount: 20,
+        accountId: '1',
+        creditCardId: null,
+        targetCreditCardId: '1',
+        category: 'Credit Card Payment',
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: null,
+        createdAt: now,
+      },
+    ]);
+
+    await db.creditCards.update('1', { deletedAt: now });
+
+    await expect(
+      dbHelpers.applyExpensePaymentChangeAtomic('1', { paidAmount: 20 }),
+    ).rejects.toThrow(/Target credit card not found/i);
+
+    const [account] = await db.accounts.toArray();
+    const [card] = await db.creditCards.toArray();
+    const [expense] = await db.fixedExpenses.toArray();
+
+    expect(account.currentBalance).toBe(100);
+    expect(card.balance).toBe(50);
+    expect(expense.paidAmount).toBe(0);
+    expect(expense.status).toBe('pending');
+  });
+
+  it('rejects paying an expense charged to a deleted credit card, with no balance movement', async () => {
+    await db.fixedExpenses.bulkPut([
+      {
+        id: '1',
+        name: 'Dinner',
+        dueDate: '2026-02-05',
+        amount: 10,
+        accountId: null,
+        creditCardId: '1',
+        targetCreditCardId: null,
+        category: 'Dining',
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: null,
+        createdAt: now,
+      },
+    ]);
+
+    await db.creditCards.update('1', { deletedAt: now });
+
+    await expect(
+      dbHelpers.applyExpensePaymentChangeAtomic('1', { paidAmount: 10 }),
+    ).rejects.toThrow(/Credit card not found/i);
+
+    const [card] = await db.creditCards.toArray();
+    const [expense] = await db.fixedExpenses.toArray();
+
+    expect(card.balance).toBe(50);
+    expect(expense.paidAmount).toBe(0);
+    expect(expense.status).toBe('pending');
+  });
+
   it('commits even if audit log write fails (best-effort)', async () => {
     await db.fixedExpenses.bulkPut([
       {
