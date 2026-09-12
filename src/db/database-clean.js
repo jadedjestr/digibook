@@ -327,6 +327,139 @@ function normalizePaycheckSettings(data) {
   data.paycheckSettings = [normalized];
 }
 
+const IMPORT_CHUNK_SIZE = 1000;
+
+/**
+ * Bulk-write items into a Dexie table in fixed-size chunks (upsert semantics).
+ * Used by both the full-replace importData() and the single-table importSingleTable().
+ */
+async function bulkPutChunked(table, items, chunkSize = IMPORT_CHUNK_SIZE) {
+  if (!Array.isArray(items) || items.length === 0) return;
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    await table.bulkPut(chunk);
+  }
+}
+
+/**
+ * Validate cross-table references for a single-table import (CSV merge path).
+ * Mirrors the payment-source rules in dbHelpers.validateImportData, but checks
+ * against the live DB instead of sibling arrays (a single-table payload has none).
+ * Returns an array of error strings (empty if valid).
+ */
+async function validateSingleTableReferences(tableName, items) {
+  const toRefId = value => {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+    return null;
+  };
+  const hasValue = v => v !== null && v !== undefined && v !== '';
+  const errors = [];
+
+  if (tableName === 'pendingTransactions') {
+    const accountIds = new Set(
+      (await db.accounts.toArray()).map(a => toRefId(a?.id)).filter(Boolean),
+    );
+    for (const [idx, txn] of items.entries()) {
+      const accountId = toRefId(txn?.accountId);
+      if (!accountId || !accountIds.has(accountId)) {
+        errors.push(
+          `pendingTransactions[${idx}]: invalid accountId (${txn?.accountId})`,
+        );
+      }
+    }
+    return errors;
+  }
+
+  if (
+    tableName === 'fixedExpenses' ||
+    tableName === 'recurringExpenseTemplates'
+  ) {
+    const accountIds = new Set(
+      (await db.accounts.toArray()).map(a => toRefId(a?.id)).filter(Boolean),
+    );
+    const creditCardIds = new Set(
+      (await db.creditCards.toArray()).map(c => toRefId(c?.id)).filter(Boolean),
+    );
+    const templateIds =
+      tableName === 'fixedExpenses'
+        ? new Set(
+            (await db.recurringExpenseTemplates.toArray())
+              .map(t => toRefId(t?.id))
+              .filter(Boolean),
+          )
+        : null;
+
+    for (const [idx, item] of items.entries()) {
+      const accountId = toRefId(item?.accountId);
+      const creditCardId = toRefId(item?.creditCardId);
+      const targetCreditCardId = toRefId(item?.targetCreditCardId);
+      const recurringTemplateId = toRefId(item?.recurringTemplateId);
+
+      const hasAccount = hasValue(accountId);
+      const hasCreditCard = hasValue(creditCardId);
+
+      if (hasAccount && hasCreditCard) {
+        errors.push(
+          `${tableName}[${idx}]: cannot have both accountId and creditCardId`,
+        );
+      } else if (!hasAccount && !hasCreditCard) {
+        errors.push(
+          `${tableName}[${idx}]: must have either accountId or creditCardId`,
+        );
+      }
+
+      if (hasAccount && !accountIds.has(accountId)) {
+        errors.push(
+          `${tableName}[${idx}]: accountId (${item?.accountId}) not found in accounts`,
+        );
+      }
+      if (hasCreditCard && !creditCardIds.has(creditCardId)) {
+        errors.push(
+          `${tableName}[${idx}]: creditCardId (${item?.creditCardId}) not found in creditCards`,
+        );
+      }
+
+      if (item?.category === 'Credit Card Payment') {
+        if (!hasAccount) {
+          errors.push(
+            `${tableName}[${idx}]: Credit Card Payment must have funding accountId`,
+          );
+        }
+        if (!targetCreditCardId || !creditCardIds.has(targetCreditCardId)) {
+          errors.push(
+            `${tableName}[${idx}]: Credit Card Payment must have valid targetCreditCardId`,
+          );
+        }
+        if (hasCreditCard) {
+          errors.push(
+            `${tableName}[${idx}]: Credit Card Payment cannot use creditCardId (use targetCreditCardId)`,
+          );
+        }
+      } else if (hasValue(targetCreditCardId)) {
+        errors.push(
+          `${tableName}[${idx}]: targetCreditCardId must be null unless category is Credit Card Payment`,
+        );
+      }
+
+      if (
+        tableName === 'fixedExpenses' &&
+        hasValue(recurringTemplateId) &&
+        !templateIds.has(recurringTemplateId)
+      ) {
+        errors.push(
+          `${tableName}[${idx}]: recurringTemplateId (${item?.recurringTemplateId}) not found in recurringExpenseTemplates`,
+        );
+      }
+    }
+    return errors;
+  }
+
+  return errors;
+}
+
 /**
  * Internal (non-exported) audit log add. Transaction-safe; does not call trim.
  */
@@ -2985,7 +3118,6 @@ export const dbHelpers = {
         monthlyExpenseHistory: await db.monthlyExpenseHistory.toArray(),
         auditLogs: await db.auditLogs.toArray(),
         recurringExpenseTemplates: await db.recurringExpenseTemplates.toArray(),
-        backups: await db.backups.toArray(),
         exportDate: new Date().toISOString(),
       };
 
@@ -2999,20 +3131,14 @@ export const dbHelpers = {
 
   async importData(data) {
     try {
-      const CHUNK_SIZE = 1000;
-      const bulkPutChunked = async (table, items) => {
-        if (!Array.isArray(items) || items.length === 0) return;
-        for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-          const chunk = items.slice(i, i + CHUNK_SIZE);
-          await table.bulkPut(chunk);
-        }
-      };
-
       normalizePaycheckSettings(data);
 
       // Atomic full-replace import:
       // - Everything is cleared and written inside one IndexedDB transaction.
       // - Any failure aborts the transaction, rolling back the clears/writes.
+      // - db.backups is deliberately excluded: backup history is local
+      //   infrastructure, not portable user data, and must survive a restore
+      //   untouched (see dbHelpers.exportData).
       await db.transaction(
         'rw',
         db.accounts,
@@ -3025,7 +3151,6 @@ export const dbHelpers = {
         db.fixedExpenses,
         db.monthlyExpenseHistory,
         db.auditLogs,
-        db.backups,
         async () => {
           // Clear existing data (inline so failures abort the transaction)
           await db.accounts.clear();
@@ -3038,9 +3163,6 @@ export const dbHelpers = {
           await db.monthlyExpenseHistory.clear();
           await db.recurringExpenseTemplates.clear();
           await db.auditLogs.clear();
-          if (Array.isArray(data.backups)) {
-            await db.backups.clear();
-          }
 
           // Import core data first (order matters for app invariants)
           await bulkPutChunked(db.accounts, data.accounts);
@@ -3068,9 +3190,6 @@ export const dbHelpers = {
             data.monthlyExpenseHistory,
           );
           await bulkPutChunked(db.auditLogs, data.auditLogs);
-          if (Array.isArray(data.backups) && data.backups.length > 0) {
-            await bulkPutChunked(db.backups, data.backups);
-          }
         },
       );
 
@@ -3078,6 +3197,36 @@ export const dbHelpers = {
     } catch (error) {
       logger.error('Error importing data:', error);
       throw new Error(`Failed to import data: ${error.message}`);
+    }
+  },
+
+  /**
+   * Non-destructive, single-table upsert (CSV merge import). Unlike importData,
+   * this never clears any table - only the rows present in `items` are written,
+   * matched by id (bulkPut overwrites on matching id, adds otherwise).
+   */
+  async importSingleTable(tableName, items) {
+    try {
+      if (!db.tables.map(t => t.name).includes(tableName)) {
+        throw new Error(`Unknown table: ${tableName}`);
+      }
+      if (!Array.isArray(items)) {
+        throw new Error(`Expected an array of items for table "${tableName}"`);
+      }
+
+      const fkErrors = await validateSingleTableReferences(tableName, items);
+      if (fkErrors.length > 0) {
+        throw new Error(`Invalid references: ${fkErrors.join(', ')}`);
+      }
+
+      await db.transaction('rw', db[tableName], async () => {
+        await bulkPutChunked(db[tableName], items);
+      });
+
+      logger.success(`Imported ${items.length} row(s) into ${tableName}`);
+    } catch (error) {
+      logger.error(`Error importing into ${tableName}:`, error);
+      throw new Error(`Failed to import ${tableName}: ${error.message}`);
     }
   },
 

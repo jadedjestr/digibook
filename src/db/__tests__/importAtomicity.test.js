@@ -351,4 +351,62 @@ describe('dbHelpers.importData (atomic transaction)', () => {
     expect(settings).toHaveLength(1);
     expect(settings[0].frequency).toBe('monthly');
   });
+
+  describe('backups exclusion (Bug #1: exponential backup nesting)', () => {
+    beforeEach(async () => {
+      await db.backups.clear();
+    });
+
+    it('excludes backups from exportData()', async () => {
+      await db.backups.add({
+        id: 'backup-1',
+        reason: 'manual',
+        timestamp: now,
+        version: 4,
+        createdAt: now,
+        data: { fake: 'prior-backup-payload' },
+        checksum: 'abc123',
+      });
+
+      const exported = await dbHelpers.exportData();
+      expect(exported).not.toHaveProperty('backups');
+    });
+
+    it('does not clear pre-existing backups or import a stale backups field', async () => {
+      await db.backups.add({
+        id: 'sentinel-backup',
+        reason: 'manual',
+        timestamp: now,
+        version: 4,
+        createdAt: now,
+        data: { fake: 'sentinel-backup' },
+        checksum: 'sentinel-checksum',
+      });
+
+      const importDataWithStaleBackups = {
+        ...importData,
+
+        // Simulates an old export file created before the Bug #1 fix, which
+        // still embedded a (possibly bloated) backups array.
+        backups: [
+          {
+            id: 'stale-backup',
+            reason: 'stale',
+            timestamp: now,
+            version: 4,
+            createdAt: now,
+            data: { fake: 'stale-old-format-backup' },
+            checksum: 'stale-checksum',
+          },
+        ],
+      };
+
+      await dbHelpers.importData(importDataWithStaleBackups);
+
+      const backupsAfter = await db.backups.toArray();
+      expect(backupsAfter).toHaveLength(1);
+      expect(backupsAfter[0].id).toBe('sentinel-backup');
+      expect(backupsAfter[0].data).toEqual({ fake: 'sentinel-backup' });
+    });
+  });
 });

@@ -1448,22 +1448,23 @@ boxShadow: {
 ### Import Flow
 
 1. User selects JSON or CSV file
-2. Confirmation dialog warns about data overwrite
-3. Auto-backup created in localStorage
+2. Confirmation dialog: JSON warns about a full data overwrite; CSV clarifies it merges into the matching table only, leaving other data untouched
+3. Auto-backup created (IndexedDB `backups` table)
 4. File parsed and validated (V4 format, data integrity)
 5. V3→V4 migration applied if needed
-6. Database cleared and replaced atomically (single Dexie transaction)
+6. Database updated atomically (single Dexie transaction): JSON fully replaces every table (`dbHelpers.importData()`); CSV upserts into the one table it detected from the file's headers, by id, without touching any other table (`dbHelpers.importSingleTable()`)
 7. Category cache invalidated
 8. Store reloaded from fresh database
 9. Future expense generation prompt shown if applicable
 
 ### Backup System (BackupManager)
 
-- **Storage:** localStorage (backup data stored as JSON strings with checksums)
+- **Storage:** IndexedDB `backups` table. A one-time startup migration drains any legacy localStorage backups into it.
 - **Rotation:** Maximum 5 backups; oldest deleted when limit reached
 - **Checksum:** SHA-256 integrity verification
 - **Triggers:** Auto-created before import, clear, and restore operations
 - **Restore:** User can manually restore from most recent backup via Settings
+- A backup's stored snapshot never embeds prior backup history — `dbHelpers.exportData()` (used for both backups and manual JSON/CSV exports) excludes the `backups` table itself, so backup size no longer compounds across successive backups
 
 ### V3 → V4 Migration
 

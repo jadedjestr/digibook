@@ -377,11 +377,31 @@ class DataManager {
 
   /**
    * Shared: validate then write validated import data to DB.
-   * Used by importData.
+   * Used by importData. JSON is a full-replace (all tables); CSV is a
+   * scoped, non-destructive merge into whichever single table it detected
+   * (a CSV file only ever carries one table's worth of data - see
+   * detectAndConvertCSVData - so validateImportData's cross-table required-
+   * fields check would always fail for it).
    * @private
    */
-  async _applyValidatedImport(validatedData, onProgress = () => {}) {
+  async _applyValidatedImport(validatedData, fileType, onProgress = () => {}) {
     onProgress('Validating data structure...');
+
+    if (fileType === 'csv') {
+      const tableKeys = Object.keys(validatedData).filter(key =>
+        Array.isArray(validatedData[key]),
+      );
+      if (tableKeys.length !== 1) {
+        throw new Error(
+          `Expected exactly one table in CSV import data, found: ${tableKeys.join(', ') || 'none'}`,
+        );
+      }
+      const [tableName] = tableKeys;
+      onProgress(`Merging into ${tableName}...`);
+      await dbHelpers.importSingleTable(tableName, validatedData[tableName]);
+      return;
+    }
+
     const validationResult = await this.validateImportData(validatedData);
     if (!validationResult.isValid) {
       throw new Error(
@@ -406,7 +426,7 @@ class DataManager {
       // Validate and migrate data to V4 format
       const validatedData = validateImportedDataV4(data);
 
-      await this._applyValidatedImport(validatedData, onProgress);
+      await this._applyValidatedImport(validatedData, fileType, onProgress);
 
       onProgress('Import completed successfully!');
       logger.success(`Data imported successfully from ${fileType} file`);

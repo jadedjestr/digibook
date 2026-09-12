@@ -159,11 +159,11 @@ const DataManagementCard = ({
 
     setIsImporting(true);
     try {
-      if (
-        confirm(
-          'This will overwrite all existing data. A backup will be created automatically. Are you sure?',
-        )
-      ) {
+      const isJson = importFile.name.toLowerCase().endsWith('.json');
+      const confirmMessage = isJson
+        ? 'This will overwrite all existing data. A backup will be created automatically. Are you sure?'
+        : 'This will merge into the matching table only — your other data will not be affected. A backup will be created automatically. Are you sure?';
+      if (confirm(confirmMessage)) {
         await dataManager.importData(importFile, setImportProgress);
 
         await refreshAfterDbReplace();
