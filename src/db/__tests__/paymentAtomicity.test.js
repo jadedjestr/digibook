@@ -580,5 +580,73 @@ describe('dbHelpers.applyExpensePaymentChangeAtomic (atomic paidAmount)', () => 
       expect(template.nextDueDate).toBe('2026-02-05');
       expect(result).toEqual({ templateIdAdvanced: null });
     });
+
+    it('generates the next occurrence after a full payment when the template has targetCreditCardId set (regression: dynamic import mid-transaction)', async () => {
+      await db.recurringExpenseTemplates.bulkPut([
+        {
+          id: '1',
+          name: 'Citi Payment',
+          baseAmount: 100,
+          frequency: 'monthly',
+          intervalValue: 1,
+          startDate: '2026-01-01',
+          lastGenerated: null,
+          nextDueDate: '2026-02-05',
+          category: 'Credit Card Payment',
+          accountId: '1',
+          targetCreditCardId: '1',
+          notes: '',
+          isActive: true,
+          isVariableAmount: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]);
+
+      await db.fixedExpenses.bulkPut([
+        {
+          id: '1',
+          name: 'Citi Payment',
+          dueDate: '2026-02-05',
+          amount: 100,
+          accountId: '1',
+          creditCardId: null,
+          targetCreditCardId: '1',
+          category: 'Credit Card Payment',
+          paidAmount: 0,
+          status: 'pending',
+          recurringTemplateId: '1',
+          createdAt: now,
+        },
+      ]);
+
+      const result = await dbHelpers.applyExpensePaymentChangeAtomic('1', {
+        paidAmount: 100,
+      });
+      expect(result).toEqual({ templateIdAdvanced: '1' });
+
+      const [template] = await db.recurringExpenseTemplates.toArray();
+      expect(template.nextDueDate).toBe('2026-04-05');
+      expect(template.lastGenerated).toBe('2026-03-05');
+
+      // The actual regression guard: before this fix, generateRecurringExpense's
+      // nested dynamic import silently broke the transaction and this second
+      // row was never created.
+      const allExpenses = await db.fixedExpenses.toArray();
+      expect(allExpenses).toHaveLength(2);
+      const nextOccurrence = allExpenses.find(e => e.id !== '1');
+      expect(nextOccurrence).toMatchObject({
+        dueDate: '2026-03-05',
+        status: 'pending',
+        paidAmount: 0,
+        recurringTemplateId: '1',
+
+        // The shared fixture's card (id '1') has balance 50; paying this
+        // $100 expense drives it to -50, so the newly generated bill
+        // correctly has no amount due yet (generateRecurringExpense's own
+        // balance<=0 rule).
+        amount: 0,
+      });
+    });
   });
 });

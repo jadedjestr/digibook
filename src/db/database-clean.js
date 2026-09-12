@@ -4024,6 +4024,7 @@ export const dbHelpers = {
       db.recurringExpenseTemplates,
       async () => {
         let templateIdAdvanced = null;
+        let templateIdToGenerate = null;
         const currentExpense = await db.fixedExpenses.get(expenseId);
         if (!currentExpense || currentExpense.deletedAt) {
           throw new Error(`Expense with ID ${expenseId} not found`);
@@ -4059,7 +4060,7 @@ export const dbHelpers = {
 
         // No balance change needed.
         if (paymentDifference === 0) {
-          return { templateIdAdvanced };
+          return { templateIdAdvanced, templateIdToGenerate };
         }
 
         // Apply balance deltas based on payment source.
@@ -4212,25 +4213,44 @@ export const dbHelpers = {
               });
               templateIdAdvanced = templateId;
 
+              // generateRecurringExpense() calls addFixedExpenseV4(), which
+              // does a dynamic import partway through - that can silently
+              // break an open Dexie transaction (see createExpenseForCard
+              // for the same fix). Deferred to after this transaction
+              // commits, below, rather than called inline here.
+              //
+              // Note: this means a template gets advanced twice for one
+              // full-payment event - once here, once more inside
+              // generateRecurringExpense's own advance (which runs against
+              // the value just set above). So nextDueDate ends up one full
+              // cycle ahead of the newly-generated expense's own dueDate,
+              // and this fast path will never match again for this
+              // template on any later payment. That's fine: useAppStore's
+              // preGenerateOccurrences() already walks every active
+              // template forward on each app load and backfills any
+              // missing occurrence, so the next bill still gets created -
+              // just on next load instead of instantly on payment.
               if (template.targetCreditCardId) {
-                try {
-                  await this.generateRecurringExpense(templateId);
-                } catch (genError) {
-                  logger.error(
-                    'Error generating next CC payment occurrence:',
-                    genError,
-                  );
-                }
+                templateIdToGenerate = templateId;
               }
             }
           }
         }
 
-        return { templateIdAdvanced };
+        return { templateIdAdvanced, templateIdToGenerate };
       },
     );
     void this.trimAuditLogs();
-    return result;
+
+    if (result.templateIdToGenerate) {
+      try {
+        await this.generateRecurringExpense(result.templateIdToGenerate);
+      } catch (genError) {
+        logger.error('Error generating next CC payment occurrence:', genError);
+      }
+    }
+
+    return { templateIdAdvanced: result.templateIdAdvanced };
   },
 
   /**
