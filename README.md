@@ -204,11 +204,10 @@ npm run storybook
 
 ## 📚 Documentation
 
-- **API Documentation**: See [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+- **Architecture & Feature Reference**: See [PRD.md](PRD.md)
 - **Development Guide**: See [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)
 - **Code Style Guide**: See [CODE_STYLE_GUIDE.md](CODE_STYLE_GUIDE.md)
-- **Testing Guide**: See [TESTING_GUIDE_PHASE_3.md](TESTING_GUIDE_PHASE_3.md)
-- **Credit Card Payment System**: See [CREDIT_CARD_PAYMENT_SYSTEM.md](CREDIT_CARD_PAYMENT_SYSTEM.md)
+- **Migrating Legacy Data to V4**: See [MIGRATION_INSTRUCTIONS.md](MIGRATION_INSTRUCTIONS.md)
 
 ## Contributing
 

@@ -27,15 +27,16 @@ This guide establishes consistent coding standards for the Digibook project to e
 - **Descriptive names** that indicate purpose: `PAGINATION_CONFIG`, `ERROR_TYPES`
 
 ### **Files & Directories**
-- **kebab-case** for files: `account-selector.jsx`, `fixed-expenses-table.jsx`
+- **PascalCase** for component files: `AccountSelector.jsx`, `FixedExpensesTable.jsx`
 - **PascalCase** for component directories: `CategoryManager/`, `FixedExpensesTable/`
+- **camelCase** for non-component files: `dateUtils.js`, `useExpenseOperations.js`
 
 ## 🏗️ **Component Structure**
 
 ### **Component Organization**
 ```jsx
 // 1. Imports (grouped and ordered)
-import React from 'react';
+// No `import React from 'react'` needed - Vite's JSX transform handles it
 import { useState, useEffect } from 'react';
 
 import { Button } from 'lucide-react';
@@ -44,7 +45,10 @@ import { useAppStore } from '../stores/useAppStore';
 import { logger } from '../utils/logger';
 
 // 2. Component definition
-const ComponentName = ({ prop1, prop2 }) => {
+// Default values via destructuring, not Component.defaultProps - React 18
+// deprecates defaultProps on function components. (The codebase still has
+// older components using .defaultProps; write new ones this way.)
+const ComponentName = ({ prop1, prop2 = 0 }) => {
   // 3. State declarations
   const [localState, setLocalState] = useState(null);
 
@@ -75,12 +79,7 @@ ComponentName.propTypes = {
   prop2: PropTypes.number,
 };
 
-// 9. Default props
-ComponentName.defaultProps = {
-  prop2: 0,
-};
-
-// 10. Export
+// 9. Export
 export default ComponentName;
 ```
 

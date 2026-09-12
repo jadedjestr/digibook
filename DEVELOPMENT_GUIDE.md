@@ -54,10 +54,11 @@ npm run quality
 
 ### **Browser DevTools**
 - **React DevTools**: Component tree inspection
-- **Redux DevTools**: State management debugging (Zustand compatible)
 - **Performance Tab**: Performance profiling
-- **Network Tab**: API call monitoring
+- **Application/Storage Tab**: Inspect IndexedDB (`DigibookDB_Fresh`) and localStorage directly
 - **Console**: Enhanced logging with custom logger
+
+Note: the Zustand store (`src/stores/useAppStore.js`) only wires up the `persist` middleware, not `devtools` - Redux DevTools won't show anything for it.
 
 ### **VS Code Extensions**
 Recommended extensions for optimal development experience:
@@ -165,12 +166,12 @@ npm run test -- --grep "performance"
 - **TypeScript**: Type checking (when enabled)
 
 ### **Quality Gates**
-All code must pass:
-- [ ] ESLint checks (0 errors, 0 warnings)
+Enforced by `npm run quality` (lint → format:check → test:run):
+- [ ] ESLint checks (0 errors, 0 warnings) - `--max-warnings 0`, so any warning fails the command
 - [ ] Prettier formatting
-- [ ] Test coverage (80%+)
-- [ ] Performance benchmarks
-- [ ] Accessibility compliance
+- [ ] Full test suite passing
+
+Not currently enforced by any script or CI: test coverage thresholds, performance benchmarks, accessibility audits. Run manually if needed (`npm run test:coverage`, Storybook's a11y addon).
 
 ## 🚀 **Deployment**
 
@@ -184,14 +185,6 @@ npm run preview
 
 # Build Storybook
 npm run build-storybook
-```
-
-### **Environment Variables**
-Create `.env.local` for local development:
-```env
-VITE_APP_ENV=development
-VITE_APP_DEBUG=true
-VITE_APP_LOG_LEVEL=debug
 ```
 
 ## 🐛 **Debugging Common Issues**
@@ -214,29 +207,25 @@ VITE_APP_LOG_LEVEL=debug
 ## 📚 **Documentation**
 
 ### **Code Documentation**
-- **JSDoc**: Function and component documentation
+- **JSDoc**: Function and component documentation, read directly from source (there's no JSDoc-extraction build step)
 - **README**: Project overview and setup
-- **API Docs**: Generated from JSDoc comments
 - **Component Docs**: Storybook stories
+- **PRD.md**: Full architecture, database schema, and feature reference
 
 ### **Architecture Documentation**
-- **Component Structure**: Component hierarchy and relationships
-- **State Management**: Zustand store structure
-- **Database Schema**: IndexedDB schema and relationships
-- **API Design**: Service layer architecture
+See `PRD.md` for component structure, state management, database schema, and service layer architecture.
 
 ## 🔒 **Security**
 
+Digibook is local-first with no backend - there's no server session, no cookies, and no network calls for data, so CSRF and HTTP security headers don't apply here. What's actually relevant:
+
 ### **Development Security**
-- **Input Validation**: All user inputs validated
+- **Input Validation**: All user inputs validated (`src/utils/validation.js`)
 - **XSS Prevention**: Sanitized user content
-- **CSRF Protection**: Token-based protection
-- **Secure Headers**: Security headers configured
 
 ### **Data Protection**
-- **Local Storage**: Encrypted sensitive data
-- **PIN Protection**: Secure PIN storage
-- **Backup Security**: Encrypted backups
+- **PIN Protection**: PIN encrypted at rest via Web Crypto API (`src/utils/crypto.js`)
+- **Backup Integrity**: SHA-256 checksums on local backups
 
 ## 🎯 **Best Practices**
 
