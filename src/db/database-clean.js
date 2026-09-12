@@ -9,6 +9,7 @@ import { dataIntegrity } from '../utils/crypto';
 import { DateUtils } from '../utils/dateUtils';
 import { generateId } from '../utils/generateId';
 import { logger } from '../utils/logger';
+import { validatePaidAmount } from '../utils/validation';
 
 const MAX_AUDIT_LOG_ENTRIES = 500;
 const UUID_REGEX =
@@ -781,16 +782,108 @@ export const dbHelpers = {
     }
   },
 
-  async updateCreditCard(id, updates) {
-    try {
-      await db.creditCards.update(id, { ...updates, updatedAt: nowIso() });
-      if (updates.dueDate !== undefined) {
-        await this.syncCreditCardDueDateToExpenses(id, updates.dueDate);
+  /**
+   * Recompute `amount` on pending (unpaid), template-linked Credit Card
+   * Payment expenses for this card after balance/minimumPayment changes,
+   * mirroring the same calculation generateRecurringExpense() uses. Never
+   * touches already-paid expenses, so settled payment history is never
+   * rewritten.
+   */
+  async syncCreditCardAmountToExpenses(cardId, updates) {
+    if (updates.balance === undefined && updates.minimumPayment === undefined) {
+      return;
+    }
+
+    const linked = await db.fixedExpenses
+      .where('targetCreditCardId')
+      .equals(cardId)
+      .filter(
+        e =>
+          e.category === 'Credit Card Payment' &&
+          !e.deletedAt &&
+          e.status !== 'paid',
+      )
+      .toArray();
+    if (linked.length === 0) return;
+
+    const updatedCard = await db.creditCards.get(cardId);
+    if (!updatedCard) return;
+
+    const ts = nowIso();
+    for (const expense of linked) {
+      let newAmount;
+      if (Number(updatedCard.balance) <= 0) {
+        newAmount = 0;
+      } else {
+        let override = null;
+        if (expense.recurringTemplateId) {
+          const template = await db.recurringExpenseTemplates.get(
+            expense.recurringTemplateId,
+          );
+          if (template && template.minimumPaymentOverride != null) {
+            override = template.minimumPaymentOverride;
+          }
+        }
+        newAmount =
+          override != null
+            ? override
+            : getDefaultMinimumPaymentAmount(updatedCard);
       }
-      await this.syncCreditCardToTemplates(id, updates);
+      await db.fixedExpenses.update(expense.id, {
+        amount: newAmount,
+        updatedAt: ts,
+      });
+    }
+    logger.success(
+      `Synced amount to ${linked.length} linked pending expense(s) for card ${cardId}`,
+    );
+  },
+
+  async updateCreditCard(id, updates, expectedUpdatedAt) {
+    try {
+      await db.transaction(
+        'rw',
+        db.creditCards,
+        db.fixedExpenses,
+        db.recurringExpenseTemplates,
+        async () => {
+          const current = await db.creditCards.get(id);
+          if (!current || current.deletedAt) {
+            throw new Error(`Credit card not found: ${id}`);
+          }
+          if (
+            expectedUpdatedAt !== undefined &&
+            current.updatedAt !== expectedUpdatedAt
+          ) {
+            throw new Error(
+              'STALE_WRITE: This card was changed elsewhere. Close and reopen the edit form to see the latest values.',
+            );
+          }
+
+          const ts = nowIso();
+          await db.creditCards.update(id, { ...updates, updatedAt: ts });
+
+          if (updates.dueDate !== undefined) {
+            await this.syncCreditCardDueDateToExpenses(id, updates.dueDate);
+          }
+          if (
+            updates.balance !== undefined ||
+            updates.minimumPayment !== undefined
+          ) {
+            await this.syncCreditCardAmountToExpenses(id, updates);
+          }
+          await this.syncCreditCardToTemplates(id, updates);
+        },
+      );
       logger.success(`Credit card updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating credit card:', error);
+      if (
+        typeof error.message === 'string' &&
+        error.message.startsWith('STALE_WRITE')
+      ) {
+        throw error;
+      }
       throw new Error('Failed to update credit card');
     }
   },
@@ -3813,6 +3906,11 @@ export const dbHelpers = {
       throw new Error(
         'applyExpensePaymentChangeAtomic requires numeric paidAmount',
       );
+    }
+
+    const paidAmountCheck = validatePaidAmount(updates.paidAmount);
+    if (!paidAmountCheck.isValid) {
+      throw new Error(paidAmountCheck.error);
     }
 
     // Import validators outside the transaction callback to avoid IndexedDB

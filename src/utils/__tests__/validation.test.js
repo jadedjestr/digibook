@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   validateAccountName,
   validateAmount,
+  validatePaidAmount,
   validatePIN,
   validateDescription,
   validateDate,
@@ -95,6 +96,55 @@ describe('Validation Utils', () => {
       const result = validateAmount('abc');
       expect(result.isValid).toBe(false);
       expect(result.error).toBe('Please enter a valid amount (e.g., 10.50)');
+    });
+  });
+
+  describe('validatePaidAmount', () => {
+    it('should allow exactly 0 (reset to unpaid)', () => {
+      const result = validatePaidAmount(0);
+      expect(result.isValid).toBe(true);
+      expect(result.value).toBe(0);
+    });
+
+    it('should allow a normal positive amount', () => {
+      const result = validatePaidAmount(42.5);
+      expect(result.isValid).toBe(true);
+      expect(result.value).toBe(42.5);
+    });
+
+    it('should allow overpayment beyond a nominal expense amount', () => {
+      const result = validatePaidAmount(999999);
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should reject negative amounts', () => {
+      const result = validatePaidAmount(-50);
+      expect(result.isValid).toBe(false);
+      expect(result.error).toBe('Paid amount cannot be negative');
+    });
+
+    it('should reject Infinity', () => {
+      const result = validatePaidAmount(Infinity);
+      expect(result.isValid).toBe(false);
+      expect(result.error).toBe('Please enter a valid paid amount');
+    });
+
+    it('should reject NaN', () => {
+      const result = validatePaidAmount(NaN);
+      expect(result.isValid).toBe(false);
+      expect(result.error).toBe('Please enter a valid paid amount');
+    });
+
+    it('should reject amounts over the ceiling', () => {
+      const result = validatePaidAmount(1000000);
+      expect(result.isValid).toBe(false);
+      expect(result.error).toBe('Paid amount must be less than $1,000,000');
+    });
+
+    it('should parse a numeric string', () => {
+      const result = validatePaidAmount('123.45');
+      expect(result.isValid).toBe(true);
+      expect(result.value).toBe(123.45);
     });
   });
 

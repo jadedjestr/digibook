@@ -15,6 +15,8 @@ import { createPaymentSource } from '../types/paymentSource';
 import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
 import { getPaymentSourceInfo } from '../utils/expenseUtils';
+import { notify } from '../utils/notifications';
+import { validatePaidAmount } from '../utils/validation';
 
 import CreditCardPaymentInput from './CreditCardPaymentInput';
 import PaymentSourceSelector from './PaymentSourceSelector';
@@ -127,6 +129,16 @@ const MobileExpenseCard = ({
           accountId: editValue.accountId,
           creditCardId: editValue.creditCardId,
         };
+      } else if (
+        editingField === 'paidAmount' &&
+        expense.category !== 'Credit Card Payment'
+      ) {
+        const check = validatePaidAmount(editValue);
+        if (!check.isValid) {
+          notify.error(check.error);
+          return;
+        }
+        updateData = { paidAmount: check.value };
       } else {
         // Handle regular field updates
         updateData = { [editingField]: editValue };

@@ -16,7 +16,7 @@ import EmptyState from './EmptyState';
 import DebtPayoffEmptyIllustration from './illustrations/DebtPayoffEmptyIllustration';
 import PrivacyWrapper from './PrivacyWrapper';
 
-const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
+const DebtPayoffCalculator = ({ creditCards = [] }) => {
   const [selectedCard, setSelectedCard] = useState(null);
   const [calculatorData, setCalculatorData] = useState({
     balance: 0,
@@ -77,20 +77,6 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
       ...prev,
       [field]: parseFloat(value) || 0,
     }));
-  };
-
-  const updateCreditCard = async updates => {
-    if (!selectedCard) return;
-
-    try {
-      await dbHelpers.updateCreditCard(selectedCard.id, updates);
-      logger.success('Credit card updated successfully');
-      if (onDataChange) {
-        onDataChange();
-      }
-    } catch (error) {
-      logger.error('Error updating credit card:', error);
-    }
   };
 
   const formatCurrency = amount => {
@@ -169,6 +155,12 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
         </div>
       </div>
 
+      {isEditing && (
+        <p className='text-xs text-white/50 mb-4'>
+          What-if only — edit your real card from Credit Cards.
+        </p>
+      )}
+
       {/* Credit Card Selector */}
       {creditCards.length > 1 && (
         <div className='mb-6'>
@@ -214,9 +206,6 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                   type='number'
                   value={calculatorData.balance}
                   onChange={e => handleInputChange('balance', e.target.value)}
-                  onBlur={() =>
-                    updateCreditCard({ balance: calculatorData.balance })
-                  }
                   className='glass-input w-full'
                   step='0.01'
                   min='0'
@@ -245,11 +234,6 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                   value={calculatorData.creditLimit}
                   onChange={e =>
                     handleInputChange('creditLimit', e.target.value)
-                  }
-                  onBlur={() =>
-                    updateCreditCard({
-                      creditLimit: calculatorData.creditLimit,
-                    })
                   }
                   className='glass-input w-full'
                   step='0.01'
@@ -284,11 +268,6 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
                   value={calculatorData.interestRate}
                   onChange={e =>
                     handleInputChange('interestRate', e.target.value)
-                  }
-                  onBlur={() =>
-                    updateCreditCard({
-                      interestRate: calculatorData.interestRate,
-                    })
                   }
                   className='glass-input w-full'
                   step='0.01'
@@ -467,7 +446,6 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
 
 DebtPayoffCalculator.propTypes = {
   creditCards: PropTypes.arrayOf(PropTypes.object),
-  onDataChange: PropTypes.func,
 };
 
 DebtPayoffCalculator.defaultProps = {

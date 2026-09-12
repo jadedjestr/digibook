@@ -2,6 +2,8 @@ import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 
 import { formatCurrency } from '../utils/accountUtils';
+import { notify } from '../utils/notifications';
+import { validatePaidAmount } from '../utils/validation';
 
 /**
  * Modal for marking an expense as paid (full or partial).
@@ -32,9 +34,13 @@ const MarkAsPaidModal = ({ expense, isOpen, onClose, onConfirm }) => {
     e.preventDefault();
     if (!expense) return;
     const value = parseFloat(paidAmount);
-    if (isNaN(value) || value < 0) return;
     const currentPaid = expense.paidAmount ?? 0;
     const newPaidAmount = currentPaid + value;
+    const check = validatePaidAmount(newPaidAmount);
+    if (!check.isValid) {
+      notify.error(check.error);
+      return;
+    }
     const totalAmount = expense.amount ?? 0;
     const status = newPaidAmount >= totalAmount ? 'paid' : 'pending';
     setIsSubmitting(true);

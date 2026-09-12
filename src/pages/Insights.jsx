@@ -101,10 +101,7 @@ const Insights = ({
       {/* Row 1: Overpayment Analysis and Debt Calculator */}
       <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
         <OverpaymentAnalysis data={overpaymentData} />
-        <DebtPayoffCalculator
-          creditCards={creditCards}
-          onDataChange={handleDataRefresh}
-        />
+        <DebtPayoffCalculator creditCards={creditCards} />
       </div>
 
       {/* Row 2: Monthly Trends */}

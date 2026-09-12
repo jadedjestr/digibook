@@ -6,6 +6,8 @@ import { useMemo, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
 
 import { createPaymentSource } from '../types/paymentSource';
+import { notify } from '../utils/notifications';
+import { validatePaidAmount } from '../utils/validation';
 
 import InlineEdit from './InlineEdit';
 import PaymentSourceSelector from './PaymentSourceSelector';
@@ -148,7 +150,14 @@ const DraggableExpenseRow = ({
   );
 
   const handlePaidAmountSave = useCallback(
-    value => onUpdateExpense(expense.id, { paidAmount: parseFloat(value) }),
+    value => {
+      const check = validatePaidAmount(value);
+      if (!check.isValid) {
+        notify.error(check.error);
+        return;
+      }
+      onUpdateExpense(expense.id, { paidAmount: check.value });
+    },
     [expense.id, onUpdateExpense],
   );
 

@@ -243,7 +243,11 @@ const CreditCards = ({
       };
 
       if (editingCard) {
-        await dbHelpers.updateCreditCard(editingCard.id, cardData);
+        await dbHelpers.updateCreditCard(
+          editingCard.id,
+          cardData,
+          editingCard.updatedAt,
+        );
         if (
           formData.fundingAccountId !== '' &&
           formData.fundingAccountId !== initialFundingAccountId
@@ -293,7 +297,13 @@ const CreditCards = ({
       onDataChange();
     } catch (error) {
       logger.error('Error saving credit card:', error);
-      notify.error('Failed to save credit card');
+      if (error.message?.startsWith('STALE_WRITE')) {
+        notify.error(
+          'This card was changed elsewhere. Please close and reopen the edit form.',
+        );
+      } else {
+        notify.error('Failed to save credit card');
+      }
     }
   }, [
     validateForm,

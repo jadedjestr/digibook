@@ -363,6 +363,36 @@ describe('dbHelpers.applyExpensePaymentChangeAtomic (atomic paidAmount)', () => 
     expect(expense.status).toBe('pending');
   });
 
+  it('rejects a negative paidAmount, with no balance movement', async () => {
+    await db.fixedExpenses.bulkPut([
+      {
+        id: '1',
+        name: 'Rent',
+        dueDate: '2026-02-05',
+        amount: 10,
+        accountId: '1',
+        creditCardId: null,
+        targetCreditCardId: null,
+        category: 'Housing',
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: null,
+        createdAt: now,
+      },
+    ]);
+
+    await expect(
+      dbHelpers.applyExpensePaymentChangeAtomic('1', { paidAmount: -10 }),
+    ).rejects.toThrow(/cannot be negative/i);
+
+    const [account] = await db.accounts.toArray();
+    const [expense] = await db.fixedExpenses.toArray();
+
+    expect(account.currentBalance).toBe(100);
+    expect(expense.paidAmount).toBe(0);
+    expect(expense.status).toBe('pending');
+  });
+
   it('commits even if audit log write fails (best-effort)', async () => {
     await db.fixedExpenses.bulkPut([
       {

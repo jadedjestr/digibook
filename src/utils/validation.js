@@ -88,6 +88,30 @@ export const validateAmount = amount => {
 };
 
 /**
+ * Validate a "paid amount" value for an expense payment.
+ * Unlike validateAmount, this allows exactly 0 (resets an expense to unpaid)
+ * and does not cap at the expense's own amount - overpayment is legitimate.
+ */
+export const validatePaidAmount = amount => {
+  const numericAmount =
+    typeof amount === 'number' ? amount : parseFloat(String(amount).trim());
+
+  if (!Number.isFinite(numericAmount)) {
+    return { isValid: false, error: 'Please enter a valid paid amount' };
+  }
+  if (numericAmount < 0) {
+    return { isValid: false, error: 'Paid amount cannot be negative' };
+  }
+  if (numericAmount > 999999.99) {
+    return {
+      isValid: false,
+      error: 'Paid amount must be less than $1,000,000',
+    };
+  }
+  return { isValid: true, value: numericAmount };
+};
+
+/**
  * Validate PIN
  */
 export const validatePIN = pin => {
