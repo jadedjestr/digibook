@@ -1,4 +1,4 @@
-import { Download, Upload, Trash2, Shield } from 'lucide-react';
+import { Download, Upload, Trash2, RotateCcw } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 
@@ -33,6 +33,7 @@ const DataManagementCard = ({
   const [lastExportDate, setLastExportDate] = useState(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [backupList, setBackupList] = useState([]);
+  const [restoringId, setRestoringId] = useState(null);
 
   useEffect(() => {
     if (shouldShowFuturePrompt) {
@@ -56,7 +57,6 @@ const DataManagementCard = ({
     load();
   }, []);
 
-  const latestBackup = backupList.length > 0 ? backupList[0] : null;
   const showNudge =
     !nudgeDismissed &&
     (lastExportDate === null ||
@@ -203,17 +203,16 @@ const DataManagementCard = ({
     }
   };
 
-  const handleRestoreFromBackup = async () => {
-    if (
-      confirm('This will restore your data from the last backup. Are you sure?')
-    ) {
-      try {
-        setImportProgress('Finding latest backup...');
-        const backup = await dataManager.backupManager.getLatestBackup();
-        if (!backup) {
-          throw new Error('No backup found');
-        }
+  const handleRestoreFromBackup = async backup => {
+    if (!backup || restoringId) return;
 
+    if (
+      confirm(
+        `This will restore your data from the backup created ${formatBackupTimestamp(backup.timestamp)} (${backup.reason}). A backup of your current data will be made first. Are you sure?`,
+      )
+    ) {
+      setRestoringId(backup.id);
+      try {
         setImportProgress('Restoring backup...');
         await dataManager.backupManager.restoreBackup(backup.id);
 
@@ -227,6 +226,8 @@ const DataManagementCard = ({
         logger.error('Error restoring from backup:', error);
         alert(`Failed to restore backup: ${error.message}`);
         setImportProgress('');
+      } finally {
+        setRestoringId(null);
       }
     }
   };
@@ -546,20 +547,48 @@ const DataManagementCard = ({
           <p className='text-secondary text-sm'>
             {backupList.length === 0
               ? 'No backups stored yet. Backups are created automatically before import or clear.'
-              : `${backupList.length} backup(s) stored. Most recent: ${formatBackupTimestamp(latestBackup?.timestamp)} (${latestBackup?.reason ?? '—'}).`}
+              : `${backupList.length} backup${backupList.length === 1 ? '' : 's'} stored.`}
           </p>
           <p className='text-secondary text-sm'>
             If an import failed or you need to restore from a backup created
-            before import.
+            before import, choose one below.
           </p>
-          <button
-            onClick={handleRestoreFromBackup}
-            disabled={!latestBackup}
-            className='glass-button glass-button--secondary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed'
-          >
-            <Shield size={16} />
-            <span>Restore from Backup</span>
-          </button>
+          {backupList.length > 0 && (
+            <div className='max-h-[320px] overflow-y-auto'>
+              <div className='space-y-2'>
+                {backupList.map(backup => (
+                  <div
+                    key={backup.id}
+                    className='glass-card p-3 flex items-center justify-between gap-3'
+                  >
+                    <div>
+                      <p className='text-primary text-sm font-medium'>
+                        {formatBackupTimestamp(backup.timestamp)}
+                      </p>
+                      <p className='text-secondary text-xs'>{backup.reason}</p>
+                    </div>
+                    <button
+                      onClick={() => handleRestoreFromBackup(backup)}
+                      disabled={restoringId !== null}
+                      className='glass-button glass-button--sm glass-button--secondary flex items-center space-x-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed'
+                    >
+                      {restoringId === backup.id ? (
+                        <>
+                          <div className='animate-spin rounded-full h-3 w-3 border-b-2 border-white' />
+                          <span>Restoring...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw size={14} />
+                          <span>Restore</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -117,6 +117,31 @@ describe('dataManager', () => {
     });
   });
 
+  describe('BackupManager.restoreBackup (restores the exact backup requested)', () => {
+    it('restores a non-latest backup by id, not whichever one was created most recently', async () => {
+      const idA = await dataManager.backupManager.createBackup('manual');
+
+      await db.accounts.update('1', { currentBalance: 500 });
+      const idB = await dataManager.backupManager.createBackup('manual');
+
+      // Mutate again after the last backup so a correct restore can't be
+      // confused with "just leave the current data alone".
+      await db.accounts.update('1', { currentBalance: 999 });
+
+      await dataManager.backupManager.restoreBackup(idA);
+
+      const accountsAfter = await db.accounts.toArray();
+      expect(accountsAfter.find(a => a.id === '1').currentBalance).toBe(100);
+
+      // Confirms idA and idB really captured distinct snapshots.
+      const backups = await db.backups.toArray();
+      const backupB = backups.find(b => b.id === idB);
+      expect(backupB.data.accounts.find(a => a.id === '1').currentBalance).toBe(
+        500,
+      );
+    });
+  });
+
   describe('importData - CSV vs JSON branching (Bug #2: non-functional CSV import)', () => {
     it('merges a single-table CSV import into only the matching table', async () => {
       const csvText = [
