@@ -6,8 +6,12 @@ import {
 } from '../utils/expenseValidation';
 import { logger } from '../utils/logger';
 
-// Current data format version
-const CURRENT_DATA_VERSION = 4; // Updated to support dual foreign key architecture
+// Export/import data-format version - distinct from the Dexie schema version
+// in database-clean.js (this gates the JSON/backup file contract, not the
+// IndexedDB structure). Review this whenever a schema change alters that
+// contract (e.g. the V8 migration to UUID string ids, which this constant
+// was never bumped for).
+const CURRENT_DATA_VERSION = 5;
 
 /**
  * Normalize version to number for comparison
@@ -297,7 +301,7 @@ class DataManager {
           converted.creditCardId = row.creditCardId || null;
           converted.targetCreditCardId = row.targetCreditCardId || null;
           converted.dueDate = row.dueDate
-            ? new Date(row.dueDate).toISOString()
+            ? new Date(row.dueDate).toISOString().split('T')[0]
             : '';
           break;
         case 'categories':
@@ -342,19 +346,19 @@ class DataManager {
           if (row.startDate) {
             const startDate = new Date(row.startDate);
             converted.startDate = !isNaN(startDate.getTime())
-              ? startDate.toISOString()
+              ? startDate.toISOString().split('T')[0]
               : '';
           }
           if (row.lastGenerated) {
             const lastGenerated = new Date(row.lastGenerated);
             converted.lastGenerated = !isNaN(lastGenerated.getTime())
-              ? lastGenerated.toISOString()
+              ? lastGenerated.toISOString().split('T')[0]
               : null;
           }
           if (row.nextDueDate) {
             const nextDueDate = new Date(row.nextDueDate);
             converted.nextDueDate = !isNaN(nextDueDate.getTime())
-              ? nextDueDate.toISOString()
+              ? nextDueDate.toISOString().split('T')[0]
               : '';
           }
           if (row.createdAt) {
@@ -863,35 +867,18 @@ export const fixCommonExpenseIssues = expense => {
     fixedExpense.creditCardId = null;
   }
 
-  // Issue 2: No payment source specified
-  if (!fixedExpense.accountId && !fixedExpense.creditCardId) {
+  // Issue 2: Credit card payment has a stray creditCardId (should use
+  // targetCreditCardId instead). A missing accountId/targetCreditCardId
+  // here has no safe default to fall back to - it's left as-is and caught
+  // by downstream validation instead.
+  if (
+    fixedExpense.category === 'Credit Card Payment' &&
+    fixedExpense.creditCardId
+  ) {
     logger.warn(
-      `Expense "${fixedExpense.name}" has no payment source - setting default account`,
+      `Credit card payment "${fixedExpense.name}" has creditCardId - removing (use targetCreditCardId)`,
     );
-    fixedExpense.accountId = 1; // Default to first account
     fixedExpense.creditCardId = null;
-  }
-
-  // Issue 3: Credit card payment missing required fields
-  if (fixedExpense.category === 'Credit Card Payment') {
-    if (!fixedExpense.accountId) {
-      logger.warn(
-        `Credit card payment "${fixedExpense.name}" missing funding account - setting default`,
-      );
-      fixedExpense.accountId = 1;
-    }
-    if (!fixedExpense.targetCreditCardId) {
-      logger.warn(
-        `Credit card payment "${fixedExpense.name}" missing target credit card - setting default`,
-      );
-      fixedExpense.targetCreditCardId = 1;
-    }
-    if (fixedExpense.creditCardId) {
-      logger.warn(
-        `Credit card payment "${fixedExpense.name}" has creditCardId - removing (use targetCreditCardId)`,
-      );
-      fixedExpense.creditCardId = null;
-    }
   }
 
   logger.debug(`Fixed expense data issues for: ${fixedExpense.name}`);

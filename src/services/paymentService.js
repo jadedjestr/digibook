@@ -1,196 +1,24 @@
 /**
- * Payment Service for Dual Foreign Key Architecture
+ * Payment source lookups, validation, and suggestions for the dual foreign
+ * key architecture (expenses paid from accounts or credit cards, not both).
  *
- * Payment processing for the dual foreign key architecture:
- * expenses can be paid from accounts or credit cards, not both.
- *
- * Key Features:
- * - Processes regular expense payments (account or credit card)
- * - Handles credit card payments (funding account → target credit card)
- * - Manages account balance updates
- * - Provides payment source information for UI display
- * - Maintains audit trails for all transactions
+ * The actual balance-mutating payment logic lives in
+ * dbHelpers.applyExpensePaymentChangeAtomic (db/database-clean.js), not
+ * here - this service only reads/validates against the in-memory
+ * accounts/creditCards arrays it's constructed with, for UI display and
+ * pre-flight checks.
  */
 
-import { dbHelpers } from '../db/database-clean';
 import {
   createPaymentSource as _createPaymentSource,
   PaymentSourceTypes,
 } from '../types/paymentSource';
 import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
-import { logger } from '../utils/logger';
 
 export class PaymentService {
   constructor(accounts, creditCards) {
     this.accounts = accounts;
     this.creditCards = creditCards;
-  }
-
-  /**
-   * Process payment for an expense with new architecture
-   *
-   * @param {Object} expense - The expense object
-   * @param {number} newPaidAmount - New paid amount
-   * @returns {Promise<void>}
-   */
-  async processExpensePayment(expense, newPaidAmount) {
-    const paymentDifference = newPaidAmount - expense.paidAmount;
-
-    if (paymentDifference === 0) {
-      return; // No change in payment amount
-    }
-
-    try {
-      if (expense.category === 'Credit Card Payment') {
-        await this.processCreditCardPayment(expense, paymentDifference);
-      } else {
-        await this.processRegularExpensePayment(expense, paymentDifference);
-      }
-
-      logger.success(
-        `Payment processed: $${paymentDifference} for ${expense.name}`,
-      );
-    } catch (error) {
-      logger.error('Payment processing failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Handle credit card payment using two-field system
-   * accountId = funding source (checking/savings)
-   * targetCreditCardId = target credit card to pay down
-   *
-   * @param {Object} expense - Credit card payment expense
-   * @param {number} paymentDifference - Amount being paid
-   * @returns {Promise<void>}
-   */
-  async processCreditCardPayment(expense, paymentDifference) {
-    const fundingAccount = this.accounts.find(
-      acc => acc.id === expense.accountId,
-    );
-    const targetCreditCard = this.creditCards.find(
-      card => card.id === expense.targetCreditCardId,
-    );
-
-    if (!fundingAccount) {
-      throw new Error(`Funding account not found: ${expense.accountId}`);
-    }
-    if (!targetCreditCard) {
-      throw new Error(
-        `Target credit card not found: ${expense.targetCreditCardId}`,
-      );
-    }
-
-    // 1. Decrease funding account balance (money goes out)
-    const newAccountBalance = fundingAccount.currentBalance - paymentDifference;
-    await dbHelpers.updateAccount(fundingAccount.id, {
-      currentBalance: newAccountBalance,
-    });
-
-    // 2. Decrease credit card balance (debt paid down)
-    const newCreditCardBalance = targetCreditCard.balance - paymentDifference;
-    await dbHelpers.updateCreditCard(targetCreditCard.id, {
-      balance: newCreditCardBalance,
-    });
-
-    // 3. Create audit log for the transaction
-    await dbHelpers.addAuditLog('PAYMENT', 'creditCardPayment', expense.id, {
-      fundingAccountId: fundingAccount.id,
-      fundingAccountName: fundingAccount.name,
-      targetCreditCardId: targetCreditCard.id,
-      targetCreditCardName: targetCreditCard.name,
-      amount: paymentDifference,
-      newAccountBalance,
-      newCreditCardBalance,
-      description: `Credit card payment: $${paymentDifference} from ${fundingAccount.name} to ${targetCreditCard.name}`,
-    });
-
-    logger.success(
-      `Paid $${paymentDifference} to ${targetCreditCard.name} from ${fundingAccount.name}`,
-    );
-  }
-
-  /**
-   * Handle regular expense payment (groceries, utilities, etc.)
-   * Can be paid from either checking/savings account or credit card
-   *
-   * @param {Object} expense - Regular expense
-   * @param {number} paymentDifference - Amount being paid
-   * @returns {Promise<void>}
-   */
-  async processRegularExpensePayment(expense, paymentDifference) {
-    if (expense.accountId) {
-      // Paid from checking/savings account
-      await this.processAccountPayment(expense, paymentDifference);
-    } else if (expense.creditCardId) {
-      // Paid with credit card (increases debt)
-      await this.processCreditCardCharge(expense, paymentDifference);
-    } else {
-      throw new Error(
-        `No payment source specified for expense: ${expense.name}`,
-      );
-    }
-  }
-
-  /**
-   * Process payment from checking/savings account
-   *
-   * @param {Object} expense - The expense
-   * @param {number} paymentDifference - Amount being paid
-   * @returns {Promise<void>}
-   */
-  async processAccountPayment(expense, paymentDifference) {
-    const account = this.accounts.find(acc => acc.id === expense.accountId);
-    if (!account) {
-      throw new Error(`Account not found: ${expense.accountId}`);
-    }
-
-    const newBalance = account.currentBalance - paymentDifference;
-    await dbHelpers.updateAccount(account.id, { currentBalance: newBalance });
-
-    await dbHelpers.addAuditLog('PAYMENT', 'account', account.id, {
-      expenseId: expense.id,
-      expenseName: expense.name,
-      amount: paymentDifference,
-      newBalance,
-      description: `Expense payment: ${expense.name} - $${paymentDifference}`,
-    });
-
-    logger.success(
-      `Paid $${paymentDifference} for ${expense.name} from ${account.name}`,
-    );
-  }
-
-  /**
-   * Process charge to credit card (increases debt)
-   *
-   * @param {Object} expense - The expense
-   * @param {number} paymentDifference - Amount being charged
-   * @returns {Promise<void>}
-   */
-  async processCreditCardCharge(expense, paymentDifference) {
-    const creditCard = this.creditCards.find(
-      card => card.id === expense.creditCardId,
-    );
-    if (!creditCard) {
-      throw new Error(`Credit card not found: ${expense.creditCardId}`);
-    }
-
-    const newBalance = creditCard.balance + paymentDifference; // Increase debt
-    await dbHelpers.updateCreditCard(creditCard.id, { balance: newBalance });
-
-    await dbHelpers.addAuditLog('PAYMENT', 'creditCard', creditCard.id, {
-      expenseId: expense.id,
-      expenseName: expense.name,
-      amount: paymentDifference,
-      newBalance,
-      description: `Expense payment: ${expense.name} - $${paymentDifference} charged to card`,
-    });
-
-    logger.success(
-      `Charged $${paymentDifference} for ${expense.name} to ${creditCard.name}`,
-    );
   }
 
   /**
@@ -519,14 +347,4 @@ export class PaymentService {
  */
 export const createPaymentService = (accounts, creditCards) => {
   return new PaymentService(accounts, creditCards);
-};
-
-/**
- * Utility function to create payment service from store
- *
- * @param {Object} store - Zustand store object
- * @returns {PaymentService} PaymentService instance
- */
-export const createPaymentServiceFromStore = store => {
-  return new PaymentService(store.accounts, store.creditCards);
 };

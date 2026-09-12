@@ -24,7 +24,6 @@ const DataManagementCard = ({
   onFuturePromptDismissed,
 }) => {
   const [importFile, setImportFile] = useState(null);
-  const [importType, setImportType] = useState('json');
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState('');
@@ -427,20 +426,11 @@ const DataManagementCard = ({
       {/* Import Section */}
       <div>
         <h4 className='text-primary font-medium mb-3'>Import Data</h4>
-        {/* Type inferred from file extension (.json or .csv), not the dropdown. */}
         <div className='space-y-3'>
           <div className='flex space-x-3'>
-            <select
-              value={importType}
-              onChange={e => setImportType(e.target.value)}
-              className='glass-input'
-            >
-              <option value='json'>JSON</option>
-              <option value='csv'>CSV</option>
-            </select>
             <input
               type='file'
-              accept={importType === 'json' ? '.json' : '.csv'}
+              accept='.json,.csv'
               onChange={handleImportFile}
               className='glass-input'
             />

@@ -22,8 +22,10 @@ const isValidUuid = value =>
 /**
  * Clean Consolidated Digibook Database Schema
  *
- * This is a clean, consolidated version that combines all features
- * into a logical, optimized structure with just 4 versions.
+ * Consolidated Dexie schema, currently at version 8 (see this.version(8)
+ * below for the full migration history). Not the same as
+ * CURRENT_DATA_VERSION in services/dataManager.js, which gates the
+ * separate JSON/backup export-import file contract.
  */
 
 export class DigibookDBClean extends Dexie {
