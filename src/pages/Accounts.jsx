@@ -161,13 +161,20 @@ const Accounts = () => {
     }
   };
 
-  const handleUpdateAccount = async (accountId, updates) => {
+  const handleUpdateAccount = async (accountId, updates, expectedUpdatedAt) => {
     try {
-      await dbHelpers.updateAccount(accountId, updates);
+      await dbHelpers.updateAccount(accountId, updates, expectedUpdatedAt);
       setEditingId(null);
       reloadAccounts();
     } catch (error) {
       logger.error('Error updating account:', error);
+      if (error.message?.startsWith('STALE_WRITE')) {
+        notify.error(
+          'This account was changed elsewhere. Please reload and try again.',
+        );
+      } else {
+        notify.error('Failed to update account');
+      }
     }
   };
 
@@ -355,7 +362,11 @@ const Accounts = () => {
                             <InlineEdit
                               value={account.name}
                               onSave={name =>
-                                handleUpdateAccount(account.id, { name })
+                                handleUpdateAccount(
+                                  account.id,
+                                  { name },
+                                  account.updatedAt,
+                                )
                               }
                               showEditIcon
                             />
@@ -364,10 +375,14 @@ const Accounts = () => {
                             <InlineEdit
                               value={account.currentBalance}
                               onSave={currentBalance =>
-                                handleUpdateAccount(account.id, {
-                                  currentBalance:
-                                    parseFloat(currentBalance) || 0,
-                                })
+                                handleUpdateAccount(
+                                  account.id,
+                                  {
+                                    currentBalance:
+                                      parseFloat(currentBalance) || 0,
+                                  },
+                                  account.updatedAt,
+                                )
                               }
                               type='number'
                               showEditIcon

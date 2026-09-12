@@ -361,6 +361,28 @@ async function validateSingleTableReferences(tableName, items) {
   const hasValue = v => v !== null && v !== undefined && v !== '';
   const errors = [];
 
+  if (tableName === 'accounts') {
+    for (const [idx, item] of items.entries()) {
+      if (!Number.isFinite(item?.currentBalance)) {
+        errors.push(
+          `accounts[${idx}]: currentBalance must be a finite number (got ${item?.currentBalance})`,
+        );
+      }
+    }
+    return errors;
+  }
+
+  if (tableName === 'creditCards') {
+    for (const [idx, item] of items.entries()) {
+      if (!Number.isFinite(item?.balance)) {
+        errors.push(
+          `creditCards[${idx}]: balance must be a finite number (got ${item?.balance})`,
+        );
+      }
+    }
+    return errors;
+  }
+
   if (tableName === 'pendingTransactions') {
     const accountIds = new Set(
       (await db.accounts.toArray()).map(a => toRefId(a?.id)).filter(Boolean),
@@ -652,6 +674,17 @@ export const dbHelpers = {
 
   async addCreditCard(creditCard) {
     try {
+      if (
+        !creditCard?.name ||
+        typeof creditCard.name !== 'string' ||
+        !creditCard.name.trim()
+      ) {
+        throw new Error('Credit card name is required');
+      }
+      if (!Number.isFinite(creditCard.balance)) {
+        throw new Error('Credit card balance must be a finite number');
+      }
+
       const creditCardData = {
         ...creditCard,
         id: generateId(),
@@ -1603,13 +1636,42 @@ export const dbHelpers = {
     }
   },
 
-  async updateAccount(id, updates) {
+  async updateAccount(id, updates, expectedUpdatedAt) {
     try {
-      await db.accounts.update(id, { ...updates, updatedAt: nowIso() });
+      if (
+        updates.currentBalance !== undefined &&
+        !Number.isFinite(updates.currentBalance)
+      ) {
+        throw new Error('Account balance must be a finite number');
+      }
+
+      await db.transaction('rw', db.accounts, async () => {
+        const current = await db.accounts.get(id);
+        if (!current || current.deletedAt) {
+          throw new Error(`Account not found: ${id}`);
+        }
+        if (
+          expectedUpdatedAt !== undefined &&
+          current.updatedAt !== expectedUpdatedAt
+        ) {
+          throw new Error(
+            'STALE_WRITE: This account was changed elsewhere. Reload to see the latest values.',
+          );
+        }
+
+        await db.accounts.update(id, { ...updates, updatedAt: nowIso() });
+      });
+
       logger.success(`Account updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating account:', error);
-      throw new Error('Failed to update account');
+      if (
+        typeof error.message === 'string' &&
+        error.message.startsWith('STALE_WRITE')
+      ) {
+        throw error;
+      }
+      throw new Error(`Failed to update account: ${error.message}`);
     }
   },
 
@@ -3578,6 +3640,27 @@ export const dbHelpers = {
           }
         }
       }
+
+      if (errors.length > 0) {
+        return { isValid: false, errors };
+      }
+
+      // Balance sanity checks - a corrupted or hand-edited backup should be
+      // rejected here rather than silently written to IndexedDB.
+      data.accounts.forEach((account, idx) => {
+        if (!Number.isFinite(account?.currentBalance)) {
+          errors.push(
+            `accounts[${idx}]: currentBalance must be a finite number (got ${account?.currentBalance})`,
+          );
+        }
+      });
+      data.creditCards.forEach((card, idx) => {
+        if (!Number.isFinite(card?.balance)) {
+          errors.push(
+            `creditCards[${idx}]: balance must be a finite number (got ${card?.balance})`,
+          );
+        }
+      });
 
       if (errors.length > 0) {
         return { isValid: false, errors };

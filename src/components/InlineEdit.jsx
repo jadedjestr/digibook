@@ -48,9 +48,21 @@ const InlineEdit = ({
     }
 
     // Parse number values properly for decimal amounts
-    const valueToSave =
-      type === 'number' ? parseFloat(editValue) || 0 : editValue;
-    onSave(valueToSave);
+    if (type === 'number') {
+      const parsed = parseFloat(editValue);
+
+      // An out-of-range value gets silently cleared to "" by the native
+      // number input before it ever reaches here - parseFloat('') is NaN,
+      // and treating that as "save 0" would silently zero out a real
+      // balance. Refuse to save rather than guess what the user meant.
+      if (!Number.isFinite(parsed)) {
+        logger.warn('Cannot save invalid number value:', editValue);
+        return;
+      }
+      onSave(parsed);
+    } else {
+      onSave(editValue);
+    }
     setIsEditing(false);
   };
 

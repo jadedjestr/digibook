@@ -244,10 +244,7 @@ export const dataIntegrity = {
       errors.push('Account name is required and must be a non-empty string');
     }
 
-    if (
-      typeof account.currentBalance !== 'number' ||
-      isNaN(account.currentBalance)
-    ) {
+    if (!Number.isFinite(account.currentBalance)) {
       errors.push('Account balance must be a valid number');
     }
 

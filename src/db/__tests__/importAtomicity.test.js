@@ -410,3 +410,117 @@ describe('dbHelpers.importData (atomic transaction)', () => {
     });
   });
 });
+
+describe('dbHelpers.validateImportData (balance sanity checks)', () => {
+  const now = '2026-02-01T00:00:00.000Z';
+
+  const validData = {
+    accounts: [
+      {
+        id: '1',
+        name: 'Checking',
+        type: 'checking',
+        currentBalance: 100,
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ],
+    creditCards: [
+      {
+        id: '1',
+        name: 'Card',
+        balance: 50,
+        creditLimit: 1000,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ],
+    pendingTransactions: [],
+    fixedExpenses: [],
+    categories: [],
+  };
+
+  it('accepts data with finite balances', async () => {
+    const result = await dbHelpers.validateImportData(validData);
+    expect(result.isValid).toBe(true);
+  });
+
+  it('rejects a non-finite account currentBalance', async () => {
+    const badData = {
+      ...validData,
+      accounts: [{ ...validData.accounts[0], currentBalance: Infinity }],
+    };
+    const result = await dbHelpers.validateImportData(badData);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('currentBalance'))).toBe(true);
+  });
+
+  it('rejects a non-finite credit card balance', async () => {
+    const badData = {
+      ...validData,
+      creditCards: [{ ...validData.creditCards[0], balance: 'not-a-number' }],
+    };
+    const result = await dbHelpers.validateImportData(badData);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('balance'))).toBe(true);
+  });
+});
+
+describe('dbHelpers.importSingleTable (balance sanity checks)', () => {
+  const now = '2026-02-01T00:00:00.000Z';
+
+  beforeEach(async () => {
+    await Promise.all([db.accounts.clear(), db.creditCards.clear()]);
+  });
+
+  it('rejects a non-finite currentBalance and writes nothing', async () => {
+    await expect(
+      dbHelpers.importSingleTable('accounts', [
+        {
+          id: '1',
+          name: 'Checking',
+          type: 'checking',
+          currentBalance: Infinity,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ]),
+    ).rejects.toThrow(/currentBalance/);
+    expect(await db.accounts.count()).toBe(0);
+  });
+
+  it('rejects a non-finite credit card balance and writes nothing', async () => {
+    await expect(
+      dbHelpers.importSingleTable('creditCards', [
+        {
+          id: '1',
+          name: 'Card',
+          balance: NaN,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ]),
+    ).rejects.toThrow(/balance/);
+    expect(await db.creditCards.count()).toBe(0);
+  });
+
+  it('accepts a finite balance', async () => {
+    await dbHelpers.importSingleTable('accounts', [
+      {
+        id: '1',
+        name: 'Checking',
+        type: 'checking',
+        currentBalance: 100,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+    expect(await db.accounts.count()).toBe(1);
+  });
+});
