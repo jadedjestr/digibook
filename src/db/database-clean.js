@@ -2398,25 +2398,49 @@ export const dbHelpers = {
         c => !c.deletedAt,
       );
 
-      const mappings = [];
+      // Confidence is on a 0-100 scale (matches CreditCardMigrationModal's
+      // thresholds: >70 auto-selects, >=80 "High", >=60 "Medium"). Only the
+      // single best-scoring card per expense is kept - an expense matching
+      // multiple cards would otherwise produce ambiguous mappings that
+      // share the same expenseId in the modal's selection state.
+      const bestMatchByExpenseId = new Map();
       for (const expense of expenses) {
+        const expenseName = expense.name.toLowerCase();
+        const description = expense.description?.toLowerCase();
+
         for (const card of creditCards) {
-          if (
-            expense.name.toLowerCase().includes(card.name.toLowerCase()) ||
-            expense.description?.toLowerCase().includes(card.name.toLowerCase())
-          ) {
-            mappings.push({
+          const cardName = card.name.toLowerCase();
+
+          let confidence = null;
+          let suggestedAction = null;
+          if (expenseName === cardName) {
+            confidence = 100;
+            suggestedAction = 'Exact name match';
+          } else if (expenseName.includes(cardName)) {
+            confidence = 85;
+            suggestedAction = 'Name contains card name';
+          } else if (description?.includes(cardName)) {
+            confidence = 60;
+            suggestedAction = 'Description mentions card name';
+          }
+
+          if (confidence === null) continue;
+
+          const current = bestMatchByExpenseId.get(expense.id);
+          if (!current || confidence > current.confidence) {
+            bestMatchByExpenseId.set(expense.id, {
               expenseId: expense.id,
               expenseName: expense.name,
               creditCardId: card.id,
               creditCardName: card.name,
-              confidence: 0.8, // High confidence for name matches
+              confidence,
+              suggestedAction,
             });
           }
         }
       }
 
-      return mappings;
+      return Array.from(bestMatchByExpenseId.values());
     } catch (error) {
       logger.error('Error detecting credit card expenses:', error);
       return [];
