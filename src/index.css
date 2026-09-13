@@ -250,8 +250,15 @@
        Exposed as --glass-fill so variants can sit further back without
        restating the tint maths: a full-width table carrying the same alpha
        as a small floating card reads as a slab, because tint that looks
-       right on 300px of glass is a wash across 700px. */
-    --glass-fill: calc(0.055 + var(--glass-tint) * 0.325);
+       right on 300px of glass is a wash across 700px.
+
+       Calibrated against this app's near-black ground, not in isolation.
+       The gradient this replaced averaged around 0.09 alpha; a flat fill
+       matching its 0.18 midpoint made every panel roughly twice as opaque
+       and turned cards into grey slabs. The curve runs 0.035 clear to
+       0.255 fully tinted, sitting near 0.11 at the default — about where
+       the old gradient read, with none of its sheen. */
+    --glass-fill: calc(0.035 + var(--glass-tint) * 0.22);
     background: rgba(255, 255, 255, var(--glass-fill));
 
     /* Border and radius. A full 1px, not a hairline: this is the edge that
@@ -824,7 +831,7 @@
     /* A table spans the full content width, so it takes roughly half the
        fill a floating card does — otherwise the same alpha that reads as
        glass on a card reads as a pale slab across the page. */
-    --glass-fill: calc(0.025 + var(--glass-tint) * 0.13);
+    --glass-fill: calc(0.018 + var(--glass-tint) * 0.09);
     width: 100%;
     border-radius: var(--radius-2xl);
     border: 1px solid rgba(255, 255, 255, 0.2);
