@@ -458,10 +458,14 @@ const AddExpensePanel = ({
           in the same stacking context, or z-index cannot rank them against
           each other: a transformed ancestor would trap this one and let the
           backdrop paint over it, blurring the panel's own contents. */}
+      {/* Full-bleed surface, inset contents: top-0/h-full keeps the glass
+          reaching the screen edges while the padding holds the header and form
+          clear of the status bar and home indicator when installed to the home
+          screen. env() is 0 in a browser tab. */}
       {createPortal(
         <div
           ref={panelRef}
-          className='fixed top-0 right-0 h-full w-[450px] glass-panel glass-panel--elevated border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden'
+          className='fixed top-0 right-0 h-full w-[450px] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] glass-panel glass-panel--elevated border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden'
           style={{
             transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
             boxSizing: 'border-box',

@@ -15,11 +15,24 @@ import { formatCurrency } from '../utils/accountUtils';
 
 import PrivacyWrapper from './PrivacyWrapper';
 
-// Mobile hamburger menu button
+/*
+ * Mobile hamburger menu button.
+ *
+ * Offset by the safe-area inset rather than a bare top-4. Installed to the
+ * home screen the app runs standalone with a translucent status bar, so the
+ * viewport starts at the physical top of the screen — a fixed 1rem put this
+ * button underneath the clock, where the status bar composited over its
+ * backdrop-blur and washed it out. env() is 0 in a browser tab and on
+ * desktop, so it stays exactly where it was there.
+ *
+ * Written as an arbitrary utility rather than a CSS class because a Tailwind
+ * utility overrides a base-layer rule — the mistake that silently discarded
+ * the first safe-area padding attempt.
+ */
 const MobileMenuButton = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => (
   <button
     onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-    className='lg:hidden fixed top-4 left-4 z-50 glass-button p-3'
+    className='lg:hidden fixed top-[calc(1rem+env(safe-area-inset-top))] left-4 z-50 glass-button p-3'
     aria-label='Toggle menu'
   >
     {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -269,10 +282,13 @@ const Sidebar = ({ navigation, onToggleLock, isLocked }) => {
         />
       </div>
 
-      {/* Mobile Sidebar */}
+      {/* Mobile Sidebar. top-0/h-full so the panel's own surface still reaches
+          the screen edges; the padding keeps its contents out of the status
+          bar and home indicator. */}
       <div
         className={`
         lg:hidden fixed top-0 left-0 h-full z-50 transform transition-transform
+        pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
       `}
         style={{
