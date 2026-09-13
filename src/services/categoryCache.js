@@ -1,5 +1,3 @@
-import React from 'react';
-
 import { logger } from '../utils/logger';
 
 /**
@@ -107,45 +105,3 @@ class CategoryCache {
 
 // Singleton instance
 export const categoryCache = new CategoryCache();
-
-/**
- * Hook for using category cache
- */
-export const useCategoryCache = () => {
-  const [data, setData] = React.useState(categoryCache.cache.data);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [error, setError] = React.useState(null);
-
-  React.useEffect(() => {
-    const unsubscribe = categoryCache.addListener(setData);
-    return unsubscribe;
-  }, []);
-
-  const refresh = React.useCallback(async fetchFunction => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await categoryCache.get(fetchFunction);
-      return result;
-    } catch (err) {
-      setError(err);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const invalidate = React.useCallback(() => {
-    categoryCache.invalidate();
-  }, []);
-
-  return {
-    data,
-    isLoading,
-    error,
-    refresh,
-    invalidate,
-    isValid: categoryCache.isValid(),
-    stats: categoryCache.getStats(),
-  };
-};

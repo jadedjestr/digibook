@@ -311,23 +311,6 @@ export const validateCategoryName = (
 };
 
 /**
- * Validate account type
- */
-export const validateAccountType = type => {
-  const validTypes = ['checking', 'savings', 'investment', 'other'];
-
-  if (!type) {
-    return { isValid: false, error: 'Account type is required' };
-  }
-
-  if (!validTypes.includes(type)) {
-    return { isValid: false, error: 'Please select a valid account type' };
-  }
-
-  return { isValid: true, value: type };
-};
-
-/**
  * Validate credit card data
  */
 export const validateCreditCard = cardData => {

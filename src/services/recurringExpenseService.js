@@ -250,44 +250,6 @@ export async function convertExpenseToRecurring(expense, recurringData) {
 }
 
 /**
- * Calculate when the next N occurrences will be due
- */
-export function calculateUpcomingOccurrences(template, count = 3) {
-  try {
-    // Normalize template to ensure intervalUnit is set
-    const normalizedTemplate = {
-      ...template,
-      intervalUnit: template.intervalUnit || 'months',
-      intervalValue: template.intervalValue || 1,
-    };
-
-    const occurrences = [];
-    let currentDate = normalizedTemplate.nextDueDate;
-
-    for (let i = 0; i < count; i++) {
-      occurrences.push({
-        date: currentDate,
-        displayDate: DateUtils.formatDisplayDate(currentDate),
-        shortDate: DateUtils.formatShortDate(currentDate),
-      });
-
-      // Calculate next date
-      currentDate = dbHelpers.calculateNextDueDate(
-        currentDate,
-        normalizedTemplate.frequency,
-        normalizedTemplate.intervalValue,
-        normalizedTemplate.intervalUnit,
-      );
-    }
-
-    return occurrences;
-  } catch (error) {
-    logger.error('Error calculating upcoming occurrences:', error);
-    return [];
-  }
-}
-
-/**
  * Pre-generate multiple occurrences of a recurring expense template
  * Generates expenses up to a specified horizon (e.g., 6 months ahead)
  */

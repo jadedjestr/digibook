@@ -151,21 +151,6 @@ export const validateExpense = (expense, options = {}) => {
 };
 
 /**
- * Utility function to get payment source type from expense
- *
- * @param {Object} expense - The expense object
- * @returns {string} 'account', 'creditCard', or 'none'
- */
-export const getPaymentSourceType = expense => {
-  if (expense.accountId) {
-    return 'account';
-  } else if (expense.creditCardId) {
-    return 'creditCard';
-  }
-  return 'none';
-};
-
-/**
  * Utility function to check if expense is a credit card payment
  *
  * @param {Object} expense - The expense object
