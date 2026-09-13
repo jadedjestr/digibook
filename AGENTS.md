@@ -56,6 +56,21 @@ of these being ignored.
   not by screenshot. Modals here render correctly while appearing blank in a
   captured image.
 
+## Style
+
+ESLint and Prettier enforce formatting, naming and hook rules on every commit,
+so none of that is written down here — the linter cannot drift and a document
+restating it can. What follows is the part tooling can't check.
+
+- **Never hardcode a colour or a glass effect.** Use the design tokens and the
+  `glass-*` classes; `bg-white/10` and `backdrop-blur-sm` bypass the system.
+  See [ARCHITECTURE.md](ARCHITECTURE.md#11-design-system).
+- **Status colour means status.** Green/yellow/orange/red belong in badges and
+  alerts, not on buttons or icons. Colour used decoratively stops carrying
+  meaning where it matters.
+- **Comment the why, not the what.** A comment earns its place by recording a
+  constraint, an invariant, or a bug that a reader would otherwise reintroduce.
+
 ## Documentation
 
 - `ARCHITECTURE.md` is subordinate to the code. If they disagree, the code is

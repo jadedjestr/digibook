@@ -26,8 +26,9 @@ contract.
 13. [Security & Privacy](#13-security--privacy)
 14. [Performance Optimizations](#14-performance-optimizations)
 15. [Testing Strategy](#15-testing-strategy)
-16. [Developer Tooling & Code Quality](#16-developer-tooling--code-quality)
-17. [Glossary](#17-glossary)
+16. [Deployment](#16-deployment)
+17. [Developer Tooling & Code Quality](#17-developer-tooling--code-quality)
+18. [Glossary](#18-glossary)
 
 ---
 
@@ -61,13 +62,13 @@ contract.
 | Prettier | Code formatting |
 | Husky | Git hooks (pre-commit, commit-msg) |
 | lint-staged | Run linters on staged files only |
-| Commitlint | Enforce conventional commit messages (type/scope/subject rules; see [Section 20](#20-developer-tooling--code-quality)) |
+| Commitlint | Enforce conventional commit messages (type/scope/subject rules; see [Section 17](#17-developer-tooling--code-quality)) |
 
 ### Testing
 
 | Tool | Purpose |
 |---|---|
-| Vitest | Test runner, split into two projects (see [Section 19](#19-testing-strategy)): jsdom unit tests, and real-browser Storybook story tests |
+| Vitest | Test runner, split into two projects (see [Section 15](#15-testing-strategy)): jsdom unit tests, and real-browser Storybook story tests |
 | React Testing Library | Component testing utilities |
 | Playwright | Provides the real Chromium instance Vitest's browser-mode project renders Storybook stories in |
 | fake-indexeddb | IndexedDB mock for jsdom unit tests |
@@ -143,7 +144,7 @@ contract.
 2. **`loadData()`:** `initializeDatabase()` → `ensureDefaultData()` → `ensureDefaultAccount()` → run legacy accountId-format migration if needed → parallel fetch all tables into Zustand → background pre-generate recurring expenses (non-blocking).
 3. **User action (e.g., mark expense as paid):** Component calls hook (e.g., `useExpenseOperations.markAsPaid`) → optimistic store update → `dbHelpers.applyExpensePaymentChangeAtomic()` → update expense + account/credit card balances in a single Dexie transaction → audit log → reload store slices.
 4. **Navigation:** `Sidebar` calls `setCurrentPage(id)` → Zustand updates `currentPage` (persisted to localStorage) → `App.renderPage()` switch statement renders the matching lazy-loaded page.
-5. **New record IDs:** every `dbHelpers` create path calls `generateId()` (`crypto.randomUUID()`) to assign the primary key *before* insert, rather than relying on Dexie's auto-increment — see [Section 6](#6-database-structure).
+5. **New record IDs:** every `dbHelpers` create path calls `generateId()` (`crypto.randomUUID()`) to assign the primary key *before* insert, rather than relying on Dexie's auto-increment — see [Section 3](#3-database-structure).
 
 ### Key Architectural Decisions
 
@@ -264,9 +265,19 @@ Uncleared deposits, checks, and payments that affect projected balances.
 | `category` | string | Yes | Category name |
 | `categoryId` | string \| null | Yes | Category reference by id (V8, alongside legacy `category` name) |
 | `description` | string | Yes | Transaction description |
+| `incomeSourceId` | string \| null | Yes | Set when the row was generated on payday from an income source (V9) |
+| `completedAt` | ISO string \| null | No | When the user confirmed the money actually moved (V9) |
 | `createdAt` | ISO string | Yes | Creation timestamp |
 | `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
+
+> **`completedAt` is not redundant with `deletedAt`.** Completing a transaction
+> soft-deletes it — but so does sweeping an unconfirmed prediction when the
+> income feature is switched off. Keyed off `deletedAt` alone the two are
+> indistinguishable, so anything reading back real history (such as the income
+> average) must require `completedAt`, or it will count money that never
+> arrived. Rows completed before V9 lack it and are deliberately excluded:
+> unknown history is treated as no history.
 
 #### `categories`
 User-defined expense categories with visual properties.
@@ -321,7 +332,7 @@ Single-row table storing the user's pay schedule.
 |---|---|---|---|
 | `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `lastPaycheckDate` | string | Yes | Date of last paycheck (YYYY-MM-DD) |
-| `frequency` | string | Yes | `"weekly"`, `"biweekly"`, or `"monthly"` — see the `payFrequency.js` contract in [Section 13](#13-utilities) |
+| `frequency` | string | Yes | `"weekly"`, `"biweekly"`, or `"monthly"` — see the `payFrequency.js` contract in [Section 9](#9-utilities) |
 | `createdAt` | ISO string | Yes | Creation timestamp |
 | `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
@@ -460,7 +471,7 @@ monthlyExpenseHistory ──► fixedExpenses (expenseId)
 | `insights` | Insights | BarChart3 | Yes |
 | `settings` | Settings | Settings | No |
 
-Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). The `Sidebar` component calls `setCurrentPage(id)` on click. There is no URL-based routing. Each page transition plays the `.page-transition` spring animation (see [Section 15](#15-design-system)).
+Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). The `Sidebar` component calls `setCurrentPage(id)` on click. There is no URL-based routing. Each page transition plays the `.page-transition` spring animation (see [Section 11](#11-design-system)).
 
 ### Sidebar Features
 
@@ -481,7 +492,7 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 
 ## 5. Services Layer
 
-### 9.1 PaymentService
+### 5.1 PaymentService
 
 **Path:** `src/services/paymentService.js`
 **Pattern:** Class-based, instantiated with current accounts and credit cards
@@ -502,7 +513,7 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 | `validateCreditCardPaymentAmount(expense, amount)` | Enhanced validation: insufficient funds (error), overpayment (warning), zero balance (warning) |
 | `generatePaymentSuggestions(creditCard, fundingAccount)` | Returns smart suggestions: minimum payment, full balance, 2x minimum, affordable max |
 
-### 9.2 PaycheckService
+### 5.2 PaycheckService
 
 **Path:** `src/services/paycheckService.js`
 **Pattern:** Class-based, instantiated with paycheck settings
@@ -521,7 +532,7 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 
 The interval math itself (weekly/biweekly day-count advance, monthly calendar advance with day clamping) lives in `src/constants/payFrequency.js` as a single `PAY_FREQUENCIES` contract, so `PaycheckService` and the pay-cycle-reset flow share one implementation instead of duplicating interval logic.
 
-### 9.3 RecurringExpenseService
+### 5.3 RecurringExpenseService
 
 **Path:** `src/services/recurringExpenseService.js`
 **Pattern:** Functional (exported async functions, no class)
@@ -546,7 +557,7 @@ The interval math itself (weekly/biweekly day-count advance, monthly calendar ad
 
 **Frequency Options (bill recurrence, not paycheck frequency):** monthly, quarterly (3mo), biannually (6mo), annually (12mo), custom
 
-### 9.4 DataManager
+### 5.4 DataManager
 
 **Path:** `src/services/dataManager.js`
 **Pattern:** Singleton (`dataManager`)
@@ -568,7 +579,7 @@ The interval math itself (weekly/biweekly day-count advance, monthly calendar ad
 - **Validation:** `validateExpenseDataV4()`, `validateImportedDataV4()`, `fixCommonExpenseIssues()`
 - **Audit log access:** `getAuditLogs()` / `clearAuditLogs()` back the Settings Audit Log card
 
-### 9.5 financeService
+### 5.5 financeService
 
 **Path:** `src/services/financeService.js`
 **Pattern:** React hook (`useFinanceCalculations`)
@@ -586,7 +597,7 @@ The interval math itself (weekly/biweekly day-count advance, monthly calendar ad
 | `getDefaultAccountProjectedBalance` | Projected balance of the default account |
 | `getAccountName(accountId)` | Looks up name in accounts, then credit cards |
 
-### 9.6 categoryCache / categoryUsageCache
+### 5.6 categoryCache / categoryUsageCache
 
 **Paths:** `src/services/categoryCache.js`, `src/services/categoryUsageCache.js`
 **Pattern:** Singleton with TTL
@@ -594,11 +605,44 @@ The interval math itself (weekly/biweekly day-count advance, monthly calendar ad
 - **categoryCache:** 30-second TTL, stale-while-revalidate, listener pattern for invalidation
 - **categoryUsageCache:** 60-second TTL, per-category invalidation
 
+### 5.7 Income generation
+
+**Path:** `src/db/database-clean.js` (helpers on `dbHelpers`)
+
+Turns an expected paycheck into a pending transaction on payday. It never
+moves a balance — confirming the resulting row does, through the ordinary
+`completePendingTransaction` path.
+
+| Helper | Description |
+|---|---|
+| `getIncomeSources()` / `getPrimaryIncomeSource()` | Active sources; the UI surfaces only the first |
+| `upsertIncomeSource(updates)` | Create or update the single source. Validates the amount through `parseMoneyInput` and that the target account exists |
+| `generateDueIncome()` | Creates one pending row per payday that has passed. Returns `{ generated }` |
+| `getLearnedIncomeAmount(sourceId)` | Average of the last three **confirmed** paychecks, or `null` below that. Takes precedence over the user's typed estimate at generation time; the typed figure is never overwritten |
+| `sweepUnconfirmedIncome(sourceId)` | Removes predictions the user never acted on, leaving confirmed history alone |
+
+Three things about `generateDueIncome` are deliberate and easy to undo by
+accident:
+
+- **It does not use `calculateNextPayDates`.** That function rolls forward past
+  today by design, so it only ever reports *future* paydays and can never say
+  one has already passed. Payday detection walks
+  `advanceDueDateByFrequency` forward from `lastGeneratedDate` instead.
+- **`lastGeneratedDate` is the only duplicate guard.** The recurring-expense
+  generator dedupes against the set of dates it has already materialised, which
+  cannot work here: a confirmed paycheck is soft-deleted and would vanish from
+  that set, so it would be generated again.
+- **Catch-up is capped**, so returning after a long absence doesn't flood the
+  pending list with back-pay.
+
+Runs on app load from `useAppStore.loadData` as a fire-and-forget task, beside
+the recurring pre-generation, so a failure can never block startup.
+
 ---
 
 ## 6. Custom Hooks
 
-### 10.1 `useExpenseOperations`
+### 6.1 `useExpenseOperations`
 
 **Path:** `src/hooks/useExpenseOperations.js`
 
@@ -621,7 +665,7 @@ The primary interface for all expense mutations. Wraps database operations with 
 
 **Self-Healing:** When updating a Credit Card Payment expense, the hook auto-infers missing `targetCreditCardId` (by name matching) and missing `accountId` (falls back to default account).
 
-### 10.2 `usePaycheckCalculations`
+### 6.2 `usePaycheckCalculations`
 
 **Path:** `src/hooks/usePaycheckCalculations.js`
 
@@ -629,7 +673,7 @@ Memoized wrapper around `PaycheckService`. Only recalculates when `paycheckSetti
 
 **Returns:** `{ paycheckService, paycheckDates }`
 
-### 10.3 `useMemoizedCalculations`
+### 6.3 `useMemoizedCalculations`
 
 **Path:** `src/hooks/useMemoizedCalculations.js`
 
@@ -647,21 +691,21 @@ Heavy computation memoization for expense views.
 | `getFilteredExpenses(filters)` | Filter by category, status, accountId, search, expenseType (recurring/oneoff) |
 | `getSortedExpenses(list, sortBy)` | Sort by dueDate, name, amount, or remaining |
 
-### 10.4 `usePayCycleNudge`
+### 6.4 `usePayCycleNudge`
 
 **Path:** `src/hooks/usePayCycleNudge.js`
 
 Wraps the pure `getPayCycleNudge()` logic (`src/utils/payCycleNudgeLogic.js`) as a memoized hook for the Fixed Expenses Month view. Re-derives the active nudge (if any) from `fixedExpenses`, the viewed month, paycheck dates, and session/monthly dismissal state (`src/utils/nudgeDismissal.js`, backed by `sessionStorage`).
 
-**Returns:** `{ nudge, dismiss }` — `nudge` is `null` or one of the `past_month` / `catch_up` / `reset` shapes described in [Section 8.3](#83-fixed-expenses-page); `dismiss(dismissKey, dontShowAgainThisMonth)` records the dismissal and fires the optional `onNudgeDismissed` callback.
+**Returns:** `{ nudge, dismiss }` — `nudge` is `null` or one of the `past_month` / `catch_up` / `reset` shapes described in the Fixed Expenses view; `dismiss(dismissKey, dontShowAgainThisMonth)` records the dismissal and fires the optional `onNudgeDismissed` callback.
 
-### 10.6 `usePersistedState`
+### 6.5 `usePersistedState`
 
 **Path:** `src/hooks/usePersistedState.js`
 
 Persists UI state to both localStorage and IndexedDB (userPreferences table).
 
-### 10.7 `usePerformanceMonitor`
+### 6.6 `usePerformanceMonitor`
 
 **Path:** `src/hooks/usePerformanceMonitor.js`
 
@@ -671,7 +715,7 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 
 ## 7. Context Providers
 
-### 11.1 PrivacyContext
+### 7.1 PrivacyContext
 
 **Path:** `src/contexts/PrivacyContext.jsx`
 
@@ -684,9 +728,9 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 
 **Keyboard Shortcut:** Cmd+Shift+H / Ctrl+Shift+H (does not trigger when input is focused)
 
-**Consumer:** `<PrivacyWrapper>` component wraps any monetary display. When `isHidden` is true, it replaces content with `••••••`. Any component that renders one must have a `PrivacyProvider` ancestor — it throws if used outside one, which is guaranteed in the real app tree ([Section 7](#7-application-shell--navigation)) but is a common gap to catch in tests.
+**Consumer:** `<PrivacyWrapper>` component wraps any monetary display. When `isHidden` is true, it replaces content with `••••••`. Any component that renders one must have a `PrivacyProvider` ancestor — it throws if used outside one, which is guaranteed in the real app tree ([Section 4](#4-application-shell--navigation)) but is a common gap to catch in tests.
 
-### 11.2 GlobalCategoryContext
+### 7.2 GlobalCategoryContext
 
 **Path:** `src/contexts/GlobalCategoryContext.jsx`
 
@@ -732,7 +776,7 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | `ExpenseBadge` | `src/components/Calendar/ExpenseBadge.jsx` | Expense indicator on calendar days (name/amount split) |
 | `QuickActions` | `src/components/Calendar/QuickActions.jsx` | Quick action popup on day click |
 | `UpcomingRecurringWidget` | `src/components/Calendar/UpcomingRecurringWidget.jsx` | Shows next scheduled recurring expenses, with optional funding-account subtitle |
-| `PayCycleNudgeBanner` | `src/components/Calendar/PayCycleNudgeBanner.jsx` | Renders the active pay-cycle nudge (see [Section 10.5](#105-usepaycyclenudge)) above the calendar |
+| `PayCycleNudgeBanner` | `src/components/Calendar/PayCycleNudgeBanner.jsx` | Renders the active pay-cycle nudge (see [Section 6.4](#64-usepaycyclenudge)) above the calendar |
 | `PayCycleNudgeToast` | `src/components/Calendar/PayCycleNudgeToast.jsx` | Optional toast presentation of the same nudge |
 
 ### Expenses Table System
@@ -875,7 +919,7 @@ The single source of truth for pay-frequency interval math, shared by `PaycheckS
 
 **Paths:** `src/utils/payCycleNudgeLogic.js`, `src/utils/payCycleNudgeConfig.js`, `src/constants/payCycleNudgeTypes.js`
 
-Pure logic behind the Pay Cycle Nudge feature ([Section 8.3](#83-fixed-expenses-page)):
+Pure logic behind the Pay Cycle Nudge feature (the Fixed Expenses view):
 
 | Export | Description |
 |---|---|
@@ -913,7 +957,7 @@ Input sanitization and validation for all user-entered data.
 
 > **Rule:** every place that turns untrusted input into a money value must go
 > through `parseMoneyInput`. The `parseFloat(x) || fallback` idiom is banned by
-> an ESLint rule (see [Developer Tooling](#16-developer-tooling--code-quality))
+> an ESLint rule (see [Developer Tooling](#17-developer-tooling--code-quality))
 > because it collapses "typed 0", "typed nothing" and "typed garbage" into one
 > indistinguishable value, which silently zeroed a real account balance.
 | `validateForm(fields)` | Batch validate multiple fields |
@@ -991,6 +1035,22 @@ Security utilities.
 
 Structured logging with levels: `debug`, `info`, `warn`, `error`, `success`, `db`, `component`.
 
+### `persistentStorage.js`
+
+`requestPersistentStorage()` — asks the browser not to evict this origin's
+storage, called once at startup from `src/main.jsx` and deliberately not
+awaited.
+
+Every financial record lives in IndexedDB on the device, and browsers treat
+ordinary site storage as disposable: iOS Safari clears it after roughly seven
+days without a visit for any site not added to the home screen. For this app
+that is silent data loss rather than a cache miss.
+
+It improves matters where granted and guarantees nothing — Chrome and Firefox
+decide from engagement signals, and Safari rarely grants it outside an
+installed web app. **Adding the app to the home screen remains the reliable fix
+on iOS**, and the refusal path logs that advice.
+
 ### `errorHandler.js`
 
 | Object | Description |
@@ -1028,6 +1088,7 @@ Structured logging with levels: `debug`, `info`, `warn`, `error`, `success`, `db
 | `fixedExpenses` | `Array<Expense>` | `dbHelpers.getFixedExpenses()` |
 | `categories` | `Array<Category>` | `dbHelpers.getCategories()` |
 | `paycheckSettings` | `Object \| null` | `dbHelpers.getPaycheckSettings()` |
+| `incomeSources` | `Array` | `dbHelpers.getIncomeSources()` |
 | `defaultAccount` | `Object \| null` | `dbHelpers.getDefaultAccount()` |
 
 #### UI State (persisted to localStorage)
@@ -1049,6 +1110,7 @@ Structured logging with levels: `debug`, `info`, `warn`, `error`, `success`, `db
 - `reloadTransactions()` — Refresh pending transactions
 - `reloadPaycheckSettings()` — Refresh paycheck settings
 - `reloadCategories()` — Refresh categories
+- `reloadIncomeSources()` — Refresh income sources
 
 **Optimistic mutations:**
 - `updateExpense(id, updates)`, `addExpense(expense)`, `removeExpense(id)`
@@ -1132,7 +1194,7 @@ boxShadow: {
 | `.glass-focus` | Focus ring for accessibility |
 | `.balance-display` | Large monetary value display |
 | `.text-primary` / `.text-secondary` / `.text-muted` | Text color hierarchy |
-| `.empty-state` / `.empty-state-icon` | Empty state container and icon slot (see also the dedicated `EmptyState` component, [Section 12](#12-component-inventory)) |
+| `.empty-state` / `.empty-state-icon` | Empty state container and icon slot (see also the dedicated `EmptyState` component, [Section 8](#8-component-inventory)) |
 
 #### Animations
 
@@ -1147,6 +1209,37 @@ boxShadow: {
 | `progressFill` | Decelerate easing, 0.5s delay | Progress/utilization bars filling in after mount |
 | `shimmer` / `glassPulse` | Continuous loop | Loading-state skeletons and subtle idle pulses |
 | `prefers-reduced-motion` | — | All of the above are disabled (durations dropped to ~0) when the user has reduced-motion enabled |
+
+#### Usage rules
+
+The tokens above only hold together if components draw from them rather than
+reaching for raw Tailwind. These rules are not lint-enforced, so they rely on
+being known.
+
+**Colour is spent 60/30/10.** 60% dominant background
+(`--color-dominant-base`), 30% secondary glass surfaces
+(`--color-secondary-*`), 10% accent for primary actions (`--color-accent-*`).
+Always reference a token; never hardcode a colour value.
+
+**Surfaces come from the glass system, not from Tailwind.** Use `glass-card`,
+`glass-panel` or `glass-container`, and `glass-surface--interactive` for
+clickable ones. Never apply `bg-white/X` or `backdrop-blur-X` directly — those
+bypass the token system and drift out of step with everything around them.
+
+**Buttons use variants, not inline colour:**
+
+| Intent | Class |
+|---|---|
+| Primary action | `glass-button--primary` |
+| Secondary action | `glass-button--secondary` |
+| Destructive action | `glass-button--danger` |
+| Filter / sort control | `glass-button--filter`, plus `active` when selected |
+
+**Status colour is reserved for status.** Green, yellow, orange and red belong
+in status badges, small indicators and alert messages only. They must not
+appear on primary or secondary buttons (`glass-button--danger` is the single
+exception), on icons, or as large background fills. Status colour that appears
+decoratively stops carrying meaning where it matters.
 
 #### Responsive Breakpoints
 
@@ -1194,7 +1287,7 @@ Legacy data where `accountId` was a string like `"cc-1"` is automatically migrat
 - `accountId: "cc-1"` → `creditCardId: 1, accountId: null`
 - Runs on app boot if V4-incompatible data is detected
 - Non-blocking; failures are logged but don't prevent app load
-- This is unrelated to the V8 UUID primary-key change ([Section 6](#6-database-structure)) — one migrates a data *shape*, the other changes what new *ids* look like.
+- This is unrelated to the V8 UUID primary-key change ([Section 3](#3-database-structure)) — one migrates a data *shape*, the other changes what new *ids* look like.
 
 ---
 
@@ -1282,6 +1375,29 @@ The two projects intentionally do **not** share a setup file — the jsdom-orien
 - **Addons:** a11y (accessibility), docs, onboarding, vitest integration
 - Requires the Playwright Chromium and Chromium-headless-shell browser binaries to be installed locally (`npx playwright install`) — without them, `npm run test:run` fails at the config level before any test runs
 
+### Documentation Tests
+
+`src/__tests__/docReferences.test.js` asserts that every `src/...` path named
+in any markdown file at the repository root actually exists. Renaming or
+deleting a module therefore fails the suite until the docs follow.
+
+It is a ratchet, not a guarantee: it catches dead paths, renames and moves, and
+cannot tell you that a paragraph is wrong or that a section is missing. That
+narrow scope is deliberate — dead paths were the drift that actually occurred,
+and the check found several nobody had noticed, including two that predated the
+commit which added it.
+
+### Conventions worth keeping
+
+- **Assert what a write left alone, not only what it changed.** A suite of 261
+  passing tests missed a payment silently unlinking an expense from its credit
+  card, because every assertion checked the fields that were meant to move.
+- **No wall-clock performance assertions.** Under a parallel suite they measure
+  how busy the machine is, not how fast the code is, and can only be tuned to
+  fail less often. Count renders or operations instead.
+- **Prove a regression test fails against the old behaviour** before trusting
+  it.
+
 ### Commands
 
 | Command | Description |
@@ -1294,7 +1410,43 @@ The two projects intentionally do **not** share a setup file — the jsdom-orien
 
 ---
 
-## 16. Developer Tooling & Code Quality
+## 16. Deployment
+
+**Live:** https://digibook-rose.vercel.app
+
+Hosted on Vercel, linked to `jadedjestr/digibook` on GitHub. Every push to
+`main` builds and deploys to production automatically — there is no separate
+release step, so a broken commit is live within about a minute. Vercel keeps
+previous deployments as rollback candidates.
+
+| Setting | Value |
+|---|---|
+| Framework | Vite (auto-detected) |
+| Build | `npm run build` |
+| Output | `dist` |
+| Production branch | `main` |
+
+No server-side component and no environment variables: the deployment serves
+static files only. **Financial data never reaches it** — everything lives in
+the visitor's own browser, so opening the URL on a new device yields an empty
+database and the PIN setup screen. That is also the quickest way to confirm a
+build carries no data.
+
+### PWA delivery
+
+`vite-plugin-pwa` generates the service worker with `registerType: 'autoUpdate'`
+and `cleanupOutdatedCaches`, so a new deployment replaces the cached shell
+rather than serving a stale one. The manifest is hand-maintained at
+`public/manifest.json` (hence `manifest: false` in the Vite config) and
+declares `display: standalone`, which together with the Apple meta tags in
+`index.html` is what makes home-screen installation work on iOS.
+
+Navigation is React state rather than URL routing — the path never leaves `/` —
+so no SPA rewrite rules are required.
+
+---
+
+## 17. Developer Tooling & Code Quality
 
 ### Code Style
 
@@ -1333,7 +1485,7 @@ npm run quality  # Runs: lint → format:check → test:run
 
 ---
 
-## 17. Glossary
+## 18. Glossary
 
 | Term | Definition |
 |---|---|

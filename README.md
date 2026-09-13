@@ -216,10 +216,11 @@ npm run storybook
 
 ## 📚 Documentation
 
-- **Architecture & Feature Reference**: See [PRD.md](PRD.md)
-- **Development Guide**: See [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)
-- **Code Style Guide**: See [CODE_STYLE_GUIDE.md](CODE_STYLE_GUIDE.md)
-- **Migrating Legacy Data to V4**: See [MIGRATION_INSTRUCTIONS.md](MIGRATION_INSTRUCTIONS.md)
+Each document owns one thing, with no overlap:
+
+- **[PRD.md](PRD.md)** — what the product should do, and why
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — how it is built
+- **[AGENTS.md](AGENTS.md)** — working agreements for changing the code
 
 ## Contributing
 
