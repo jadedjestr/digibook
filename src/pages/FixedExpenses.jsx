@@ -161,6 +161,29 @@ const FixedExpenses = () => {
     };
   }, [currentMonth, fixedExpenses]);
 
+  // The soonest unpaid bill after the month on screen. Without this, a month
+  // with nothing in it reports "Nothing due" while real bills sit one click
+  // away - which reads as "you owe nothing" rather than "look further ahead".
+  const nextBillBeyondMonth = useMemo(() => {
+    const { end } = getMonthRange(currentMonth);
+    return fixedExpenses
+      .filter(e => {
+        if (!isUnpaidOrPartial(e)) return false;
+        const due = DateUtils.parseDate(e.dueDate);
+        return due && due > end;
+      })
+      .sort(
+        (a, b) =>
+          DateUtils.parseDate(a.dueDate) - DateUtils.parseDate(b.dueDate),
+      )[0];
+  }, [fixedExpenses, currentMonth]);
+
+  const jumpToExpenseMonth = useCallback(expense => {
+    const due = DateUtils.parseDate(expense?.dueDate);
+    if (!due) return;
+    setCurrentMonth(new Date(due.getFullYear(), due.getMonth(), 1));
+  }, []);
+
   const { nudge, dismiss } = usePayCycleNudge({
     fixedExpenses,
     currentMonth,
@@ -428,6 +451,11 @@ const FixedExpenses = () => {
                   monthExpenses={currentMonthExpenses}
                   alwaysExpanded
                   onPayNow={handlePayNow}
+                  monthLabel={currentMonth.toLocaleString('en-US', {
+                    month: 'long',
+                  })}
+                  nextBeyondMonth={nextBillBeyondMonth}
+                  onJumpToNext={jumpToExpenseMonth}
                 />
               </div>
               <div className='fixed-expenses-left-panel-spacer' />

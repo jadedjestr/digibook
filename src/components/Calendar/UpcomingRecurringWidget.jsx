@@ -19,6 +19,9 @@ const UpcomingRecurringWidget = ({
   monthExpenses = [],
   alwaysExpanded = false,
   onPayNow,
+  monthLabel,
+  nextBeyondMonth,
+  onJumpToNext,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -57,9 +60,17 @@ const UpcomingRecurringWidget = ({
   const handleToggleCollapse = () => setIsCollapsed(prev => !prev);
 
   const first = upcomingList[0];
+
+  // Name the month rather than saying "this month": an empty month with bills
+  // waiting one click away should read as "look further ahead", not "you owe
+  // nothing".
+  const emptyHeadline = monthLabel
+    ? `Nothing due in ${monthLabel}`
+    : 'Nothing due this month';
+
   const summary =
     upcomingList.length === 0
-      ? 'Nothing due this month'
+      ? emptyHeadline
       : (first &&
           `Next: ${first.name} — ${DateUtils.formatShortDate(first.dueDate)}`) ||
         '';
@@ -103,7 +114,25 @@ const UpcomingRecurringWidget = ({
         <div className='upcoming-widget-body'>
           {upcomingList.length === 0 ? (
             <div className='upcoming-empty'>
-              <span>Nothing due this month</span>
+              <span>{emptyHeadline}</span>
+              {nextBeyondMonth && (
+                <>
+                  <span className='upcoming-empty-next'>
+                    Next is {nextBeyondMonth.name} on{' '}
+                    {DateUtils.formatShortDate(nextBeyondMonth.dueDate)} —{' '}
+                    {formatCurrency(nextBeyondMonth.amount ?? 0)}
+                  </span>
+                  {typeof onJumpToNext === 'function' && (
+                    <button
+                      type='button'
+                      className='upcoming-empty-jump'
+                      onClick={() => onJumpToNext(nextBeyondMonth)}
+                    >
+                      Jump to it
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           ) : (
             <ul
@@ -168,12 +197,9 @@ UpcomingRecurringWidget.propTypes = {
   monthExpenses: PropTypes.arrayOf(PropTypes.object),
   alwaysExpanded: PropTypes.bool,
   onPayNow: PropTypes.func,
-};
-
-UpcomingRecurringWidget.defaultProps = {
-  monthExpenses: [],
-  alwaysExpanded: false,
-  onPayNow: undefined,
+  monthLabel: PropTypes.string,
+  nextBeyondMonth: PropTypes.object,
+  onJumpToNext: PropTypes.func,
 };
 
 export default UpcomingRecurringWidget;
