@@ -218,6 +218,51 @@ describe('dataManager', () => {
       expect(await db.fixedExpenses.toArray()).toEqual([baselineFixedExpense]);
     });
 
+    it('skips a CSV row whose money cell is unreadable and reports it', async () => {
+      const csvText = [
+        'id,name,type,currentBalance,isDefault',
+        '10,Good Account,checking,2500,false',
+        '11,Bad Account,checking,abc,false',
+        '12,Blank Account,checking,,false',
+      ].join('\n');
+      const csvFile = makeTextFile(
+        csvText,
+        'accounts_2026-09-12.csv',
+        'text/csv',
+      );
+
+      const result = await dataManager.importData(csvFile, () => {});
+
+      // The readable row lands; the two unreadable ones do not become $0.
+      const ids = (await db.accounts.toArray()).map(a => a.id).sort();
+      expect(ids).toEqual(['1', '10']);
+
+      expect(result.skipped).toEqual([
+        { line: 3, field: 'currentBalance', reason: 'invalid' },
+        { line: 4, field: 'currentBalance', reason: 'empty' },
+      ]);
+    });
+
+    it('imports a CSV expense row with a blank paidAmount as unpaid', async () => {
+      const csvText = [
+        'id,name,dueDate,amount,paidAmount,accountId,category',
+        '20,Rent,2026-03-01,1200,,1,Housing',
+      ].join('\n');
+      const csvFile = makeTextFile(
+        csvText,
+        'expenses_2026-09-12.csv',
+        'text/csv',
+      );
+
+      const result = await dataManager.importData(csvFile, () => {});
+
+      expect(result.skipped).toEqual([]);
+      const imported = (await db.fixedExpenses.toArray()).find(
+        e => e.id === '20',
+      );
+      expect(imported).toMatchObject({ amount: 1200, paidAmount: 0 });
+    });
+
     it('still fully replaces all data for a JSON import', async () => {
       const jsonPayload = {
         accounts: [

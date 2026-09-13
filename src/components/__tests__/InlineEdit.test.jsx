@@ -51,4 +51,36 @@ describe('InlineEdit (type="number")', () => {
 
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  test('tells the user why the save was refused instead of failing silently', () => {
+    const onSave = vi.fn();
+    const { getByTitle, getByRole, getByText } = renderWithPrivacy(
+      <InlineEdit value={2500} onSave={onSave} type='number' showEditIcon />,
+    );
+
+    fireEvent.click(getByTitle('Click to edit'));
+    fireEvent.change(getByRole('spinbutton'), { target: { value: '' } });
+    fireEvent.click(getByTitle('Save (Enter)'));
+
+    expect(getByText('Enter an amount')).toBeInTheDocument();
+  });
+
+  test('clears the error and saves once the value is corrected', () => {
+    const onSave = vi.fn();
+    const { getByTitle, getByRole, queryByText } = renderWithPrivacy(
+      <InlineEdit value={2500} onSave={onSave} type='number' showEditIcon />,
+    );
+
+    fireEvent.click(getByTitle('Click to edit'));
+    const input = getByRole('spinbutton');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(getByTitle('Save (Enter)'));
+    expect(queryByText('Enter an amount')).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: '300' } });
+    expect(queryByText('Enter an amount')).not.toBeInTheDocument();
+
+    fireEvent.click(getByTitle('Save (Enter)'));
+    expect(onSave).toHaveBeenCalledWith(300);
+  });
 });

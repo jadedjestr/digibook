@@ -163,12 +163,31 @@ const DataManagementCard = ({
         ? 'This will overwrite all existing data. A backup will be created automatically. Are you sure?'
         : 'This will merge into the matching table only — your other data will not be affected. A backup will be created automatically. Are you sure?';
       if (confirm(confirmMessage)) {
-        await dataManager.importData(importFile, setImportProgress);
+        const result = await dataManager.importData(
+          importFile,
+          setImportProgress,
+        );
 
         await refreshAfterDbReplace();
         setPendingFutureCheck(true);
         setImportFile(null);
-        alert('Data imported successfully');
+
+        const skipped = result?.skipped ?? [];
+        if (skipped.length > 0) {
+          const detail = skipped
+            .slice(0, 10)
+            .map(s => `  line ${s.line}: ${s.field} (${s.reason})`)
+            .join('\n');
+          const more =
+            skipped.length > 10 ? `\n  ...and ${skipped.length - 10} more` : '';
+          alert(
+            `Data imported, but ${skipped.length} row(s) were skipped because ` +
+              `an amount could not be read:\n\n${detail}${more}\n\n` +
+              'Fix those rows and re-import to add them.',
+          );
+        } else {
+          alert('Data imported successfully');
+        }
       }
     } catch (error) {
       logger.error('Error importing data:', error);

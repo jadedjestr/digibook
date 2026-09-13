@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
+import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
 
 const CreateAccountModal = ({ isOpen, onClose, onAccountCreated }) => {
   const [formData, setFormData] = useState({
@@ -27,7 +28,12 @@ const CreateAccountModal = ({ isOpen, onClose, onAccountCreated }) => {
     if (!formData.name.trim()) {
       newErrors.name = 'Account name is required';
     }
-    if (formData.currentBalance < 0) {
+    const parsed = parseMoneyInput(formData.currentBalance, {
+      allowEmpty: true,
+    });
+    if (!parsed.ok) {
+      newErrors.currentBalance = moneyInputErrorMessage(parsed.reason);
+    } else if (parsed.value < 0) {
       newErrors.currentBalance = 'Balance cannot be negative';
     }
     setErrors(newErrors);
@@ -39,8 +45,12 @@ const CreateAccountModal = ({ isOpen, onClose, onAccountCreated }) => {
 
     setIsSaving(true);
     try {
-      const id = await dbHelpers.addAccount(formData);
-      const account = { ...formData, id };
+      const parsed = parseMoneyInput(formData.currentBalance, {
+        allowEmpty: true,
+      });
+      const accountData = { ...formData, currentBalance: parsed.value };
+      const id = await dbHelpers.addAccount(accountData);
+      const account = { ...accountData, id };
       notify.success(`Account "${formData.name}" created`);
       resetForm();
       onAccountCreated(account);
@@ -151,7 +161,7 @@ const CreateAccountModal = ({ isOpen, onClose, onAccountCreated }) => {
               onChange={e =>
                 setFormData({
                   ...formData,
-                  currentBalance: parseFloat(e.target.value) || 0,
+                  currentBalance: e.target.value,
                 })
               }
               className={`glass-input w-full ${errors.currentBalance ? 'glass-error' : ''}`}

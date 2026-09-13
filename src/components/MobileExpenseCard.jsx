@@ -16,7 +16,11 @@ import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
 import { getPaymentSourceInfo } from '../utils/expenseUtils';
 import { notify } from '../utils/notifications';
-import { validatePaidAmount } from '../utils/validation';
+import {
+  validatePaidAmount,
+  parseMoneyInput,
+  moneyInputErrorMessage,
+} from '../utils/validation';
 
 import CreditCardPaymentInput from './CreditCardPaymentInput';
 import PaymentSourceSelector from './PaymentSourceSelector';
@@ -129,16 +133,20 @@ const MobileExpenseCard = ({
           accountId: editValue.accountId,
           creditCardId: editValue.creditCardId,
         };
-      } else if (
-        editingField === 'paidAmount' &&
-        expense.category !== 'Credit Card Payment'
-      ) {
-        const check = validatePaidAmount(editValue);
-        if (!check.isValid) {
-          notify.error(check.error);
+      } else if (editingField === 'paidAmount') {
+        const parsed = parseMoneyInput(editValue);
+        if (!parsed.ok) {
+          notify.error(moneyInputErrorMessage(parsed.reason));
           return;
         }
-        updateData = { paidAmount: check.value };
+        if (expense.category !== 'Credit Card Payment') {
+          const check = validatePaidAmount(parsed.value);
+          if (!check.isValid) {
+            notify.error(check.error);
+            return;
+          }
+        }
+        updateData = { paidAmount: parsed.value };
       } else {
         // Handle regular field updates
         updateData = { [editingField]: editValue };
@@ -397,7 +405,7 @@ const MobileExpenseCard = ({
                   <div className='w-full max-w-md'>
                     <CreditCardPaymentInput
                       expense={expense}
-                      value={parseFloat(editValue) || 0}
+                      value={editValue}
                       onChange={value => setEditValue(value.toString())}
                       onValidationChange={() => {}}
                       className='w-full'

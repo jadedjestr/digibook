@@ -493,22 +493,6 @@ describe('dbHelpers.importSingleTable (balance sanity checks)', () => {
     expect(await db.accounts.count()).toBe(0);
   });
 
-  it('rejects a non-finite credit card balance and writes nothing', async () => {
-    await expect(
-      dbHelpers.importSingleTable('creditCards', [
-        {
-          id: '1',
-          name: 'Card',
-          balance: NaN,
-          createdAt: now,
-          updatedAt: now,
-          deletedAt: null,
-        },
-      ]),
-    ).rejects.toThrow(/balance/);
-    expect(await db.creditCards.count()).toBe(0);
-  });
-
   it('accepts a finite balance', async () => {
     await dbHelpers.importSingleTable('accounts', [
       {

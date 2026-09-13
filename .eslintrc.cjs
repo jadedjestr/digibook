@@ -57,6 +57,12 @@ module.exports = {
           'CallExpression[callee.object.name="console"][callee.property.name="error"]',
         message: 'Use logger.error() instead of console.error()',
       },
+      {
+        selector:
+          'LogicalExpression[operator="||"] > CallExpression.left[callee.name="parseFloat"]',
+        message:
+          'parseFloat(x) || fallback silently turns unreadable input into the fallback, which has zeroed real balances. Use parseMoneyInput() from utils/validation and handle the failure case.',
+      },
     ],
 
     // React specific rules

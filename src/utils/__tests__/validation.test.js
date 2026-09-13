@@ -9,6 +9,8 @@ import {
   validateDate,
   validateCategoryName,
   sanitizeString,
+  parseMoneyInput,
+  MAX_MONEY_VALUE,
 } from '../validation';
 
 describe('Validation Utils', () => {
@@ -282,6 +284,89 @@ describe('Validation Utils', () => {
       expect(result.error).toBe(
         'Category name must be less than 30 characters',
       );
+    });
+  });
+  describe('parseMoneyInput', () => {
+    it('parses a plain numeric string', () => {
+      expect(parseMoneyInput('250.50')).toEqual({ ok: true, value: 250.5 });
+    });
+
+    it('parses a number as-is', () => {
+      expect(parseMoneyInput(42)).toEqual({ ok: true, value: 42 });
+    });
+
+    it('accepts currency symbols and thousands separators', () => {
+      expect(parseMoneyInput('$1,234.56')).toEqual({
+        ok: true,
+        value: 1234.56,
+      });
+    });
+
+    it('accepts zero and negative values', () => {
+      expect(parseMoneyInput('0')).toEqual({ ok: true, value: 0 });
+      expect(parseMoneyInput('-50')).toEqual({ ok: true, value: -50 });
+    });
+
+    // The core of the defect this function exists to prevent: blank input
+    // must be distinguishable from a deliberate 0.
+    it('rejects blank input by default', () => {
+      expect(parseMoneyInput('')).toEqual({ ok: false, reason: 'empty' });
+      expect(parseMoneyInput('   ')).toEqual({ ok: false, reason: 'empty' });
+      expect(parseMoneyInput(null)).toEqual({ ok: false, reason: 'empty' });
+      expect(parseMoneyInput(undefined)).toEqual({
+        ok: false,
+        reason: 'empty',
+      });
+    });
+
+    it('treats blank input as 0 only when the caller opts in', () => {
+      expect(parseMoneyInput('', { allowEmpty: true })).toEqual({
+        ok: true,
+        value: 0,
+      });
+    });
+
+    it('rejects garbage rather than truncating it like parseFloat', () => {
+      // parseFloat('12abc') is 12 - a malformed cell silently becoming a
+      // plausible number is exactly what this guards against.
+      expect(parseMoneyInput('12abc')).toEqual({
+        ok: false,
+        reason: 'invalid',
+      });
+      expect(parseMoneyInput('abc')).toEqual({ ok: false, reason: 'invalid' });
+    });
+
+    it('reports overflow as out of range and unreadable input as invalid', () => {
+      expect(parseMoneyInput(Infinity)).toEqual({
+        ok: false,
+        reason: 'out_of_range',
+      });
+      expect(parseMoneyInput(NaN)).toEqual({ ok: false, reason: 'invalid' });
+    });
+
+    it('rejects values at or beyond the consumer-scale ceiling', () => {
+      expect(parseMoneyInput(MAX_MONEY_VALUE)).toEqual({
+        ok: false,
+        reason: 'out_of_range',
+      });
+      expect(parseMoneyInput('9'.repeat(400))).toEqual({
+        ok: false,
+        reason: 'out_of_range',
+      });
+    });
+
+    it('still allows billions, which is plausible consumer scale', () => {
+      expect(parseMoneyInput('5000000000')).toEqual({
+        ok: true,
+        value: 5000000000,
+      });
+    });
+
+    it('honours a caller-supplied max', () => {
+      expect(parseMoneyInput('500', { max: 100 })).toEqual({
+        ok: false,
+        reason: 'out_of_range',
+      });
     });
   });
 });

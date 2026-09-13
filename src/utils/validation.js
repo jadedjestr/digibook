@@ -112,6 +112,68 @@ export const validatePaidAmount = amount => {
 };
 
 /**
+ * Upper bound for a money value. Consumer-app scale: billions are fine,
+ * trillions mean something went wrong (a mis-paste, a corrupted file).
+ */
+export const MAX_MONEY_VALUE = 1e12;
+
+/**
+ * Parse a money value out of untrusted input - a form field, a CSV cell, a
+ * value from an imported file.
+ *
+ * Returns a discriminated result rather than a number, so a caller cannot
+ * accidentally use a substituted value: on failure there is no number to
+ * read. This exists because `parseFloat(x) || 0` collapses "typed 0",
+ * "typed nothing" and "typed garbage" into one indistinguishable value,
+ * which has silently zeroed real balances.
+ *
+ * Stricter than parseFloat on purpose: parseFloat('12abc') is 12, which
+ * quietly truncates a malformed CSV cell into a plausible number.
+ *
+ * @param {string|number|null|undefined} raw
+ * @param {{ allowEmpty?: boolean, max?: number }} [options] - allowEmpty
+ *   treats a blank input as 0; opt in only where blank genuinely means zero.
+ * @returns {{ ok: true, value: number } |
+ *   { ok: false, reason: 'empty'|'invalid'|'out_of_range' }}
+ */
+export const parseMoneyInput = (raw, options = {}) => {
+  const { allowEmpty = false, max = MAX_MONEY_VALUE } = options;
+
+  const check = value => {
+    // NaN means "couldn't read it"; Infinity means the input overflowed,
+    // which is a magnitude problem and deserves the clearer message.
+    if (Number.isNaN(value)) return { ok: false, reason: 'invalid' };
+    if (!Number.isFinite(value) || Math.abs(value) >= max) {
+      return { ok: false, reason: 'out_of_range' };
+    }
+    return { ok: true, value };
+  };
+
+  if (typeof raw === 'number') return check(raw);
+
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) {
+    return allowEmpty ? { ok: true, value: 0 } : { ok: false, reason: 'empty' };
+  }
+
+  return check(Number(trimmed.replace(/[$,]/g, '')));
+};
+
+/**
+ * User-facing message for a parseMoneyInput failure reason.
+ */
+export const moneyInputErrorMessage = reason => {
+  switch (reason) {
+    case 'empty':
+      return 'Enter an amount';
+    case 'out_of_range':
+      return 'That amount is too large';
+    default:
+      return 'Enter a valid amount';
+  }
+};
+
+/**
  * Validate PIN
  */
 export const validatePIN = pin => {

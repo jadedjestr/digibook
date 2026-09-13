@@ -11,6 +11,7 @@ import { useState, useEffect } from 'react';
 import { dbHelpers } from '../db/database-clean';
 import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
 import { logger } from '../utils/logger';
+import { parseMoneyInput } from '../utils/validation';
 
 import EmptyState from './EmptyState';
 import DebtPayoffEmptyIllustration from './illustrations/DebtPayoffEmptyIllustration';
@@ -73,9 +74,12 @@ const DebtPayoffCalculator = ({ creditCards = [] }) => {
   }, [calculatorData]);
 
   const handleInputChange = (field, value) => {
+    const parsed = parseMoneyInput(value, { allowEmpty: true });
     setCalculatorData(prev => ({
       ...prev,
-      [field]: parseFloat(value) || 0,
+
+      // Keep the last good value rather than collapsing to 0 mid-typing.
+      [field]: parsed.ok ? parsed.value : prev[field],
     }));
   };
 

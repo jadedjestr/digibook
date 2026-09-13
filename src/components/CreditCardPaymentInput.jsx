@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { logger } from '../utils/logger';
+import { parseMoneyInput } from '../utils/validation';
 
 /**
  * Enhanced Credit Card Payment Input Component
@@ -51,16 +52,17 @@ const CreditCardPaymentInput = ({
       return;
     }
 
-    const numericValue = parseFloat(inputValue) || 0;
-
-    if (numericValue === 0) {
+    // A blank or half-typed field isn't an error worth showing yet - just
+    // don't run payment validation until there's a real number to check.
+    const parsed = parseMoneyInput(inputValue);
+    if (!parsed.ok || parsed.value === 0) {
       setValidationResult(null);
       if (onValidationChange) onValidationChange(null);
       return;
     }
 
     try {
-      const result = validateCreditCardPaymentAmount(expense, numericValue);
+      const result = validateCreditCardPaymentAmount(expense, parsed.value);
       setValidationResult(result);
       if (onValidationChange) onValidationChange(result);
     } catch (error) {
@@ -82,7 +84,11 @@ const CreditCardPaymentInput = ({
   const handleInputChange = e => {
     const newValue = e.target.value;
     setInputValue(newValue);
-    onChange?.(parseFloat(newValue) || 0);
+
+    // Emit the raw input, not a coerced number: turning an empty or
+    // malformed field into 0 here would hide it from the consumer's own
+    // validation, and 0 on a payment field means "un-pay this bill".
+    onChange?.(newValue);
   };
 
   const handleSuggestionClick = suggestion => {

@@ -5,6 +5,16 @@ import {
   sanitizeExpenseData,
 } from '../utils/expenseValidation';
 import { logger } from '../utils/logger';
+import { parseMoneyInput } from '../utils/validation';
+
+// Money columns per CSV table. A row whose money cell can't be parsed is
+// skipped and reported rather than imported with a substituted value.
+const CSV_MONEY_FIELDS = {
+  accounts: ['currentBalance'],
+  pendingTransactions: ['amount'],
+  fixedExpenses: ['amount', 'paidAmount'],
+  recurringExpenseTemplates: ['baseAmount'],
+};
 
 // Export/import data-format version - distinct from the Dexie schema version
 // in database-clean.js (this gates the JSON/backup file contract, not the
@@ -150,14 +160,12 @@ class DataManager {
         ? 'json'
         : 'csv';
 
-      let data;
       if (fileType === 'json') {
-        data = await this.parseAndValidateJSON(text);
-      } else {
-        data = await this.parseAndValidateCSV(text);
+        return { data: await this.parseAndValidateJSON(text), fileType };
       }
 
-      return { data, fileType };
+      const { data, skipped } = await this.parseAndValidateCSV(text);
+      return { data, fileType, skipped };
     } catch (error) {
       logger.error('Error reading import file:', error);
       throw new Error(`Failed to read import file: ${error.message}`);
@@ -221,40 +229,38 @@ class DataManager {
     const firstRow = csvData[0] || {};
     const headers = Object.keys(firstRow);
 
+    const convert = tableName => {
+      const { rows, skipped } = this.convertCSVData(csvData, tableName);
+      return { data: { [tableName]: rows }, skipped };
+    };
+
     // Detect data type from headers
     if (
       headers.includes('name') &&
       headers.includes('type') &&
       headers.includes('currentBalance')
     ) {
-      return { accounts: this.convertCSVData(csvData, 'accounts') };
+      return convert('accounts');
     }
     if (
       headers.includes('accountId') &&
       headers.includes('amount') &&
       headers.includes('description')
     ) {
-      return {
-        pendingTransactions: this.convertCSVData(
-          csvData,
-          'pendingTransactions',
-        ),
-      };
+      return convert('pendingTransactions');
     }
     if (
       headers.includes('dueDate') &&
       headers.includes('amount') &&
       headers.includes('name')
     ) {
-      return { fixedExpenses: this.convertCSVData(csvData, 'fixedExpenses') };
+      return convert('fixedExpenses');
     }
     if (headers.includes('name') && headers.includes('color')) {
-      return { categories: this.convertCSVData(csvData, 'categories') };
+      return convert('categories');
     }
     if (headers.includes('lastPaycheckDate') && headers.includes('frequency')) {
-      return {
-        paycheckSettings: this.convertCSVData(csvData, 'paycheckSettings'),
-      };
+      return convert('paycheckSettings');
     }
     if (
       headers.includes('name') &&
@@ -262,24 +268,42 @@ class DataManager {
       headers.includes('frequency') &&
       headers.includes('startDate')
     ) {
-      return {
-        recurringExpenseTemplates: this.convertCSVData(
-          csvData,
-          'recurringExpenseTemplates',
-        ),
-      };
+      return convert('recurringExpenseTemplates');
     }
 
     throw new Error('Could not detect CSV data type from headers');
   }
 
   convertCSVData(csvData, dataType) {
-    return csvData.map(row => {
+    const moneyFields = CSV_MONEY_FIELDS[dataType] || [];
+    const rows = [];
+    const skipped = [];
+
+    csvData.forEach((row, index) => {
       const converted = { ...row };
+
+      // Parse money cells first: a cell we can't read is a row we refuse to
+      // import, rather than one we quietly turn into 0.
+      let rejected = null;
+      for (const field of moneyFields) {
+        const parsed = parseMoneyInput(row[field], {
+          // A blank paidAmount legitimately means "nothing paid yet".
+          allowEmpty: field === 'paidAmount',
+        });
+        if (!parsed.ok) {
+          // +2: row 1 of the file is the header, so data row 0 is line 2.
+          rejected = { line: index + 2, field, reason: parsed.reason };
+          break;
+        }
+        converted[field] = parsed.value;
+      }
+      if (rejected) {
+        skipped.push(rejected);
+        return;
+      }
 
       switch (dataType) {
         case 'accounts':
-          converted.currentBalance = parseFloat(row.currentBalance) || 0;
           converted.isDefault =
             row.isDefault === 'true' ||
             row.isDefault === '1' ||
@@ -287,15 +311,11 @@ class DataManager {
           break;
         case 'pendingTransactions':
           converted.accountId = row.accountId;
-          converted.amount = parseFloat(row.amount) || 0;
           converted.createdAt = row.createdAt
             ? new Date(row.createdAt).toISOString()
             : new Date().toISOString();
           break;
         case 'fixedExpenses':
-          converted.amount = parseFloat(row.amount) || 0;
-          converted.paidAmount = parseFloat(row.paidAmount) || 0;
-
           // V4 format: handle both accountId and creditCardId
           converted.accountId = row.accountId || null;
           converted.creditCardId = row.creditCardId || null;
@@ -324,7 +344,6 @@ class DataManager {
           }
           break;
         case 'recurringExpenseTemplates':
-          converted.baseAmount = parseFloat(row.baseAmount) || 0;
           converted.intervalValue = parseInt(row.intervalValue) || 1;
 
           // V4 format: handle both accountId and creditCardId
@@ -376,8 +395,10 @@ class DataManager {
           break;
       }
 
-      return converted;
+      rows.push(converted);
     });
+
+    return { rows, skipped };
   }
 
   /**
@@ -421,7 +442,7 @@ class DataManager {
   async importData(file, onProgress = () => {}) {
     try {
       onProgress('Reading file...');
-      const { data, fileType } = await this.readImportFile(file);
+      const { data, fileType, skipped = [] } = await this.readImportFile(file);
 
       onProgress('Creating backup...');
       await this.backupManager.createBackup('pre_import');
@@ -435,6 +456,10 @@ class DataManager {
 
       onProgress('Import completed successfully!');
       logger.success(`Data imported successfully from ${fileType} file`);
+      if (skipped.length > 0) {
+        logger.warn(`Skipped ${skipped.length} unreadable row(s) on import`);
+      }
+      return { skipped };
     } catch (error) {
       logger.error('Import failed:', error);
       throw new Error(`Import failed: ${error.message}`);

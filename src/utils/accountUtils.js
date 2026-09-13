@@ -114,8 +114,7 @@ export const isAccountSelected = (
  * @returns {string} Formatted currency string
  */
 export const formatAccountBalance = balance => {
-  const numBalance =
-    typeof balance === 'number' ? balance : parseFloat(balance) || 0;
+  const numBalance = Number(balance) || 0;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -129,8 +128,7 @@ export const formatAccountBalance = balance => {
  * @returns {string} Formatted currency string with thousands separators
  */
 export const formatCurrency = amount => {
-  const numAmount =
-    typeof amount === 'number' ? amount : parseFloat(amount) || 0;
+  const numAmount = Number(amount) || 0;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',

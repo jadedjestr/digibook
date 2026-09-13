@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
+import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
 
 import CreditCardPaymentInput from './CreditCardPaymentInput';
 import PrivacyWrapper from './PrivacyWrapper';
@@ -21,6 +22,7 @@ const InlineEdit = ({
   const [editValue, setEditValue] = useState(value);
   const [isEditing, setIsEditing] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
+  const [saveError, setSaveError] = useState(null);
   const inputRef = useRef(null);
 
   // Check if this is a credit card payment amount field
@@ -47,27 +49,23 @@ const InlineEdit = ({
       return;
     }
 
-    // Parse number values properly for decimal amounts
     if (type === 'number') {
-      const parsed = parseFloat(editValue);
-
-      // An out-of-range value gets silently cleared to "" by the native
-      // number input before it ever reaches here - parseFloat('') is NaN,
-      // and treating that as "save 0" would silently zero out a real
-      // balance. Refuse to save rather than guess what the user meant.
-      if (!Number.isFinite(parsed)) {
-        logger.warn('Cannot save invalid number value:', editValue);
+      const parsed = parseMoneyInput(editValue);
+      if (!parsed.ok) {
+        setSaveError(moneyInputErrorMessage(parsed.reason));
         return;
       }
-      onSave(parsed);
+      onSave(parsed.value);
     } else {
       onSave(editValue);
     }
+    setSaveError(null);
     setIsEditing(false);
   };
 
   const handleCancel = () => {
     setEditValue(value);
+    setSaveError(null);
     setIsEditing(false);
   };
 
@@ -100,7 +98,7 @@ const InlineEdit = ({
             <div className='flex-1'>
               <CreditCardPaymentInput
                 expense={expense}
-                value={parseFloat(editValue) || 0}
+                value={editValue}
                 onChange={setEditValue}
                 onValidationChange={setValidationResult}
                 className='w-full'
@@ -180,6 +178,7 @@ const InlineEdit = ({
               const decimalRegex = /^\d*\.?\d*$/;
               if (value === '' || decimalRegex.test(value)) {
                 setEditValue(value);
+                setSaveError(null);
               }
             }}
             onKeyDown={handleKeyDown}
@@ -217,22 +216,27 @@ const InlineEdit = ({
     };
 
     return (
-      <div className='flex items-center space-x-2'>
-        {renderInput()}
-        <button
-          onClick={handleSave}
-          className='p-1 text-green-300 hover:text-green-200'
-          title='Save (Enter)'
-        >
-          <Check size={14} />
-        </button>
-        <button
-          onClick={handleCancel}
-          className='p-1 text-red-300 hover:text-red-200'
-          title='Cancel (Esc)'
-        >
-          <X size={14} />
-        </button>
+      <div className='space-y-1'>
+        <div className='flex items-center space-x-2'>
+          {renderInput()}
+          <button
+            onClick={handleSave}
+            className='p-1 text-green-300 hover:text-green-200'
+            title='Save (Enter)'
+          >
+            <Check size={14} />
+          </button>
+          <button
+            onClick={handleCancel}
+            className='p-1 text-red-300 hover:text-red-200'
+            title='Cancel (Esc)'
+          >
+            <X size={14} />
+          </button>
+        </div>
+        {saveError && (
+          <p className='text-xs text-red-300 whitespace-nowrap'>{saveError}</p>
+        )}
       </div>
     );
   }

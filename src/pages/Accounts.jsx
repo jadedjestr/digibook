@@ -23,6 +23,7 @@ import {
 import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
+import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
 
 const Accounts = () => {
   // Use Zustand store for data
@@ -106,7 +107,12 @@ const Accounts = () => {
     if (!newAccount.name.trim()) {
       newErrors.name = 'Account name is required';
     }
-    if (newAccount.currentBalance < 0) {
+    const parsed = parseMoneyInput(newAccount.currentBalance, {
+      allowEmpty: true,
+    });
+    if (!parsed.ok) {
+      newErrors.currentBalance = moneyInputErrorMessage(parsed.reason);
+    } else if (parsed.value < 0) {
       newErrors.currentBalance = 'Balance cannot be negative';
     }
     setErrors(newErrors);
@@ -120,7 +126,13 @@ const Accounts = () => {
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      await dbHelpers.addAccount(newAccount);
+      const parsed = parseMoneyInput(newAccount.currentBalance, {
+        allowEmpty: true,
+      });
+      await dbHelpers.addAccount({
+        ...newAccount,
+        currentBalance: parsed.value,
+      });
       setNewAccount({ name: '', type: 'checking', currentBalance: 0 });
       setIsAddingAccount(false);
       setErrors({});
@@ -165,7 +177,7 @@ const Accounts = () => {
     try {
       await dbHelpers.updateAccount(accountId, updates, expectedUpdatedAt);
       setEditingId(null);
-      reloadAccounts();
+      await reloadAccounts();
     } catch (error) {
       logger.error('Error updating account:', error);
       if (error.message?.startsWith('STALE_WRITE')) {
@@ -254,7 +266,7 @@ const Accounts = () => {
                 onChange={e =>
                   setNewAccount({
                     ...newAccount,
-                    currentBalance: parseFloat(e.target.value) || 0,
+                    currentBalance: e.target.value,
                   })
                 }
                 className={`glass-input w-full ${errors.currentBalance ? 'glass-error' : ''}`}
@@ -377,10 +389,7 @@ const Accounts = () => {
                               onSave={currentBalance =>
                                 handleUpdateAccount(
                                   account.id,
-                                  {
-                                    currentBalance:
-                                      parseFloat(currentBalance) || 0,
-                                  },
+                                  { currentBalance },
                                   account.updatedAt,
                                 )
                               }

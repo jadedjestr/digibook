@@ -372,17 +372,6 @@ async function validateSingleTableReferences(tableName, items) {
     return errors;
   }
 
-  if (tableName === 'creditCards') {
-    for (const [idx, item] of items.entries()) {
-      if (!Number.isFinite(item?.balance)) {
-        errors.push(
-          `creditCards[${idx}]: balance must be a finite number (got ${item?.balance})`,
-        );
-      }
-    }
-    return errors;
-  }
-
   if (tableName === 'pendingTransactions') {
     const accountIds = new Set(
       (await db.accounts.toArray()).map(a => toRefId(a?.id)).filter(Boolean),

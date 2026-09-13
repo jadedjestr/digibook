@@ -10,6 +10,7 @@ import { dbHelpers } from '../db/database-clean';
 import { useFinanceCalculations } from '../services/financeService';
 import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
+import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
 
 // Helper function to get today's date in local timezone
 const getTodayDate = () => {
@@ -71,7 +72,10 @@ const PendingTransactions = ({
     if (!newTransaction.accountId) {
       newErrors.accountId = 'Please select an account';
     }
-    if (!newTransaction.amount || newTransaction.amount <= 0) {
+    const parsedAmount = parseMoneyInput(newTransaction.amount);
+    if (!parsedAmount.ok) {
+      newErrors.amount = moneyInputErrorMessage(parsedAmount.reason);
+    } else if (parsedAmount.value <= 0) {
       newErrors.amount = 'Amount must be greater than 0';
     }
     if (!newTransaction.description.trim()) {
@@ -87,12 +91,13 @@ const PendingTransactions = ({
     setIsLoading(true);
     try {
       // Prepare transaction with correct sign based on type
+      const { value: amount } = parseMoneyInput(newTransaction.amount);
       const transactionToAdd = {
         ...newTransaction,
         amount:
           newTransaction.type === 'expense'
-            ? -Math.abs(newTransaction.amount)
-            : Math.abs(newTransaction.amount),
+            ? -Math.abs(amount)
+            : Math.abs(amount),
       };
 
       await dbHelpers.addPendingTransaction(transactionToAdd);
@@ -255,7 +260,7 @@ const PendingTransactions = ({
                 onChange={e =>
                   setNewTransaction({
                     ...newTransaction,
-                    amount: parseFloat(e.target.value) || 0,
+                    amount: e.target.value,
                   })
                 }
                 className={`glass-input w-full ${errors.amount ? 'glass-error' : ''}`}
@@ -407,9 +412,7 @@ const PendingTransactions = ({
                       <InlineEdit
                         value={transaction.amount}
                         onSave={amount =>
-                          handleUpdateTransaction(transaction.id, {
-                            amount: parseFloat(amount) || 0,
-                          })
+                          handleUpdateTransaction(transaction.id, { amount })
                         }
                         type='number'
                         showEditIcon
