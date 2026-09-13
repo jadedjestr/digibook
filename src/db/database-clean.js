@@ -1,6 +1,7 @@
 import Dexie from 'dexie';
 
 import {
+  advanceDueDateByFrequency,
   DEFAULT_PAY_FREQUENCY,
   VALID_PAY_FREQUENCIES,
 } from '../constants/payFrequency';
@@ -9,7 +10,7 @@ import { dataIntegrity } from '../utils/crypto';
 import { DateUtils } from '../utils/dateUtils';
 import { generateId } from '../utils/generateId';
 import { logger } from '../utils/logger';
-import { validatePaidAmount } from '../utils/validation';
+import { parseMoneyInput, validatePaidAmount } from '../utils/validation';
 
 const MAX_AUDIT_LOG_ENTRIES = 500;
 const UUID_REGEX =
@@ -22,7 +23,7 @@ const isValidUuid = value =>
 /**
  * Clean Consolidated Digibook Database Schema
  *
- * Consolidated Dexie schema, currently at version 8 (see this.version(8)
+ * Consolidated Dexie schema, currently at version 9 (see this.version(9)
  * below for the full migration history). Not the same as
  * CURRENT_DATA_VERSION in services/dataManager.js, which gates the
  * separate JSON/backup export-import file contract.
@@ -207,6 +208,37 @@ export class DigibookDBClean extends Dexie {
           'id, timestamp, actionType, entityType, entityId, details, updatedAt, deletedAt',
         backups:
           'id, reason, timestamp, version, createdAt, updatedAt, deletedAt',
+      })
+      .upgrade(() => {});
+
+    // Version 9: incomeSources table, and incomeSourceId on pendingTransactions
+    // so auto-generated payday rows can be traced back to their source.
+    this.version(9)
+      .stores({
+        accounts:
+          'id, name, type, currentBalance, isDefault, createdAt, updatedAt, deletedAt',
+        pendingTransactions:
+          'id, accountId, amount, category, description, createdAt, updatedAt, deletedAt, categoryId, incomeSourceId',
+        fixedExpenses:
+          'id, name, dueDate, amount, accountId, creditCardId, targetCreditCardId, category, paidAmount, status, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, recurringTemplateId, createdAt, updatedAt, deletedAt, categoryId',
+        categories:
+          'id, name, color, icon, isDefault, createdAt, sortOrder, updatedAt, deletedAt',
+        creditCards:
+          'id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt, updatedAt, deletedAt',
+        paycheckSettings:
+          'id, lastPaycheckDate, frequency, createdAt, updatedAt, deletedAt',
+        userPreferences:
+          'id, component, preferences, createdAt, lastExportDate, updatedAt, deletedAt',
+        monthlyExpenseHistory:
+          '[expenseId+month+year], expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt, updatedAt, deletedAt',
+        recurringExpenseTemplates:
+          'id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt, deletedAt, categoryId',
+        auditLogs:
+          'id, timestamp, actionType, entityType, entityId, details, updatedAt, deletedAt',
+        backups:
+          'id, reason, timestamp, version, createdAt, updatedAt, deletedAt',
+        incomeSources:
+          'id, accountId, isEnabled, lastGeneratedDate, createdAt, updatedAt, deletedAt',
       })
       .upgrade(() => {});
   }
@@ -548,6 +580,7 @@ export const dbHelpers = {
       await db.monthlyExpenseHistory.clear();
       await db.recurringExpenseTemplates.clear();
       await db.auditLogs.clear();
+      await db.incomeSources.clear();
       logger.success('Database cleared successfully');
     } catch (error) {
       logger.error('Error clearing database:', error);
@@ -2347,6 +2380,192 @@ export const dbHelpers = {
     }
   },
 
+  // Income source helpers
+  //
+  // An income source says where a paycheck lands and roughly how much to
+  // expect. It never moves a balance: on payday it creates a *pending*
+  // income transaction, which the user confirms when the money actually
+  // arrives. That keeps an inaccurate estimate incapable of producing an
+  // inaccurate balance.
+  async getIncomeSources() {
+    try {
+      const rows = await db.incomeSources.toArray();
+      return rows.filter(r => !r.deletedAt);
+    } catch (error) {
+      logger.error('Error getting income sources:', error);
+      return [];
+    }
+  },
+
+  async getPrimaryIncomeSource() {
+    const sources = await this.getIncomeSources();
+    return sources.length > 0 ? sources[0] : null;
+  },
+
+  /**
+   * Create or update the single income source. Phase 1 keeps exactly one
+   * row - the table is a list so a second source can be added later without
+   * a migration, but nothing surfaces more than one yet.
+   */
+  async upsertIncomeSource(updates) {
+    try {
+      if (updates.expectedAmount !== undefined) {
+        const parsed = parseMoneyInput(updates.expectedAmount);
+        if (!parsed.ok) {
+          throw new Error('Expected amount must be a valid amount');
+        }
+        if (parsed.value < 0) {
+          throw new Error('Expected amount cannot be negative');
+        }
+        updates = { ...updates, expectedAmount: parsed.value };
+      }
+
+      if (updates.accountId) {
+        const account = await db.accounts.get(updates.accountId);
+        if (!account || account.deletedAt) {
+          throw new Error(`Account not found: ${updates.accountId}`);
+        }
+      }
+
+      const existing = await this.getPrimaryIncomeSource();
+      if (existing) {
+        await db.incomeSources.update(existing.id, {
+          ...updates,
+          updatedAt: nowIso(),
+        });
+        return existing.id;
+      }
+
+      const row = {
+        name: 'Paycheck',
+        accountId: null,
+        expectedAmount: 0,
+        isEnabled: false,
+        lastGeneratedDate: null,
+        ...updates,
+        id: generateId(),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        deletedAt: null,
+      };
+      await db.incomeSources.add(row);
+      logger.success(`Income source created: ${row.id}`);
+      return row.id;
+    } catch (error) {
+      logger.error('Error saving income source:', error);
+      throw new Error(`Failed to save income source: ${error.message}`);
+    }
+  },
+
+  /**
+   * Remove un-confirmed payday rows for a source. Confirmed paychecks are
+   * real history (soft-deleted by completePendingTransaction) and are left
+   * alone; only predictions the user never acted on are swept.
+   */
+  async sweepUnconfirmedIncome(sourceId) {
+    try {
+      const rows = (await db.pendingTransactions.toArray()).filter(
+        t => t.incomeSourceId === sourceId && !t.deletedAt,
+      );
+      const ts = nowIso();
+      for (const row of rows) {
+        await db.pendingTransactions.update(row.id, {
+          deletedAt: ts,
+          updatedAt: ts,
+        });
+      }
+      if (rows.length > 0) {
+        logger.success(`Swept ${rows.length} unconfirmed income row(s)`);
+      }
+      return rows.length;
+    } catch (error) {
+      logger.error('Error sweeping unconfirmed income:', error);
+      return 0;
+    }
+  },
+
+  /**
+   * Create a pending income row for every payday that has passed since the
+   * last one generated. Safe to call on every app load - `lastGeneratedDate`
+   * is the high-water mark, so a second run in the same day creates nothing.
+   *
+   * Note it does NOT use calculateNextPayDates: that function rolls forward
+   * past today by design, so it can only ever report future paydays and can
+   * never tell you one has already passed. It also can't use the recurring
+   * generator's "set of dates already materialised" trick, because a
+   * confirmed paycheck is soft-deleted and would vanish from that set,
+   * causing it to be generated a second time.
+   *
+   * @returns {Promise<{ generated: number }>}
+   */
+  async generateDueIncome() {
+    try {
+      const source = await this.getPrimaryIncomeSource();
+      if (!source || !source.isEnabled || !source.accountId) {
+        return { generated: 0 };
+      }
+
+      const account = await db.accounts.get(source.accountId);
+      if (!account || account.deletedAt) {
+        // Target account is gone - disable rather than orphan the income.
+        await db.incomeSources.update(source.id, {
+          isEnabled: false,
+          updatedAt: nowIso(),
+        });
+        logger.warn('Income source disabled: target account no longer exists');
+        return { generated: 0 };
+      }
+
+      const settings = await this.getPaycheckSettings();
+      const anchor = source.lastGeneratedDate || settings?.lastPaycheckDate;
+      if (!anchor) return { generated: 0 };
+
+      const frequency = settings?.frequency || DEFAULT_PAY_FREQUENCY;
+      const today = DateUtils.today();
+      const amount = Math.abs(Number(source.expectedAmount) || 0);
+
+      // A long absence must not flood the list with back-pay.
+      const MAX_CATCH_UP = 7;
+
+      const dueDates = [];
+      let cursor = anchor;
+      while (dueDates.length < MAX_CATCH_UP) {
+        const next = advanceDueDateByFrequency(cursor, frequency);
+        if (!next || !DateUtils.parseDate(next)) break;
+        if (next > today) break;
+        dueDates.push(next);
+        cursor = next;
+      }
+
+      if (dueDates.length === 0) return { generated: 0 };
+
+      for (const dueDate of dueDates) {
+        await this.addPendingTransaction({
+          accountId: source.accountId,
+          amount, // positive: income adds to the balance on completion
+          category: 'Other',
+          description: source.name || 'Paycheck',
+          date: dueDate,
+          type: 'income',
+          incomeSourceId: source.id,
+        });
+      }
+
+      await db.incomeSources.update(source.id, {
+        lastGeneratedDate: cursor,
+        updatedAt: nowIso(),
+      });
+
+      logger.success(
+        `Generated ${dueDates.length} pending income row(s) for ${source.name}`,
+      );
+      return { generated: dueDates.length };
+    } catch (error) {
+      logger.error('Error generating due income:', error);
+      return { generated: 0 };
+    }
+  },
+
   // User preferences helpers
   async getUserPreferences(component) {
     try {
@@ -3441,6 +3660,7 @@ export const dbHelpers = {
         monthlyExpenseHistory: await db.monthlyExpenseHistory.toArray(),
         auditLogs: await db.auditLogs.toArray(),
         recurringExpenseTemplates: await db.recurringExpenseTemplates.toArray(),
+        incomeSources: await db.incomeSources.toArray(),
         exportDate: new Date().toISOString(),
       };
 
@@ -3474,6 +3694,7 @@ export const dbHelpers = {
         db.fixedExpenses,
         db.monthlyExpenseHistory,
         db.auditLogs,
+        db.incomeSources,
         async () => {
           // Clear existing data (inline so failures abort the transaction)
           await db.accounts.clear();
@@ -3486,6 +3707,7 @@ export const dbHelpers = {
           await db.monthlyExpenseHistory.clear();
           await db.recurringExpenseTemplates.clear();
           await db.auditLogs.clear();
+          await db.incomeSources.clear();
 
           // Import core data first (order matters for app invariants)
           await bulkPutChunked(db.accounts, data.accounts);
@@ -3513,6 +3735,9 @@ export const dbHelpers = {
             data.monthlyExpenseHistory,
           );
           await bulkPutChunked(db.auditLogs, data.auditLogs);
+
+          // Income sources reference an account, so they follow accounts.
+          await bulkPutChunked(db.incomeSources, data.incomeSources);
         },
       );
 
@@ -3638,6 +3863,7 @@ export const dbHelpers = {
         'auditLogs',
         'recurringExpenseTemplates',
         'backups',
+        'incomeSources',
       ];
       for (const field of optionalArrayFields) {
         if (data[field] !== undefined && data[field] !== null) {
@@ -3701,6 +3927,17 @@ export const dbHelpers = {
         if (!accountId || !accountIds.has(accountId)) {
           errors.push(
             `pendingTransactions[${idx}]: invalid accountId (${txn?.accountId})`,
+          );
+        }
+      }
+
+      // An income source that names an account must name a real one. A null
+      // accountId is fine - that's an un-configured source.
+      for (const [idx, source] of (data.incomeSources || []).entries()) {
+        const accountId = toRefId(source?.accountId);
+        if (accountId && !accountIds.has(accountId)) {
+          errors.push(
+            `incomeSources[${idx}]: invalid accountId (${source?.accountId})`,
           );
         }
       }

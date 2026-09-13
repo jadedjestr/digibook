@@ -14,6 +14,7 @@ const CSV_MONEY_FIELDS = {
   pendingTransactions: ['amount'],
   fixedExpenses: ['amount', 'paidAmount'],
   recurringExpenseTemplates: ['baseAmount'],
+  incomeSources: ['expectedAmount'],
 };
 
 // Export/import data-format version - distinct from the Dexie schema version
@@ -21,7 +22,7 @@ const CSV_MONEY_FIELDS = {
 // IndexedDB structure). Review this whenever a schema change alters that
 // contract (e.g. the V8 migration to UUID string ids, which this constant
 // was never bumped for).
-const CURRENT_DATA_VERSION = 5;
+const CURRENT_DATA_VERSION = 6;
 
 /**
  * Normalize version to number for comparison

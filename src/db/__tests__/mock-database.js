@@ -19,6 +19,7 @@ export class MockDatabase {
       userPreferences: new Map(),
       monthlyExpenseHistory: new Map(),
       auditLogs: new Map(),
+      incomeSources: new Map(),
     };
     this.nextId = 1;
   }

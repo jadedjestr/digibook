@@ -411,6 +411,70 @@ describe('dbHelpers.importData (atomic transaction)', () => {
   });
 });
 
+describe('incomeSources survive an export/import round-trip', () => {
+  const now = '2026-02-01T00:00:00.000Z';
+
+  beforeEach(async () => {
+    await Promise.all([db.accounts.clear(), db.incomeSources.clear()]);
+  });
+
+  // If the new table were missing from exportData, every backup taken after
+  // this shipped would silently drop the user's income config, and restoring
+  // one would wipe it.
+  it('exports and re-imports the income source', async () => {
+    await db.accounts.put({
+      id: '1',
+      name: 'Checking',
+      type: 'checking',
+      currentBalance: 100,
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+    await db.incomeSources.put({
+      id: 'inc-1',
+      name: 'Paycheck',
+      accountId: '1',
+      expectedAmount: 1200,
+      isEnabled: true,
+      lastGeneratedDate: '2026-01-30',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+
+    const exported = await dbHelpers.exportData();
+    expect(exported.incomeSources).toHaveLength(1);
+
+    await db.incomeSources.clear();
+    await dbHelpers.importData(exported);
+
+    const [restored] = await db.incomeSources.toArray();
+    expect(restored).toMatchObject({
+      id: 'inc-1',
+      accountId: '1',
+      expectedAmount: 1200,
+      isEnabled: true,
+      lastGeneratedDate: '2026-01-30',
+    });
+  });
+
+  it('rejects an income source pointing at an account that does not exist', async () => {
+    const result = await dbHelpers.validateImportData({
+      accounts: [],
+      creditCards: [],
+      pendingTransactions: [],
+      fixedExpenses: [],
+      categories: [],
+      incomeSources: [{ id: 'inc-1', accountId: 'ghost', expectedAmount: 10 }],
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('incomeSources[0]'))).toBe(true);
+  });
+});
+
 describe('dbHelpers.validateImportData (balance sanity checks)', () => {
   const now = '2026-02-01T00:00:00.000Z';
 

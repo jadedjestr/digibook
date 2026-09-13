@@ -19,6 +19,15 @@ const PaycheckManager = ({ onDataChange }) => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [accounts, setAccounts] = useState([]);
+
+  // Income lives in its own table, so it is loaded separately rather than
+  // widened onto the paycheck settings object.
+  const [income, setIncome] = useState({
+    isEnabled: false,
+    accountId: '',
+    expectedAmount: '',
+  });
 
   useEffect(() => {
     loadPaycheckSettings();
@@ -26,7 +35,11 @@ const PaycheckManager = ({ onDataChange }) => {
 
   const loadPaycheckSettings = async () => {
     try {
-      const settings = await dbHelpers.getPaycheckSettings();
+      const [settings, source, accountList] = await Promise.all([
+        dbHelpers.getPaycheckSettings(),
+        dbHelpers.getPrimaryIncomeSource(),
+        dbHelpers.getAccounts(),
+      ]);
       logger.debug('Loaded paycheck settings from database:', settings);
       if (settings) {
         setPaycheckSettings({
@@ -35,6 +48,13 @@ const PaycheckManager = ({ onDataChange }) => {
         });
         logger.debug('Paycheck settings loaded successfully');
       }
+      setAccounts(accountList || []);
+      setIncome({
+        isEnabled: source?.isEnabled ?? false,
+        accountId: source?.accountId || '',
+        expectedAmount:
+          source?.expectedAmount != null ? String(source.expectedAmount) : '',
+      });
     } catch (error) {
       logger.error('Error loading paycheck settings:', error);
       notify.error('Failed to load paycheck settings');
@@ -63,8 +83,36 @@ const PaycheckManager = ({ onDataChange }) => {
         return;
       }
 
+      if (income.isEnabled && !income.accountId) {
+        notify.error('Choose which account your paycheck lands in.');
+        return;
+      }
+
       logger.debug('Saving paycheck settings:', paycheckSettings);
       await dbHelpers.updatePaycheckSettings(paycheckSettings);
+
+      const existing = await dbHelpers.getPrimaryIncomeSource();
+      const wasEnabled = existing?.isEnabled ?? false;
+
+      await dbHelpers.upsertIncomeSource({
+        isEnabled: income.isEnabled,
+        accountId: income.accountId || null,
+        expectedAmount:
+          income.expectedAmount === '' ? 0 : income.expectedAmount,
+
+        // Enabling starts from today so switching on never backfills
+        // months of imaginary back-pay.
+        ...(income.isEnabled && !wasEnabled
+          ? { lastGeneratedDate: DateUtils.today() }
+          : {}),
+      });
+
+      // Turning it off clears predictions the user never acted on. Confirmed
+      // paychecks are real history and are left alone.
+      if (!income.isEnabled && wasEnabled && existing) {
+        await dbHelpers.sweepUnconfirmedIncome(existing.id);
+      }
+
       logger.success('Paycheck settings saved successfully');
 
       // Show success notification
@@ -175,6 +223,82 @@ const PaycheckManager = ({ onDataChange }) => {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Automatic paycheck entry */}
+        <div className='border-t border-white/10 pt-6'>
+          <div className='flex items-start space-x-3'>
+            <input
+              id='income-enabled'
+              type='checkbox'
+              checked={income.isEnabled}
+              onChange={e =>
+                setIncome({ ...income, isEnabled: e.target.checked })
+              }
+              className='mt-1'
+            />
+            <label htmlFor='income-enabled' className='cursor-pointer'>
+              <span className='block text-primary font-medium'>
+                Add my paycheck automatically
+              </span>
+              <span className='block text-secondary text-sm mt-1'>
+                On payday it appears as a pending transaction. Your balance only
+                changes when you confirm the money landed.
+              </span>
+            </label>
+          </div>
+
+          {income.isEnabled && (
+            <div className='space-y-4 mt-4 pl-7'>
+              <div>
+                <label
+                  htmlFor='income-account'
+                  className='block text-primary font-medium mb-2'
+                >
+                  Lands in
+                </label>
+                <select
+                  id='income-account'
+                  value={income.accountId}
+                  onChange={e =>
+                    setIncome({ ...income, accountId: e.target.value })
+                  }
+                  className='glass-input w-full'
+                >
+                  <option value=''>Select an account</option>
+                  {accounts.map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor='income-amount'
+                  className='block text-primary font-medium mb-2'
+                >
+                  Usual amount
+                </label>
+                <input
+                  id='income-amount'
+                  type='number'
+                  value={income.expectedAmount}
+                  onChange={e =>
+                    setIncome({ ...income, expectedAmount: e.target.value })
+                  }
+                  className='glass-input w-full'
+                  step='0.01'
+                  min='0'
+                />
+                <p className='text-secondary text-sm mt-1'>
+                  Roughly what you usually get. Correct it when each paycheck
+                  lands — an estimate never affects your real balance.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Preview Next Pay Dates */}

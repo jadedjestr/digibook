@@ -19,6 +19,7 @@ export const useAppStore = create(
       categories: [],
       paycheckSettings: null,
       defaultAccount: null,
+      incomeSources: [],
 
       // === UI STATE ===
       currentPage: 'accounts',
@@ -87,6 +88,8 @@ export const useAppStore = create(
             dbHelpers.getDefaultAccount(),
           ]);
 
+          const incomeSourcesData = await dbHelpers.getIncomeSources();
+
           set({
             accounts: accountsData,
             creditCards: creditCardsData,
@@ -95,10 +98,29 @@ export const useAppStore = create(
             categories: categoriesData,
             paycheckSettings: paycheckSettingsData,
             defaultAccount: defaultAccountData,
+            incomeSources: incomeSourcesData,
             isLoading: false,
           });
 
           logger.success('Application data loaded successfully');
+
+          // Catch up any payday that passed while the app was closed. Creates
+          // pending income rows only - no balance moves until the user
+          // confirms each one. Fire-and-forget: never fails app load.
+          (async () => {
+            try {
+              const { generated } = await dbHelpers.generateDueIncome();
+              if (generated > 0) {
+                const refreshed = await dbHelpers.getPendingTransactions();
+                set({
+                  pendingTransactions: refreshed,
+                  incomeSources: await dbHelpers.getIncomeSources(),
+                });
+              }
+            } catch (error) {
+              logger.warn('Could not generate due income on load:', error);
+            }
+          })();
 
           // Pre-generate occurrences for existing templates (background task)
           // This doesn't block app load - runs asynchronously
@@ -202,6 +224,16 @@ export const useAppStore = create(
           logger.debug('Transactions data reloaded');
         } catch (error) {
           logger.error('Error reloading transactions:', error);
+        }
+      },
+
+      reloadIncomeSources: async () => {
+        try {
+          const incomeSourcesData = await dbHelpers.getIncomeSources();
+          set({ incomeSources: incomeSourcesData });
+          logger.debug('Income sources data reloaded');
+        } catch (error) {
+          logger.error('Error reloading income sources:', error);
         }
       },
 
@@ -411,6 +443,7 @@ export const useFixedExpenses = () => useAppStore(state => state.fixedExpenses);
 export const useCategories = () => useAppStore(state => state.categories);
 export const usePaycheckSettings = () =>
   useAppStore(state => state.paycheckSettings);
+export const useIncomeSources = () => useAppStore(state => state.incomeSources);
 export const useCurrentPage = () => useAppStore(state => state.currentPage);
 export const useIsPanelOpen = () => useAppStore(state => state.isPanelOpen);
 export const useIsLoading = () => useAppStore(state => state.isLoading);
@@ -424,6 +457,8 @@ export const useReloadExpenses = () =>
   useAppStore(state => state.reloadExpenses);
 export const useReloadTransactions = () =>
   useAppStore(state => state.reloadTransactions);
+export const useReloadIncomeSources = () =>
+  useAppStore(state => state.reloadIncomeSources);
 export const useReloadPaycheckSettings = () =>
   useAppStore(state => state.reloadPaycheckSettings);
 export const useReloadCategories = () =>
