@@ -454,223 +454,231 @@ const AddExpensePanel = ({
           document.body,
         )}
 
-      {/* Panel */}
-      <div
-        ref={panelRef}
-        className='fixed top-0 right-0 h-full w-[450px] glass-panel glass-panel--elevated border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden'
-        style={{
-          transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
-          boxSizing: 'border-box',
-          right: '0px',
-          zIndex: 10000,
-          visibility: isOpen ? 'visible' : 'hidden',
-        }}
-      >
-        {/* Header */}
-        <div className='flex items-center justify-between p-8 border-b border-white/10'>
-          <h2 className='text-xl font-semibold text-white'>Add New Expense</h2>
-          <button
-            onClick={handleClose}
-            className='p-2 hover:bg-white/10 rounded-lg transition-colors'
-          >
-            <X size={20} className='text-white' />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className='flex-1 overflow-y-auto p-8 space-y-6'>
-          {/* Expense Name */}
-          <div>
-            <label
-              htmlFor='add-expense-name'
-              className='block text-sm font-medium text-white mb-2'
+      {/* Panel — portalled to body like the backdrop above it. Both must sit
+          in the same stacking context, or z-index cannot rank them against
+          each other: a transformed ancestor would trap this one and let the
+          backdrop paint over it, blurring the panel's own contents. */}
+      {createPortal(
+        <div
+          ref={panelRef}
+          className='fixed top-0 right-0 h-full w-[450px] glass-panel glass-panel--elevated border-l border-white/20 shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transform transition-all duration-[500ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden'
+          style={{
+            transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+            boxSizing: 'border-box',
+            right: '0px',
+            zIndex: 10000,
+            visibility: isOpen ? 'visible' : 'hidden',
+          }}
+        >
+          {/* Header */}
+          <div className='flex items-center justify-between p-8 border-b border-white/10'>
+            <h2 className='text-xl font-semibold text-white'>
+              Add New Expense
+            </h2>
+            <button
+              onClick={handleClose}
+              className='p-2 hover:bg-white/10 rounded-lg transition-colors'
             >
-              Expense Name
-            </label>
-            <input
-              id='add-expense-name'
-              ref={firstInputRef}
-              type='text'
-              value={formData.name}
-              onChange={e => handleInputChange('name', e.target.value)}
-              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50'
-              placeholder='Enter expense name'
-            />
-            {errors.name && (
-              <p className='mt-1 text-sm text-red-400'>{errors.name}</p>
-            )}
+              <X size={20} className='text-white' />
+            </button>
           </div>
 
-          {/* Due Date */}
-          <div>
-            <label
-              htmlFor='add-expense-due-date'
-              className='block text-sm font-medium text-white mb-2'
-            >
-              Due Date
-            </label>
-            <input
-              id='add-expense-due-date'
-              type='date'
-              value={formData.dueDate}
-              onChange={e => handleInputChange('dueDate', e.target.value)}
-              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
-            />
-            {errors.dueDate && (
-              <p className='mt-1 text-sm text-red-400'>{errors.dueDate}</p>
-            )}
-          </div>
-
-          {/* Amount */}
-          <div>
-            <label
-              htmlFor='add-expense-amount'
-              className='block text-sm font-medium text-white mb-2'
-            >
-              Amount
-            </label>
-            <input
-              id='add-expense-amount'
-              type='number'
-              step='0.01'
-              min='0'
-              value={formData.amount}
-              onChange={e => handleInputChange('amount', e.target.value)}
-              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50'
-              placeholder='0.00'
-            />
-            {errors.amount && (
-              <p className='mt-1 text-sm text-red-400'>{errors.amount}</p>
-            )}
-          </div>
-
-          {/* Category Selection - REQUIRED FIRST */}
-          <div>
-            <label
-              htmlFor='add-expense-category'
-              className='block text-sm font-medium text-white mb-2'
-            >
-              Category <span className='text-red-400'>*</span>
-            </label>
-            <select
-              id='add-expense-category'
-              value={formData.category}
-              onChange={e => handleInputChange('category', e.target.value)}
-              className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
-            >
-              <option value=''>Select category first...</option>
-              {categories.map(category => (
-                <option key={category.id} value={category.name}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            {errors.category && (
-              <p className='mt-1 text-sm text-red-400'>{errors.category}</p>
-            )}
-          </div>
-
-          {/* Payment Source Selector - Only show after category is selected */}
-          {formData.category && (
-            <PaymentSourceSelector
-              value={formData.paymentSource}
-              onChange={handlePaymentSourceChange}
-              accounts={accounts}
-              creditCards={creditCards}
-              isCreditCardPayment={isCreditCardPayment}
-              label={
-                isCreditCardPayment
-                  ? 'Pay FROM (Funding Account)'
-                  : 'Payment Source'
-              }
-              error={errors.paymentSource}
-            />
-          )}
-
-          {/* Target Credit Card Selector - Only for Credit Card Payments */}
-          {isCreditCardPayment && (
+          {/* Content */}
+          <div className='flex-1 overflow-y-auto p-8 space-y-6'>
+            {/* Expense Name */}
             <div>
               <label
-                htmlFor='add-expense-target-credit-card'
+                htmlFor='add-expense-name'
                 className='block text-sm font-medium text-white mb-2'
               >
-                Pay TO (Target Credit Card)
+                Expense Name
+              </label>
+              <input
+                id='add-expense-name'
+                ref={firstInputRef}
+                type='text'
+                value={formData.name}
+                onChange={e => handleInputChange('name', e.target.value)}
+                className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50'
+                placeholder='Enter expense name'
+              />
+              {errors.name && (
+                <p className='mt-1 text-sm text-red-400'>{errors.name}</p>
+              )}
+            </div>
+
+            {/* Due Date */}
+            <div>
+              <label
+                htmlFor='add-expense-due-date'
+                className='block text-sm font-medium text-white mb-2'
+              >
+                Due Date
+              </label>
+              <input
+                id='add-expense-due-date'
+                type='date'
+                value={formData.dueDate}
+                onChange={e => handleInputChange('dueDate', e.target.value)}
+                className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
+              />
+              {errors.dueDate && (
+                <p className='mt-1 text-sm text-red-400'>{errors.dueDate}</p>
+              )}
+            </div>
+
+            {/* Amount */}
+            <div>
+              <label
+                htmlFor='add-expense-amount'
+                className='block text-sm font-medium text-white mb-2'
+              >
+                Amount
+              </label>
+              <input
+                id='add-expense-amount'
+                type='number'
+                step='0.01'
+                min='0'
+                value={formData.amount}
+                onChange={e => handleInputChange('amount', e.target.value)}
+                className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white placeholder-white/50'
+                placeholder='0.00'
+              />
+              {errors.amount && (
+                <p className='mt-1 text-sm text-red-400'>{errors.amount}</p>
+              )}
+            </div>
+
+            {/* Category Selection - REQUIRED FIRST */}
+            <div>
+              <label
+                htmlFor='add-expense-category'
+                className='block text-sm font-medium text-white mb-2'
+              >
+                Category <span className='text-red-400'>*</span>
               </label>
               <select
-                id='add-expense-target-credit-card'
-                value={formData.targetCreditCardId}
-                onChange={e =>
-                  handleInputChange('targetCreditCardId', e.target.value)
-                }
+                id='add-expense-category'
+                value={formData.category}
+                onChange={e => handleInputChange('category', e.target.value)}
                 className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
               >
-                <option value=''>Select credit card</option>
-                {creditCards.map(card => (
-                  <option key={card.id} value={card.id}>
-                    {card.name} - Debt: $
-                    {card.balance?.toLocaleString() || '0.00'}
+                <option value=''>Select category first...</option>
+                {categories.map(category => (
+                  <option key={category.id} value={category.name}>
+                    {category.name}
                   </option>
                 ))}
               </select>
-              {errors.targetCreditCardId && (
-                <p className='mt-1 text-sm text-red-400'>
-                  {errors.targetCreditCardId}
-                </p>
+              {errors.category && (
+                <p className='mt-1 text-sm text-red-400'>{errors.category}</p>
               )}
             </div>
-          )}
-        </div>
 
-        {/* Footer */}
-        <div className='p-8 border-t border-white/10 space-y-3'>
-          {/* Make Recurring Checkbox */}
-          <div className='flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10'>
-            <input
-              type='checkbox'
-              id='makeRecurring'
-              checked={makeRecurring}
-              onChange={e => {
-                setMakeRecurring(e.target.checked);
-                if (e.target.checked) {
-                  // Validate form first before showing modal
-                  const tempErrors = validateForm();
-                  if (Object.keys(tempErrors).length === 0) {
-                    setShowRecurringModal(true);
-                  } else {
-                    setErrors(tempErrors);
-                    setMakeRecurring(false);
-                  }
+            {/* Payment Source Selector - Only show after category is selected */}
+            {formData.category && (
+              <PaymentSourceSelector
+                value={formData.paymentSource}
+                onChange={handlePaymentSourceChange}
+                accounts={accounts}
+                creditCards={creditCards}
+                isCreditCardPayment={isCreditCardPayment}
+                label={
+                  isCreditCardPayment
+                    ? 'Pay FROM (Funding Account)'
+                    : 'Payment Source'
                 }
-              }}
-              className='rounded border-white/30 bg-white/10 text-blue-500 focus:ring-blue-500/30'
-            />
-            <label
-              htmlFor='makeRecurring'
-              className='text-white/90 font-medium cursor-pointer'
-            >
-              Make this expense recurring
-            </label>
+                error={errors.paymentSource}
+              />
+            )}
+
+            {/* Target Credit Card Selector - Only for Credit Card Payments */}
+            {isCreditCardPayment && (
+              <div>
+                <label
+                  htmlFor='add-expense-target-credit-card'
+                  className='block text-sm font-medium text-white mb-2'
+                >
+                  Pay TO (Target Credit Card)
+                </label>
+                <select
+                  id='add-expense-target-credit-card'
+                  value={formData.targetCreditCardId}
+                  onChange={e =>
+                    handleInputChange('targetCreditCardId', e.target.value)
+                  }
+                  className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
+                >
+                  <option value=''>Select credit card</option>
+                  {creditCards.map(card => (
+                    <option key={card.id} value={card.id}>
+                      {card.name} - Debt: $
+                      {card.balance?.toLocaleString() || '0.00'}
+                    </option>
+                  ))}
+                </select>
+                {errors.targetCreditCardId && (
+                  <p className='mt-1 text-sm text-red-400'>
+                    {errors.targetCreditCardId}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
-          <button
-            onClick={handleSave}
-            disabled={isSaving || makeRecurring}
-            className='w-full px-6 py-4 glass-button glass-button--primary disabled:opacity-50 disabled:cursor-not-allowed'
-          >
-            {(() => {
-              if (isSaving) return 'Saving...';
-              if (makeRecurring) return 'Configure recurring settings above';
-              return 'Save Expense';
-            })()}
-          </button>
-          <button
-            onClick={handleClose}
-            className='w-full px-6 py-4 glass-button glass-button--secondary'
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
+          {/* Footer */}
+          <div className='p-8 border-t border-white/10 space-y-3'>
+            {/* Make Recurring Checkbox */}
+            <div className='flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10'>
+              <input
+                type='checkbox'
+                id='makeRecurring'
+                checked={makeRecurring}
+                onChange={e => {
+                  setMakeRecurring(e.target.checked);
+                  if (e.target.checked) {
+                    // Validate form first before showing modal
+                    const tempErrors = validateForm();
+                    if (Object.keys(tempErrors).length === 0) {
+                      setShowRecurringModal(true);
+                    } else {
+                      setErrors(tempErrors);
+                      setMakeRecurring(false);
+                    }
+                  }
+                }}
+                className='rounded border-white/30 bg-white/10 text-blue-500 focus:ring-blue-500/30'
+              />
+              <label
+                htmlFor='makeRecurring'
+                className='text-white/90 font-medium cursor-pointer'
+              >
+                Make this expense recurring
+              </label>
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={isSaving || makeRecurring}
+              className='w-full px-6 py-4 glass-button glass-button--primary disabled:opacity-50 disabled:cursor-not-allowed'
+            >
+              {(() => {
+                if (isSaving) return 'Saving...';
+                if (makeRecurring) return 'Configure recurring settings above';
+                return 'Save Expense';
+              })()}
+            </button>
+            <button
+              onClick={handleClose}
+              className='w-full px-6 py-4 glass-button glass-button--secondary'
+            >
+              Cancel
+            </button>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* Recurring Expense Modal */}
       <RecurringExpenseModal

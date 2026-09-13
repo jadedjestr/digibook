@@ -19,6 +19,10 @@ build/
 .idea/
 *.swp
 
+# Agent tooling local config — how to launch a dev server is already in
+# package.json scripts, so nothing project-level is lost by ignoring this.
+.claude/
+
 # VS Code: ignore personal editor settings, but share the extension
 # recommendations, which are project-level. Note this must be `.vscode/*`
 # rather than `.vscode/` — git will not descend into an ignored directory,

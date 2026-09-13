@@ -656,8 +656,16 @@
     transition-duration: var(--duration-fast);
   }
 
+  /* Deliberately no `forwards`/`both` fill. This wrapper contains every page,
+     and slideInUp ends on `transform: translateY(0)` — holding that would
+     leave a permanent (identity) transform here, which creates a stacking
+     context and becomes the containing block for every `position: fixed`
+     descendant. That sent modal panels behind their own portalled backdrops
+     and stopped them reaching the viewport edge. The final keyframe already
+     matches the element's resting state, so dropping the fill changes
+     nothing visible. */
   .page-transition {
-    animation: slideInUp var(--duration-snappy) var(--easing-spring) both;
+    animation: slideInUp var(--duration-snappy) var(--easing-spring);
   }
 
   .modal-panel-enter {
