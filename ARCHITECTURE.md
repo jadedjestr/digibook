@@ -873,6 +873,7 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | `AccountValidationAlert` | `src/components/AccountValidationAlert.jsx` | Flags fixed expenses pointing at a deleted account, with a link to fix them |
 | `PaymentSourceSelector` | `src/components/PaymentSourceSelector.jsx` | Combined account/credit card selector |
 | `PaycheckManager` | `src/components/PaycheckManager.jsx` | Paycheck settings editor (date + frequency) |
+| `AppearanceCard` | `src/pages/Settings/AppearanceCard.jsx` | Glass transparency, ambient strength, and the ambient palette. Each control writes one CSS variable, so it re-tints the whole app live — including the card being adjusted |
 | `PrivacyWrapper` | `src/components/PrivacyWrapper.jsx` | Conditionally hides content in privacy mode |
 
 ---
@@ -1038,6 +1039,34 @@ Security utilities.
 |---|---|
 | `exportJSONData(progressCallback)` | Full database export as downloadable JSON file |
 
+### `appearance.js`
+
+**Path:** `src/utils/appearance.js`
+
+Glass transparency, ambient strength and ambient colours. Every reader is
+synchronous, total, and has a default — nothing here throws, because it runs
+before first paint.
+
+| Function | Description |
+|---|---|
+| `getStoredTint()` / `setStoredTint(v)` | Glass transparency, 0–1, written to `--glass-tint` |
+| `getStoredAmbient()` / `setStoredAmbient(v)` | Ambient ground strength, 0–1, written to `--ambient-strength` |
+| `getStoredAmbientColors()` / `setStoredAmbientColors(c)` | The three hex stops, written to CSS as `R, G, B` triples |
+| `matchPreset(colors)` | The matching preset id, or `null` for a custom palette |
+| `getAppearanceSnapshot()` | The object the export carries |
+| `applyAppearanceSnapshot(s)` | Applies a snapshot from a backup; each field validated independently |
+| `applyStoredTint()` / `applyStoredAmbient()` / `applyStoredAmbientColors()` | Called once at startup from `src/main.jsx` |
+| `AMBIENT_PRESETS` | Six named palettes; `AMBIENT_PRESETS[0]` is the default |
+
+Two guards worth knowing, both learned the hard way:
+
+- **A missing key must not read as 0.** `Number(null)` and `Number('')` are
+  both `0`, which is finite — a naive numeric guard accepts an absent
+  preference as a real value of zero, and a first run renders every panel
+  fully transparent. `normalize()` rejects null and empty string explicitly.
+- **A partial palette is rejected, not merged.** Blending two chosen colours
+  with one from storage produces a combination the user never saw.
+
 ### `logger.js`
 
 Structured logging with levels: `debug`, `info`, `warn`, `error`, `success`, `db`, `component`.
@@ -1147,7 +1176,62 @@ Only `currentPage` and `isPanelOpen` are persisted to localStorage via Zustand's
 
 ### Liquid Glass
 
-Digibook uses a custom "Liquid Glass" design system inspired by Apple's iOS glassmorphism aesthetic, implemented as a layered token system: a small Tailwind theme extension for the original glass utilities, plus a larger CSS custom-property system in `src/index.css` (added in the "liquid glass token refresh") that most components actually draw from — glass surfaces, elevation, and animation are all driven by CSS variables rather than one-off values.
+Digibook uses a custom "Liquid Glass" design system inspired by Apple's iOS glassmorphism aesthetic, implemented as a layered token system: a small Tailwind theme extension for the original glass utilities, plus a larger CSS custom-property system in `src/index.css` that most components actually draw from — glass surfaces, elevation, and animation are all driven by CSS variables rather than one-off values.
+
+The system was refit to iOS 27's revision of Liquid Glass, which moved depth
+from shadow spread to the edge of a surface. The three changes that matter
+when reading the tokens below: elevation is **border-first**, surfaces take a
+**flat fill** rather than a 135° gradient, and both answer to a user-facing
+transparency control.
+
+**Dark only.** `darkMode: 'class'` in `tailwind.config.js` with nothing adding
+a `.dark` class, so every `dark:` variant is inert. Tailwind's unset default
+is `media`, which wired those variants to the reader's OS preference and
+rendered the app near-white-on-near-white on a device set to Light. Paint dark
+values directly; do not reintroduce a `dark:` variant.
+
+#### Palette Aliasing — read before adding a colour
+
+The Tailwind colour words do not mean their names. `blue-*` resolves to ochre,
+`gray`/`slate` to warm neutrals, `amber`/`orange` to yellow. They are aliases
+kept so the ~640 existing colour utilities spread across ~58 component files
+survived the refit without a sweeping cosmetic diff — the shape of change that
+once put every modal behind its own backdrop for five months. **New markup
+should use the semantic names** — `accent`, `ink`, `ink-soft`, `surface`,
+`rule`.
+
+Roles are what keep the UI readable, and they do not overlap:
+
+| Role | Colour | Rule |
+|---|---|---|
+| Interactive | ochre `#e0915c` | Buttons, active nav, focus. **Never a status.** |
+| Succeeded | green `#10b981` | Paid, on track |
+| Caution | yellow `#eab308` | All warm alerts live here |
+| Wrong | red `#ef4444` | Error, overdue, destructive |
+
+The warm alert hues were collapsed into one yellow deliberately: an ochre
+accent beside an orange warning made "you can press this" and "this bill is
+late" the same colour.
+
+Raw `rgba()` written in a stylesheet or a JSX inline style bypasses this
+aliasing entirely, which is where the refit found its stragglers: the
+calendar's stylesheet, the empty-state SVGs, chart fills, and a primary-button
+gradient left running ochre to blue. Grep for the literal channel values, not
+the class names, when a colour looks wrong.
+
+#### Typography
+
+Self-hosted via `@fontsource`, imported in `src/main.jsx`. Not linked from
+Google: the app is local-first behind a service worker, where a third-party
+webfont renders wrong offline and reveals usage on every cold load. Latin
+subsets and used weights only — the unscoped entrypoints pull Cyrillic, Greek
+and Vietnamese for 31 files and 992KB.
+
+| Role | Face | Notes |
+|---|---|---|
+| Display | Bricolage Grotesque Variable | Headings. Figures are extremely proportional (a 2.2× width swing), so the heading rule sets `tabular-nums` |
+| Body | IBM Plex Sans | Ships tabular figures **by default**, which is why money columns already align |
+| Mono | IBM Plex Mono | Figures and labels where a mono texture is wanted |
 
 #### Tailwind Theme Extensions
 
@@ -1168,7 +1252,11 @@ boxShadow: {
   glass:       '0 4px 20px rgba(0, 0, 0, 0.25)',
   'glass-light': '0 4px 20px rgba(255, 255, 255, 0.1)',
 }
+fontFamily: { display: [...], sans: [...], mono: [...] }
 ```
+
+The `boxShadow` entries above are legacy: elevation now comes from the
+`--glass-elevation-*` custom properties, not these.
 
 #### CSS Custom Property Tokens (`src/index.css`)
 
@@ -1177,7 +1265,10 @@ boxShadow: {
 | Glass blur | `--glass-blur-light` (8px), `--glass-blur-medium` (14px), `--glass-blur-heavy` (20px) | Backdrop blur strength per surface |
 | Glass opacity | `--glass-opacity-subtle` (0.03) through `--glass-opacity-heavy` (0.2) | Surface fill opacity scale |
 | Glass border | `--glass-border-opacity`, `-hover`, `-focus` | Border opacity by interaction state |
-| Elevation | `--glass-elevation-0` through `--glass-elevation-3` | Layered box-shadow presets, from flat to modal-level depth, each paired with an inner-glow highlight |
+| Elevation | `--glass-elevation-0` through `--glass-elevation-4` | **Border-first, not shadow spread.** Each level is a dark hairline just outside the surface (`--glass-edge-dark`), a short contact shadow, and a bright specular line just inside (`--glass-specular`). Levels separate by edge contrast and contact distance. The old presets were ambient shadows up to 64px, which vanish over busy or light content and made panels read as a sheen rather than a surface |
+| Glass fill | `--glass-fill`, `--glass-tint` | Flat surface alpha, not a gradient. `--glass-tint` (0–1) is the user-facing transparency control; `--glass-fill` is the alpha it computes to, exposed so variants can sit further back — `.glass-table` takes roughly half, because tint that reads as glass on a 300px card is a wash across a 700px table |
+| Ambient ground | `--ambient-top`, `--ambient-middle`, `--ambient-bottom`, `--ambient-strength` | Three colours (bare `R, G, B` triples so each gradient stop can take its own alpha) driving the five radial gradients in `.app-ambient`. Without something behind it, `backdrop-filter` blurs flat near-black and the glass is invisible |
+| Safe areas | `.safe-area-padded`, `.app-shell` | `env(safe-area-inset-*)` padding on the scroll container, and `100dvh` rather than `100vh` — on iOS Safari `100vh` is the viewport with the toolbar collapsed, so a full-height shell sits partly behind it |
 | Duration | `--duration-fast` (150ms), `--duration-snappy` (200ms), `--duration-normal` (300ms), `--duration-slow` (500ms) | Standard animation/transition durations |
 | Easing | `--easing-standard`, `--easing-decelerate`, `--easing-accelerate`, `--easing-bounce` / `--easing-spring` (same curve, `cubic-bezier(0.34, 1.56, 0.64, 1)`) | Standard easing curves; the spring curve is used for anything that should feel "alive" (page transitions, modal entrances, the sidebar drawer) |
 
@@ -1185,7 +1276,7 @@ boxShadow: {
 
 | Class | Usage |
 |---|---|
-| `.glass-surface` | Base glass treatment (blur + gradient fill + border + elevation shadow + inner glow) that other glass classes build on |
+| `.glass-surface` | Base glass treatment that other glass classes build on: saturated backdrop blur, flat tinted fill driven by `--glass-fill`, a full 1px border, and border-first elevation. The border carries the depth here — it is not decoration |
 | `.glass-card` | Content cards with backdrop blur |
 | `.glass-panel` | Larger content panels |
 | `.glass-sidebar` | Sidebar with fixed glass styling |
@@ -1271,14 +1362,44 @@ decoratively stops carrying meaning where it matters.
 
 `CURRENT_DATA_VERSION` in `src/services/dataManager.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **6**
-(raised from 5 when `incomeSources` was added).
+looks like, the other what the database looks like — and it is currently **7**
+(5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was).
 
 Because transfer between devices is by file rather than sync, this is a
 product-level compatibility requirement, not an implementation detail: a file
 exported by a newer build must either import into an older one or fail with a
 clear message, never corrupt it. **Review this constant whenever a schema
 change alters what is exported.**
+
+#### The `appearance` object — the one export member that is not a table
+
+Appearance settings live in `localStorage`, not Dexie, because they must be
+applied before first paint and a Dexie read is async. They still travel, as
+one unit, so a backup opened on another device looks like the device it came
+from:
+
+```json
+"appearance": {
+  "glassTint": 0.35,
+  "ambientStrength": 1,
+  "ambientColors": { "top": "#3874e0", "middle": "#109679", "bottom": "#c67426" }
+}
+```
+
+Three rules govern it, all in `src/utils/appearance.js`:
+
+- **Applied only after the import transaction commits.** `localStorage` sits
+  outside IndexedDB and cannot be rolled back, so writing it earlier would let
+  a failed import silently restyle the app while changing none of the data.
+- **Absent means untouched.** Every field is optional and validated
+  independently, so a version 6 file — anything exported before this shipped —
+  leaves the current theme exactly as it is.
+- **Not validated by `validateImportData()`.** Deliberate: it is cosmetic, and
+  failing an otherwise-good import of real financial data over a malformed
+  colour would be the wrong trade.
+
+The accepted cost, chosen explicitly: importing a backup to restore data also
+replaces that device's theme.
 
 #### Adding a table to the export
 
