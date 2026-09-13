@@ -97,6 +97,82 @@ describe('dbHelpers.applyExpensePaymentChangeAtomic (atomic paidAmount)', () => 
     ]);
   });
 
+  // Regression: sanitizeExpenseData was being run on the bare
+  // {paidAmount, status} patch, where category is undefined - so its
+  // "not a card payment, null the target" rule fired and unlinked every
+  // paid card bill from the card it paid, making that payment
+  // uncorrectable. The suite missed it because every assertion checked
+  // what the payment CHANGED and none checked what it should have LEFT
+  // ALONE.
+  it('leaves fields the payment did not touch alone (credit card payment)', async () => {
+    const original = {
+      id: '1',
+      name: 'Pay Card',
+      dueDate: '2026-02-05',
+      amount: 20,
+      accountId: '1',
+      creditCardId: null,
+      targetCreditCardId: '1',
+      category: 'Credit Card Payment',
+      paidAmount: 0,
+      status: 'pending',
+      recurringTemplateId: null,
+      createdAt: now,
+    };
+    await db.fixedExpenses.bulkPut([original]);
+
+    await dbHelpers.applyExpensePaymentChangeAtomic('1', { paidAmount: 20 });
+
+    const after = await db.fixedExpenses.get('1');
+
+    // The two fields this call is allowed to change.
+    expect(after.paidAmount).toBe(20);
+    expect(after.status).toBe('paid');
+
+    // Everything else must survive untouched.
+    const volatile = ['paidAmount', 'status', 'updatedAt'];
+    for (const key of Object.keys(original)) {
+      if (volatile.includes(key)) continue;
+      expect({ [key]: after[key] }).toEqual({ [key]: original[key] });
+    }
+  });
+
+  it('keeps targetCreditCardId across repeated payment changes', async () => {
+    await db.fixedExpenses.bulkPut([
+      {
+        id: '1',
+        name: 'Pay Card',
+        dueDate: '2026-02-05',
+        amount: 20,
+        accountId: '1',
+        creditCardId: null,
+        targetCreditCardId: '1',
+        category: 'Credit Card Payment',
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: null,
+        createdAt: now,
+      },
+    ]);
+
+    // Pay, part-refund, then fully un-pay - the correction path a user
+    // reaches for after overpaying. Each hop must stay linked to the card.
+    for (const amount of [20, 10, 0]) {
+      await dbHelpers.applyExpensePaymentChangeAtomic('1', {
+        paidAmount: amount,
+      });
+      const row = await db.fixedExpenses.get('1');
+      expect(row.targetCreditCardId).toBe('1');
+      expect(row.category).toBe('Credit Card Payment');
+    }
+
+    // Balances are back where they started, with no drift.
+    const [account] = await db.accounts.toArray();
+    const [card] = await db.creditCards.toArray();
+    expect(account.currentBalance).toBe(100);
+    expect(card.balance).toBe(50);
+  });
+
   it('rolls back expense + balances if a mid-transaction balance write fails (credit card payment)', async () => {
     await db.fixedExpenses.bulkPut([
       {

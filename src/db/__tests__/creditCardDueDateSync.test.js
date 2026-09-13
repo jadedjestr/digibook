@@ -147,6 +147,12 @@ describe('Credit Card Due Date Sync', () => {
 
     expect(card.dueDate).toBe('2026-04-10');
     expect(expense.dueDate).toBe('2026-04-10');
+
+    // This patch touched only dueDate, so the card link must survive it.
+    // Sanitizing the bare patch used to null targetCreditCardId here, and
+    // this test sailed past it by asserting only what changed.
+    expect(expense.targetCreditCardId).toBe('1');
+    expect(expense.category).toBe('Credit Card Payment');
   });
 
   it('does not sync when updateCreditCard is called without dueDate in updates', async () => {

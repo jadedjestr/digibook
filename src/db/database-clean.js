@@ -505,6 +505,25 @@ async function resolveCategoryIdByName(categoryName) {
   return cat.id;
 }
 
+/**
+ * Build the partial row to persist, taking each changed field from the
+ * sanitized WHOLE expense rather than from a sanitized patch.
+ *
+ * sanitizeExpenseData reasons about a complete expense - it nulls
+ * targetCreditCardId when category isn't 'Credit Card Payment', nulls the
+ * unused payment source, and so on. Run it on a bare patch and those rules
+ * fire against fields the patch never mentioned: a `{paidAmount, status}`
+ * update has no category, so every card payment silently unlinked the
+ * expense from the card it paid, leaving that payment uncorrectable.
+ */
+function pickSanitizedUpdates(sanitizedFullExpense, updates) {
+  const picked = {};
+  for (const key of Object.keys(updates)) {
+    picked[key] = sanitizedFullExpense[key];
+  }
+  return picked;
+}
+
 // Collapses concurrent same-tick calls to ensureCreditCardPaymentExpensesLinked
 // (e.g. React StrictMode's double-invoked mount effect) into one shared run.
 // Not a general mutex - see createExpenseForCard's own transaction for the
@@ -4017,7 +4036,7 @@ export const dbHelpers = {
       validateExpense(sanitizedData, options);
 
       // Only update the fields that were actually changed
-      const sanitizedUpdates = sanitizeExpenseData(updates);
+      const sanitizedUpdates = pickSanitizedUpdates(sanitizedData, updates);
       if (Object.prototype.hasOwnProperty.call(updates, 'category')) {
         sanitizedUpdates.categoryId =
           updates.categoryId !== undefined
@@ -4123,7 +4142,10 @@ export const dbHelpers = {
         };
 
         // Persist expense first (within the same transaction).
-        const sanitizedUpdates = sanitizeExpenseData(updatesWithDerived);
+        const sanitizedUpdates = pickSanitizedUpdates(
+          sanitizeExpenseData({ ...updatedExpense, ...updatesWithDerived }),
+          updatesWithDerived,
+        );
         const ts = nowIso();
         await db.fixedExpenses.update(expenseId, {
           ...sanitizedUpdates,
