@@ -267,7 +267,7 @@ const MonthlyTrends = ({ history = [], months = 12, onMonthsChange }) => {
           <Legend />
           <Bar dataKey='totalBudget' fill='#6366f1' name='Budget' />
           <Bar dataKey='totalActual' fill='#8b5cf6' name='Actual' />
-          <Bar dataKey='totalOverpayment' fill='#f97316' name='Overpayment' />
+          <Bar dataKey='totalOverpayment' fill='#eab308' name='Overpayment' />
         </BarChart>
       </ResponsiveContainer>
     </div>

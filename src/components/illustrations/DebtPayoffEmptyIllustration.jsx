@@ -8,8 +8,8 @@ const DebtPayoffEmptyIllustration = () => (
   >
     <defs>
       <radialGradient id='calcGlow' cx='50%' cy='40%' r='60%'>
-        <stop offset='0%' stopColor='rgba(147,197,253,0.2)' />
-        <stop offset='100%' stopColor='rgba(59,130,246,0.04)' />
+        <stop offset='0%' stopColor='rgba(240, 192, 155,0.2)' />
+        <stop offset='100%' stopColor='rgba(224, 145, 92,0.04)' />
       </radialGradient>
     </defs>
     <rect
@@ -19,7 +19,7 @@ const DebtPayoffEmptyIllustration = () => (
       height='56'
       rx='8'
       fill='url(#calcGlow)'
-      stroke='rgba(59,130,246,0.4)'
+      stroke='rgba(224, 145, 92,0.4)'
       strokeWidth='1'
     />
     <rect
@@ -28,8 +28,8 @@ const DebtPayoffEmptyIllustration = () => (
       width='36'
       height='12'
       rx='4'
-      fill='rgba(59,130,246,0.18)'
-      stroke='rgba(59,130,246,0.3)'
+      fill='rgba(224, 145, 92,0.18)'
+      stroke='rgba(224, 145, 92,0.3)'
       strokeWidth='0.75'
     />
     <text
@@ -37,7 +37,7 @@ const DebtPayoffEmptyIllustration = () => (
       y='25.5'
       textAnchor='middle'
       fontSize='9'
-      fill='rgba(147,197,253,0.8)'
+      fill='rgba(240, 192, 155,0.8)'
       fontFamily='system-ui'
       fontWeight='500'
     >
@@ -49,8 +49,8 @@ const DebtPayoffEmptyIllustration = () => (
       width='10'
       height='10'
       rx='3'
-      fill='rgba(59,130,246,0.2)'
-      stroke='rgba(59,130,246,0.35)'
+      fill='rgba(224, 145, 92,0.2)'
+      stroke='rgba(224, 145, 92,0.35)'
       strokeWidth='0.75'
     />
     <rect
@@ -59,8 +59,8 @@ const DebtPayoffEmptyIllustration = () => (
       width='10'
       height='10'
       rx='3'
-      fill='rgba(59,130,246,0.2)'
-      stroke='rgba(59,130,246,0.35)'
+      fill='rgba(224, 145, 92,0.2)'
+      stroke='rgba(224, 145, 92,0.35)'
       strokeWidth='0.75'
     />
     <rect
@@ -69,8 +69,8 @@ const DebtPayoffEmptyIllustration = () => (
       width='10'
       height='10'
       rx='3'
-      fill='rgba(59,130,246,0.35)'
-      stroke='rgba(59,130,246,0.5)'
+      fill='rgba(224, 145, 92,0.35)'
+      stroke='rgba(224, 145, 92,0.5)'
       strokeWidth='0.75'
     />
     <text
@@ -78,7 +78,7 @@ const DebtPayoffEmptyIllustration = () => (
       y='41'
       textAnchor='middle'
       fontSize='8'
-      fill='rgba(147,197,253,0.9)'
+      fill='rgba(240, 192, 155,0.9)'
       fontFamily='system-ui'
     >
       +
@@ -89,8 +89,8 @@ const DebtPayoffEmptyIllustration = () => (
       width='10'
       height='10'
       rx='3'
-      fill='rgba(59,130,246,0.2)'
-      stroke='rgba(59,130,246,0.35)'
+      fill='rgba(224, 145, 92,0.2)'
+      stroke='rgba(224, 145, 92,0.35)'
       strokeWidth='0.75'
     />
     <rect
@@ -99,8 +99,8 @@ const DebtPayoffEmptyIllustration = () => (
       width='10'
       height='10'
       rx='3'
-      fill='rgba(59,130,246,0.2)'
-      stroke='rgba(59,130,246,0.35)'
+      fill='rgba(224, 145, 92,0.2)'
+      stroke='rgba(224, 145, 92,0.35)'
       strokeWidth='0.75'
     />
     <rect
@@ -109,16 +109,16 @@ const DebtPayoffEmptyIllustration = () => (
       width='10'
       height='10'
       rx='3'
-      fill='rgba(59,130,246,0.2)'
-      stroke='rgba(59,130,246,0.35)'
+      fill='rgba(224, 145, 92,0.2)'
+      stroke='rgba(224, 145, 92,0.35)'
       strokeWidth='0.75'
     />
     <circle
       cx='62'
       cy='58'
       r='10'
-      fill='rgba(59,130,246,0.15)'
-      stroke='rgba(59,130,246,0.4)'
+      fill='rgba(224, 145, 92,0.15)'
+      stroke='rgba(224, 145, 92,0.4)'
       strokeWidth='1'
     />
     <line
@@ -126,7 +126,7 @@ const DebtPayoffEmptyIllustration = () => (
       y1='58'
       x2='66'
       y2='58'
-      stroke='#60a5fa'
+      stroke='#e8a778'
       strokeWidth='1.5'
       strokeLinecap='round'
     />
@@ -135,7 +135,7 @@ const DebtPayoffEmptyIllustration = () => (
       y1='54'
       x2='62'
       y2='62'
-      stroke='#60a5fa'
+      stroke='#e8a778'
       strokeWidth='1.5'
       strokeLinecap='round'
     />

@@ -11,7 +11,7 @@ const FixedExpensesEmptyIllustration = () => (
       cy='40'
       r='28'
       fill='none'
-      stroke='rgba(59,130,246,0.12)'
+      stroke='rgba(224, 145, 92,0.12)'
       strokeWidth='0.75'
       strokeDasharray='2 3'
     />
@@ -20,7 +20,7 @@ const FixedExpensesEmptyIllustration = () => (
       cy='40'
       r='20'
       fill='none'
-      stroke='rgba(59,130,246,0.1)'
+      stroke='rgba(224, 145, 92,0.1)'
       strokeWidth='0.75'
       strokeDasharray='2 4'
     />
@@ -28,85 +28,85 @@ const FixedExpensesEmptyIllustration = () => (
       cx='44'
       cy='12'
       r='5'
-      fill='rgba(59,130,246,0.25)'
-      stroke='rgba(59,130,246,0.5)'
+      fill='rgba(224, 145, 92,0.25)'
+      stroke='rgba(224, 145, 92,0.5)'
       strokeWidth='1'
     />
-    <circle cx='44' cy='12' r='2' fill='rgba(147,197,253,0.6)' />
+    <circle cx='44' cy='12' r='2' fill='rgba(240, 192, 155,0.6)' />
     <circle
       cx='72'
       cy='26'
       r='4'
-      fill='rgba(59,130,246,0.18)'
-      stroke='rgba(59,130,246,0.38)'
+      fill='rgba(224, 145, 92,0.18)'
+      stroke='rgba(224, 145, 92,0.38)'
       strokeWidth='1'
     />
-    <circle cx='72' cy='26' r='1.5' fill='rgba(147,197,253,0.4)' />
+    <circle cx='72' cy='26' r='1.5' fill='rgba(240, 192, 155,0.4)' />
     <circle
       cx='72'
       cy='54'
       r='4'
-      fill='rgba(59,130,246,0.18)'
-      stroke='rgba(59,130,246,0.38)'
+      fill='rgba(224, 145, 92,0.18)'
+      stroke='rgba(224, 145, 92,0.38)'
       strokeWidth='1'
     />
-    <circle cx='72' cy='54' r='1.5' fill='rgba(147,197,253,0.4)' />
+    <circle cx='72' cy='54' r='1.5' fill='rgba(240, 192, 155,0.4)' />
     <circle
       cx='44'
       cy='68'
       r='4'
-      fill='rgba(59,130,246,0.18)'
-      stroke='rgba(59,130,246,0.38)'
+      fill='rgba(224, 145, 92,0.18)'
+      stroke='rgba(224, 145, 92,0.38)'
       strokeWidth='1'
     />
-    <circle cx='44' cy='68' r='1.5' fill='rgba(147,197,253,0.4)' />
+    <circle cx='44' cy='68' r='1.5' fill='rgba(240, 192, 155,0.4)' />
     <circle
       cx='16'
       cy='54'
       r='3.5'
-      fill='rgba(59,130,246,0.1)'
-      stroke='rgba(59,130,246,0.25)'
+      fill='rgba(224, 145, 92,0.1)'
+      stroke='rgba(224, 145, 92,0.25)'
       strokeWidth='0.75'
     />
     <circle
       cx='16'
       cy='26'
       r='3.5'
-      fill='rgba(59,130,246,0.1)'
-      stroke='rgba(59,130,246,0.25)'
+      fill='rgba(224, 145, 92,0.1)'
+      stroke='rgba(224, 145, 92,0.25)'
       strokeWidth='0.75'
     />
     <circle
       cx='30'
       cy='20'
       r='2.5'
-      fill='rgba(59,130,246,0.08)'
-      stroke='rgba(59,130,246,0.2)'
+      fill='rgba(224, 145, 92,0.08)'
+      stroke='rgba(224, 145, 92,0.2)'
       strokeWidth='0.75'
     />
     <circle
       cx='58'
       cy='20'
       r='2.5'
-      fill='rgba(59,130,246,0.08)'
-      stroke='rgba(59,130,246,0.2)'
+      fill='rgba(224, 145, 92,0.08)'
+      stroke='rgba(224, 145, 92,0.2)'
       strokeWidth='0.75'
     />
     <circle
       cx='44'
       cy='40'
       r='8'
-      fill='rgba(59,130,246,0.15)'
-      stroke='rgba(59,130,246,0.4)'
+      fill='rgba(224, 145, 92,0.15)'
+      stroke='rgba(224, 145, 92,0.4)'
       strokeWidth='1'
     />
-    <circle cx='44' cy='40' r='3' fill='rgba(147,197,253,0.5)' />
+    <circle cx='44' cy='40' r='3' fill='rgba(240, 192, 155,0.5)' />
     <line
       x1='44'
       y1='40'
       x2='44'
       y2='33'
-      stroke='#60a5fa'
+      stroke='#e8a778'
       strokeWidth='1.5'
       strokeLinecap='round'
     />
@@ -115,7 +115,7 @@ const FixedExpensesEmptyIllustration = () => (
       y1='40'
       x2='49'
       y2='40'
-      stroke='#60a5fa'
+      stroke='#e8a778'
       strokeWidth='1.25'
       strokeLinecap='round'
     />

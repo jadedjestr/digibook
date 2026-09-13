@@ -6,6 +6,7 @@ import {
   DollarSign,
   Settings as SettingsIcon,
   RefreshCw,
+  Palette,
 } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -25,6 +26,7 @@ import {
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 
+import AppearanceCard from './Settings/AppearanceCard';
 import AuditLogCard from './Settings/AuditLogCard';
 import DataManagementCard from './Settings/DataManagementCard';
 
@@ -131,6 +133,11 @@ const Settings = ({ onDataChange }) => {
 
   const cards = useMemo(
     () => [
+      {
+        title: 'Appearance',
+        icon: Palette,
+        content: <AppearanceCard />,
+      },
       {
         title: 'Paycheck Management',
         icon: DollarSign,

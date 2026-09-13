@@ -4,6 +4,106 @@ export default {
   theme: {
     extend: {
       colors: {
+        /* ================================================================
+           PALETTE REMAP — read this before adding a colour anywhere.
+
+           641 hardcoded colour utilities are spread across 57 component
+           files. Rewriting every call site to change the accent would be a
+           57-file diff, and a cosmetic 57-file diff is precisely what put
+           every modal behind its own backdrop for five months (61db054).
+
+           So the names are redefined instead of the call sites. `blue-*`
+           renders ochre, `gray-*`/`slate-*` render the warm neutrals, and
+           `amber`/`orange` collapse into the single yellow caution hue.
+           Every existing class keeps working, the relative lightness the
+           UI already depends on is preserved, and reverting is one file.
+
+           The cost is that a class named `bg-blue-500` paints ochre. Use
+           the SEMANTIC names below in anything new — `bg-accent`,
+           `text-ink-soft`, `border-rule` — and treat the colour-word
+           scales as legacy aliases that exist to keep old markup correct.
+
+           ROLES, which are what actually keep the UI readable:
+             ochre  — interactive only. Buttons, active nav, focus.
+             green  — succeeded, paid, on track.
+             yellow — caution. Every warm alert lives here now.
+             red    — error, overdue, destructive.
+           Ochre is never a status and yellow is never a control. That
+           separation is the whole reason the alert oranges moved: an
+           ochre accent sitting beside an orange warning made "you can
+           press this" and "this bill is late" the same colour.
+           ================================================================ */
+
+        /* Ochre — the accent. Aliased over `blue` so existing markup
+           follows. 500 is the base; the ramp keeps blue's lightness
+           ordering so `blue-300` text stays lighter than `blue-500` fills. */
+        accent: {
+          200: '#f7dcc6',
+          300: '#f0c09b',
+          400: '#e8a778',
+          500: '#e0915c',
+          600: '#c87540',
+          700: '#a35a2e',
+          DEFAULT: '#e0915c',
+        },
+        blue: {
+          200: '#f7dcc6',
+          300: '#f0c09b',
+          400: '#e8a778',
+          500: '#e0915c',
+          600: '#c87540',
+          700: '#a35a2e',
+        },
+
+        /* Warm-cool neutrals, carried from the design review page. */
+        ink: {
+          DEFAULT: '#e9ebef',
+          soft: '#a2a9b4',
+          faint: '#6e757f',
+        },
+        surface: {
+          base: '#0d0f13',
+          raised: '#15181e',
+          rule: '#2a2f38',
+        },
+        rule: '#2a2f38',
+
+        gray: {
+          300: '#c6ccd4',
+          400: '#a2a9b4',
+          500: '#6e757f',
+          600: '#4a515b',
+          700: '#2a2f38',
+          800: '#1f242b',
+        },
+        slate: {
+          50: '#f4f5f7',
+          100: '#e9ebef',
+          800: '#15181e',
+          900: '#0d0f13',
+        },
+
+        /* Caution. `amber` and `orange` are folded into yellow so the warm
+           alert space is one hue that cannot be mistaken for the accent. */
+        yellow: {
+          200: '#fef08a',
+          300: '#fde047',
+          400: '#facc15',
+          500: '#eab308',
+          600: '#ca8a04',
+        },
+        amber: {
+          200: '#fef08a',
+          300: '#fde047',
+          400: '#facc15',
+          500: '#eab308',
+        },
+        orange: {
+          300: '#fde047',
+          400: '#facc15',
+          500: '#eab308',
+        },
+
         glass: {
           50: 'rgba(255, 255, 255, 0.05)',
           100: 'rgba(255, 255, 255, 0.1)',
@@ -16,6 +116,24 @@ export default {
           light: 'rgba(255, 255, 255, 0.8)',
           dark: 'rgba(0, 0, 0, 0.8)',
         },
+      },
+
+      fontFamily: {
+        display: [
+          '"Bricolage Grotesque Variable"',
+          'Bricolage Grotesque',
+          'Helvetica Neue',
+          'Arial',
+          'sans-serif',
+        ],
+        sans: ['"IBM Plex Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: [
+          '"IBM Plex Mono"',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'monospace',
+        ],
       },
       backdropBlur: {
         glass: '14px',

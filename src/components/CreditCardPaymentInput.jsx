@@ -105,7 +105,7 @@ const CreditCardPaymentInput = ({
       hover:border-white/30
       hover:bg-gradient-to-r hover:from-white/5 hover:via-white/10 hover:to-white/5
       focus:transform focus:-translate-y-0.5
-      focus:shadow-[0_10px_25px_rgba(0,0,0,0.2),0_0_0_3px_rgba(59,130,246,0.4),0_0_20px_rgba(59,130,246,0.2)]
+      focus:shadow-[0_10px_25px_rgba(0,0,0,0.2),0_0_0_3px_rgba(224, 145, 92,0.4),0_0_20px_rgba(224, 145, 92,0.2)]
       focus:border-blue-400/60
       ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
     `;

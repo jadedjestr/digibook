@@ -12,14 +12,51 @@ const IDBKeyRange = FDBKeyRange;
 global.indexedDB = indexedDB;
 global.IDBKeyRange = IDBKeyRange;
 
-// Mock localStorage
-const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
+/**
+ * localStorage — a working in-memory implementation, not bare stubs.
+ *
+ * This was four `vi.fn()`s that stored nothing and returned `undefined`.
+ * That double is worse than no double: it cannot fail, so every assertion
+ * about persistence passed vacuously, and it reported `undefined` for a
+ * missing key where the real API returns `null` — the precise difference
+ * that let a missing-key bug reach the browser (`Number(null)` is 0, so an
+ * absent preference read as a real value of 0).
+ *
+ * Spies are kept on top so tests can still assert call counts.
+ */
+const createLocalStorageMock = () => {
+  let store = new Map();
+  return {
+    getItem: vi.fn(key =>
+      store.has(String(key)) ? store.get(String(key)) : null,
+    ),
+    setItem: vi.fn((key, value) => {
+      store.set(String(key), String(value));
+    }),
+    removeItem: vi.fn(key => {
+      store.delete(String(key));
+    }),
+    clear: vi.fn(() => {
+      store = new Map();
+    }),
+    key: vi.fn(index => [...store.keys()][index] ?? null),
+    get length() {
+      return store.size;
+    },
+  };
 };
+
+const localStorageMock = createLocalStorageMock();
 global.localStorage = localStorageMock;
+
+// Some code reaches it through window rather than the global.
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'localStorage', {
+    value: localStorageMock,
+    writable: true,
+    configurable: true,
+  });
+}
 
 // Mock logger
 vi.mock('../utils/logger', () => ({

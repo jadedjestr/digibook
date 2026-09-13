@@ -34,19 +34,45 @@
   --easing-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
   --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* Elevation System Tokens */
-  --glass-elevation-0:
-    0 1px 2px rgba(0, 0, 0, 0.05), 0 1px 1px rgba(255, 255, 255, 0.05);
-  --glass-elevation-1:
-    0 4px 20px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(255, 255, 255, 0.1);
-  --glass-elevation-2:
-    0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(255, 255, 255, 0.15);
-  --glass-elevation-3:
-    0 16px 48px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(255, 255, 255, 0.2);
-  --glass-elevation-4:
-    0 24px 64px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(255, 255, 255, 0.25);
+  /* ==========================================================
+     ELEVATION — iOS 27 border-first.
 
-  --glass-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+     Depth used to come from spread: every level was a wide
+     ambient shadow, up to 64px. iOS 27 moved the work to the
+     edge instead — a defined border, a dark hairline just
+     outside it, and a bright specular line just inside — and
+     demoted shadow to a short contact shadow.
+
+     The practical gain is that an edge holds at any backdrop.
+     A soft 20px shadow disappears over busy or light content,
+     which is what made panels read as a sheen rather than a
+     surface. Levels now separate by edge contrast and contact
+     distance, not by how far the blur spreads.
+     ========================================================== */
+  --glass-edge-dark: 0 0 0 0.5px rgba(0, 0, 0, 0.5);
+  --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --glass-specular-base: inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+
+  --glass-elevation-0:
+    0 0 0 0.5px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  --glass-elevation-1:
+    var(--glass-edge-dark), 0 1px 3px rgba(0, 0, 0, 0.22),
+    var(--glass-specular), var(--glass-specular-base);
+  --glass-elevation-2:
+    var(--glass-edge-dark), 0 2px 6px rgba(0, 0, 0, 0.28),
+    var(--glass-specular), var(--glass-specular-base);
+  --glass-elevation-3:
+    var(--glass-edge-dark), 0 4px 12px rgba(0, 0, 0, 0.34),
+    var(--glass-specular), var(--glass-specular-base);
+  --glass-elevation-4:
+    var(--glass-edge-dark), 0 8px 20px rgba(0, 0, 0, 0.4),
+    var(--glass-specular), var(--glass-specular-base);
+
+  --glass-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+
+  /* User-facing transparency, iOS 27's Settings slider. 0 is ultra clear,
+     1 is fully tinted. Read by .glass-surface; written by Settings. */
+  --glass-tint: 0.35;
 
   /* Spacing System Tokens */
   --space-micro: 2px;
@@ -81,17 +107,17 @@
   --glass-success-border: rgba(34, 197, 94, 0.3);
   --glass-success-text: rgba(187, 247, 208, 1);
 
-  --glass-warning-bg: rgba(245, 158, 11, 0.1);
-  --glass-warning-border: rgba(245, 158, 11, 0.3);
-  --glass-warning-text: rgba(252, 211, 77, 1);
+  --glass-warning-bg: rgba(234, 179, 8, 0.1);
+  --glass-warning-border: rgba(234, 179, 8, 0.32);
+  --glass-warning-text: rgba(253, 224, 71, 1);
 
   --glass-error-bg: rgba(239, 68, 68, 0.1);
   --glass-error-border: rgba(239, 68, 68, 0.3);
   --glass-error-text: rgba(252, 165, 165, 1);
 
-  --glass-info-bg: rgba(59, 130, 246, 0.1);
-  --glass-info-border: rgba(59, 130, 246, 0.3);
-  --glass-info-text: rgba(147, 197, 253, 1);
+  --glass-info-bg: rgba(224, 145, 92, 0.1);
+  --glass-info-border: rgba(224, 145, 92, 0.32);
+  --glass-info-text: rgba(240, 192, 155, 1);
 
   /* Typography Tokens */
   --text-shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -103,26 +129,44 @@
      ======================================== */
 
   /* 60% - Dominant Color (Background) */
-  --color-dominant-base: #0f172a; /* slate-900 */
-  --color-dominant-variant: #1e293b; /* slate-800 */
+  --color-dominant-base: #0d0f13; /* near-black, faint cool bias */
+  --color-dominant-variant: #15181e;
 
   /* 30% - Secondary Color (Glass Surfaces) */
   --color-secondary-base: rgba(255, 255, 255, 0.08);
   --color-secondary-elevated: rgba(255, 255, 255, 0.12);
   --color-secondary-hover: rgba(255, 255, 255, 0.15);
 
-  /* 10% - Accent Color (Primary Actions) */
-  --color-accent: #3b82f6; /* blue-500 */
-  --color-accent-hover: #2563eb; /* blue-600 */
-  --color-accent-light: rgba(59, 130, 246, 0.2);
-  --color-accent-border: rgba(59, 130, 246, 0.3);
-  --color-accent-text: #93c5fd; /* blue-300 */
+  /* Neutral text ramp. Pure white is deliberately avoided for body copy —
+     against a near-black ground it glares, and #e9ebef holds the same
+     hierarchy with less fatigue on a screen read daily. */
+  --color-ink: #e9ebef;
+  --color-ink-soft: #a2a9b4;
+  --color-ink-faint: #6e757f;
+  --color-rule: #2a2f38;
+
+  /* 10% - Accent (Primary Actions).
+     Ochre is INTERACTIVE ONLY: buttons, active nav, focus. It is never a
+     status. The warm alert hues moved to yellow precisely so an accent and
+     an overdue bill can never read as the same thing. */
+  --color-accent: #e0915c;
+  --color-accent-hover: #c87540;
+  --color-accent-light: rgba(224, 145, 92, 0.2);
+  --color-accent-border: rgba(224, 145, 92, 0.35);
+  --color-accent-text: #f0c09b;
 
   /* Semantic Colors (Status Only) */
   --color-success: #10b981;
-  --color-warning: #f59e0b;
+  --color-warning: #eab308; /* pure yellow, held clear of the ochre accent */
   --color-error: #ef4444;
-  --color-info: #3b82f6;
+  --color-info: #e0915c;
+
+  /* Typography. Self-hosted; see src/main.jsx for why. */
+  --font-display:
+    'Bricolage Grotesque Variable', 'Bricolage Grotesque', 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-body: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* Custom Scrollbar Styles */
@@ -150,27 +194,38 @@
 
 @layer base {
   html {
-    font-family:
-      -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-      sans-serif;
+    font-family: var(--font-body);
   }
 
   body {
     @apply bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900;
     @apply min-h-screen;
-    @apply text-white;
+    font-family: var(--font-body);
+    color: var(--color-ink);
   }
 
-  /* WCAG AA contrast improvements */
+  /* Headings carry the display face. The text-shadow the old rule applied
+     is gone: it existed to lift white text off a mid-slate ground, and on
+     the near-black ground it only smears the glyph edges. */
   h1,
   h2,
   h3,
   h4,
   h5,
   h6 {
-    @apply text-white;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.018em;
+    color: #fff;
+  }
+
+  /* Money and dates are read in columns and compared down the page, so they
+     are set in the mono face with tabular figures — digits line up and a
+     changing amount does not reflow the row it sits in. */
+  .tabular,
+  .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -181,24 +236,31 @@
 
   /* Base Glass Surface Primitive */
   .glass-surface {
-    /* Backdrop blur with fallback */
-    backdrop-filter: blur(var(--glass-blur-medium, 14px));
-    -webkit-backdrop-filter: blur(var(--glass-blur-medium, 14px));
+    /* Blur is heavier and saturated: iOS 27 diffuses busy backdrops harder
+       so text over them stays readable, and the saturation boost keeps
+       colour behind the glass from going grey as the blur widens. */
+    backdrop-filter: blur(var(--glass-blur-heavy, 20px)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--glass-blur-heavy, 20px)) saturate(180%);
 
-    /* Multi-layer gradient background */
-    background: linear-gradient(
-      135deg,
-      var(--glass-surface-primary) 0%,
-      var(--glass-surface-elevated) 50%,
-      var(--glass-surface-primary) 100%
-    );
+    /* Flat fill, not a 135° gradient. The gradient read as a sheen sliding
+       across the panel rather than a surface with a consistent tint, and it
+       is what made the boundary ambiguous over busy content. Alpha answers
+       to --glass-tint, which the Settings slider drives.
 
-    /* Border and radius */
+       Exposed as --glass-fill so variants can sit further back without
+       restating the tint maths: a full-width table carrying the same alpha
+       as a small floating card reads as a slab, because tint that looks
+       right on 300px of glass is a wash across 700px. */
+    --glass-fill: calc(0.055 + var(--glass-tint) * 0.325);
+    background: rgba(255, 255, 255, var(--glass-fill));
+
+    /* Border and radius. A full 1px, not a hairline: this is the edge that
+       now carries the elevation. */
     border-radius: var(--radius-2xl);
-    border: 0.5px solid var(--glass-border-primary);
+    border: 1px solid rgba(255, 255, 255, calc(0.2 + var(--glass-tint) * 0.3));
 
-    /* Elevation shadow */
-    box-shadow: var(--glass-elevation-1), var(--glass-inner-glow);
+    /* Elevation: dark edge + contact shadow + specular, no ambient spread. */
+    box-shadow: var(--glass-elevation-1);
 
     /* Smooth transitions */
     transition:
@@ -254,7 +316,7 @@
     border-color: var(--glass-border-focus);
     box-shadow:
       var(--glass-elevation-2),
-      0 0 0 3px rgba(59, 130, 246, 0.3);
+      0 0 0 3px rgba(224, 145, 92, 0.3);
   }
 
   /* Elevation Variants */
@@ -297,7 +359,7 @@
     background: linear-gradient(
       135deg,
       var(--glass-warning-bg) 0%,
-      rgba(245, 158, 11, 0.15) 50%,
+      rgba(234, 179, 8, 0.15) 50%,
       var(--glass-warning-bg) 100%
     );
     border-color: var(--glass-warning-border);
@@ -319,7 +381,7 @@
     background: linear-gradient(
       135deg,
       var(--glass-info-bg) 0%,
-      rgba(59, 130, 246, 0.15) 50%,
+      rgba(224, 145, 92, 0.15) 50%,
       var(--glass-info-bg) 100%
     );
     border-color: var(--glass-info-border);
@@ -549,7 +611,7 @@
     background: linear-gradient(
       135deg,
       var(--color-accent-light) 0%,
-      rgba(59, 130, 246, 0.3) 50%,
+      rgba(224, 145, 92, 0.3) 50%,
       var(--color-accent-light) 100%
     );
     border-color: var(--color-accent-border);
@@ -559,11 +621,11 @@
   .glass-button--primary:hover {
     background: linear-gradient(
       135deg,
-      rgba(59, 130, 246, 0.3) 0%,
-      rgba(59, 130, 246, 0.4) 50%,
-      rgba(59, 130, 246, 0.3) 100%
+      rgba(224, 145, 92, 0.3) 0%,
+      rgba(224, 145, 92, 0.4) 50%,
+      rgba(224, 145, 92, 0.3) 100%
     );
-    border-color: rgba(59, 130, 246, 0.5);
+    border-color: rgba(224, 145, 92, 0.5);
   }
 
   .glass-button--secondary {
@@ -620,8 +682,8 @@
   }
 
   .glass-button--filter.active:hover {
-    background: rgba(59, 130, 246, 0.3);
-    border-color: rgba(59, 130, 246, 0.4);
+    background: rgba(224, 145, 92, 0.3);
+    border-color: rgba(224, 145, 92, 0.4);
   }
 
   /* Ripple Effect for Buttons */
@@ -727,7 +789,7 @@
     );
     box-shadow:
       var(--glass-elevation-1),
-      0 0 0 3px rgba(59, 130, 246, 0.3);
+      0 0 0 3px rgba(224, 145, 92, 0.3);
   }
 
   .glass-input:invalid {
@@ -759,6 +821,10 @@
   .glass-table {
     @apply glass-surface;
     @apply glass-surface--blur-light;
+    /* A table spans the full content width, so it takes roughly half the
+       fill a floating card does — otherwise the same alpha that reads as
+       glass on a card reads as a pale slab across the page. */
+    --glass-fill: calc(0.025 + var(--glass-tint) * 0.13);
     width: 100%;
     border-radius: var(--radius-2xl);
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -766,21 +832,21 @@
     overflow: hidden;
   }
 
+  /* The header row separates by weight, letter-spacing and a firm rule
+     beneath it — not by stacking another fill on the surface it sits on.
+     It previously layered a 0.12–0.18 gradient over the table's own tint,
+     which summed to roughly 0.30 white and read as a metallic band. */
   .glass-table th {
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.18) 50%,
-      rgba(255, 255, 255, 0.12) 100%
-    );
-    backdrop-filter: blur(var(--glass-blur-light));
-    -webkit-backdrop-filter: blur(var(--glass-blur-light));
-    padding: 10px var(--space-lg); /* Reduced vertical padding from var(--space-md) */
+    background: rgba(255, 255, 255, 0.04);
+    padding: 10px var(--space-lg);
     text-align: left;
+    font-family: var(--font-body);
+    font-size: 0.78rem;
     font-weight: 600;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    color: white;
-    text-shadow: var(--text-shadow-subtle);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+    color: var(--color-ink-soft);
   }
 
   .glass-table td {
@@ -1165,7 +1231,7 @@
   .glass-surface:focus-visible,
   .glass-button:focus-visible,
   .glass-input:focus-visible {
-    outline: 2px solid rgba(59, 130, 246, 0.8);
+    outline: 2px solid rgba(224, 145, 92, 0.8);
     outline-offset: 2px;
   }
 
@@ -1345,7 +1411,7 @@
   }
 
   .utilization-fill.warning {
-    background: linear-gradient(90deg, #f59e0b, #d97706);
+    background: linear-gradient(90deg, #eab308, #ca8a04);
   }
 
   .utilization-fill.success {
@@ -1875,16 +1941,16 @@
   .new-expense-animation {
     background: linear-gradient(
       90deg,
-      rgba(59, 130, 246, 0.1) 0%,
+      rgba(224, 145, 92, 0.1) 0%,
       rgba(147, 51, 234, 0.1) 50%,
-      rgba(59, 130, 246, 0.1) 100%
+      rgba(224, 145, 92, 0.1) 100%
     );
     background-size: 200% 100%;
     animation:
       new-expense-float 3s ease-out,
       new-expense-shimmer 2s ease-in-out infinite;
-    border-left: 4px solid #3b82f6;
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+    border-left: 4px solid #e0915c;
+    box-shadow: 0 0 20px rgba(224, 145, 92, 0.3);
   }
 
   @keyframes new-expense-float {
@@ -1946,13 +2012,13 @@
 
   @keyframes dropzonePulse {
     0% {
-      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.2);
+      box-shadow: 0 0 0 0 rgba(224, 145, 92, 0.2);
     }
     70% {
-      box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+      box-shadow: 0 0 0 10px rgba(224, 145, 92, 0);
     }
     100% {
-      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+      box-shadow: 0 0 0 0 rgba(224, 145, 92, 0);
     }
   }
 

@@ -11,7 +11,7 @@ const MonthlyTrendsEmptyIllustration = () => (
       y1='60'
       x2='68'
       y2='60'
-      stroke='rgba(59,130,246,0.25)'
+      stroke='rgba(224, 145, 92,0.25)'
       strokeWidth='1'
     />
     <line
@@ -19,7 +19,7 @@ const MonthlyTrendsEmptyIllustration = () => (
       y1='60'
       x2='12'
       y2='12'
-      stroke='rgba(59,130,246,0.25)'
+      stroke='rgba(224, 145, 92,0.25)'
       strokeWidth='1'
     />
     <rect
@@ -28,8 +28,8 @@ const MonthlyTrendsEmptyIllustration = () => (
       width='10'
       height='10'
       rx='2'
-      fill='rgba(59,130,246,0.35)'
-      stroke='rgba(59,130,246,0.5)'
+      fill='rgba(224, 145, 92,0.35)'
+      stroke='rgba(224, 145, 92,0.5)'
       strokeWidth='0.75'
     />
     <rect
@@ -38,8 +38,8 @@ const MonthlyTrendsEmptyIllustration = () => (
       width='10'
       height='18'
       rx='2'
-      fill='rgba(59,130,246,0.25)'
-      stroke='rgba(59,130,246,0.4)'
+      fill='rgba(224, 145, 92,0.25)'
+      stroke='rgba(224, 145, 92,0.4)'
       strokeWidth='0.75'
     />
     <rect
@@ -48,8 +48,8 @@ const MonthlyTrendsEmptyIllustration = () => (
       width='10'
       height='26'
       rx='2'
-      fill='rgba(59,130,246,0.18)'
-      stroke='rgba(59,130,246,0.3)'
+      fill='rgba(224, 145, 92,0.18)'
+      stroke='rgba(224, 145, 92,0.3)'
       strokeWidth='0.75'
     />
     <rect
@@ -58,8 +58,8 @@ const MonthlyTrendsEmptyIllustration = () => (
       width='10'
       height='38'
       rx='2'
-      fill='rgba(59,130,246,0.12)'
-      stroke='rgba(59,130,246,0.22)'
+      fill='rgba(224, 145, 92,0.12)'
+      stroke='rgba(224, 145, 92,0.22)'
       strokeWidth='0.75'
       strokeDasharray='2 2'
     />
@@ -67,8 +67,8 @@ const MonthlyTrendsEmptyIllustration = () => (
       cx='65'
       cy='16'
       r='7'
-      fill='rgba(59,130,246,0.15)'
-      stroke='rgba(59,130,246,0.35)'
+      fill='rgba(224, 145, 92,0.15)'
+      stroke='rgba(224, 145, 92,0.35)'
       strokeWidth='0.75'
     />
     <text
@@ -76,14 +76,14 @@ const MonthlyTrendsEmptyIllustration = () => (
       y='19'
       textAnchor='middle'
       fontSize='7'
-      fill='rgba(147,197,253,0.7)'
+      fill='rgba(240, 192, 155,0.7)'
       fontFamily='system-ui'
     >
       ?
     </text>
-    <circle cx='18' cy='8' r='2' fill='rgba(59,130,246,0.2)' />
-    <circle cx='28' cy='8' r='2' fill='rgba(59,130,246,0.2)' />
-    <circle cx='38' cy='8' r='2' fill='rgba(59,130,246,0.2)' />
+    <circle cx='18' cy='8' r='2' fill='rgba(224, 145, 92,0.2)' />
+    <circle cx='28' cy='8' r='2' fill='rgba(224, 145, 92,0.2)' />
+    <circle cx='38' cy='8' r='2' fill='rgba(224, 145, 92,0.2)' />
   </svg>
 );
 
