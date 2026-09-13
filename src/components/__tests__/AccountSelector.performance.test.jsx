@@ -87,30 +87,12 @@ describe('AccountSelector Performance Tests', () => {
     expect(openTime).toBeLessThan(500);
   });
 
-  test('account selection is performant', () => {
-    render(<AccountSelector {...defaultProps} />);
-
-    const button = screen.getByRole('button');
-    fireEvent.click(button);
-
-    // Find the first account option
-    const accountOptions = screen
-      .getAllByRole('button')
-      .filter(btn => btn.textContent.includes('Account'));
-
-    expect(accountOptions.length).toBeGreaterThan(0);
-
-    const firstAccount = accountOptions[0];
-
-    const startTime = performance.now();
-    fireEvent.click(firstAccount);
-    const endTime = performance.now();
-
-    const selectionTime = endTime - startTime;
-
-    // Account selection should be within 16ms
-    expect(selectionTime).toBeLessThan(16);
-  });
+  // A wall-clock "selection completes in <16ms" test used to live here. It
+  // failed intermittently in full runs and passed in isolation, because with
+  // the suite running in parallel it measured how busy the machine was, not
+  // how fast the component is - and a threshold like that can only be tuned
+  // to fail less often, never to be correct. The render-count test below
+  // already proves the property it was reaching for.
 
   test('memoization prevents unnecessary re-renders', () => {
     const renderSpy = vi.fn();
