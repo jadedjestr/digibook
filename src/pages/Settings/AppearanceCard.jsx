@@ -44,7 +44,7 @@ const AppearanceCard = () => {
           >
             Glass transparency
           </label>
-          <span className='text-sm text-blue-300 tabular'>
+          <span className='text-sm text-blue-300 font-mono'>
             {percent}% tinted
           </span>
         </div>
@@ -82,7 +82,7 @@ const AppearanceCard = () => {
           >
             Ambient colour
           </label>
-          <span className='text-sm text-blue-300 tabular'>
+          <span className='text-sm text-blue-300 font-mono'>
             {ambientPercent}%
           </span>
         </div>

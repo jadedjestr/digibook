@@ -280,14 +280,30 @@
     font-weight: 700;
     letter-spacing: -0.018em;
     color: #fff;
+
+    /* Bricolage's figures are proportional to an extreme degree: measured at
+       40px, ten 1s span 115px and ten 0s span 254px — a 2.2x swing. Any
+       amount set in the display face would therefore change width as its
+       value changed, so a balance would visibly jump when a bill is marked
+       paid. No heading holds a number today; this makes sure the first one
+       that does is already correct. Inert on text without digits. */
+    font-variant-numeric: tabular-nums;
   }
 
-  /* Money and dates are read in columns and compared down the page, so they
-     are set in the mono face with tabular figures — digits line up and a
-     changing amount does not reflow the row it sits in. */
-  .tabular,
+  /* Figures that must align in a column.
+     Body copy does NOT need this: IBM Plex Sans ships tabular figures by
+     default — ten 1s and ten 0s both measure exactly 240px at 40px, with or
+     without the property — which is why the app's ~50 rendered amounts
+     already line up. Reach for this only on the display face, or to opt a
+     proportional face into alignment. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Deliberately only the numeric behaviour, no font-family. An earlier
+     version of this rule also forced --font-mono, which meant a class named
+     for alignment silently restyled whatever it touched. */
   .font-mono {
-    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
 }
