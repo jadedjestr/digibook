@@ -1,92 +1,37 @@
-# Digibook - Product Requirements Document
+# Digibook — Architecture Reference
 
-**Document Version:** 3.0
-**Last Updated:** September 11, 2026
-**Product Owner:** Adrian Garcia
-**Status:** Live / Active Development
+**Companion to:** [PRD.md](PRD.md) — that document owns *what the product
+should do and why*. This one owns *how it is built*.
+
+**Status:** subordinate to the code. Where this document and the source
+disagree, the source is right and this is a bug. It is a map, not a
+contract.
 
 ---
 
 ## Table of Contents
 
-1. [Executive Summary](#1-executive-summary)
-2. [Product Vision & Principles](#2-product-vision--principles)
-3. [User Personas & Jobs to Be Done](#3-user-personas--jobs-to-be-done)
-4. [Tech Stack](#4-tech-stack)
-5. [Architecture Overview](#5-architecture-overview)
-6. [Database Structure](#6-database-structure)
-7. [Application Shell & Navigation](#7-application-shell--navigation)
-8. [Feature Specifications by Page](#8-feature-specifications-by-page)
-9. [Services Layer](#9-services-layer)
-10. [Custom Hooks](#10-custom-hooks)
-11. [Context Providers](#11-context-providers)
-12. [Component Inventory](#12-component-inventory)
-13. [Utilities](#13-utilities)
-14. [State Management](#14-state-management)
-15. [Design System](#15-design-system)
-16. [Data Management & Backup](#16-data-management--backup)
-17. [Security & Privacy](#17-security--privacy)
-18. [Performance Optimizations](#18-performance-optimizations)
-19. [Testing Strategy](#19-testing-strategy)
-20. [Developer Tooling & Code Quality](#20-developer-tooling--code-quality)
-21. [Glossary](#21-glossary)
+1. [Tech Stack](#1-tech-stack)
+2. [Architecture Overview](#2-architecture-overview)
+3. [Database Structure](#3-database-structure)
+4. [Application Shell & Navigation](#4-application-shell--navigation)
+5. [Services Layer](#5-services-layer)
+6. [Custom Hooks](#6-custom-hooks)
+7. [Context Providers](#7-context-providers)
+8. [Component Inventory](#8-component-inventory)
+9. [Utilities](#9-utilities)
+10. [State Management](#10-state-management)
+11. [Design System](#11-design-system)
+12. [Data Management & Backup](#12-data-management--backup)
+13. [Security & Privacy](#13-security--privacy)
+14. [Performance Optimizations](#14-performance-optimizations)
+15. [Testing Strategy](#15-testing-strategy)
+16. [Developer Tooling & Code Quality](#16-developer-tooling--code-quality)
+17. [Glossary](#17-glossary)
 
 ---
 
-## 1. Executive Summary
-
-Digibook is a **local-first personal finance tracker** built as a single-page application that runs entirely in the browser. All financial data is stored client-side in **IndexedDB** — there is no backend server, no cloud sync, and no data ever leaves the user's device. The app is also installable as a **Progressive Web App**, so it can run offline and be added to a phone or desktop home screen — but this only makes the app shell available offline; it does not change where financial data lives.
-
-The app helps users:
-
-- Track bank account balances (checking and savings)
-- Manage credit card debt, utilization, and payments
-- Plan and track fixed/recurring expenses against a paycheck cycle (weekly, biweekly, or monthly)
-- Visualize financial health through analytics and insights
-- Import/export data for backup and portability
-
-Digibook is designed for a single user who wants full control of their financial data with a modern, polished UI inspired by Apple's "Liquid Glass" design language.
-
----
-
-## 2. Product Vision & Principles
-
-### Vision
-
-> A beautifully simple, privacy-first financial command center that gives you complete visibility into where your money goes — without ever sharing your data with anyone.
-
-### Core Principles
-
-| Principle | Description |
-|---|---|
-| **Local-First** | All data lives in the browser via IndexedDB. Zero network calls for data. A service worker caches the app shell for offline use and home-screen installation, but this is purely a delivery mechanism — it never touches financial data. |
-| **Privacy by Design** | PIN lock, privacy mode to hide values, encrypted exports. No analytics or telemetry. |
-| **Pay-Cycle Centric** | The expense management workflow is organized around a paycheck cycle (weekly, biweekly, or monthly) rather than arbitrary calendar months. |
-| **Dual Foreign Key Architecture** | Expenses can be funded from bank accounts OR charged to credit cards — never both. Credit card *payments* use a separate two-field system (funding account + target card). |
-| **Optimistic Updates** | The UI updates immediately on user actions; database writes happen in the background with rollback on failure. |
-| **Zero Configuration** | New users set a PIN, add an account, and are immediately productive. Default categories are seeded automatically. |
-
----
-
-## 3. User Personas & Jobs to Be Done
-
-### Primary Persona: Budget-Conscious Individual
-
-A person who gets paid on a regular cycle and wants to map every dollar of their paycheck to specific bills, track credit card debt, and know their projected balance after all obligations are met.
-
-### Jobs to Be Done
-
-1. **"When I get paid, I want to see which bills to pay this cycle so I never miss a due date."**
-2. **"I want to know how much discretionary cash I have left after all bills are accounted for."**
-3. **"I want to track my credit card debt and understand when I'll be debt-free."**
-4. **"I want to record pending transactions (deposits, checks) to see my real projected balance."**
-5. **"I want my financial data to stay on my device — no cloud, no third parties."**
-6. **"I want to back up and restore my data easily."**
-7. **"I want to install the app on my phone and still see my numbers if I lose signal."**
-
----
-
-## 4. Tech Stack
+## 1. Tech Stack
 
 ### Production Dependencies
 
@@ -130,7 +75,7 @@ A person who gets paid on a regular cycle and wants to map every dollar of their
 
 ---
 
-## 5. Architecture Overview
+## 2. Architecture Overview
 
 ### High-Level Architecture
 
@@ -215,7 +160,7 @@ A person who gets paid on a regular cycle and wants to map every dollar of their
 
 ---
 
-## 6. Database Structure
+## 3. Database Structure
 
 ### Technology
 
@@ -236,6 +181,7 @@ A person who gets paid on a regular cycle and wants to map every dollar of their
 | V6 | Added `backups` table; added `lastExportDate` on `userPreferences` |
 | V7 | Added `sortOrder` on `categories` for custom drag-and-drop ordering (existing categories backfilled alphabetically on upgrade) |
 | V8 | **UUID migration** — all tables switched from auto-increment integer `id` to string UUID primary keys (assigned application-side via `generateId()` on every new record — the schema upgrade itself does no data backfill); added soft-delete support (`deletedAt`) and `updatedAt` timestamps on every table; added `categoryId` on `fixedExpenses`, `pendingTransactions`, and `recurringExpenseTemplates` |
+| V9 | Added `incomeSources` table (expected paycheck: target account, expected amount, enabled flag, `lastGeneratedDate` high-water mark); added `incomeSourceId` on `pendingTransactions` so auto-generated payday rows can be traced back to their source |
 
 ### Tables
 
@@ -438,6 +384,21 @@ Metadata for locally-stored backup snapshots (added V6). Backup payloads themsel
 | `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
+#### `incomeSources`
+An expected paycheck (added V9). Stored as a list so a second source can be
+added without a migration; the UI surfaces only one. Its schedule is inherited
+from `paycheckSettings` rather than duplicated here.
+
+| Column | Type | Indexed | Description |
+|---|---|---|---|
+| `id` | UUID string | PK | Unique identifier |
+| `name` | string | No | Label used as the generated row's description |
+| `accountId` | UUID string \| null | Yes | Which account the money lands in |
+| `expectedAmount` | number | No | The user's own estimate. Never overwritten — a learned average from confirmed history takes precedence at generation time, but this stays the fallback |
+| `isEnabled` | boolean | Yes | Ships false; the feature is opt-in because it writes records on the user's behalf |
+| `lastGeneratedDate` | YYYY-MM-DD \| null | Yes | High-water mark, and the **sole** duplicate guard. It cannot be inferred from existing rows: a confirmed paycheck is soft-deleted and would vanish from any "dates already generated" set, causing it to be generated again |
+| `createdAt` / `updatedAt` / `deletedAt` | ISO string | Yes | Standard timestamps |
+
 ### Entity Relationships
 
 ```
@@ -457,7 +418,7 @@ monthlyExpenseHistory ──► fixedExpenses (expenseId)
 
 ---
 
-## 7. Application Shell & Navigation
+## 4. Application Shell & Navigation
 
 ### Entry Point
 
@@ -518,229 +479,7 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 
 ---
 
-## 8. Feature Specifications by Page
-
-### 8.1 Accounts Page
-
-**Path:** `src/pages/Accounts.jsx`
-
-**Purpose:** Manage bank accounts (checking and savings) and view aggregate balances.
-
-**Features:**
-
-- **Liquid Balance card:** Sum of all account `currentBalance` values across all accounts
-- **Grouped account display:** Accounts organized by type (Checking Accounts, Savings Accounts) with type-specific icons
-- **Add Account form:** Name, type (checking/savings dropdown), initial balance. Validates name is non-empty and balance is non-negative.
-- **Inline editing:** Click on account name or balance to edit in-place via the `InlineEdit` component
-- **Set Default Account:** Star icon to designate the primary account (shown in sidebar)
-- **Delete Account:** With confirmation dialog
-- **Projected Balance column:** Current balance + sum of pending transactions for that account. Highlighted in yellow when projected is lower than current.
-- **Missing payment expenses check:** On load, if any credit card lacks a linked "Credit Card Payment" expense, `MissingExpensesModal` prompts to create the missing expense(s) so nothing silently goes untracked.
-- **Privacy wrapper:** All monetary values wrapped in `<PrivacyWrapper>` for privacy mode
-- **Empty state:** `EmptyState` + `AccountsEmptyIllustration` with an "Add Your First Account" CTA when no accounts exist
-
-### 8.2 Pending Transactions Page
-
-**Path:** `src/pages/PendingTransactions.jsx`
-
-**Purpose:** Track uncleared deposits, checks, and payments that haven't posted yet.
-
-**Features:**
-
-- **Add Transaction form:** Account selector, type toggle (expense/income), amount, category, description, date (defaults to today)
-- **Amount sign logic:** Expenses stored as negative amounts; income as positive
-- **Inline editing:** All fields (account, amount, category, description, date) are editable in-place
-- **Projected Balance column:** Per-account projected balance reflecting all pending transactions
-- **Complete transaction:** Check icon button — applies the transaction to the account balance
-- **Delete transaction:** Trash icon with confirmation
-- **Category selector:** Populated from the categories table
-- **Empty state:** `EmptyState` + `PendingEmptyIllustration` with a contextual CTA
-
-### 8.3 Fixed Expenses Page
-
-**Path:** `src/pages/FixedExpenses.jsx`
-
-**Purpose:** The core expense management view — plan, track, and pay bills within a paycheck cycle.
-
-**Features:**
-
-- **View Switcher:** Toggle between "Month View" (calendar-based) and "All Future One-Offs" (list of non-recurring future expenses)
-
-#### Month View
-
-**Layout:** a left panel (`FixedExpensesSummaryCard` — expense count, Total/Paid/Remaining, category breakdown) alongside a full-width expenses table, replacing an earlier single-column layout.
-
-- **Calendar Component** (`Calendar/Calendar.jsx`):
-  - Full month calendar grid with expense badges on due dates (badge shows name and amount separately)
-  - Color-coded badges by payment status (paid, unpaid, overdue)
-  - Quick actions on click (mark paid, edit)
-  - Upcoming Recurring Widget showing next scheduled expenses, with an optional funding-account subtitle per item
-  - Month navigation (previous/next/today)
-  - Pay cycle reset button
-
-- **Summary Cards** (3-column grid):
-  - **PaySummaryCard:** Total due this cycle, paid vs. remaining, overdue amount
-  - **PayDateCountdownCard:** Days until next paycheck, days until following paycheck
-  - **ProjectedBalanceCard:** Discretionary spending amount (default account balance minus remaining expenses)
-
-- **Category Expense Summary:** Visual breakdown by category (via `ExpenseBar` rows) with clickable segments that scroll to the corresponding table section
-
-- **Fixed Expenses Table** (`FixedExpensesTable/` — see [Section 12](#12-component-inventory) for the component breakdown):
-  - Grouped by category with collapsible sections
-  - Columns: Name, Due Date, Amount, Paid Amount, Status, Payment Source, Actions
-  - Inline editing for all editable fields, with a compact table header
-  - Quick-add row for adding new expenses
-  - Drag-and-drop reordering within categories (via @dnd-kit)
-  - Status badges: Paid (green), Partially Paid (yellow), Overdue (red), Pay This Week (orange), Pay with Next Check (blue), Pay with Following Check (gray)
-  - Payment source display: Shows which account or credit card funds each expense
-  - **Mark as Paid modal:** "Pay Now" quick action opens `MarkAsPaidModal` for full or partial payment, rather than only inline editing
-  - **Account validation:** `AccountValidationAlert` surfaces any expense whose `accountId` no longer points to an existing account, with a one-click path to Settings to fix it
-  - Mobile responsive: Card-based layout on small screens
-
-- **Pay Cycle Reset:** Modal confirmation that:
-  1. Snapshots paid expenses into `monthlyExpenseHistory` before resetting
-  2. Resets all expense `paidAmount` to 0 and `status` to "pending"
-  3. Advances all due dates by one pay period (frequency-aware — see [Section 9.2](#92-paycheckservice))
-  4. Updates `lastPaycheckDate` to the next pay date
-
-- **Pay Cycle Nudge (Month view):** A single non-intrusive banner (or optional toast) shown above the calendar when conditions are met. Priority order: (1) **Past month** — user has expenses from the previous calendar month that are not marked paid (e.g. after importing February data while in March); action: "Review [Month]" navigates to that month, or Dismiss. (2) **Catch-up** — near end of current month and current month has unpaid/partially paid expenses; action: "Mark as paid" (with confirmation), "Review" (scrolls to table), or Dismiss. (3) **Reset** — all current-month expenses are paid or overdue and next paycheck is in a new month (`shouldPromptReset`); action: "Start new cycle" opens the reset modal, or "Not yet". Dismissal can be session-only or "Don't show again this month". Implemented as logic in `payCycleNudgeLogic.js` + the `usePayCycleNudge` hook, plus UI in `PayCycleNudgeBanner` (and an optional `PayCycleNudgeToast`).
-
-#### One-Off Expenses View
-- Filtered list of future expenses without recurring templates
-- Supports mark as paid, delete, and inline editing
-
-### 8.4 Credit Cards Page
-
-**Path:** `src/pages/CreditCards.jsx`
-
-**Purpose:** Manage credit card accounts, track debt and utilization, and manage payment expenses.
-
-**Features:**
-
-- **Summary Dashboard** (4-column grid):
-  - Total Debt
-  - Total Credit Limit
-  - Overall Utilization % (color-coded: green < 50%, yellow 50-70%, orange 70-90%, red > 90%)
-  - Total Available Credit
-
-- **Sorting Controls:** Sort cards by Name, Due Date (soonest first), Balance (highest first), or Utilization (highest first)
-
-- **Credit Card Grid:** Responsive grid of `EnhancedCreditCard` components showing:
-  - Card name and visual representation
-  - Balance and credit limit
-  - Utilization bar (color-coded)
-  - Interest rate
-  - Days until due date
-  - Edit and delete actions
-
-- **Add/Edit Modal:** Full-screen portal modal with fields:
-  - Name, Current Balance, Credit Limit, Interest Rate (%), Due Date, Statement Closing Date (optional), Minimum Payment
-
-- **Auto-create Payment Expenses with explicit funding:** When a new credit card is added, `ChooseFundingAccountModal` asks which checking/savings account will fund the payment (with a "use default account" shortcut when one exists and there are 2+ accounts), then `dbHelpers.createMissingCreditCardExpenses()` creates the corresponding "Credit Card Payment" fixed expense. If no accounts exist yet, `CreateAccountModal` lets the user create one inline without leaving the flow.
-
-- **Change funding source:** Each card has a "change funding account" action (`EnhancedCreditCard` → `onChangeFundingSource`) that reopens `ChooseFundingAccountModal` — pre-selected to the card's current funding account — to repoint its payment expense at a different account after the fact.
-
-- **Missing payment expenses check:** Same `MissingExpensesModal` used on the Accounts page — flags any card without a linked payment expense and offers to create it.
-
-- **Smart Link Expenses** button: Opens `CreditCardMigrationModal` to automatically match orphaned expenses to credit cards based on name similarity
-
-- **Credit Card Deletion Modal:** Enhanced deletion flow that:
-  1. Shows linked expenses
-  2. Offers to reassign expenses to another account/card
-  3. Handles cascade deletion of linked expenses
-
-- **Due Date Sync:** When a credit card's due date is updated, all linked "Credit Card Payment" expenses have their due dates automatically synced
-
-- **Empty state:** `EmptyState` + `CreditCardsEmptyIllustration` with a CTA to add the first credit card
-
-### 8.5 Insights Page
-
-**Path:** `src/pages/Insights.jsx`
-
-**Purpose:** Financial analytics and budget intelligence.
-
-**Features:**
-
-- **Budget vs. Actual Dashboard** (`BudgetVsActualDashboard.jsx`):
-  - Summary cards: Total Budgeted, Total Actual, Net Difference
-  - Per-category breakdown showing budget vs. actual with difference highlighting
-  - Empty state: `EmptyState` + a dedicated illustration when there's no history yet
-
-- **Credit Card Debt Table** (`CreditCardDebtTable.jsx`):
-  - All credit cards with balance, limit, utilization %, interest rate, minimum payment
-  - Total row with aggregate stats
-
-- **Overpayment Analysis** (`OverpaymentAnalysis.jsx`):
-  - Per-category analysis of where spending exceeds budget
-  - Total overpayment amount
-  - Empty state: `EmptyState` + `OverpaymentEmptyIllustration`
-
-- **Debt Payoff Calculator** (`DebtPayoffCalculator.jsx`):
-  - Supports **Snowball** (smallest balance first) and **Avalanche** (highest rate first) strategies
-  - Input: Extra monthly payment amount
-  - Output per card: Months to payoff, payoff date, total interest paid
-  - Summary: Total months to debt-free, total interest cost
-  - Empty state: `EmptyState` + `DebtPayoffEmptyIllustration` when there are no credit cards to calculate against
-
-- **Monthly Trends** (`MonthlyTrends.jsx`):
-  - Last 12 months of expense history, in correct chronological order
-  - Budget vs. actual trend visualization (Recharts), with overpayment bars colored to match the rest of the app's status palette
-  - Empty state: `EmptyState` + `MonthlyTrendsEmptyIllustration`
-
-- **Refresh Data** button to reload all analytics data
-
-### 8.6 Settings Page
-
-**Path:** `src/pages/Settings.jsx`
-
-**Purpose:** Application configuration, data management, and administrative tools.
-
-**Layout:** Collapsible card group (accordion-style, exclusive — only one card open at a time).
-
-#### Settings Cards
-
-**1. Paycheck Management** (`PaycheckManager.jsx`)
-- Set last paycheck date
-- Set frequency via a dropdown driven by `PAY_FREQUENCIES` — **Weekly**, **Biweekly**, or **Monthly** (monthly advances by calendar month, correctly clamping e.g. Jan 31 → Feb 28/29)
-- Displays calculated next and following pay dates for the selected frequency
-
-**2. Data Management** (`DataManagementCard.jsx`)
-- **Export:** JSON (full backup), CSV (per-table files), Credit Cards CSV
-- **Import:** JSON or CSV file upload with validation and overwrite confirmation
-- **Future Expense Generation:** Prompt to auto-generate next 1/3/6 months of expenses from current month's data using recurring templates
-- **Clear All Data:** Wipes all tables (auto-backup created first)
-- **Restore from Backup:** Restores from most recent localStorage backup
-
-**3. Category Management** (`CategoryManager/`)
-- Grid of category cards showing name, color, icon, usage count
-- Add new category (name, color picker, icon selector)
-- Edit category (inline rename, color/icon change)
-- **Bulk selection:** select multiple categories, then bulk-apply a new color (`BulkColorModal`) or icon (`BulkIconModal`) across all of them at once
-- Delete category with reassignment flow (choose target category for orphaned expenses)
-- Drag-and-drop reordering (persisted via `categories.sortOrder`)
-- Wrapped in its own `CategoryManagerErrorBoundary` so a rendering error here doesn't take down the rest of Settings
-- Internally driven by a `useReducer` (`categoryReducer.js`) that models loading state, form mode (add/edit), and optimistic add/update/revert transitions explicitly as actions, rather than several independent `useState` calls
-
-**4. Recurring Templates Management** (`RecurringTemplatesManager.jsx`)
-- List of all recurring expense templates
-- View frequency, next due date, amount, status
-- Edit template properties
-- Delete template
-- Manual regeneration of future occurrences
-
-**5. Audit Log** (`AuditLogCard.jsx`)
-- Search box (matches action type, entity type, or JSON-serialized details)
-- Filter by action type (CREATE / UPDATE / DELETE / PAYMENT / COMPLETE_TRANSACTION) and time range (Today / Last 7 Days / Last 30 Days / All Time)
-- Each entry shows an action-type icon, an entity-type icon, a relative timestamp ("Just now", "3 hours ago", falling back to a full date/time), and a human-readable summary of `details` (e.g. "Credit card payment of $250. Account balance: $1,200. Card balance: $3,750.")
-- Clear audit log button (with confirmation)
-
-**6. Privacy & Security**
-- PIN Lock status (always enabled)
-- Data storage confirmation ("Local Only")
-
----
-
-## 9. Services Layer
+## 5. Services Layer
 
 ### 9.1 PaymentService
 
@@ -857,7 +596,7 @@ The interval math itself (weekly/biweekly day-count advance, monthly calendar ad
 
 ---
 
-## 10. Custom Hooks
+## 6. Custom Hooks
 
 ### 10.1 `useExpenseOperations`
 
@@ -930,7 +669,7 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 
 ---
 
-## 11. Context Providers
+## 7. Context Providers
 
 ### 11.1 PrivacyContext
 
@@ -968,7 +707,7 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 
 ---
 
-## 12. Component Inventory
+## 8. Component Inventory
 
 ### Layout & Shell
 
@@ -1097,7 +836,7 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 
 ---
 
-## 13. Utilities
+## 9. Utilities
 
 ### `dateUtils.js`
 
@@ -1167,8 +906,16 @@ Input sanitization and validation for all user-entered data.
 | `validateDescription(desc)` | Non-empty |
 | `validateDate(date)` | Valid YYYY-MM-DD |
 | `validateCategoryName(name)` | Non-empty, max length |
-| `validateAccountType(type)` | Must be "checking" or "savings" |
 | `validateCreditCard(data)` | All required fields present and valid |
+| `parseMoneyInput(raw, opts)` | **The money-parsing primitive.** Returns `{ok: true, value}` or `{ok: false, reason}` — never a bare number — so a caller has nothing to use unless parsing succeeded. Blank input is an error unless `allowEmpty` is passed. Stricter than `parseFloat`, which truncates `'12abc'` to `12`. |
+| `moneyInputErrorMessage(reason)` | User-facing text for a `parseMoneyInput` failure |
+| `MAX_MONEY_VALUE` | Upper bound (`1e12`) — billions are plausible, trillions mean something went wrong |
+
+> **Rule:** every place that turns untrusted input into a money value must go
+> through `parseMoneyInput`. The `parseFloat(x) || fallback` idiom is banned by
+> an ESLint rule (see [Developer Tooling](#16-developer-tooling--code-quality))
+> because it collapses "typed 0", "typed nothing" and "typed garbage" into one
+> indistinguishable value, which silently zeroed a real account balance.
 | `validateForm(fields)` | Batch validate multiple fields |
 | `sanitizeObject(obj)` | Deep sanitize all string properties |
 
@@ -1253,17 +1000,6 @@ Structured logging with levels: `debug`, `info`, `warn`, `error`, `success`, `db
 | `createAsyncHandler` | Wraps async functions with error handling |
 | `createValidationHandler` | Validation-specific error handler |
 
-### `pagination.js`
-
-| Function | Description |
-|---|---|
-| `createPaginatedResult(items, page, size)` | Paginate an array |
-| `createPaginatedQuery(table, page, size)` | Paginate a Dexie query |
-| `createInfiniteScrollQuery(table, cursor, size)` | Cursor-based pagination |
-| `createSearchQuery(table, field, term)` | Full-text search |
-| `processBatch(items, batchSize, fn)` | Process items in batches |
-| `streamData(table, batchSize, fn)` | Stream table data in batches |
-
 ### `notifications.jsx`
 
 | Function | Description |
@@ -1276,7 +1012,7 @@ Structured logging with levels: `debug`, `info`, `warn`, `error`, `success`, `db
 
 ---
 
-## 14. State Management
+## 10. State Management
 
 ### Primary Store: Zustand (`useAppStore`)
 
@@ -1338,7 +1074,7 @@ Only `currentPage` and `isPanelOpen` are persisted to localStorage via Zustand's
 
 ---
 
-## 15. Design System
+## 11. Design System
 
 ### Liquid Glass
 
@@ -1421,7 +1157,7 @@ boxShadow: {
 
 ---
 
-## 16. Data Management & Backup
+## 12. Data Management & Backup
 
 ### Export Formats
 
@@ -1462,7 +1198,7 @@ Legacy data where `accountId` was a string like `"cc-1"` is automatically migrat
 
 ---
 
-## 17. Security & Privacy
+## 13. Security & Privacy
 
 ### PIN Lock
 
@@ -1497,7 +1233,7 @@ All user inputs are sanitized before storage:
 
 ---
 
-## 18. Performance Optimizations
+## 14. Performance Optimizations
 
 | Optimization | Location | Description |
 |---|---|---|
@@ -1514,7 +1250,7 @@ All user inputs are sanitized before storage:
 
 ---
 
-## 19. Testing Strategy
+## 15. Testing Strategy
 
 ### Vitest Project Split
 
@@ -1558,12 +1294,16 @@ The two projects intentionally do **not** share a setup file — the jsdom-orien
 
 ---
 
-## 20. Developer Tooling & Code Quality
+## 16. Developer Tooling & Code Quality
 
 ### Code Style
 
 - **ESLint:** `.eslintrc.cjs` with React, accessibility, and Prettier plugins; `npm run lint` runs with `--max-warnings 0`, so any warning fails the command, not just errors
 - **Prettier:** Consistent formatting (config in `.prettierrc`)
+- **Banned patterns (`no-restricted-syntax`):** `console.*` (use `logger`), and
+  `parseFloat(x) || fallback` on any path — the latter because it cannot
+  distinguish "the user typed 0" from "the user typed nothing", and shipped a
+  bug that silently set a real account balance to $0. Use `parseMoneyInput`.
 - **Commitlint:** Conventional commits enforced (`commitlint.config.cjs`) — type must be one of `feat`/`fix`/`docs`/`style`/`refactor`/`perf`/`test`/`chore`/`ci`/`build`/`revert`, and the type, scope, and subject must all be lower-case
 
 ### Git Hooks (Husky)
@@ -1593,7 +1333,7 @@ npm run quality  # Runs: lint → format:check → test:run
 
 ---
 
-## 21. Glossary
+## 17. Glossary
 
 | Term | Definition |
 |---|---|
