@@ -21,7 +21,7 @@ import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-500.css';
 
 import App from './App.jsx';
-import { applyStoredTint } from './utils/appearance';
+import { applyStoredTint, applyStoredAmbient } from './utils/appearance';
 import { requestPersistentStorage } from './utils/persistentStorage';
 import './index.css';
 
@@ -32,6 +32,7 @@ void requestPersistentStorage();
 // Synchronous and before render: the glass tint is a paint-time value, so
 // reading it later would show one frame at the default and then re-tint.
 applyStoredTint();
+applyStoredAmbient();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

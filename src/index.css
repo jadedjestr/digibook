@@ -204,6 +204,69 @@
     color: var(--color-ink);
   }
 
+  /* ============================================================
+     AMBIENT GROUND
+
+     Colour fields behind the glass, so backdrop-filter has
+     something to diffuse. Without them the blur acts on flat
+     near-black and the whole material is invisible — glass only
+     looks like glass when there is something behind it.
+
+     Built from radial-gradients on one fixed element, NOT from
+     blurred circles as the design study did. `filter: blur(46px)`
+     on six 300px elements forces six offscreen buffers the
+     compositor re-blurs, underneath dozens of panels that each
+     run their own backdrop-filter. A radial-gradient is painted
+     once by the rasteriser with no filter pass and no extra
+     layers, and is visually indistinguishable at this softness.
+
+     Fixed rather than scrolling: it reads as a wallpaper the
+     content passes over. `background-attachment: fixed` would be
+     the shorter route but is unreliable and janky in iOS Safari,
+     which is a target here.
+
+     --ambient-strength is driven from Settings; 0 removes it.
+     ============================================================ */
+  .app-ambient {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: var(--ambient-strength, 1);
+    background-image:
+      radial-gradient(
+        44% 34% at 18% 6%,
+        rgba(56, 116, 224, 0.5) 0%,
+        rgba(56, 116, 224, 0) 68%
+      ),
+      radial-gradient(
+        42% 32% at 84% 14%,
+        rgba(56, 116, 224, 0.4) 0%,
+        rgba(56, 116, 224, 0) 68%
+      ),
+      radial-gradient(
+        40% 30% at 52% 44%,
+        rgba(16, 150, 121, 0.42) 0%,
+        rgba(16, 150, 121, 0) 70%
+      ),
+      radial-gradient(
+        44% 34% at 14% 78%,
+        rgba(198, 116, 38, 0.42) 0%,
+        rgba(198, 116, 38, 0) 70%
+      ),
+      radial-gradient(
+        46% 36% at 78% 90%,
+        rgba(198, 116, 38, 0.46) 0%,
+        rgba(198, 116, 38, 0) 70%
+      );
+  }
+
+  /* No `#root > *` rule here to lift content above the ambient layer: an ID
+     selector outranks `.app-ambient`, so it overrode this element's own
+     `position: fixed` back to `relative` and collapsed it to zero height.
+     The shell carries `relative z-10` in App.jsx instead — explicit, and it
+     cannot reach back into a layer it does not own. */
+
   /* Headings carry the display face. The text-shadow the old rule applied
      is gone: it existed to lift white text off a mid-slate ground, and on
      the near-black ground it only smears the glyph edges. */

@@ -1,6 +1,17 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+
+  /* This app is dark, always — not "dark by default". Tailwind's unset
+     default is `media`, which wires every `dark:` variant to the reader's OS
+     preference. That is a trap here rather than a feature: the shell carried
+     light base classes with `dark:` overrides, so on a Mac or iPhone set to
+     Light appearance the whole app rendered near-white text on a near-white
+     ground and was unreadable.
+     `class` makes those variants fire only under an explicit `.dark`
+     ancestor. Nothing adds one, so a stray `dark:` utility is now inert
+     instead of silently OS-dependent. Paint dark values directly. */
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {

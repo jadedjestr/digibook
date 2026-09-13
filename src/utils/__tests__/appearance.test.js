@@ -4,7 +4,11 @@ import {
   getStoredTint,
   setStoredTint,
   applyStoredTint,
+  getStoredAmbient,
+  setStoredAmbient,
+  applyStoredAmbient,
   DEFAULT_TINT,
+  DEFAULT_AMBIENT,
 } from '../appearance';
 
 vi.mock('../logger', () => ({
@@ -12,10 +16,12 @@ vi.mock('../logger', () => ({
 }));
 
 const KEY = 'digibook.glassTint';
+const AMBIENT_KEY = 'digibook.ambientStrength';
 
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.style.removeProperty('--glass-tint');
+  document.documentElement.style.removeProperty('--ambient-strength');
 });
 
 describe('glass tint preference', () => {
@@ -77,5 +83,41 @@ describe('glass tint preference', () => {
     ).toBe('0.5');
 
     Storage.prototype.setItem = original;
+  });
+});
+
+describe('ambient ground strength', () => {
+  test('an absent key yields full strength, not zero', () => {
+    // Same trap as the tint: Number(null) is 0 and finite, so a naive guard
+    // would return 0 here — which silently removes the colour behind the
+    // glass on a first run and makes every panel look like a flat card.
+    expect(localStorage.getItem(AMBIENT_KEY)).toBeNull();
+    expect(getStoredAmbient()).toBe(DEFAULT_AMBIENT);
+  });
+
+  test('a stored zero is honoured, because turning it off is a real choice', () => {
+    localStorage.setItem(AMBIENT_KEY, '0');
+    expect(getStoredAmbient()).toBe(0);
+  });
+
+  test('setting writes its own variable and key, not the tint ones', () => {
+    setStoredAmbient(0.4);
+    expect(
+      document.documentElement.style.getPropertyValue('--ambient-strength'),
+    ).toBe('0.4');
+    expect(localStorage.getItem(AMBIENT_KEY)).toBe('0.4');
+
+    // The two preferences pull in opposite directions and must stay separate.
+    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(
+      document.documentElement.style.getPropertyValue('--glass-tint'),
+    ).toBe('');
+  });
+
+  test('applyStoredAmbient puts full strength on the root on a first run', () => {
+    applyStoredAmbient();
+    expect(
+      document.documentElement.style.getPropertyValue('--ambient-strength'),
+    ).toBe(String(DEFAULT_AMBIENT));
   });
 });

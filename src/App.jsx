@@ -194,7 +194,7 @@ function App() {
   // Show loading spinner while PIN is being loaded
   if (isLoadingPIN) {
     return (
-      <div className='flex items-center justify-center h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800'>
+      <div className='flex items-center justify-center h-screen bg-gradient-to-br from-slate-900 to-slate-800'>
         <LoadingSpinner />
       </div>
     );
@@ -215,7 +215,12 @@ function App() {
     <ErrorBoundary>
       <PrivacyProvider>
         <GlobalCategoryProvider>
-          <div className='flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800'>
+          {/* Colour behind the glass. Decorative only, so it is hidden from
+              assistive tech and takes no pointer events. The shell below is
+              deliberately transparent — it used to paint its own gradient,
+              which would cover this entirely. */}
+          <div className='app-ambient' aria-hidden='true' />
+          <div className='relative z-10 flex h-screen'>
             <ToastContainer
               position='top-right'
               autoClose={3000}

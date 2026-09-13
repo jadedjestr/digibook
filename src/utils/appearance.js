@@ -14,6 +14,9 @@ import { logger } from './logger';
 const STORAGE_KEY = 'digibook.glassTint';
 const DEFAULT_TINT = 0.35;
 
+const AMBIENT_KEY = 'digibook.ambientStrength';
+const DEFAULT_AMBIENT = 1;
+
 /**
  * Clamp to the slider's range, rejecting anything unparseable.
  *
@@ -60,7 +63,47 @@ export const setStoredTint = tint => {
   return value;
 };
 
+/**
+ * Ambient ground strength.
+ *
+ * Separate from tint because they pull in opposite directions: tint controls
+ * how much the glass obscures what is behind it, ambient controls how much
+ * there is to obscure. The colour fields are what make glass legible as
+ * glass, but they also sit under body text, so this is the control that
+ * settles the tradeoff for a reader who finds them distracting. 0 removes
+ * them entirely without touching the glass recipe.
+ */
+export const getStoredAmbient = () => {
+  try {
+    const stored = normalize(localStorage.getItem(AMBIENT_KEY));
+    return stored === null ? DEFAULT_AMBIENT : stored;
+  } catch {
+    return DEFAULT_AMBIENT;
+  }
+};
+
+export const applyAmbient = strength => {
+  const value = normalize(strength);
+  if (value === null) return DEFAULT_AMBIENT;
+  document.documentElement.style.setProperty(
+    '--ambient-strength',
+    String(value),
+  );
+  return value;
+};
+
+export const setStoredAmbient = strength => {
+  const value = applyAmbient(strength);
+  try {
+    localStorage.setItem(AMBIENT_KEY, String(value));
+  } catch (error) {
+    logger.warn('Could not persist ambient strength preference', error);
+  }
+  return value;
+};
+
 /** Called once at startup, before React renders. */
 export const applyStoredTint = () => applyTint(getStoredTint());
+export const applyStoredAmbient = () => applyAmbient(getStoredAmbient());
 
-export { DEFAULT_TINT };
+export { DEFAULT_TINT, DEFAULT_AMBIENT };
