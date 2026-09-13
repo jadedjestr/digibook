@@ -4,12 +4,29 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/icons/icon-192x192.png" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#3b82f6" />
+    <!--
+      Tints Safari's status bar and toolbar strips on iOS. This was still the
+      old blue accent, which the app no longer uses anywhere. It must match
+      the app's own ground (--color-dominant-base) or the browser chrome
+      reads as a different surface from the page it frames.
+    -->
+    <meta name="theme-color" content="#0d0f13" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Digibook" />
     <link rel="apple-touch-icon" href="/icons/icon-180x180.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      viewport-fit=cover lets the page paint into the safe areas behind the
+      notch and the home indicator. Without it iOS keeps those strips for
+      itself and fills them with the system default — white on a phone set to
+      Light appearance — which is the white banding above and below the app.
+      Content is kept clear of them with env(safe-area-inset-*) in index.css;
+      `cover` alone would slide text under the notch.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>Digibook - Personal Finance Tracker</title>
   </head>
   <body>

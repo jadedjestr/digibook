@@ -276,6 +276,36 @@
       );
   }
 
+  /* ============================================================
+     iOS SAFE AREAS
+
+     With viewport-fit=cover the page owns the strips behind the notch
+     and the home indicator, so .app-ambient and the body gradient now
+     paint them — that is what removes the white banding in Safari. The
+     cost is that those strips are also where text would land, so the
+     scroll container is padded out of them here.
+
+     env() resolves to 0 everywhere without safe areas, so this is inert
+     on desktop and needs no media query.
+     ============================================================ */
+  .safe-area-padded {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Replaces Tailwind's h-screen on the app shell.
+     100vh on iOS Safari is the viewport with the toolbar *collapsed*, so a
+     full-height shell sits partly behind the toolbar until you scroll, and
+     the bottom of the layout is unreachable. 100dvh tracks the toolbar as
+     it collapses and expands. vh stays first as the fallback for anything
+     without dvh support. */
+  .app-shell {
+    height: 100vh;
+    height: 100dvh;
+  }
+
   /* No `#root > *` rule here to lift content above the ambient layer: an ID
      selector outranks `.app-ambient`, so it overrode this element's own
      `position: fixed` back to `relative` and collapsed it to zero height.

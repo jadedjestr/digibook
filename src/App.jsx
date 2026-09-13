@@ -220,7 +220,7 @@ function App() {
               deliberately transparent — it used to paint its own gradient,
               which would cover this entirely. */}
           <div className='app-ambient' aria-hidden='true' />
-          <div className='relative z-10 flex h-screen'>
+          <div className='app-shell relative z-10 flex'>
             <ToastContainer
               position='top-right'
               autoClose={3000}
@@ -238,7 +238,13 @@ function App() {
               onToggleLock={toggleLock}
               isLocked={isLocked}
             />
-            <main className='flex-1 overflow-auto lg:ml-0'>
+            {/* The safe-area inset lives on the scroll container, not on the
+                padded div inside it: that div carries Tailwind's `p-4`, and a
+                utility beats a base-layer rule, so the inset was being
+                silently overridden to 16px. Here the two compose — this
+                element clears the notch and home indicator, the one inside it
+                supplies the normal content padding. */}
+            <main className='safe-area-padded flex-1 overflow-auto lg:ml-0'>
               <div className='p-4 lg:p-6 pt-4 lg:pt-6'>
                 <Suspense fallback={<LoadingSpinner />}>
                   <div key={currentPage} className='page-transition'>
