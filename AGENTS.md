@@ -65,9 +65,28 @@ restating it can. What follows is the part tooling can't check.
 - **Never hardcode a colour or a glass effect.** Use the design tokens and the
   `glass-*` classes; `bg-white/10` and `backdrop-blur-sm` bypass the system.
   See [ARCHITECTURE.md](ARCHITECTURE.md#11-design-system).
-- **Status colour means status.** Green/yellow/orange/red belong in badges and
-  alerts, not on buttons or icons. Colour used decoratively stops carrying
-  meaning where it matters.
+- **The Tailwind colour-word scales are aliases, not their names.** In
+  `tailwind.config.js`, `blue-*` resolves to ochre, `gray`/`slate` to the warm
+  neutrals, and `amber`/`orange` to yellow. They exist so ~641 existing call
+  sites across 57 files kept working through the iOS 27 refit without a
+  sweeping cosmetic diff. **Write new markup against the semantic names** —
+  `accent`, `ink`, `ink-soft`, `surface`, `rule` — and read a colour word in
+  old markup as "whatever the config says", never as the colour it spells.
+- **Ochre is interactive, never a status.** Buttons, active nav and focus only.
+  The warm alert hues were collapsed into one yellow precisely so an accent and
+  an overdue bill can't read alike. Four roles: ochre actionable, green
+  succeeded, yellow caution, red wrong.
+- **Status colour means status.** Green/yellow/red belong in badges and alerts,
+  not on buttons or icons. Colour used decoratively stops carrying meaning
+  where it matters.
+- **Calibrate a surface value on a real page, not on a specimen.** A comparison
+  renders on a stage chosen to show the treatment; the app is mostly flat
+  near-black. A fill that read as glass on the former went grey slab on the
+  latter, at the same alpha.
+- **`@apply` of a `@layer components` class across files races HMR.**
+  `calendar.css` applies `glass-surface` from `index.css`; editing `index.css`
+  with the dev server up can throw "class does not exist" until a restart. The
+  production build is unaffected — restart the server rather than chasing it.
 - **Comment the why, not the what.** A comment earns its place by recording a
   constraint, an invariant, or a bug that a reader would otherwise reintroduce.
 
