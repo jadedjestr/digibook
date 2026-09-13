@@ -497,16 +497,14 @@ Navigation is driven by `useAppStore.currentPage` (persisted to localStorage). T
 **Path:** `src/services/paymentService.js`
 **Pattern:** Class-based, instantiated with current accounts and credit cards
 
-**Responsibility:** Process all financial transactions through the V4 dual foreign key model.
+**Responsibility:** Describe and validate an expense's payment sources. It
+does not move money — balance changes go through
+`dbHelpers.applyExpensePaymentChangeAtomic`, which is transactional.
 
 **Key Methods:**
 
 | Method | Description |
 |---|---|
-| `processExpensePayment(expense, newPaidAmount)` | Entry point — routes to credit card payment or regular expense payment based on category |
-| `processCreditCardPayment(expense, paymentDifference)` | Two-field payment: decreases funding account balance + decreases target credit card balance + audit log |
-| `processAccountPayment(expense, paymentDifference)` | Decreases bank account balance + audit log |
-| `processCreditCardCharge(expense, paymentDifference)` | Increases credit card balance (adding debt) + audit log |
 | `getPaymentSourceDetails(expense)` | Returns display info for the payment source (name, type, balance, validity) |
 | `getCreditCardPaymentDetails(expense)` | Returns both funding source and target card info for CC payment expenses |
 | `validatePaymentSources(expense)` | Validates all referenced accounts/cards exist; checks for sufficient funds (warnings) |
@@ -553,7 +551,6 @@ The interval math itself (weekly/biweekly day-count advance, monthly calendar ad
 | `preGenerateOccurrences(templateId, monthsAhead)` | Pre-generates up to N months of future expenses, skipping duplicates |
 | `regenerateUnpaidOccurrences(templateId)` | Deletes unpaid future expenses and regenerates with updated template data |
 | `convertFixedExpenseToRecurring(expenseId, recurringData)` | Converts a one-off expense into a recurring template |
-| `calculateUpcomingOccurrences(template, count)` | Calculates the next N occurrence dates without persisting |
 
 **Frequency Options (bill recurrence, not paycheck frequency):** monthly, quarterly (3mo), biannually (6mo), annually (12mo), custom
 
@@ -971,8 +968,18 @@ V4-specific expense validation.
 |---|---|
 | `validatePaymentSource(expense)` | Ensures exactly one of accountId/creditCardId is set |
 | `validateCreditCardPayment(expense)` | Ensures CC payments have accountId + targetCreditCardId |
-| `getPaymentSourceType(expense)` | Returns "account", "creditCard", or "none" |
+| `validatePaymentSourceIds(expense)` | Checks the referenced account/card ids are well-formed |
+| `validateExpense(expense, options)` | Runs the applicable checks for an expense's shape |
 | `isCreditCardPayment(expense)` | Checks if category is "Credit Card Payment" |
+| `sanitizeExpenseData(expense)` | Normalises a **whole** expense: nulls the unused payment source, and nulls `targetCreditCardId` when the category is not a card payment |
+
+> **`sanitizeExpenseData` must never be given a partial patch.** Its rules
+> reason about a complete expense, so running it over `{paidAmount, status}` —
+> where `category` is simply absent — fires the "not a card payment" rule and
+> nulls `targetCreditCardId`, silently unlinking a paid bill from the card it
+> paid and making that payment uncorrectable. Sanitize the merged record, then
+> persist only the touched keys via `pickSanitizedUpdates`
+> (`src/db/database-clean.js`).
 
 ### `accountUtils.js`
 
@@ -1256,9 +1263,32 @@ decoratively stops carrying meaning where it matters.
 
 | Format | Scope | Method |
 |---|---|---|
-| JSON | Full database (all tables) | `exportJSONData()` or Cmd+E |
+| JSON | Full database (all tables, `backups` excluded) | `exportJSONData()` or Cmd+E |
 | CSV | Per-table files | `dataManager.exportData('csv')` |
 | Credit Cards CSV | Credit cards table only | `dataManager.exportCreditCardsCSV()` |
+
+#### Export format version
+
+`CURRENT_DATA_VERSION` in `src/services/dataManager.js` gates the JSON file
+contract. It is **not** the Dexie schema version — one governs what a file
+looks like, the other what the database looks like — and it is currently **6**
+(raised from 5 when `incomeSources` was added).
+
+Because transfer between devices is by file rather than sync, this is a
+product-level compatibility requirement, not an implementation detail: a file
+exported by a newer build must either import into an older one or fail with a
+clear message, never corrupt it. **Review this constant whenever a schema
+change alters what is exported.**
+
+#### Adding a table to the export
+
+A new table must be added to every one of these or it is silently dropped from
+backups: `dbHelpers.exportData()`, all three lists inside
+`dbHelpers.importData()` (transaction scope, the `clear()` sequence, and the
+`bulkPutChunked` sequence), `dbHelpers.clearDatabase()`,
+`validateImportData()`'s optional-array list, `CSV_MONEY_FIELDS` in
+`dataManager.js` if it holds money columns, and the test mock at
+`src/db/__tests__/mock-database.js`.
 
 ### Import Flow
 
