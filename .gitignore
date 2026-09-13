@@ -16,9 +16,15 @@ build/
 .env.production.local
 
 # IDE files
-.vscode/
 .idea/
 *.swp
+
+# VS Code: ignore personal editor settings, but share the extension
+# recommendations, which are project-level. Note this must be `.vscode/*`
+# rather than `.vscode/` — git will not descend into an ignored directory,
+# so the negation below would never be reached.
+.vscode/*
+!.vscode/extensions.json
 *.swo
 
 # OS files
