@@ -21,7 +21,11 @@ import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-500.css';
 
 import App from './App.jsx';
-import { applyStoredTint, applyStoredAmbient } from './utils/appearance';
+import {
+  applyStoredTint,
+  applyStoredAmbient,
+  applyStoredAmbientColors,
+} from './utils/appearance';
 import { requestPersistentStorage } from './utils/persistentStorage';
 import './index.css';
 
@@ -33,6 +37,7 @@ void requestPersistentStorage();
 // reading it later would show one frame at the default and then re-tint.
 applyStoredTint();
 applyStoredAmbient();
+applyStoredAmbientColors();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

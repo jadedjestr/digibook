@@ -5,6 +5,10 @@ import {
   DEFAULT_PAY_FREQUENCY,
   VALID_PAY_FREQUENCIES,
 } from '../constants/payFrequency';
+import {
+  getAppearanceSnapshot,
+  applyAppearanceSnapshot,
+} from '../utils/appearance';
 import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
 import { dataIntegrity } from '../utils/crypto';
 import { DateUtils } from '../utils/dateUtils';
@@ -3698,6 +3702,12 @@ export const dbHelpers = {
         auditLogs: await db.auditLogs.toArray(),
         recurringExpenseTemplates: await db.recurringExpenseTemplates.toArray(),
         incomeSources: await db.incomeSources.toArray(),
+
+        // Not a table — appearance lives in localStorage because it must be
+        // applied before first paint. It rides along so a backup opened on
+        // another device looks like the device it came from.
+        appearance: getAppearanceSnapshot(),
+
         exportDate: new Date().toISOString(),
       };
 
@@ -3779,6 +3789,22 @@ export const dbHelpers = {
       );
 
       logger.success('Data imported successfully (atomic transaction)');
+
+      // Appearance is applied only after the transaction has committed. It
+      // lives in localStorage, which no IndexedDB transaction can roll back,
+      // so writing it earlier would leave a failed import having silently
+      // restyled the app while changing none of the data. A backup with no
+      // appearance section — every file written before this shipped — is a
+      // no-op here and leaves the current theme alone.
+      try {
+        const applied = applyAppearanceSnapshot(data.appearance);
+        if (applied) {
+          logger.info('Applied appearance settings from backup', applied);
+        }
+      } catch (error) {
+        // The data landed; a theme that did not is not worth failing over.
+        logger.warn('Could not apply appearance settings from backup', error);
+      }
     } catch (error) {
       logger.error('Error importing data:', error);
       throw new Error(`Failed to import data: ${error.message}`);
@@ -3891,6 +3917,11 @@ export const dbHelpers = {
           errors.push(`Invalid data: missing or invalid ${field} array`);
         }
       }
+
+      // `appearance` is deliberately not validated here. It is cosmetic, and
+      // applyAppearanceSnapshot already checks every field independently and
+      // ignores what it cannot read. Failing an otherwise-good import of real
+      // financial data over a malformed colour would be the wrong trade.
 
       // Optional arrays: if present, must be arrays.
       const optionalArrayFields = [

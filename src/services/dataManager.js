@@ -22,7 +22,10 @@ const CSV_MONEY_FIELDS = {
 // IndexedDB structure). Review this whenever a schema change alters that
 // contract (e.g. the V8 migration to UUID string ids, which this constant
 // was never bumped for).
-const CURRENT_DATA_VERSION = 6;
+// 7 adds the `appearance` object (glass tint, ambient strength, ambient
+// colours). It is additive and optional: a version 6 file imports fine and
+// simply leaves the current theme alone.
+const CURRENT_DATA_VERSION = 7;
 
 /**
  * Normalize version to number for comparison

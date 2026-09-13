@@ -74,6 +74,12 @@
      1 is fully tinted. Read by .glass-surface; written by Settings. */
   --glass-tint: 0.35;
 
+  /* Ambient ground colours — the "Aurora" default. Bare R, G, B triples so
+     each gradient stop can apply its own alpha. See .app-ambient. */
+  --ambient-top: 56, 116, 224;
+  --ambient-middle: 16, 150, 121;
+  --ambient-bottom: 198, 116, 38;
+
   /* Spacing System Tokens */
   --space-micro: 2px;
   --space-xs: 4px;
@@ -233,31 +239,40 @@
     z-index: 0;
     pointer-events: none;
     opacity: var(--ambient-strength, 1);
+
+    /* Three colours drive five gradients. Held as bare `R, G, B` triples
+       rather than hex so each stop can pick its own alpha through rgba() —
+       a hex custom property cannot be given transparency without either
+       relative-colour syntax or a second variable per stop. Positions are
+       deliberately not customisable: they were placed so the two halves of
+       the screen get comparable colour, and letting them move mostly
+       produces fields that are bright under one column and dead under
+       another. Defaults live in :root; Settings overwrites them. */
     background-image:
       radial-gradient(
         44% 34% at 18% 6%,
-        rgba(56, 116, 224, 0.5) 0%,
-        rgba(56, 116, 224, 0) 68%
+        rgba(var(--ambient-top), 0.5) 0%,
+        rgba(var(--ambient-top), 0) 68%
       ),
       radial-gradient(
         42% 32% at 84% 14%,
-        rgba(56, 116, 224, 0.4) 0%,
-        rgba(56, 116, 224, 0) 68%
+        rgba(var(--ambient-top), 0.4) 0%,
+        rgba(var(--ambient-top), 0) 68%
       ),
       radial-gradient(
         40% 30% at 52% 44%,
-        rgba(16, 150, 121, 0.42) 0%,
-        rgba(16, 150, 121, 0) 70%
+        rgba(var(--ambient-middle), 0.42) 0%,
+        rgba(var(--ambient-middle), 0) 70%
       ),
       radial-gradient(
         44% 34% at 14% 78%,
-        rgba(198, 116, 38, 0.42) 0%,
-        rgba(198, 116, 38, 0) 70%
+        rgba(var(--ambient-bottom), 0.42) 0%,
+        rgba(var(--ambient-bottom), 0) 70%
       ),
       radial-gradient(
         46% 36% at 78% 90%,
-        rgba(198, 116, 38, 0.46) 0%,
-        rgba(198, 116, 38, 0) 70%
+        rgba(var(--ambient-bottom), 0.46) 0%,
+        rgba(var(--ambient-bottom), 0) 70%
       );
   }
 

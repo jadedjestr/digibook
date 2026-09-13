@@ -5,8 +5,18 @@ import {
   setStoredTint,
   getStoredAmbient,
   setStoredAmbient,
+  getStoredAmbientColors,
+  setStoredAmbientColors,
+  matchPreset,
+  AMBIENT_PRESETS,
   DEFAULT_TINT,
 } from '../../utils/appearance';
+
+const STOPS = [
+  { key: 'top', label: 'Top' },
+  { key: 'middle', label: 'Middle' },
+  { key: 'bottom', label: 'Bottom' },
+];
 
 /**
  * Glass transparency and the ambient ground behind it, mirroring the control
@@ -19,6 +29,15 @@ import {
 const AppearanceCard = () => {
   const [tint, setTint] = useState(() => getStoredTint());
   const [ambient, setAmbient] = useState(() => getStoredAmbient());
+  const [colors, setColors] = useState(() => getStoredAmbientColors());
+
+  const activePreset = matchPreset(colors);
+
+  const applyPreset = preset =>
+    setColors(setStoredAmbientColors(preset.colors));
+
+  const handleStopChange = (key, value) =>
+    setColors(setStoredAmbientColors({ ...colors, [key]: value }));
 
   const handleChange = event => {
     // Apply and persist on every frame of the drag. The write is a single
@@ -111,6 +130,76 @@ const AppearanceCard = () => {
           <span>Off</span>
           <span>Full</span>
         </div>
+      </div>
+
+      <div className='pt-2 border-t border-white/10'>
+        <span className='block text-sm font-medium text-white mb-1'>
+          Palette
+        </span>
+        <p className='text-xs text-white/50 mb-3'>
+          Three colours drive the field behind the glass. Pick a preset, or set
+          each one yourself.
+        </p>
+
+        <div
+          className='grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4'
+          role='group'
+          aria-label='Ambient palette presets'
+        >
+          {AMBIENT_PRESETS.map(preset => (
+            <button
+              key={preset.id}
+              type='button'
+              onClick={() => applyPreset(preset)}
+              aria-pressed={activePreset === preset.id}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
+                activePreset === preset.id
+                  ? 'border-blue-500 bg-blue-500/15'
+                  : 'border-white/10 hover:border-white/25 hover:bg-white/5'
+              }`}
+            >
+              <span
+                aria-hidden='true'
+                className='w-6 h-6 rounded-full shrink-0 border border-white/20'
+                style={{
+                  backgroundImage: `linear-gradient(140deg, ${preset.colors.top}, ${preset.colors.middle}, ${preset.colors.bottom})`,
+                }}
+              />
+              <span className='text-xs text-white/85 truncate'>
+                {preset.name}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className='grid grid-cols-3 gap-3'>
+          {STOPS.map(stop => (
+            <div key={stop.key}>
+              <label
+                htmlFor={`ambient-${stop.key}`}
+                className='block text-xs text-white/60 mb-1'
+              >
+                {stop.label}
+              </label>
+              <input
+                id={`ambient-${stop.key}`}
+                type='color'
+                value={colors[stop.key]}
+                onChange={e => handleStopChange(stop.key, e.target.value)}
+                className='w-full h-9 rounded-lg bg-transparent border border-white/15 cursor-pointer'
+              />
+              <span className='block mt-1 text-[10px] text-white/40 font-mono'>
+                {colors[stop.key]}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <p className='text-xs text-white/40 mt-3'>
+          {activePreset
+            ? 'Matches a preset.'
+            : 'Custom palette. It travels with your exported backup.'}
+        </p>
       </div>
 
       {percent !== Math.round(DEFAULT_TINT * 100) && (

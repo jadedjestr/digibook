@@ -7,6 +7,13 @@ import {
   getStoredAmbient,
   setStoredAmbient,
   applyStoredAmbient,
+  getStoredAmbientColors,
+  setStoredAmbientColors,
+  matchPreset,
+  getAppearanceSnapshot,
+  applyAppearanceSnapshot,
+  AMBIENT_PRESETS,
+  DEFAULT_AMBIENT_COLORS,
   DEFAULT_TINT,
   DEFAULT_AMBIENT,
 } from '../appearance';
@@ -17,11 +24,17 @@ vi.mock('../logger', () => ({
 
 const KEY = 'digibook.glassTint';
 const AMBIENT_KEY = 'digibook.ambientStrength';
+const COLORS_KEY = 'digibook.ambientColors';
+
+const readVar = name => document.documentElement.style.getPropertyValue(name);
 
 beforeEach(() => {
   localStorage.clear();
   document.documentElement.style.removeProperty('--glass-tint');
   document.documentElement.style.removeProperty('--ambient-strength');
+  document.documentElement.style.removeProperty('--ambient-top');
+  document.documentElement.style.removeProperty('--ambient-middle');
+  document.documentElement.style.removeProperty('--ambient-bottom');
 });
 
 describe('glass tint preference', () => {
@@ -119,5 +132,113 @@ describe('ambient ground strength', () => {
     expect(
       document.documentElement.style.getPropertyValue('--ambient-strength'),
     ).toBe(String(DEFAULT_AMBIENT));
+  });
+});
+
+describe('ambient colours', () => {
+  test('an absent key yields the default palette', () => {
+    expect(getStoredAmbientColors()).toEqual(DEFAULT_AMBIENT_COLORS);
+  });
+
+  test('setting writes CSS as R, G, B triples, not hex', () => {
+    // The gradients apply their own alpha per stop, which rgba() can only do
+    // with a bare triple — a hex custom property cannot carry transparency.
+    setStoredAmbientColors({
+      top: '#3874e0',
+      middle: '#109679',
+      bottom: '#c67426',
+    });
+    expect(readVar('--ambient-top')).toBe('56, 116, 224');
+    expect(readVar('--ambient-middle')).toBe('16, 150, 121');
+    expect(readVar('--ambient-bottom')).toBe('198, 116, 38');
+  });
+
+  test('a partial palette is rejected outright, not merged', () => {
+    setStoredAmbientColors(DEFAULT_AMBIENT_COLORS);
+    const before = getStoredAmbientColors();
+
+    setStoredAmbientColors({ top: '#ff0000' });
+
+    // Merging would produce a combination the user never picked or saw.
+    expect(getStoredAmbientColors()).toEqual(before);
+  });
+
+  test('malformed hex is rejected', () => {
+    setStoredAmbientColors(DEFAULT_AMBIENT_COLORS);
+    for (const bad of ['red', '#fff', '#gggggg', '', null, 12]) {
+      setStoredAmbientColors({ ...DEFAULT_AMBIENT_COLORS, middle: bad });
+      expect(getStoredAmbientColors()).toEqual(DEFAULT_AMBIENT_COLORS);
+    }
+  });
+
+  test('corrupt stored JSON falls back to the default palette', () => {
+    localStorage.setItem(COLORS_KEY, '{not json');
+    expect(getStoredAmbientColors()).toEqual(DEFAULT_AMBIENT_COLORS);
+  });
+
+  test('matchPreset identifies a preset and reports custom as null', () => {
+    expect(matchPreset(AMBIENT_PRESETS[1].colors)).toBe(AMBIENT_PRESETS[1].id);
+    expect(
+      matchPreset({ top: '#123456', middle: '#654321', bottom: '#abcdef' }),
+    ).toBeNull();
+  });
+});
+
+describe('appearance travels in a backup', () => {
+  test('a snapshot survives a full round trip', () => {
+    setStoredTint(0.8);
+    setStoredAmbient(0.4);
+    setStoredAmbientColors(AMBIENT_PRESETS[2].colors);
+
+    const exported = JSON.parse(JSON.stringify(getAppearanceSnapshot()));
+
+    // Arrive on a device with completely different settings.
+    localStorage.clear();
+    setStoredTint(0.1);
+    setStoredAmbient(1);
+    setStoredAmbientColors(AMBIENT_PRESETS[4].colors);
+
+    applyAppearanceSnapshot(exported);
+
+    expect(getStoredTint()).toBe(0.8);
+    expect(getStoredAmbient()).toBe(0.4);
+    expect(getStoredAmbientColors()).toEqual(AMBIENT_PRESETS[2].colors);
+    expect(readVar('--ambient-top')).toBe('30, 79, 138');
+  });
+
+  test('a backup with no appearance leaves the current theme alone', () => {
+    // Every file exported before this feature shipped looks like this.
+    setStoredTint(0.9);
+    setStoredAmbientColors(AMBIENT_PRESETS[3].colors);
+
+    expect(applyAppearanceSnapshot(undefined)).toBeNull();
+    expect(applyAppearanceSnapshot({})).toBeNull();
+
+    expect(getStoredTint()).toBe(0.9);
+    expect(getStoredAmbientColors()).toEqual(AMBIENT_PRESETS[3].colors);
+  });
+
+  test('a partly-corrupt snapshot applies only what it can read', () => {
+    setStoredTint(0.2);
+    setStoredAmbient(0.2);
+    setStoredAmbientColors(DEFAULT_AMBIENT_COLORS);
+
+    applyAppearanceSnapshot({
+      glassTint: 0.75,
+      ambientStrength: 'not-a-number',
+      ambientColors: { top: '#000000' },
+    });
+
+    expect(getStoredTint()).toBe(0.75);
+
+    // Both of these were unreadable and must not have moved.
+    expect(getStoredAmbient()).toBe(0.2);
+    expect(getStoredAmbientColors()).toEqual(DEFAULT_AMBIENT_COLORS);
+  });
+
+  test('out-of-range values from a backup are clamped, not rejected', () => {
+    applyAppearanceSnapshot({ glassTint: 42, ambientStrength: -5 });
+    expect(getStoredTint()).toBe(1);
+    expect(getStoredAmbient()).toBe(0);
   });
 });
