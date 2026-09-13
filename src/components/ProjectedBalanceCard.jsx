@@ -9,6 +9,7 @@ import PrivacyWrapper from './PrivacyWrapper';
 const ProjectedBalanceCard = ({
   accounts = [],
   creditCards: _creditCards = [],
+  pendingTransactions = [],
   summaryTotals = {},
   showAccountName = true,
 }) => {
@@ -19,17 +20,29 @@ const ProjectedBalanceCard = ({
     ? defaultAccount.currentBalance || defaultAccount.balance || 0
     : 0;
 
+  // Start from the projected balance, not the raw one. Pending rows are
+  // signed - spending that hasn't cleared is negative, an expected paycheck
+  // is positive - so this corrects the figure in both directions at once.
+  // Bills come from fixedExpenses, a separate table, so nothing double-counts.
+  const pendingForAccount = defaultAccount
+    ? pendingTransactions
+        .filter(t => t.accountId === defaultAccount.id)
+        .reduce((sum, t) => sum + (t.amount || 0), 0)
+    : 0;
+  const projectedBalance = defaultAccountBalance + pendingForAccount;
+
   const { payThisWeekTotal = 0 } = summaryTotals;
-  const balanceAfterExpenses = defaultAccountBalance - payThisWeekTotal;
+  const balanceAfterExpenses = projectedBalance - payThisWeekTotal;
 
   // Debug logging
   logger.debug('ProjectedBalanceCard Debug:', {
     defaultAccount: defaultAccount
       ? { name: defaultAccount.name, balance: defaultAccountBalance }
       : null,
+    pendingForAccount,
     payThisWeekTotal,
     balanceAfterExpenses,
-    calculation: `${defaultAccountBalance} - ${payThisWeekTotal} = ${balanceAfterExpenses}`,
+    calculation: `${defaultAccountBalance} + ${pendingForAccount} - ${payThisWeekTotal} = ${balanceAfterExpenses}`,
   });
   const isPositive = balanceAfterExpenses >= 0;
 
@@ -65,8 +78,8 @@ const ProjectedBalanceCard = ({
 
         <div className='text-xs text-secondary text-center'>
           {showAccountName
-            ? `${defaultAccountName} • After expenses`
-            : 'After expenses'}
+            ? `${defaultAccountName} • After bills & pending`
+            : 'After bills & pending'}
         </div>
       </div>
     </div>
@@ -76,15 +89,9 @@ const ProjectedBalanceCard = ({
 ProjectedBalanceCard.propTypes = {
   accounts: PropTypes.arrayOf(PropTypes.object),
   creditCards: PropTypes.arrayOf(PropTypes.object),
+  pendingTransactions: PropTypes.arrayOf(PropTypes.object),
   summaryTotals: PropTypes.object,
   showAccountName: PropTypes.bool,
-};
-
-ProjectedBalanceCard.defaultProps = {
-  accounts: [],
-  creditCards: [],
-  summaryTotals: {},
-  showAccountName: true,
 };
 
 export default ProjectedBalanceCard;

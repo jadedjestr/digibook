@@ -29,6 +29,7 @@ import {
   useFixedExpenses,
   useIsLoading,
   usePaycheckSettings,
+  usePendingTransactions,
   useReloadExpenses,
   useReloadPaycheckSettings,
 } from '../stores/useAppStore';
@@ -58,6 +59,7 @@ const FixedExpenses = () => {
   const creditCards = useCreditCards();
   const fixedExpenses = useFixedExpenses();
   const paycheckSettings = usePaycheckSettings();
+  const pendingTransactions = usePendingTransactions();
   const categories = useCategories();
   const isLoading = useIsLoading();
   const reloadPaycheckSettings = useReloadPaycheckSettings();
@@ -427,6 +429,7 @@ const FixedExpenses = () => {
                 <ProjectedBalanceCard
                   accounts={accounts}
                   creditCards={creditCards}
+                  pendingTransactions={pendingTransactions}
                   summaryTotals={summaryTotals}
                   showAccountName={false}
                 />
