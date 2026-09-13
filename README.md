@@ -86,6 +86,18 @@ npm run dev
 
 4. Open [http://localhost:5173](http://localhost:5173) in your browser
 
+### Live app
+
+**https://digibook-rose.vercel.app**
+
+Deployed from `main` on every push. Each device keeps its own database — data
+lives in the browser and is never uploaded — so moving between machines is done
+by exporting and importing a JSON file.
+
+> **On iPhone, add it to the home screen.** iOS deletes a bookmarked site's
+> local storage after about a week without a visit, which for this app means
+> losing that device's data. Home-screen web apps are exempt.
+
 ### Building for Production
 
 ```bash
