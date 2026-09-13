@@ -8,6 +8,7 @@ import {
   PAY_FREQUENCIES,
 } from '../constants/payFrequency';
 import { dbHelpers } from '../db/database-clean';
+import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
@@ -28,6 +29,7 @@ const PaycheckManager = ({ onDataChange }) => {
     accountId: '',
     expectedAmount: '',
   });
+  const [learnedAmount, setLearnedAmount] = useState(null);
 
   useEffect(() => {
     loadPaycheckSettings();
@@ -55,6 +57,9 @@ const PaycheckManager = ({ onDataChange }) => {
         expectedAmount:
           source?.expectedAmount != null ? String(source.expectedAmount) : '',
       });
+      setLearnedAmount(
+        source ? await dbHelpers.getLearnedIncomeAmount(source.id) : null,
+      );
     } catch (error) {
       logger.error('Error loading paycheck settings:', error);
       notify.error('Failed to load paycheck settings');
@@ -296,6 +301,12 @@ const PaycheckManager = ({ onDataChange }) => {
                   Roughly what you usually get. Correct it when each paycheck
                   lands — an estimate never affects your real balance.
                 </p>
+                {learnedAmount != null && (
+                  <p className='text-sm mt-2 text-green-300'>
+                    Using {formatCurrency(learnedAmount)} — the average of your
+                    last 3 paychecks.
+                  </p>
+                )}
               </div>
             </div>
           )}

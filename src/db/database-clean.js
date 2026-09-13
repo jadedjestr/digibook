@@ -1118,6 +1118,11 @@ export const dbHelpers = {
 
           const ts = nowIso();
           await db.pendingTransactions.update(id, {
+            // completedAt positively marks "this money actually arrived".
+            // Soft-delete alone can't say that - a row swept when a feature
+            // is switched off looks identical - so anything reading back
+            // real history must key off this, not off deletedAt.
+            completedAt: ts,
             deletedAt: ts,
             updatedAt: ts,
           });
@@ -2485,6 +2490,34 @@ export const dbHelpers = {
   },
 
   /**
+   * What this source's paychecks have actually been worth lately.
+   *
+   * Reads only rows the user confirmed (completedAt set) - a prediction that
+   * was swept when the feature was switched off is soft-deleted too, and
+   * counting it would average in a paycheck that never arrived. Returns null
+   * until there's enough history to beat the user's own estimate.
+   *
+   * @returns {Promise<number|null>} average of the last few actual amounts
+   */
+  async getLearnedIncomeAmount(sourceId) {
+    const MIN_HISTORY = 3;
+    try {
+      const confirmed = (await db.pendingTransactions.toArray())
+        .filter(t => t.incomeSourceId === sourceId && t.completedAt)
+        .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
+        .slice(0, MIN_HISTORY);
+
+      if (confirmed.length < MIN_HISTORY) return null;
+
+      const total = confirmed.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      return Math.round((total / confirmed.length) * 100) / 100;
+    } catch (error) {
+      logger.error('Error reading income history:', error);
+      return null;
+    }
+  },
+
+  /**
    * Create a pending income row for every payday that has passed since the
    * last one generated. Safe to call on every app load - `lastGeneratedDate`
    * is the high-water mark, so a second run in the same day creates nothing.
@@ -2522,7 +2555,11 @@ export const dbHelpers = {
 
       const frequency = settings?.frequency || DEFAULT_PAY_FREQUENCY;
       const today = DateUtils.today();
-      const amount = Math.abs(Number(source.expectedAmount) || 0);
+
+      // What actually arrived beats what the user guessed. Their typed
+      // figure is left untouched as the fallback and starting point.
+      const learned = await this.getLearnedIncomeAmount(source.id);
+      const amount = learned ?? Math.abs(Number(source.expectedAmount) || 0);
 
       // A long absence must not flood the list with back-pay.
       const MAX_CATCH_UP = 7;

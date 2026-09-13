@@ -170,6 +170,155 @@ describe('dbHelpers.generateDueIncome', () => {
   });
 });
 
+describe('dbHelpers.getLearnedIncomeAmount', () => {
+  const SOURCE_ID = 'inc-1';
+
+  const confirmedRow = (id, amount, completedAt) => ({
+    id,
+    accountId: ACCOUNT_ID,
+    incomeSourceId: SOURCE_ID,
+    amount,
+    description: 'Paycheck',
+    category: 'Other',
+    completedAt,
+    deletedAt: completedAt,
+    createdAt: now,
+    updatedAt: completedAt,
+  });
+
+  beforeEach(async () => {
+    await db.pendingTransactions.clear();
+  });
+
+  it('returns null until there are three confirmed paychecks', async () => {
+    await db.pendingTransactions.bulkPut([
+      confirmedRow('p1', 1000, '2026-08-02T00:00:00.000Z'),
+      confirmedRow('p2', 1100, '2026-08-16T00:00:00.000Z'),
+    ]);
+
+    expect(await dbHelpers.getLearnedIncomeAmount(SOURCE_ID)).toBeNull();
+  });
+
+  it('averages the three most recent confirmed amounts', async () => {
+    await db.pendingTransactions.bulkPut([
+      confirmedRow('p0', 9999, '2026-07-01T00:00:00.000Z'), // too old to count
+      confirmedRow('p1', 1000, '2026-08-02T00:00:00.000Z'),
+      confirmedRow('p2', 1100, '2026-08-16T00:00:00.000Z'),
+      confirmedRow('p3', 1200, '2026-08-30T00:00:00.000Z'),
+    ]);
+
+    expect(await dbHelpers.getLearnedIncomeAmount(SOURCE_ID)).toBe(1100);
+  });
+
+  // The whole reason completedAt exists. A swept prediction is soft-deleted
+  // exactly like a confirmed paycheck, so keying off deletedAt would average
+  // in money that never arrived.
+  it('ignores swept predictions, which were never actually received', async () => {
+    await db.pendingTransactions.bulkPut([
+      confirmedRow('p1', 1000, '2026-08-02T00:00:00.000Z'),
+      confirmedRow('p2', 1100, '2026-08-16T00:00:00.000Z'),
+      {
+        id: 'swept',
+        accountId: ACCOUNT_ID,
+        incomeSourceId: SOURCE_ID,
+        amount: 5000,
+        description: 'Paycheck',
+        category: 'Other',
+        completedAt: undefined,
+        deletedAt: '2026-08-30T00:00:00.000Z',
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    // Two real ones plus a swept one is still only two real ones.
+    expect(await dbHelpers.getLearnedIncomeAmount(SOURCE_ID)).toBeNull();
+  });
+
+  it('ignores paychecks belonging to a different source', async () => {
+    await db.pendingTransactions.bulkPut([
+      confirmedRow('p1', 1000, '2026-08-02T00:00:00.000Z'),
+      confirmedRow('p2', 1100, '2026-08-16T00:00:00.000Z'),
+      {
+        ...confirmedRow('other', 7777, '2026-08-30T00:00:00.000Z'),
+        incomeSourceId: 'inc-2',
+      },
+    ]);
+
+    expect(await dbHelpers.getLearnedIncomeAmount(SOURCE_ID)).toBeNull();
+  });
+});
+
+describe('generation uses learned history', () => {
+  beforeEach(async () => {
+    await Promise.all([
+      db.accounts.clear(),
+      db.pendingTransactions.clear(),
+      db.paycheckSettings.clear(),
+      db.incomeSources.clear(),
+    ]);
+    await db.accounts.put({
+      id: ACCOUNT_ID,
+      name: 'Checking',
+      type: 'checking',
+      currentBalance: 500,
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+    await db.paycheckSettings.put({
+      id: 'pay-1',
+      lastPaycheckDate: daysAgo(14),
+      frequency: 'biweekly',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+  });
+
+  it('generates at the learned average rather than the typed estimate', async () => {
+    const sourceId = await seedSource({ expectedAmount: 1200 });
+
+    await db.pendingTransactions.bulkPut(
+      [900, 1000, 1100].map((amount, i) => ({
+        id: `hist-${i}`,
+        accountId: ACCOUNT_ID,
+        incomeSourceId: sourceId,
+        amount,
+        description: 'Paycheck',
+        category: 'Other',
+        completedAt: `2026-08-0${i + 1}T00:00:00.000Z`,
+        deletedAt: `2026-08-0${i + 1}T00:00:00.000Z`,
+        createdAt: now,
+        updatedAt: now,
+      })),
+    );
+
+    await dbHelpers.generateDueIncome();
+
+    const [row] = (await db.pendingTransactions.toArray()).filter(
+      t => !t.deletedAt,
+    );
+    expect(row.amount).toBe(1000);
+
+    // The user's own figure is never clobbered - it stays the fallback.
+    const source = await dbHelpers.getPrimaryIncomeSource();
+    expect(source.expectedAmount).toBe(1200);
+  });
+
+  it('falls back to the typed estimate without enough history', async () => {
+    await seedSource({ expectedAmount: 1200 });
+
+    await dbHelpers.generateDueIncome();
+
+    const [row] = (await db.pendingTransactions.toArray()).filter(
+      t => !t.deletedAt,
+    );
+    expect(row.amount).toBe(1200);
+  });
+});
+
 describe('dbHelpers.sweepUnconfirmedIncome', () => {
   beforeEach(async () => {
     await Promise.all([
