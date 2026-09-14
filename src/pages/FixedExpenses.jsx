@@ -246,13 +246,18 @@ const FixedExpenses = () => {
     [payNowExpense, updateExpenseV4, reloadExpenses],
   );
 
+  // Deliberately the FULL fixedExpenses array, not currentMonthExpenses. This
+  // feeds "what do I owe this week" and "balance after this week" — numbers
+  // that must answer "right now", not "whichever month the calendar happens
+  // to be showing". Before this fix, paging the calendar forward silently
+  // recomputed both against that browsed month instead of today, which is
+  // exactly the kind of quietly-wrong number this project has spent real
+  // effort making trustworthy. The calendar itself keeps its own
+  // currentMonthExpenses below, unaffected — it legitimately needs one
+  // specific month to lay out its day grid; only the money side changes.
   const summaryTotals = useMemo(
-    () =>
-      paycheckService.calculateSummaryTotals(
-        currentMonthExpenses,
-        paycheckDates,
-      ),
-    [paycheckService, currentMonthExpenses, paycheckDates],
+    () => paycheckService.calculateSummaryTotals(fixedExpenses, paycheckDates),
+    [paycheckService, fixedExpenses, paycheckDates],
   );
 
   const { fixedExpenseSummaryTotals, fixedExpenseSummaryCategoryRows } =
