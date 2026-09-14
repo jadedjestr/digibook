@@ -8,7 +8,12 @@ import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
 
-const CreateAccountModal = ({ isOpen, onClose, onAccountCreated }) => {
+const CreateAccountModal = ({
+  isOpen,
+  onClose,
+  onAccountCreated,
+  description,
+}) => {
   const [formData, setFormData] = useState({
     name: '',
     type: 'checking',
@@ -103,10 +108,9 @@ const CreateAccountModal = ({ isOpen, onClose, onAccountCreated }) => {
           </button>
         </div>
 
-        <p className='text-secondary text-sm mb-6'>
-          To track credit card payments, a checking or savings account is needed
-          as the funding source. Create one now to continue.
-        </p>
+        {description && (
+          <p className='text-secondary text-sm mb-6'>{description}</p>
+        )}
 
         <div className='space-y-4 mb-6'>
           <div>
@@ -216,6 +220,11 @@ CreateAccountModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
   onAccountCreated: PropTypes.func.isRequired,
+  description: PropTypes.node,
+};
+
+CreateAccountModal.defaultProps = {
+  description: null,
 };
 
 export default CreateAccountModal;

@@ -1007,6 +1007,7 @@ const CreditCards = ({
           setPendingCardData(null);
         }}
         onAccountCreated={handleAccountCreated}
+        description='To track credit card payments, a checking or savings account is needed as the funding source. Create one now to continue.'
       />
 
       {/* Retro-creation Confirmation Modal */}

@@ -2,6 +2,7 @@ import { Plus, Wallet, CreditCard, PiggyBank } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 
 import AccountRow from '../components/AccountRow';
+import CreateAccountModal from '../components/CreateAccountModal';
 import EmptyState from '../components/EmptyState';
 import AccountsEmptyIllustration from '../components/illustrations/AccountsEmptyIllustration';
 import MissingExpensesModal from '../components/MissingExpensesModal';
@@ -16,7 +17,6 @@ import {
 import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
-import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
 
 const Accounts = () => {
   // Use Zustand store for data
@@ -24,13 +24,6 @@ const Accounts = () => {
   const pendingTransactions = usePendingTransactions();
   const reloadAccounts = useReloadAccounts();
   const [isAddingAccount, setIsAddingAccount] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState({});
-  const [newAccount, setNewAccount] = useState({
-    name: '',
-    type: 'checking',
-    currentBalance: 0,
-  });
   const [isMissingExpensesModalOpen, setIsMissingExpensesModalOpen] =
     useState(false);
   const [orphanedCards, setOrphanedCards] = useState([]);
@@ -94,54 +87,16 @@ const Accounts = () => {
     }
   };
 
-  const validateForm = () => {
-    const newErrors = {};
-    if (!newAccount.name.trim()) {
-      newErrors.name = 'Account name is required';
+  const handleAccountCreated = useCallback(async () => {
+    setIsAddingAccount(false);
+    await reloadAccounts();
+
+    const orphans = await dbHelpers.getOrphanedCreditCards();
+    if (orphans.length > 0) {
+      setOrphanedCards(orphans);
+      setIsMissingExpensesModalOpen(true);
     }
-    const parsed = parseMoneyInput(newAccount.currentBalance, {
-      allowEmpty: true,
-    });
-    if (!parsed.ok) {
-      newErrors.currentBalance = moneyInputErrorMessage(parsed.reason);
-    } else if (parsed.value < 0) {
-      newErrors.currentBalance = 'Balance cannot be negative';
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleAddAccount = async () => {
-    if (!validateForm()) return;
-
-    setIsLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const parsed = parseMoneyInput(newAccount.currentBalance, {
-        allowEmpty: true,
-      });
-      await dbHelpers.addAccount({
-        ...newAccount,
-        currentBalance: parsed.value,
-      });
-      setNewAccount({ name: '', type: 'checking', currentBalance: 0 });
-      setIsAddingAccount(false);
-      setErrors({});
-      reloadAccounts();
-
-      const orphans = await dbHelpers.getOrphanedCreditCards();
-      if (orphans.length > 0) {
-        setOrphanedCards(orphans);
-        setIsMissingExpensesModalOpen(true);
-      }
-    } catch (error) {
-      logger.error('Error adding account:', error);
-      setErrors({ general: 'Failed to add account. Please try again.' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [reloadAccounts]);
 
   const handleSetDefault = async accountId => {
     try {
@@ -216,100 +171,11 @@ const Accounts = () => {
         <div className='text-xs text-muted mt-1'>Across all accounts</div>
       </div>
 
-      {/* Add Account Form */}
-      {isAddingAccount && (
-        <div className='glass-panel'>
-          <h3 className='text-lg font-semibold text-primary mb-4'>
-            Add New Account
-          </h3>
-          <div className='grid grid-cols-1 md:grid-cols-3 gap-4 mb-4'>
-            <div>
-              <input
-                type='text'
-                placeholder='Account Name'
-                value={newAccount.name}
-                onChange={e =>
-                  setNewAccount({ ...newAccount, name: e.target.value })
-                }
-                className={`glass-input w-full ${errors.name ? 'glass-error' : ''}`}
-              />
-              {errors.name && (
-                <p className='text-red-400 text-sm mt-1'>{errors.name}</p>
-              )}
-            </div>
-            <div>
-              <select
-                value={newAccount.type}
-                onChange={e =>
-                  setNewAccount({ ...newAccount, type: e.target.value })
-                }
-                className='glass-input w-full'
-              >
-                <option value='checking'>Checking</option>
-                <option value='savings'>Savings</option>
-              </select>
-            </div>
-            <div>
-              <input
-                type='number'
-                inputMode='decimal'
-                placeholder='Current Balance'
-                value={newAccount.currentBalance}
-                onChange={e =>
-                  setNewAccount({
-                    ...newAccount,
-                    currentBalance: e.target.value,
-                  })
-                }
-                className={`glass-input w-full ${errors.currentBalance ? 'glass-error' : ''}`}
-              />
-              {errors.currentBalance && (
-                <p className='text-red-400 text-sm mt-1'>
-                  {errors.currentBalance}
-                </p>
-              )}
-            </div>
-          </div>
-          {errors.general && (
-            <div className='bg-red-500/20 border border-red-400/50 rounded-lg p-3 mb-4'>
-              <p className='text-red-200 text-sm'>{errors.general}</p>
-            </div>
-          )}
-          <div className='flex space-x-3'>
-            <button
-              onClick={handleAddAccount}
-              disabled={isLoading}
-              className={`glass-button flex items-center space-x-2 ${isLoading ? 'glass-loading' : ''}`}
-            >
-              {isLoading ? (
-                <>
-                  <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-white' />
-                  <span>Adding...</span>
-                </>
-              ) : (
-                <>
-                  <Plus size={16} />
-                  <span>Add Account</span>
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => {
-                setIsAddingAccount(false);
-                setErrors({});
-                setNewAccount({
-                  name: '',
-                  type: 'checking',
-                  currentBalance: 0,
-                });
-              }}
-              className='glass-button glass-button--danger'
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      <CreateAccountModal
+        isOpen={isAddingAccount}
+        onClose={() => setIsAddingAccount(false)}
+        onAccountCreated={handleAccountCreated}
+      />
 
       {/* Grouped Accounts Display */}
       {accounts.length === 0 ? (
