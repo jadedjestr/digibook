@@ -1,16 +1,9 @@
-import {
-  Plus,
-  Star,
-  Trash2,
-  Wallet,
-  CreditCard,
-  PiggyBank,
-} from 'lucide-react';
+import { Plus, Wallet, CreditCard, PiggyBank } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 
+import AccountRow from '../components/AccountRow';
 import EmptyState from '../components/EmptyState';
 import AccountsEmptyIllustration from '../components/illustrations/AccountsEmptyIllustration';
-import InlineEdit from '../components/InlineEdit';
 import MissingExpensesModal from '../components/MissingExpensesModal';
 import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
@@ -31,7 +24,6 @@ const Accounts = () => {
   const pendingTransactions = usePendingTransactions();
   const reloadAccounts = useReloadAccounts();
   const [isAddingAccount, setIsAddingAccount] = useState(false);
-  const [editingId, setEditingId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [newAccount, setNewAccount] = useState({
@@ -176,7 +168,6 @@ const Accounts = () => {
   const handleUpdateAccount = async (accountId, updates, expectedUpdatedAt) => {
     try {
       await dbHelpers.updateAccount(accountId, updates, expectedUpdatedAt);
-      setEditingId(null);
       await reloadAccounts();
     } catch (error) {
       logger.error('Error updating account:', error);
@@ -349,103 +340,22 @@ const Accounts = () => {
                 </span>
               </div>
 
-              {/* Accounts Table for this type */}
-              <div className='overflow-x-auto w-full'>
-                <table className='glass-table min-w-max w-full'>
-                  <thead>
-                    <tr>
-                      <th>Account</th>
-                      <th>Current Balance</th>
-                      <th>Projected Balance</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {typeAccounts.map(account => {
-                      const projectedBalance =
-                        calculateProjectedBalance(account);
-                      const _isEditing = editingId === account.id;
+              {/* Accounts for this type */}
+              <div className='glass-row-list'>
+                {typeAccounts.map(account => {
+                  logger.debug('Account data:', account);
 
-                      logger.debug('Account data:', account);
-
-                      return (
-                        <tr key={account.id}>
-                          <td>
-                            <InlineEdit
-                              value={account.name}
-                              onSave={name =>
-                                handleUpdateAccount(
-                                  account.id,
-                                  { name },
-                                  account.updatedAt,
-                                )
-                              }
-                              showEditIcon
-                            />
-                          </td>
-                          <td>
-                            <InlineEdit
-                              value={account.currentBalance}
-                              onSave={currentBalance =>
-                                handleUpdateAccount(
-                                  account.id,
-                                  { currentBalance },
-                                  account.updatedAt,
-                                )
-                              }
-                              type='number'
-                              showEditIcon
-                            />
-                          </td>
-                          <td>
-                            <span
-                              className={`font-semibold ${
-                                projectedBalance < account.currentBalance
-                                  ? 'text-yellow-400'
-                                  : 'text-primary'
-                              }`}
-                            >
-                              <PrivacyWrapper>
-                                {formatCurrency(projectedBalance)}
-                              </PrivacyWrapper>
-                            </span>
-                          </td>
-                          <td>
-                            <div className='flex items-center space-x-2'>
-                              <button
-                                onClick={() => handleSetDefault(account.id)}
-                                className={`p-1 rounded transition-all duration-200 ${
-                                  account.isDefault
-                                    ? 'text-yellow-400 bg-yellow-500/20'
-                                    : 'text-muted hover:text-white hover:bg-white/10'
-                                }`}
-                                title={
-                                  account.isDefault
-                                    ? 'Default Account'
-                                    : 'Set as Default'
-                                }
-                              >
-                                <Star
-                                  size={16}
-                                  fill={
-                                    account.isDefault ? 'currentColor' : 'none'
-                                  }
-                                />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteAccount(account.id)}
-                                className='p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all duration-200'
-                                title='Delete Account'
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                  return (
+                    <AccountRow
+                      key={account.id}
+                      account={account}
+                      projectedBalance={calculateProjectedBalance(account)}
+                      onUpdateAccount={handleUpdateAccount}
+                      onSetDefault={handleSetDefault}
+                      onDelete={handleDeleteAccount}
+                    />
+                  );
+                })}
               </div>
             </div>
           ))}

@@ -1047,6 +1047,143 @@
     background: rgba(255, 255, 255, 0.3);
   }
 
+  /* ============================================================
+     ACCOUNT-STYLE ROW LIST
+
+     A generic replacement for a plain <table> where each record wants
+     its own rounded glass surface instead of flat table cells — first
+     used by Accounts (checking/savings), whose table forced its own
+     corners to 0 via `.glass-panel .glass-table` above just to fit
+     inside a rounded `.glass-panel`. Structurally this mirrors
+     `.priority-list-item*` (Calendar/calendar.css) — a flex row on
+     `.glass-surface`, a "main" block on the left, a trailing stats/
+     actions block on the right — but named generically and kept here,
+     in the global stylesheet, rather than in a calendar-domain file,
+     since nothing about it is calendar-specific. The literal
+     `.priority-list-item*` classes are untouched and keep serving
+     Fixed Expenses.
+     ============================================================ */
+  .glass-row-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .glass-row-list-item {
+    @apply glass-surface;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+  }
+
+  /* Default-account tint — same technique as
+     `.priority-list-section--overdue .priority-list-item` in
+     calendar.css (tinted background + border over the base glass
+     surface), ochre instead of red: this marks "the default", not
+     "at risk". */
+  .glass-row-list-item--accent {
+    background: var(--color-accent-light);
+    border-color: var(--color-accent-border);
+  }
+
+  .glass-row-list-item-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  /* The name is rendered via the shared InlineEdit component (no
+     className prop to hook into), whose display-mode button has no
+     width constraint of its own — inside a narrow flex row it wraps
+     to multiple lines and overlaps the stats/actions block instead of
+     shrinking. Target its button directly so a long name truncates
+     with an ellipsis instead, matching how `.priority-list-item-name`
+     (calendar.css) handles the same narrow-row problem. */
+  .glass-row-list-item-main > button {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .glass-row-list-badge {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent-light);
+    border: 1px solid var(--color-accent-border);
+    color: var(--color-accent-text);
+  }
+
+  .glass-row-list-stats {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+  }
+
+  /* Both stat groups are left-aligned — including Projected (custom-
+     rendered here) and Current (rendered via InlineEdit, whose shared
+     display button is hardcoded text-left, see InlineEdit.jsx). This is
+     a deliberate, small deviation from the pixel mockup (which had them
+     right-aligned): making both consistently left-aligned reads better
+     than fighting InlineEdit's own alignment with a specificity hack. */
+  .glass-row-list-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+  }
+
+  .glass-row-list-stat-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-ink-faint);
+  }
+
+  .glass-row-list-stat-value {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-ink);
+    font-variant-numeric: tabular-nums;
+    text-align: left;
+  }
+
+  .glass-row-list-actions {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  /* Bigger than the old bare `p-1` icon buttons (~24px) for an easier
+     touch target, still compact enough to sit two-up beside the stats.
+     Deliberately carries no color: the star/trash active, hover and
+     danger colors stay exactly the Tailwind utility classes already in
+     use today — this class only changes the box, not the existing,
+     already-approved color logic. */
+  .glass-row-list-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    transition: all var(--duration-fast) var(--easing-standard);
+  }
+
   /* Floating Sidebar */
   .glass-sidebar {
     @apply glass-surface;
@@ -1238,6 +1375,24 @@
     .glass-surface--interactive:hover,
     .glass-button:hover {
       transform: none;
+    }
+
+    /* Account-style row list: name + badge, stats + actions, and two
+       icon buttons don't fit on one line at phone width without the
+       name shrinking to an unreadable sliver. Stack them instead —
+       name on its own line, stats/actions on the next, spread across
+       the row — rather than fighting for horizontal space. */
+    .glass-row-list-item {
+      flex-wrap: wrap;
+    }
+
+    .glass-row-list-item-main {
+      flex: 1 1 100%;
+    }
+
+    .glass-row-list-stats {
+      flex: 1 1 100%;
+      justify-content: space-between;
     }
   }
 
