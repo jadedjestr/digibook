@@ -99,8 +99,7 @@ contract.
 │  │       ▼                          ▼                            │   │
 │  │  ┌──────────────────────────────────────────────────────┐    │   │
 │  │  │              Custom Hooks Layer                       │    │   │
-│  │  │  useExpenseOperations | usePaycheckCalculations │    │   │
-│  │  │  usePaycheckCalculations | useMemoizedCalculations |  │    │   │
+│  │  │  useExpenseOperations | usePaycheckCalculations |     │    │   │
 │  │  │  usePayCycleNudge                                      │    │   │
 │  │  └───────────────────────┬──────────────────────────────┘    │   │
 │  │                          │                                    │   │
@@ -670,25 +669,7 @@ Memoized wrapper around `PaycheckService`. Only recalculates when `paycheckSetti
 
 **Returns:** `{ paycheckService, paycheckDates }`
 
-### 6.3 `useMemoizedCalculations`
-
-**Path:** `src/hooks/useMemoizedCalculations.js`
-
-Heavy computation memoization for expense views.
-
-**Returns:**
-
-| Value | Description |
-|---|---|
-| `expensesByCategory` | Expenses grouped by category name |
-| `totals` | `{ totalAmount, totalPaid, totalRemaining, totalExpenses }` |
-| `categoryTotals` | Per-category count, total remaining, paid count |
-| `accountTotals` | `{ accountTotal, creditCardTotal, netWorth }` |
-| `expenseStatuses` | Per-expense `{ isPaid, isOverdue, remaining, percentage }` |
-| `getFilteredExpenses(filters)` | Filter by category, status, accountId, search, expenseType (recurring/oneoff) |
-| `getSortedExpenses(list, sortBy)` | Sort by dueDate, name, amount, or remaining |
-
-### 6.4 `usePayCycleNudge`
+### 6.3 `usePayCycleNudge`
 
 **Path:** `src/hooks/usePayCycleNudge.js`
 
@@ -696,13 +677,13 @@ Wraps the pure `getPayCycleNudge()` logic (`src/utils/payCycleNudgeLogic.js`) as
 
 **Returns:** `{ nudge, dismiss }` — `nudge` is `null` or one of the `past_month` / `catch_up` / `reset` shapes described in the Fixed Expenses view; `dismiss(dismissKey, dontShowAgainThisMonth)` records the dismissal and fires the optional `onNudgeDismissed` callback.
 
-### 6.5 `usePersistedState`
+### 6.4 `usePersistedState`
 
 **Path:** `src/hooks/usePersistedState.js`
 
 Persists UI state to both localStorage and IndexedDB (userPreferences table).
 
-### 6.6 `usePerformanceMonitor`
+### 6.5 `usePerformanceMonitor`
 
 **Path:** `src/hooks/usePerformanceMonitor.js`
 
@@ -772,24 +753,25 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | `CalendarCycleButton` | `src/components/Calendar/CalendarCycleButton.jsx` | Pay cycle reset trigger |
 | `ExpenseBadge` | `src/components/Calendar/ExpenseBadge.jsx` | Expense indicator on calendar days (name/amount split) |
 | `QuickActions` | `src/components/Calendar/QuickActions.jsx` | Quick action popup on day click |
-| `UpcomingRecurringWidget` | `src/components/Calendar/UpcomingRecurringWidget.jsx` | Shows next scheduled recurring expenses, with optional funding-account subtitle |
-| `PayCycleNudgeBanner` | `src/components/Calendar/PayCycleNudgeBanner.jsx` | Renders the active pay-cycle nudge (see [Section 6.4](#64-usepaycyclenudge)) above the calendar |
+| `PayCycleNudgeBanner` | `src/components/Calendar/PayCycleNudgeBanner.jsx` | Renders the active pay-cycle nudge (see [Section 6.3](#63-usepaycyclenudge)) above the calendar |
 | `PayCycleNudgeToast` | `src/components/Calendar/PayCycleNudgeToast.jsx` | Optional toast presentation of the same nudge |
 
-### Expenses Table System
+### Fixed Expenses Priority List
+
+Replaced the categorized-by-type table (and the donut chart, category
+summary card, and upcoming-payments widget that sat alongside it) with a
+single list sectioned Overdue → This week → Later, so the page answers "what
+needs my attention, in order" directly instead of requiring the reader to
+reconcile several same-weight widgets that each showed part of the answer.
+See `src/services/paycheckService.js` for `getPaymentProgress()`/
+`getTimingBucket()`, the two functions this reads directly rather than
+re-deriving urgency itself.
 
 | Component | Path | Description |
 |---|---|---|
-| `FixedExpensesTable` | `src/components/FixedExpensesTable.jsx` | Main table orchestrator |
-| `ExpenseTableContainer` | `src/components/FixedExpensesTable/ExpenseTableContainer.jsx` | Table wrapper with overflow handling, account validation, and top-level state |
-| `ExpenseTableHeader` | `src/components/FixedExpensesTable/ExpenseTableHeader.jsx` | Column headers and controls |
-| `ExpenseTableBody` | `src/components/FixedExpensesTable/ExpenseTableBody.jsx` | Table body with category grouping |
-| `ExpenseCategoryGroup` | `src/components/FixedExpensesTable/ExpenseCategoryGroup.jsx` | Collapsible category section |
-| `FixedExpensesSummaryCard` | `src/components/FixedExpensesTable/FixedExpensesSummaryCard.jsx` | Left-panel summary: count, Total/Paid/Remaining, category breakdown |
-| `QuickAddRow` | `src/components/FixedExpensesTable/QuickAddRow.jsx` | Inline row for adding new expenses |
-| `DraggableExpenseRow` | `src/components/DraggableExpenseRow.jsx` | Individual expense row with DnD |
-| `ExpenseMobileView` | `src/components/FixedExpensesTable/ExpenseMobileView.jsx` | Card-based layout for mobile |
-| `MobileExpenseCard` | `src/components/MobileExpenseCard.jsx` | Single expense card for mobile |
+| `FixedExpensesHero` | `src/components/FixedExpensesHero.jsx` | The page's one hero number: what's due this week, with an overdue sub-line and a next-check context line |
+| `PriorityExpenseList` | `src/components/PriorityExpenseList.jsx` | Buckets every unpaid/partially-paid expense into Overdue/This week/Later via `getPaymentProgress()`/`getTimingBucket()` |
+| `PriorityExpenseRow` | `src/components/PriorityExpenseRow.jsx` | One list row: name, payment source, remaining amount, relative due date, Pay Now |
 | `OneOffExpensesView` | `src/components/OneOffExpensesView.jsx` | Future one-off expenses list |
 
 ### Expense Modals & Panels
@@ -797,7 +779,7 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | Component | Path | Description |
 |---|---|---|
 | `AddExpensePanel` | `src/components/AddExpensePanel.jsx` | Slide-out panel for adding expenses |
-| `MarkAsPaidModal` | `src/components/MarkAsPaidModal.jsx` | Full/partial "Pay Now" confirmation, used by the Upcoming Payments widget and table row actions |
+| `MarkAsPaidModal` | `src/components/MarkAsPaidModal.jsx` | Full/partial "Pay Now" confirmation, used by the priority list's Pay Now action |
 | `MissingExpensesModal` | `src/components/MissingExpensesModal.jsx` | Warns when a credit card has no linked payment expense; offers to create it |
 | `RecurringExpenseModal` | `src/components/RecurringExpenseModal.jsx` | Convert expense to recurring template |
 | `DuplicateExpenseModal` | `src/components/DuplicateExpenseModal.jsx` | Duplicate an expense with modifications |
@@ -828,14 +810,11 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | `BulkIconModal` | `src/components/CategoryManager/BulkIconModal.jsx` | Searchable, grouped emoji picker; applies one icon to every selected category |
 | `CategoryRenameModal` | `src/components/CategoryManager/CategoryRenameModal.jsx` | Rename category modal |
 | `CategoryManagerErrorBoundary` | `src/components/CategoryManager/CategoryManagerErrorBoundary.jsx` | Isolates Category Manager crashes from the rest of Settings |
-| `CategoryExpenseSummary` | `src/components/CategoryExpenseSummary.jsx` | Visual category breakdown |
-| `CategoryDetailView` | `src/components/CategoryDetailView.jsx` | Detailed category analytics |
 
 ### Summary & Insight Cards
 
 | Component | Path | Description |
 |---|---|---|
-| `PaySummaryCard` | `src/components/PaySummaryCard.jsx` | Expense totals by payment timing |
 | `PayDateCountdownCard` | `src/components/PayDateCountdownCard.jsx` | Countdown to next paycheck |
 | `ProjectedBalanceCard` | `src/components/ProjectedBalanceCard.jsx` | Discretionary balance after bills |
 | `BudgetVsActualDashboard` | `src/components/BudgetVsActualDashboard.jsx` | Budget vs. actual comparison |
@@ -843,8 +822,6 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 | `DebtPayoffCalculator` | `src/components/DebtPayoffCalculator.jsx` | Snowball/Avalanche calculator |
 | `OverpaymentAnalysis` | `src/components/OverpaymentAnalysis.jsx` | Where spending exceeds budget |
 | `CreditCardDebtTable` | `src/components/CreditCardDebtTable.jsx` | Credit card debt overview table |
-| `DonutChart` | `src/components/DonutChart.jsx` | SVG donut chart visualization |
-| `ExpenseBar` | `src/components/ExpenseBar.jsx` | Animated horizontal bar row (name, amount, %) used in category expense summaries; requires a `PrivacyProvider` ancestor for its amount display |
 
 ### Empty States & Illustrations
 
@@ -1483,10 +1460,9 @@ All user inputs are sanitized before storage:
 |---|---|---|
 | Lazy loading | `App.jsx` | All pages except Settings loaded via `React.lazy()` |
 | Selector hooks | `useAppStore.js` | Each state slice has a dedicated hook to prevent unnecessary re-renders |
-| Memoized calculations | `useMemoizedCalculations` | Expense grouping, totals, statuses memoized with `useMemo` |
+| Memoized bucketing | `PriorityExpenseList` | Overdue/This week/Later sections recomputed via `useMemo`, keyed on `[expenses, paycheckService, paycheckDates]` |
 | Memoized service instances | `usePaycheckCalculations` | `PaycheckService` only reinstantiated when settings change |
 | Category caching | `categoryCache.js` | 30s TTL with stale-while-revalidate |
-| Schwartzian transform | `useMemoizedCalculations` | Pre-compute sort keys for O(N) instead of O(N log N) per comparison |
 | Optimistic updates | `useExpenseOperations` | UI updates immediately; DB writes async with rollback |
 | Background pre-generation | `useAppStore.loadData()` | Recurring expense generation is non-blocking after initial load |
 | Pending transaction Map | `Accounts.jsx` | Pre-computed `pendingByAccount` Map for O(1) per-account lookups |
@@ -1517,7 +1493,7 @@ The two projects intentionally do **not** share a setup file — the jsdom-orien
 
 - **Focus:** Component rendering, user interactions, state changes
 - **Pattern:** Render component → simulate user action → assert DOM changes
-- Components that render `<PrivacyWrapper>` (e.g. `ExpenseBar`) must be rendered inside a `<PrivacyProvider>` in tests, matching the real app's provider tree
+- Components that render `<PrivacyWrapper>` (e.g. `PriorityExpenseRow`, `FixedExpensesHero`) must be rendered inside a `<PrivacyProvider>` in tests, matching the real app's provider tree
 
 ### Visual / Story Tests (Storybook, real browser)
 
