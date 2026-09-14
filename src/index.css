@@ -1245,6 +1245,76 @@
     flex-shrink: 0;
   }
 
+  /* Bidirectional swipe-to-reveal (useSwipeToReveal). Opt-in modifier,
+     added alongside .glass-row-list-item rather than folded into it, so
+     any future non-swipe consumer of the base class is unaffected.
+     Turns the row into the clipping/positioning box for the sliding
+     content + the two rails underneath it. padding:0 is required, not
+     cosmetic — .glass-row-list-item-content below carries the padding
+     instead, and an absolutely-positioned rail is inset from its
+     positioned ancestor's *padding* box, not its border box, so keeping
+     padding on both would pull the rails inward off the row's true
+     edges. */
+  .glass-row-list-item--swipeable {
+    position: relative;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  /* Takes over exactly the flex layout .glass-row-list-item used to
+     apply directly to its children. background re-reads the same
+     --glass-fill the outer box already computes for itself (custom
+     properties cascade to descendants even though `background` itself
+     doesn't) — without it this div is transparent and the rail colors
+     underneath show through even when the row is closed. The transition
+     animates the open/close snap; --dragging turns it off so a live
+     drag tracks the finger 1:1 instead of chasing a delayed value. */
+  .glass-row-list-item-content {
+    /* Must stretch to the row's full width, not shrink-to-fit — it's the
+       only normally-flowing child left once the two rails are pulled out
+       of flow by position:absolute, and a lone flex item under
+       justify-content:space-between still defaults to its own content
+       width otherwise, leaving whichever rail is wider than the leftover
+       gap visible at rest instead of fully covered. */
+    flex: 1;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: rgba(255, 255, 255, var(--glass-fill));
+    transition: transform var(--duration-normal) var(--easing-standard);
+  }
+
+  .glass-row-list-item-content--dragging {
+    transition: none;
+  }
+
+  /* One action rail, full row height, sized to a single tap target. Keep
+     this width in sync with SWIPE_RAIL_WIDTH in AccountRow.jsx /
+     PendingTransactionRow.jsx. No color classes here — each rail button
+     carries its semantic color as the same Tailwind utilities the
+     always-visible icon buttons already use. */
+  .glass-row-list-item-swipe-rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .glass-row-list-item-swipe-rail--left {
+    left: 0;
+  }
+
+  .glass-row-list-item-swipe-rail--right {
+    right: 0;
+  }
+
   /* Floating Sidebar */
   .glass-sidebar {
     @apply glass-surface;
@@ -1442,8 +1512,13 @@
        icon buttons don't fit on one line at phone width without the
        name shrinking to an unreadable sliver. Stack them instead —
        name on its own line, stats/actions on the next, spread across
-       the row — rather than fighting for horizontal space. */
-    .glass-row-list-item {
+       the row — rather than fighting for horizontal space. Targets
+       -item-content, not the outer -item: once a row is swipeable the
+       outer box is just the clipping/positioning container, and the
+       content div is what actually owns this flex layout. Both current
+       consumers (AccountRow, PendingTransactionRow) are swipeable, so
+       there's no other selector to keep in sync here. */
+    .glass-row-list-item-content {
       flex-wrap: wrap;
     }
 

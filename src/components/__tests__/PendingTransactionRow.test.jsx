@@ -1,4 +1,4 @@
-import { render, fireEvent, screen } from '@testing-library/react';
+import { render, fireEvent, screen, within } from '@testing-library/react';
 import { describe, test, expect, vi } from 'vitest';
 
 import { PrivacyProvider } from '../../contexts/PrivacyContext';
@@ -124,17 +124,44 @@ describe('PendingTransactionRow', () => {
     expect(container.querySelector('.text-yellow-400')).not.toBeNull();
   });
 
-  test('clicking Complete calls onComplete with the transaction id', () => {
+  // The always-visible action buttons and the swipe rails now share the
+  // same title text by design (both trigger the identical action) - scope
+  // each query to its own container to keep testing the right one.
+  test('clicking the always-visible Complete button calls onComplete with the transaction id', () => {
     const onComplete = vi.fn();
-    renderRow({}, { onComplete });
-    fireEvent.click(screen.getByTitle('Mark as Completed'));
+    const { container } = renderRow({}, { onComplete });
+    const actions = container.querySelector('.glass-row-list-actions');
+    fireEvent.click(within(actions).getByTitle('Mark as Completed'));
     expect(onComplete).toHaveBeenCalledWith('tx-1');
   });
 
-  test('clicking Delete calls onDelete with the transaction id', () => {
+  test('clicking the always-visible Delete button calls onDelete with the transaction id', () => {
     const onDelete = vi.fn();
-    renderRow({}, { onDelete });
-    fireEvent.click(screen.getByTitle('Delete Transaction'));
+    const { container } = renderRow({}, { onDelete });
+    const actions = container.querySelector('.glass-row-list-actions');
+    fireEvent.click(within(actions).getByTitle('Delete Transaction'));
+    expect(onDelete).toHaveBeenCalledWith('tx-1');
+  });
+
+  test('clicking the left swipe rail calls onComplete with the transaction id', () => {
+    const onComplete = vi.fn();
+    const { container } = renderRow({}, { onComplete });
+    const rail = container.querySelector(
+      '.glass-row-list-item-swipe-rail--left',
+    );
+    expect(rail).toHaveClass('text-green-400');
+    fireEvent.click(rail);
+    expect(onComplete).toHaveBeenCalledWith('tx-1');
+  });
+
+  test('clicking the right swipe rail calls onDelete with the transaction id', () => {
+    const onDelete = vi.fn();
+    const { container } = renderRow({}, { onDelete });
+    const rail = container.querySelector(
+      '.glass-row-list-item-swipe-rail--right',
+    );
+    expect(rail).toHaveClass('text-red-400');
+    fireEvent.click(rail);
     expect(onDelete).toHaveBeenCalledWith('tx-1');
   });
 
@@ -270,5 +297,40 @@ describe('glass-row-list-item-meta CSS', () => {
       enclosingMediaClose !== -1 &&
       enclosingMediaClose > ruleIndex;
     expect(isInsideMedia).toBe(false);
+  });
+});
+
+describe('glass-row-list-item--swipeable CSS', () => {
+  test('the swipeable modifier clips content and positions the rails', async () => {
+    const { readFileSync } = await import('fs');
+    const { resolve } = await import('path');
+    const css = readFileSync(resolve(__dirname, '../../index.css'), 'utf8');
+
+    const swipeableMatch = css.match(
+      /\.glass-row-list-item--swipeable\s*\{([^}]*)\}/,
+    );
+    expect(
+      swipeableMatch,
+      '.glass-row-list-item--swipeable rule not found',
+    ).not.toBeNull();
+    expect(swipeableMatch[1]).toMatch(/position:\s*relative/);
+    expect(swipeableMatch[1]).toMatch(/overflow:\s*hidden/);
+  });
+
+  test('the mobile flex-wrap rule targets the content wrapper, not the outer item', async () => {
+    const { readFileSync } = await import('fs');
+    const { resolve } = await import('path');
+    const css = readFileSync(resolve(__dirname, '../../index.css'), 'utf8');
+
+    const mobileBlock = css.match(
+      /@media \(max-width: 768px\) \{([\s\S]*?)\n {2}\}\n/,
+    );
+    expect(mobileBlock, 'the 768px mobile block was not found').not.toBeNull();
+    expect(mobileBlock[1]).toMatch(
+      /\.glass-row-list-item-content\s*\{\s*flex-wrap:\s*wrap;\s*\}/,
+    );
+    expect(mobileBlock[1]).not.toMatch(
+      /\.glass-row-list-item\s*\{\s*flex-wrap:\s*wrap;\s*\}/,
+    );
   });
 });

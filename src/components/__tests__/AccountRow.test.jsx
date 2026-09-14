@@ -1,4 +1,4 @@
-import { render, fireEvent, screen } from '@testing-library/react';
+import { render, fireEvent, screen, within } from '@testing-library/react';
 import { describe, test, expect, vi } from 'vitest';
 
 import { PrivacyProvider } from '../../contexts/PrivacyContext';
@@ -59,6 +59,10 @@ describe('AccountRow', () => {
   });
 
   test('projected balance turns yellow only when behind the current balance', () => {
+    // Scoped to .glass-row-list-stat-value specifically - the swipe rail's
+    // Set Default icon is unconditionally text-yellow-400 (see "clicking
+    // the left rail" below), so a bare '.text-yellow-400' query would match
+    // it regardless of this test's projectedBalance and always pass.
     const { rerender, container } = render(
       <PrivacyProvider>
         <AccountRow
@@ -70,7 +74,9 @@ describe('AccountRow', () => {
         />
       </PrivacyProvider>,
     );
-    expect(container.querySelector('.text-yellow-400')).toBeNull();
+    expect(
+      container.querySelector('.glass-row-list-stat-value.text-yellow-400'),
+    ).toBeNull();
 
     rerender(
       <PrivacyProvider>
@@ -83,21 +89,52 @@ describe('AccountRow', () => {
         />
       </PrivacyProvider>,
     );
-    expect(container.querySelector('.text-yellow-400')).not.toBeNull();
+    expect(
+      container.querySelector('.glass-row-list-stat-value.text-yellow-400'),
+    ).not.toBeNull();
   });
 
-  test('clicking the star calls onSetDefault with the account id', () => {
+  // The always-visible action buttons and the swipe rails now share the
+  // same title text by design (both trigger the identical action) - scope
+  // each query to its own container to keep testing the right one.
+  test('clicking the always-visible star calls onSetDefault with the account id', () => {
     const onSetDefault = vi.fn();
-    renderRow({}, { onSetDefault });
-    fireEvent.click(screen.getByTitle('Set as Default'));
+    const { container } = renderRow({}, { onSetDefault });
+    const actions = container.querySelector('.glass-row-list-actions');
+    fireEvent.click(within(actions).getByTitle('Set as Default'));
     expect(onSetDefault).toHaveBeenCalledTimes(1);
     expect(onSetDefault).toHaveBeenCalledWith('acc-1');
   });
 
-  test('clicking the trash calls onDelete with the account id', () => {
+  test('clicking the always-visible trash calls onDelete with the account id', () => {
     const onDelete = vi.fn();
-    renderRow({}, { onDelete });
-    fireEvent.click(screen.getByTitle('Delete Account'));
+    const { container } = renderRow({}, { onDelete });
+    const actions = container.querySelector('.glass-row-list-actions');
+    fireEvent.click(within(actions).getByTitle('Delete Account'));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onDelete).toHaveBeenCalledWith('acc-1');
+  });
+
+  test('clicking the left swipe rail calls onSetDefault with the account id', () => {
+    const onSetDefault = vi.fn();
+    const { container } = renderRow({}, { onSetDefault });
+    const rail = container.querySelector(
+      '.glass-row-list-item-swipe-rail--left',
+    );
+    expect(rail).toHaveClass('text-yellow-400');
+    fireEvent.click(rail);
+    expect(onSetDefault).toHaveBeenCalledTimes(1);
+    expect(onSetDefault).toHaveBeenCalledWith('acc-1');
+  });
+
+  test('clicking the right swipe rail calls onDelete with the account id', () => {
+    const onDelete = vi.fn();
+    const { container } = renderRow({}, { onDelete });
+    const rail = container.querySelector(
+      '.glass-row-list-item-swipe-rail--right',
+    );
+    expect(rail).toHaveClass('text-red-400');
+    fireEvent.click(rail);
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onDelete).toHaveBeenCalledWith('acc-1');
   });
@@ -151,5 +188,45 @@ describe('AccountRow', () => {
     expect(screen.queryByText('$1,000.00')).not.toBeInTheDocument();
     expect(screen.queryByText('$850.00')).not.toBeInTheDocument();
     expect(screen.getAllByText('••••••')).toHaveLength(2);
+  });
+});
+
+// jsdom has no layout engine and can't verify that the sliding content
+// visually occludes the rails at rest or that a drag doesn't overlap
+// neighboring content - those are verified live (see the swipe-to-reveal
+// plan). What CAN be pinned here is that the CSS rules the visual behavior
+// depends on actually exist with the right shape.
+describe('glass-row-list-item--swipeable CSS', () => {
+  test('the swipeable modifier clips content and positions the rails', async () => {
+    const { readFileSync } = await import('fs');
+    const { resolve } = await import('path');
+    const css = readFileSync(resolve(__dirname, '../../index.css'), 'utf8');
+
+    const swipeableMatch = css.match(
+      /\.glass-row-list-item--swipeable\s*\{([^}]*)\}/,
+    );
+    expect(
+      swipeableMatch,
+      '.glass-row-list-item--swipeable rule not found',
+    ).not.toBeNull();
+    expect(swipeableMatch[1]).toMatch(/position:\s*relative/);
+    expect(swipeableMatch[1]).toMatch(/overflow:\s*hidden/);
+  });
+
+  test('the mobile flex-wrap rule targets the content wrapper, not the outer item', async () => {
+    const { readFileSync } = await import('fs');
+    const { resolve } = await import('path');
+    const css = readFileSync(resolve(__dirname, '../../index.css'), 'utf8');
+
+    const mobileBlock = css.match(
+      /@media \(max-width: 768px\) \{([\s\S]*?)\n {2}\}\n/,
+    );
+    expect(mobileBlock, 'the 768px mobile block was not found').not.toBeNull();
+    expect(mobileBlock[1]).toMatch(
+      /\.glass-row-list-item-content\s*\{\s*flex-wrap:\s*wrap;\s*\}/,
+    );
+    expect(mobileBlock[1]).not.toMatch(
+      /\.glass-row-list-item\s*\{\s*flex-wrap:\s*wrap;\s*\}/,
+    );
   });
 });
