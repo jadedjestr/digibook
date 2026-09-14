@@ -2,22 +2,13 @@ import { Plus, Clock } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
+import AddPendingTransactionModal from '../components/AddPendingTransactionModal';
 import EmptyState from '../components/EmptyState';
 import PendingEmptyIllustration from '../components/illustrations/PendingEmptyIllustration';
 import PendingTransactionRow from '../components/PendingTransactionRow';
 import { dbHelpers } from '../db/database-clean';
 import { useFinanceCalculations } from '../services/financeService';
 import { logger } from '../utils/logger';
-import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
-
-// Helper function to get today's date in local timezone
-const getTodayDate = () => {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
 
 const PendingTransactions = ({
   pendingTransactions,
@@ -25,18 +16,7 @@ const PendingTransactions = ({
   onDataChange,
 }) => {
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState({});
   const [categories, setCategories] = useState([]);
-
-  const [newTransaction, setNewTransaction] = useState({
-    accountId: '',
-    amount: 0,
-    category: '',
-    description: '',
-    date: getTodayDate(), // Today's date in local timezone
-    type: 'expense', // 'income' or 'expense'
-  });
 
   const { getAccountProjectedBalances } = useFinanceCalculations(
     accounts,
@@ -66,60 +46,6 @@ const PendingTransactions = ({
 
     loadCategories();
   }, [onDataChange]); // Refresh when categories are modified
-
-  const validateForm = useCallback(() => {
-    const newErrors = {};
-    if (!newTransaction.accountId) {
-      newErrors.accountId = 'Please select an account';
-    }
-    const parsedAmount = parseMoneyInput(newTransaction.amount);
-    if (!parsedAmount.ok) {
-      newErrors.amount = moneyInputErrorMessage(parsedAmount.reason);
-    } else if (parsedAmount.value <= 0) {
-      newErrors.amount = 'Amount must be greater than 0';
-    }
-    if (!newTransaction.description.trim()) {
-      newErrors.description = 'Description is required';
-    }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [newTransaction]);
-
-  const handleAddTransaction = useCallback(async () => {
-    if (!validateForm()) return;
-
-    setIsLoading(true);
-    try {
-      // Prepare transaction with correct sign based on type
-      const { value: amount } = parseMoneyInput(newTransaction.amount);
-      const transactionToAdd = {
-        ...newTransaction,
-        amount:
-          newTransaction.type === 'expense'
-            ? -Math.abs(amount)
-            : Math.abs(amount),
-      };
-
-      await dbHelpers.addPendingTransaction(transactionToAdd);
-      logger.success('Transaction added successfully');
-      setNewTransaction({
-        accountId: '',
-        amount: 0,
-        category: '',
-        description: '',
-        date: getTodayDate(),
-        type: 'expense',
-      });
-      setIsAddingTransaction(false);
-      setErrors({});
-      onDataChange();
-    } catch (error) {
-      logger.error('Error adding transaction:', error);
-      setErrors({ general: 'Failed to add transaction. Please try again.' });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [validateForm, newTransaction, onDataChange]);
 
   const handleCompleteTransaction = useCallback(
     async transactionId => {
@@ -189,179 +115,16 @@ const PendingTransactions = ({
         </button>
       </div>
 
-      {/* Add Transaction Form */}
-      {isAddingTransaction && (
-        <div className='glass-panel'>
-          <h3 className='text-lg font-semibold text-primary mb-4'>
-            Add Pending Transaction
-          </h3>
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4'>
-            <div>
-              <select
-                value={newTransaction.accountId}
-                onChange={e =>
-                  setNewTransaction({
-                    ...newTransaction,
-                    accountId: e.target.value || '',
-                  })
-                }
-                className={`glass-input w-full ${errors.accountId ? 'glass-error' : ''}`}
-              >
-                <option value=''>Select Account</option>
-                {accounts.map(account => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-              {errors.accountId && (
-                <p className='text-red-400 text-sm mt-1'>{errors.accountId}</p>
-              )}
-            </div>
-            <div>
-              <div className='flex space-x-2 mb-2'>
-                <label className='flex items-center space-x-2 cursor-pointer'>
-                  <input
-                    type='radio'
-                    name='transactionType'
-                    value='expense'
-                    checked={newTransaction.type === 'expense'}
-                    onChange={e =>
-                      setNewTransaction({
-                        ...newTransaction,
-                        type: e.target.value,
-                      })
-                    }
-                    className='text-green-400'
-                  />
-                  <span className='text-sm text-primary'>Expense</span>
-                </label>
-                <label className='flex items-center space-x-2 cursor-pointer'>
-                  <input
-                    type='radio'
-                    name='transactionType'
-                    value='income'
-                    checked={newTransaction.type === 'income'}
-                    onChange={e =>
-                      setNewTransaction({
-                        ...newTransaction,
-                        type: e.target.value,
-                      })
-                    }
-                    className='text-green-400'
-                  />
-                  <span className='text-sm text-primary'>Income</span>
-                </label>
-              </div>
-              <input
-                type='number'
-                inputMode='decimal'
-                placeholder='Amount'
-                value={newTransaction.amount}
-                onChange={e =>
-                  setNewTransaction({
-                    ...newTransaction,
-                    amount: e.target.value,
-                  })
-                }
-                className={`glass-input w-full ${errors.amount ? 'glass-error' : ''}`}
-              />
-              {errors.amount && (
-                <p className='text-red-400 text-sm mt-1'>{errors.amount}</p>
-              )}
-            </div>
-            <div>
-              <select
-                value={newTransaction.category}
-                onChange={e =>
-                  setNewTransaction({
-                    ...newTransaction,
-                    category: e.target.value,
-                  })
-                }
-                className='glass-input w-full'
-              >
-                <option value=''>Select Category</option>
-                {categoryOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <input
-                type='text'
-                placeholder='Description'
-                value={newTransaction.description}
-                onChange={e =>
-                  setNewTransaction({
-                    ...newTransaction,
-                    description: e.target.value,
-                  })
-                }
-                className={`glass-input w-full ${errors.description ? 'glass-error' : ''}`}
-              />
-              {errors.description && (
-                <p className='text-red-400 text-sm mt-1'>
-                  {errors.description}
-                </p>
-              )}
-            </div>
-            <div>
-              <input
-                type='date'
-                value={newTransaction.date}
-                onChange={e =>
-                  setNewTransaction({ ...newTransaction, date: e.target.value })
-                }
-                className='glass-input w-full'
-              />
-            </div>
-          </div>
-          {errors.general && (
-            <div className='bg-red-500/20 border border-red-400/50 rounded-lg p-3 mb-4'>
-              <p className='text-red-200 text-sm'>{errors.general}</p>
-            </div>
-          )}
-          <div className='flex space-x-3'>
-            <button
-              onClick={handleAddTransaction}
-              disabled={isLoading}
-              className={`glass-button flex items-center space-x-2 ${isLoading ? 'glass-loading' : ''}`}
-            >
-              {isLoading ? (
-                <>
-                  <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-white' />
-                  <span>Adding...</span>
-                </>
-              ) : (
-                <>
-                  <Plus size={16} />
-                  <span>Add Transaction</span>
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => {
-                setIsAddingTransaction(false);
-                setErrors({});
-                setNewTransaction({
-                  accountId: '',
-                  amount: 0,
-                  category: '',
-                  description: '',
-                  date: getTodayDate(),
-                  type: 'expense',
-                });
-              }}
-              className='glass-button glass-button--danger'
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      <AddPendingTransactionModal
+        isOpen={isAddingTransaction}
+        onClose={() => setIsAddingTransaction(false)}
+        accounts={accounts}
+        categoryOptions={categoryOptions}
+        onTransactionAdded={() => {
+          setIsAddingTransaction(false);
+          onDataChange();
+        }}
+      />
 
       {/* Transactions Table */}
       <div className='glass-panel'>
