@@ -1,4 +1,4 @@
-import { X, CreditCard, PiggyBank, Building2 } from 'lucide-react';
+import { X } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -410,17 +410,6 @@ const AddExpensePanel = ({
     });
   }
 
-  const _getAccountIcon = accountType => {
-    switch (accountType?.toLowerCase()) {
-      case 'checking':
-        return <CreditCard size={16} className='text-blue-400' />;
-      case 'savings':
-        return <PiggyBank size={16} className='text-green-400' />;
-      default:
-        return <Building2 size={16} className='text-purple-400' />;
-    }
-  };
-
   return (
     <>
       {/* Backdrop - rendered as portal to ensure full viewport coverage */}
@@ -542,6 +531,7 @@ const AddExpensePanel = ({
               <input
                 id='add-expense-amount'
                 type='number'
+                inputMode='decimal'
                 step='0.01'
                 min='0'
                 value={formData.amount}

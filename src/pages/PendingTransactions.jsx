@@ -255,6 +255,7 @@ const PendingTransactions = ({
               </div>
               <input
                 type='number'
+                inputMode='decimal'
                 placeholder='Amount'
                 value={newTransaction.amount}
                 onChange={e =>

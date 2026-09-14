@@ -157,6 +157,7 @@ const CreateAccountModal = ({ isOpen, onClose, onAccountCreated }) => {
             <input
               id='acct-balance'
               type='number'
+              inputMode='decimal'
               value={formData.currentBalance}
               onChange={e =>
                 setFormData({

@@ -252,6 +252,7 @@ const Accounts = () => {
             <div>
               <input
                 type='number'
+                inputMode='decimal'
                 placeholder='Current Balance'
                 value={newAccount.currentBalance}
                 onChange={e =>

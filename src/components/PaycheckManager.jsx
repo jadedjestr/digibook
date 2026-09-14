@@ -247,8 +247,9 @@ const PaycheckManager = ({ onDataChange }) => {
                 Add my paycheck automatically
               </span>
               <span className='block text-secondary text-sm mt-1'>
-                On payday it appears as a pending transaction. Your balance only
-                changes when you confirm the money landed.
+                Starting with your next payday, it appears as a pending
+                transaction — not retroactively if today is already payday. Your
+                balance only changes when you confirm the money landed.
               </span>
             </label>
           </div>
@@ -289,6 +290,7 @@ const PaycheckManager = ({ onDataChange }) => {
                 <input
                   id='income-amount'
                   type='number'
+                  inputMode='decimal'
                   value={income.expectedAmount}
                   onChange={e =>
                     setIncome({ ...income, expectedAmount: e.target.value })

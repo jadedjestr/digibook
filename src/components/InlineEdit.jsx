@@ -172,6 +172,7 @@ const InlineEdit = ({
           <input
             ref={inputRef}
             type='number'
+            inputMode='decimal'
             value={editValue}
             onChange={e => {
               const value = e.target.value;

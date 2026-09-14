@@ -208,6 +208,7 @@ const DebtPayoffCalculator = ({ creditCards = [] }) => {
                 <input
                   id='debt-calc-balance'
                   type='number'
+                  inputMode='decimal'
                   value={calculatorData.balance}
                   onChange={e => handleInputChange('balance', e.target.value)}
                   className='glass-input w-full'
@@ -235,6 +236,7 @@ const DebtPayoffCalculator = ({ creditCards = [] }) => {
                 <input
                   id='debt-calc-credit-limit'
                   type='number'
+                  inputMode='decimal'
                   value={calculatorData.creditLimit}
                   onChange={e =>
                     handleInputChange('creditLimit', e.target.value)
@@ -269,6 +271,7 @@ const DebtPayoffCalculator = ({ creditCards = [] }) => {
                 <input
                   id='debt-calc-interest-rate'
                   type='number'
+                  inputMode='decimal'
                   value={calculatorData.interestRate}
                   onChange={e =>
                     handleInputChange('interestRate', e.target.value)
@@ -296,6 +299,7 @@ const DebtPayoffCalculator = ({ creditCards = [] }) => {
               <input
                 id='debt-calc-monthly-payment'
                 type='number'
+                inputMode='decimal'
                 value={calculatorData.payment}
                 onChange={e => handleInputChange('payment', e.target.value)}
                 className='glass-input w-full'

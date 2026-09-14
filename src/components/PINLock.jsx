@@ -92,6 +92,9 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
           <div className='relative'>
             <input
               type={showPIN ? 'text' : 'password'}
+              inputMode='numeric'
+              pattern='[0-9]*'
+              autoComplete='off'
               value={enteredPIN}
               onChange={e => {
                 const value = e.target.value.replace(/\D/g, '').slice(0, 4);
@@ -117,6 +120,9 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
             <div className='relative'>
               <input
                 type={showPIN ? 'text' : 'password'}
+                inputMode='numeric'
+                pattern='[0-9]*'
+                autoComplete='off'
                 value={confirmPIN}
                 onChange={e => {
                   const value = e.target.value.replace(/\D/g, '').slice(0, 4);

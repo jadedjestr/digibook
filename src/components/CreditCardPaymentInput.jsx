@@ -24,7 +24,6 @@ const CreditCardPaymentInput = ({
   disabled = false,
   className = '',
   showSuggestions = true,
-  autoFocus: _autoFocus = false,
 }) => {
   const [inputValue, setInputValue] = useState(value?.toString() || '');
   const [validationResult, setValidationResult] = useState(null);
@@ -216,6 +215,7 @@ const CreditCardPaymentInput = ({
           />
           <input
             type='number'
+            inputMode='decimal'
             step='0.01'
             min='0'
             value={inputValue}
@@ -352,29 +352,12 @@ CreditCardPaymentInput.propTypes = {
   disabled: PropTypes.bool,
   className: PropTypes.string,
   showSuggestions: PropTypes.bool,
-  autoFocus: PropTypes.bool,
 };
 
 CreditCardPaymentInput.defaultProps = {
   disabled: false,
   className: '',
   showSuggestions: true,
-  autoFocus: false,
-};
-
-const _getSuggestionButtonClass = type => {
-  switch (type) {
-    case 'minimum':
-      return 'bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 border border-yellow-500/30';
-    case 'full':
-      return 'bg-green-500/20 text-green-300 hover:bg-green-500/30 border border-green-500/30';
-    case 'suggested':
-      return 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 border border-blue-500/30';
-    case 'affordable':
-      return 'bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 border border-purple-500/30';
-    default:
-      return 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/20';
-  }
 };
 
 export default CreditCardPaymentInput;

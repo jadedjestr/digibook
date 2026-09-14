@@ -17,6 +17,18 @@ vi.mock('../../utils/logger', () => ({
 const renderWithPrivacy = ui => render(<PrivacyProvider>{ui}</PrivacyProvider>);
 
 describe('InlineEdit (type="number")', () => {
+  // Mobile keyboards default to an integer-only numeric pad for a bare
+  // type='number' input on several Android keyboards, omitting the decimal
+  // point - exactly the character every dollar amount needs.
+  test('requests a decimal-capable mobile keyboard', () => {
+    const { getByTitle, getByRole } = renderWithPrivacy(
+      <InlineEdit value={100} onSave={vi.fn()} type='number' showEditIcon />,
+    );
+
+    fireEvent.click(getByTitle('Click to edit'));
+    expect(getByRole('spinbutton')).toHaveAttribute('inputMode', 'decimal');
+  });
+
   test('saves a valid finite number', () => {
     const onSave = vi.fn();
     const { getByTitle, getByRole } = renderWithPrivacy(

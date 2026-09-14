@@ -309,6 +309,7 @@ const RecurringExpenseModal = ({
                 <input
                   id='recurring-modal-amount'
                   type='number'
+                  inputMode='decimal'
                   step='0.01'
                   min='0'
                   value={recurringData.amount}
@@ -436,6 +437,7 @@ const RecurringExpenseModal = ({
                 <input
                   id='recurring-modal-interval-value'
                   type='number'
+                  inputMode='numeric'
                   min='1'
                   max={(() => {
                     const u = recurringData.intervalUnit;

@@ -194,6 +194,7 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
                 <input
                   id='duplicate-modal-amount'
                   type='number'
+                  inputMode='decimal'
                   step='0.01'
                   value={formData.amount}
                   onChange={e =>

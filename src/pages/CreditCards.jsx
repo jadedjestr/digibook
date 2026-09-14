@@ -794,6 +794,7 @@ const CreditCards = ({
                   <input
                     id='credit-card-balance'
                     type='number'
+                    inputMode='decimal'
                     step='0.01'
                     value={formData.balance}
                     onChange={e => handleInputChange('balance', e.target.value)}
@@ -817,6 +818,7 @@ const CreditCards = ({
                   <input
                     id='credit-card-credit-limit'
                     type='number'
+                    inputMode='decimal'
                     step='0.01'
                     value={formData.creditLimit}
                     onChange={e =>
@@ -842,6 +844,7 @@ const CreditCards = ({
                   <input
                     id='credit-card-interest-rate'
                     type='number'
+                    inputMode='decimal'
                     step='0.01'
                     value={formData.interestRate}
                     onChange={e =>
@@ -915,6 +918,7 @@ const CreditCards = ({
                   <input
                     id='credit-card-minimum-payment'
                     type='number'
+                    inputMode='decimal'
                     step='0.01'
                     value={formData.minimumPayment}
                     onChange={e =>

@@ -84,6 +84,7 @@ const MarkAsPaidModal = ({ expense, isOpen, onClose, onConfirm }) => {
               <input
                 id='mark-as-paid-amount'
                 type='number'
+                inputMode='decimal'
                 min='0'
                 step='0.01'
                 value={paidAmount}
