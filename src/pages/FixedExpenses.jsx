@@ -1,17 +1,16 @@
+import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import AddExpensePanel from '../components/AddExpensePanel.jsx';
 import Calendar from '../components/Calendar/Calendar.jsx';
 import CalendarCycleButton from '../components/Calendar/CalendarCycleButton.jsx';
 import PayCycleNudgeBanner from '../components/Calendar/PayCycleNudgeBanner.jsx';
 import PayCycleNudgeToast from '../components/Calendar/PayCycleNudgeToast.jsx';
-import UpcomingRecurringWidget from '../components/Calendar/UpcomingRecurringWidget.jsx';
-import CategoryExpenseSummary from '../components/CategoryExpenseSummary.jsx';
-import FixedExpensesSummaryCard from '../components/FixedExpensesTable/FixedExpensesSummaryCard.jsx';
-import FixedExpensesTable from '../components/FixedExpensesTable.jsx';
+import FixedExpensesHero from '../components/FixedExpensesHero.jsx';
 import MarkAsPaidModal from '../components/MarkAsPaidModal.jsx';
 import OneOffExpensesView from '../components/OneOffExpensesView.jsx';
 import PayDateCountdownCard from '../components/PayDateCountdownCard.jsx';
-import PaySummaryCard from '../components/PaySummaryCard.jsx';
+import PriorityExpenseList from '../components/PriorityExpenseList.jsx';
 import ProjectedBalanceCard from '../components/ProjectedBalanceCard.jsx';
 import {
   advanceDueDateByFrequency,
@@ -24,21 +23,17 @@ import { usePaycheckCalculations } from '../hooks/usePaycheckCalculations';
 import { usePayCycleNudge } from '../hooks/usePayCycleNudge';
 import {
   useAccounts,
-  useCategories,
   useCreditCards,
   useFixedExpenses,
   useIsLoading,
+  useIsPanelOpen,
   usePaycheckSettings,
   usePendingTransactions,
   useReloadExpenses,
   useReloadPaycheckSettings,
+  useSetPanelOpen,
 } from '../stores/useAppStore';
 import { DateUtils } from '../utils/dateUtils';
-import {
-  groupExpensesByCategory,
-  computeFixedExpenseTotals,
-  computeCategoryTotals,
-} from '../utils/expenseUtils';
 import { logger } from '../utils/logger';
 import { notify, showConfirmation } from '../utils/notifications.jsx';
 import { isUnpaidOrPartial } from '../utils/payCycleNudgeLogic';
@@ -60,10 +55,11 @@ const FixedExpenses = () => {
   const fixedExpenses = useFixedExpenses();
   const paycheckSettings = usePaycheckSettings();
   const pendingTransactions = usePendingTransactions();
-  const categories = useCategories();
   const isLoading = useIsLoading();
   const reloadPaycheckSettings = useReloadPaycheckSettings();
   const reloadExpenses = useReloadExpenses();
+  const isAddPanelOpen = useIsPanelOpen();
+  const setAddPanelOpen = useSetPanelOpen();
 
   // Add useExpenseOperations hook (must be unconditional for rules-of-hooks)
   const { updateExpenseV4, deleteExpense, markAsPaid } = useExpenseOperations();
@@ -163,29 +159,6 @@ const FixedExpenses = () => {
     };
   }, [currentMonth, fixedExpenses]);
 
-  // The soonest unpaid bill after the month on screen. Without this, a month
-  // with nothing in it reports "Nothing due" while real bills sit one click
-  // away - which reads as "you owe nothing" rather than "look further ahead".
-  const nextBillBeyondMonth = useMemo(() => {
-    const { end } = getMonthRange(currentMonth);
-    return fixedExpenses
-      .filter(e => {
-        if (!isUnpaidOrPartial(e)) return false;
-        const due = DateUtils.parseDate(e.dueDate);
-        return due && due > end;
-      })
-      .sort(
-        (a, b) =>
-          DateUtils.parseDate(a.dueDate) - DateUtils.parseDate(b.dueDate),
-      )[0];
-  }, [fixedExpenses, currentMonth]);
-
-  const jumpToExpenseMonth = useCallback(expense => {
-    const due = DateUtils.parseDate(expense?.dueDate);
-    if (!due) return;
-    setCurrentMonth(new Date(due.getFullYear(), due.getMonth(), 1));
-  }, []);
-
   const { nudge, dismiss } = usePayCycleNudge({
     fixedExpenses,
     currentMonth,
@@ -260,22 +233,6 @@ const FixedExpenses = () => {
     [paycheckService, fixedExpenses, paycheckDates],
   );
 
-  const { fixedExpenseSummaryTotals, fixedExpenseSummaryCategoryRows } =
-    useMemo(() => {
-      const groups = groupExpensesByCategory(currentMonthExpenses);
-      const totals = computeFixedExpenseTotals(currentMonthExpenses);
-      const categoryTotals = computeCategoryTotals(groups);
-      const rows = Object.keys(groups).map(categoryName => ({
-        name: categoryName,
-        count: categoryTotals[categoryName]?.count ?? 0,
-        totalBudgeted: categoryTotals[categoryName]?.totalBudgeted ?? 0,
-      }));
-      return {
-        fixedExpenseSummaryTotals: totals,
-        fixedExpenseSummaryCategoryRows: rows,
-      };
-    }, [currentMonthExpenses]);
-
   const nextPayDisplay = useMemo(() => {
     if (!paycheckDates.nextPayDate) {
       return 'the next pay date';
@@ -333,25 +290,12 @@ const FixedExpenses = () => {
     };
   }, [currentMonthKey, reloadExpenses]);
 
-  // Handler for category click - scrolls to category in table
-  const handleCategoryClick = categoryName => {
-    // Scroll to category section in table
-    const selector = `[data-category="${categoryName}"]`;
-    const element = document.querySelector(selector);
-    if (element) {
-      // Bug 3 fix: Calculate offset before starting scroll
-      // to avoid race condition.
-      const offset = 100; // Adjust as needed for fixed headers
-      const elementTop = element.getBoundingClientRect().top + window.scrollY;
-      const targetPosition = elementTop - offset;
-
-      // Use instant scroll to target position instead of nested smooth scrolls
-      window.scrollTo({
-        top: targetPosition,
-        behavior: 'smooth',
-      });
-    }
-  };
+  // Re-hosted from the now-deleted ExpenseTableContainer, which rendered
+  // AddExpensePanel itself. Same behaviour: reload on success, no local
+  // "just added" highlight state — nothing in this redesign consumes it.
+  const handleAddPanelDataChange = useCallback(async () => {
+    await reloadExpenses();
+  }, [reloadExpenses]);
 
   // Debug logging
   logger.debug('FixedExpenses - paycheckSettings:', paycheckSettings);
@@ -391,6 +335,16 @@ const FixedExpenses = () => {
             All Future One-Offs
           </button>
         </div>
+        {/* Re-hosted here from the now-deleted ExpenseTableContainer, which
+            rendered this button and AddExpensePanel itself. Matches the
+            Add Account/Add Credit Card placement used elsewhere. */}
+        <button
+          onClick={() => setAddPanelOpen(true)}
+          className='glass-button glass-button--primary flex items-center space-x-2'
+        >
+          <Plus size={20} />
+          <span>Add Expense</span>
+        </button>
       </div>
 
       {viewMode === 'month' ? (
@@ -416,58 +370,57 @@ const FixedExpenses = () => {
             />
           )}
 
-          {/* Two-column: left panel (35%) + right (calendar) */}
+          <div className='fixed-expenses-hero-section'>
+            <FixedExpensesHero summaryTotals={summaryTotals} />
+            <div className='fixed-expenses-metrics-row'>
+              <PayDateCountdownCard
+                nextPayDate={paycheckDates.nextPayDate}
+                followingPayDate={paycheckDates.followingPayDate}
+                daysUntilNextPay={paycheckDates.daysUntilNextPay}
+                daysUntilFollowingPay={paycheckDates.daysUntilFollowingPay}
+              />
+              <ProjectedBalanceCard
+                accounts={accounts}
+                creditCards={creditCards}
+                pendingTransactions={pendingTransactions}
+                summaryTotals={summaryTotals}
+                showAccountName={false}
+              />
+            </div>
+          </div>
+
+          {/* Calendar for seeing the shape of the month; priority list for
+              acting on what's due. Calendar keeps its own month-scoped data
+              (it needs one specific month to lay out a day grid) — the list
+              reads the full fixedExpenses array, same as the hero above. */}
           <div className='fixed-expenses-month-layout'>
-            {/* Left panel: cards, expense dist, fixed card, upcoming, spacer, New Cycle */}
-            <div className='fixed-expenses-left-panel'>
-              <div className='fixed-expenses-left-panel-cards'>
-                <PaySummaryCard
-                  summaryTotals={summaryTotals}
-                  paycheckDates={paycheckDates}
-                />
-                <PayDateCountdownCard
-                  nextPayDate={paycheckDates.nextPayDate}
-                  followingPayDate={paycheckDates.followingPayDate}
-                  daysUntilNextPay={paycheckDates.daysUntilNextPay}
-                  daysUntilFollowingPay={paycheckDates.daysUntilFollowingPay}
-                />
-                <ProjectedBalanceCard
-                  accounts={accounts}
-                  creditCards={creditCards}
-                  pendingTransactions={pendingTransactions}
-                  summaryTotals={summaryTotals}
-                  showAccountName={false}
-                />
-              </div>
-              <div className='fixed-expenses-left-panel-expense-dist'>
-                <CategoryExpenseSummary
-                  expenses={currentMonthExpenses}
-                  categories={categories}
-                  onCategoryClick={handleCategoryClick}
-                  compact
-                />
-              </div>
-              <div className='fixed-expenses-left-panel-fixed-card'>
-                <FixedExpensesSummaryCard
-                  totals={fixedExpenseSummaryTotals}
-                  categoryRows={fixedExpenseSummaryCategoryRows}
-                  onCategoryClick={handleCategoryClick}
-                />
-              </div>
-              <div className='fixed-expenses-left-panel-upcoming'>
-                <UpcomingRecurringWidget
-                  monthExpenses={currentMonthExpenses}
-                  alwaysExpanded
-                  onPayNow={handlePayNow}
-                  monthLabel={currentMonth.toLocaleString('en-US', {
-                    month: 'long',
-                  })}
-                  nextBeyondMonth={nextBillBeyondMonth}
-                  onJumpToNext={jumpToExpenseMonth}
-                />
-              </div>
-              <div className='fixed-expenses-left-panel-spacer' />
-              <div className='fixed-expenses-left-panel-new-cycle'>
+            <div className='fixed-expenses-calendar-column'>
+              <Calendar
+                currentMonth={currentMonth}
+                monthExpenses={currentMonthExpenses}
+                paycheckService={paycheckService}
+                paycheckDates={paycheckDates}
+                onPreviousMonth={handlePreviousMonth}
+                onNextMonth={handleNextMonth}
+                onToday={handleToday}
+              />
+            </div>
+
+            <div
+              className='fixed-expenses-priority-column'
+              ref={expensesTableRef}
+              data-testid='fixed-expenses-table-container'
+            >
+              <PriorityExpenseList
+                expenses={fixedExpenses}
+                paycheckService={paycheckService}
+                paycheckDates={paycheckDates}
+                accounts={accounts}
+                creditCards={creditCards}
+                onPayNow={handlePayNow}
+              />
+
+              <div className='fixed-expenses-new-cycle'>
                 {paycheckSettings?.lastPaycheckDate && (
                   <p className='fixed-expenses-new-cycle-text'>
                     Last reset:{' '}
@@ -488,33 +441,15 @@ const FixedExpenses = () => {
                 />
               </div>
             </div>
-
-            {/* Right column: calendar only */}
-            <div className='fixed-expenses-right-column'>
-              <Calendar
-                currentMonth={currentMonth}
-                monthExpenses={currentMonthExpenses}
-                paycheckService={paycheckService}
-                paycheckDates={paycheckDates}
-                onPreviousMonth={handlePreviousMonth}
-                onNextMonth={handleNextMonth}
-                onToday={handleToday}
-              />
-            </div>
           </div>
 
-          {/* Full-width table below two-column layout */}
-          <div
-            ref={expensesTableRef}
-            className='fixed-expenses-table-section'
-            data-testid='fixed-expenses-table-container'
-          >
-            <FixedExpensesTable
-              expenses={currentMonthExpenses}
-              onCategoryClick={handleCategoryClick}
-              headerVariant='minimal'
-            />
-          </div>
+          <AddExpensePanel
+            isOpen={isAddPanelOpen}
+            onClose={() => setAddPanelOpen(false)}
+            accounts={accounts}
+            creditCards={creditCards}
+            onDataChange={handleAddPanelDataChange}
+          />
 
           <MarkAsPaidModal
             expense={payNowExpense}
