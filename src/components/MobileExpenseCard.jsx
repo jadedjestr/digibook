@@ -98,7 +98,10 @@ const MobileExpenseCard = ({
         onClick={() => handleEdit('amount', expense.amount)}
         className='text-lg font-bold text-primary hover:text-white transition-colors'
       >
-        <PrivacyWrapper>${formatAmount(expense.amount)}</PrivacyWrapper>
+        {/* formatAmount() -> formatCurrency() already returns "$1,875.00"
+            via Intl.NumberFormat; a literal $ here doubled it to "$$1,875.00"
+            on every mobile expense card. */}
+        <PrivacyWrapper>{formatAmount(expense.amount)}</PrivacyWrapper>
       </button>
     );
   };
@@ -395,7 +398,7 @@ const MobileExpenseCard = ({
                     className='text-sm font-medium text-primary hover:text-white transition-colors'
                   >
                     <PrivacyWrapper>
-                      ${formatAmount(expense.paidAmount)}
+                      {formatAmount(expense.paidAmount)}
                     </PrivacyWrapper>
                   </button>
                 );
