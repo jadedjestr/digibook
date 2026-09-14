@@ -97,14 +97,14 @@ export function calculateNextPayDates(
   if (intervalDays === null) {
     // Calendar-month advance. Rely on native Date clamping for overflow (e.g. Jan 31 -> Feb 28/29).
     nextPayDate = addOneCalendarMonth(lastPayDate);
-    while (nextPayDate <= today) {
+    while (nextPayDate < today) {
       nextPayDate = addOneCalendarMonth(nextPayDate);
     }
     followingPayDate = addOneCalendarMonth(new Date(nextPayDate));
   } else {
     nextPayDate = new Date(lastPayDate);
     nextPayDate.setDate(nextPayDate.getDate() + intervalDays);
-    while (nextPayDate <= today) {
+    while (nextPayDate < today) {
       nextPayDate.setDate(nextPayDate.getDate() + intervalDays);
     }
     followingPayDate = new Date(nextPayDate);
