@@ -841,6 +841,7 @@ re-deriving urgency itself.
 |---|---|---|
 | `InlineEdit` | `src/components/InlineEdit.jsx` | Click-to-edit text/number/date/select |
 | `AccountRow` | `src/components/AccountRow.jsx` | One row in the Accounts page's checking/savings list: name, a "Default" badge, current/projected balance, set-default/delete actions |
+| `PendingTransactionRow` | `src/components/PendingTransactionRow.jsx` | One row in the Pending Transactions list: description, an Account/Category/Date meta line, amount/projected balance, complete/delete actions |
 | `CollapsibleCard` | `src/components/CollapsibleCard.jsx` | Expandable/collapsible card |
 | `CollapsibleCardGroup` | `src/components/CollapsibleCardGroup.jsx` | Accordion group (exclusive mode) |
 | `IconSelector` | `src/components/IconSelector.jsx` | Emoji/icon picker |

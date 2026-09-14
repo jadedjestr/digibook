@@ -1,14 +1,12 @@
-import { Plus, Check, Trash2, Clock } from 'lucide-react';
+import { Plus, Clock } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import EmptyState from '../components/EmptyState';
 import PendingEmptyIllustration from '../components/illustrations/PendingEmptyIllustration';
-import InlineEdit from '../components/InlineEdit';
-import PrivacyWrapper from '../components/PrivacyWrapper';
+import PendingTransactionRow from '../components/PendingTransactionRow';
 import { dbHelpers } from '../db/database-clean';
 import { useFinanceCalculations } from '../services/financeService';
-import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
 import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
 
@@ -40,8 +38,10 @@ const PendingTransactions = ({
     type: 'expense', // 'income' or 'expense'
   });
 
-  const { getAccountProjectedBalances, getAccountName: _getAccountName } =
-    useFinanceCalculations(accounts, pendingTransactions);
+  const { getAccountProjectedBalances } = useFinanceCalculations(
+    accounts,
+    pendingTransactions,
+  );
 
   const accountMap = useMemo(
     () => new Map(accounts.map(a => [a.id, a])),
@@ -376,119 +376,26 @@ const PendingTransactions = ({
             }}
           />
         ) : (
-          <table className='glass-table'>
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th>Amount</th>
-                <th>Category</th>
-                <th>Description</th>
-                <th>Date</th>
-                <th>Projected Balance</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pendingTransactions.map(transaction => {
-                const account = accountMap.get(transaction.accountId);
-                const projectedBalance =
-                  getAccountProjectedBalances[transaction.accountId] ?? 0;
-
-                return (
-                  <tr key={transaction.id}>
-                    <td>
-                      <InlineEdit
-                        value={transaction.accountId}
-                        onSave={accountId =>
-                          handleUpdateTransaction(transaction.id, {
-                            accountId: accountId || '',
-                          })
-                        }
-                        options={accountOptions}
-                        showEditIcon
-                      />
-                    </td>
-                    <td>
-                      <InlineEdit
-                        value={transaction.amount}
-                        onSave={amount =>
-                          handleUpdateTransaction(transaction.id, { amount })
-                        }
-                        type='number'
-                        showEditIcon
-                      />
-                    </td>
-                    <td>
-                      <InlineEdit
-                        value={transaction.category}
-                        onSave={category =>
-                          handleUpdateTransaction(transaction.id, { category })
-                        }
-                        options={categoryOptions}
-                        showEditIcon
-                      />
-                    </td>
-                    <td>
-                      <InlineEdit
-                        value={transaction.description}
-                        onSave={description =>
-                          handleUpdateTransaction(transaction.id, {
-                            description,
-                          })
-                        }
-                        showEditIcon
-                      />
-                    </td>
-                    <td>
-                      <InlineEdit
-                        value={transaction.date}
-                        onSave={date =>
-                          handleUpdateTransaction(transaction.id, { date })
-                        }
-                        type='date'
-                        showEditIcon
-                      />
-                    </td>
-                    <td>
-                      <span
-                        className={`font-semibold ${
-                          projectedBalance < (account?.currentBalance || 0)
-                            ? 'text-yellow-400'
-                            : 'text-primary'
-                        }`}
-                      >
-                        <PrivacyWrapper>
-                          {formatCurrency(projectedBalance)}
-                        </PrivacyWrapper>
-                      </span>
-                    </td>
-                    <td>
-                      <div className='flex items-center space-x-2'>
-                        <button
-                          onClick={() =>
-                            handleCompleteTransaction(transaction.id)
-                          }
-                          className='p-1 rounded text-green-400 hover:text-green-300 hover:bg-green-500/20 transition-all duration-200'
-                          title='Mark as Completed'
-                        >
-                          <Check size={16} />
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleDeleteTransaction(transaction.id)
-                          }
-                          className='p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/20 transition-all duration-200'
-                          title='Delete Transaction'
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className='glass-row-list'>
+            {pendingTransactions.map(transaction => {
+              const account = accountMap.get(transaction.accountId);
+              const projectedBalance =
+                getAccountProjectedBalances[transaction.accountId] ?? 0;
+              return (
+                <PendingTransactionRow
+                  key={transaction.id}
+                  transaction={transaction}
+                  account={account}
+                  projectedBalance={projectedBalance}
+                  accountOptions={accountOptions}
+                  categoryOptions={categoryOptions}
+                  onUpdateTransaction={handleUpdateTransaction}
+                  onComplete={handleCompleteTransaction}
+                  onDelete={handleDeleteTransaction}
+                />
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

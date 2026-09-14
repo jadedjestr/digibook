@@ -1184,6 +1184,67 @@
     transition: all var(--duration-fast) var(--easing-standard);
   }
 
+  /* Stacked main block (title + meta line) — a second shape for
+     .glass-row-list-item-main's contents, used where a row needs a
+     title with a secondary line underneath instead of AccountRow's
+     single horizontal name+badge row. Deliberately does NOT touch
+     .glass-row-list-item-main itself (still display:flex; align-items:
+     center for AccountRow) — this modifier only changes what's inside,
+     mirroring .priority-list-item-name/-meta (Calendar/calendar.css)
+     which achieves the same stack by simply not setting display:flex
+     on their parent at all. */
+  .glass-row-list-item-main--stacked {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+  }
+
+  .glass-row-list-item-title {
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Row of several InlineEdit fields (e.g. Account/Category/Date).
+     Wraps at ANY width, not just the ≤768px breakpoint: InlineEdit's
+     edit-mode controls (a date input alone is ~190px with its own
+     Save/Cancel icons, selects are flex-1 of their own wrapper with
+     no max-width) can force this line wider than the row the moment
+     one field is clicked into edit mode — on desktop, not only on a
+     narrow viewport. Wrapping here lets an expanded field drop to its
+     own line instead of overlapping the stats/actions block. */
+  .glass-row-list-item-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    column-gap: var(--space-xs);
+    row-gap: 0.125rem;
+    font-size: 0.75rem;
+    color: var(--color-ink-faint);
+  }
+
+  /* One field + its sr-only label. min-width:0 lets display-mode text
+     ellipsis-truncate inside a flex-wrap parent instead of forcing the
+     line wide; no fixed width so an edit-mode select/date can still
+     grow past it onto its own wrapped line per the parent's
+     flex-wrap. */
+  .glass-row-list-item-meta-field {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* `·` divider between fields, skipped after the last one — a
+     pseudo-element instead of an extra DOM node per divider. */
+  .glass-row-list-item-meta-field:not(:last-child)::after {
+    content: '·';
+    margin: 0 var(--space-xs);
+    color: var(--color-ink-faint);
+    flex-shrink: 0;
+  }
+
   /* Floating Sidebar */
   .glass-sidebar {
     @apply glass-surface;
