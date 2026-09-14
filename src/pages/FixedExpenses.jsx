@@ -311,8 +311,12 @@ const FixedExpenses = () => {
 
   return (
     <div className='space-y-6'>
-      {/* View Switcher */}
-      <div className='flex items-center justify-between pl-14 lg:pl-0'>
+      {/* View Switcher. flex-wrap + gap because this row now holds three
+          items instead of the two it was built for — Add Expense used to
+          live inside the deleted table's own header. Without wrap, three
+          items squeezed onto one line at phone width forced "All Future
+          One-Offs" to wrap its own text into three lines instead. */}
+      <div className='flex flex-wrap items-center justify-between gap-2 pl-14 lg:pl-0'>
         <div className='flex items-center space-x-2'>
           <button
             onClick={() => setViewMode('month')}
