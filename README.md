@@ -118,9 +118,8 @@ npm run build
 
 #### 💳 **Credit Card Management**
 1. **Add Credit Card**: Enter card details, balance, and credit limit
-2. **Smart Link Expenses**: Use the "Smart Link Expenses" button to auto-create payment expenses
-3. **Debt Payoff Calculator**: Calculate payoff time and total interest
-4. **Payment Tracking**: Mark payments as paid to update balances
+2. **Debt Payoff Calculator**: Calculate payoff time and total interest
+3. **Payment Tracking**: Mark payments as paid to update balances
 
 #### 📊 **Expense Management**
 1. **Add Fixed Expenses**: Create recurring bills with due dates

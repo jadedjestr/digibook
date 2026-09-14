@@ -6,7 +6,6 @@ import { createPortal } from 'react-dom';
 import ChooseFundingAccountModal from '../components/ChooseFundingAccountModal';
 import CreateAccountModal from '../components/CreateAccountModal';
 import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
-import CreditCardMigrationModal from '../components/CreditCardMigrationModal';
 import EmptyState from '../components/EmptyState';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';
 import CreditCardsEmptyIllustration from '../components/illustrations/CreditCardsEmptyIllustration';
@@ -58,7 +57,6 @@ const CreditCards = ({
     isOpen: false,
     card: null,
   });
-  const [migrationModal, setMigrationModal] = useState({ isOpen: false });
   const [formData, setFormData] = useState({
     name: '',
     balance: '',
@@ -520,15 +518,6 @@ const CreditCards = ({
     setDeletionModal({ isOpen: false, card: null });
   }, []);
 
-  const handleOpenMigration = useCallback(() => {
-    setMigrationModal({ isOpen: true });
-  }, []);
-
-  const handleMigrationComplete = useCallback(() => {
-    loadCreditCards();
-    onDataChange(); // Refresh the data in parent
-  }, [loadCreditCards, onDataChange]);
-
   // Sort credit cards based on selected criteria and pre-compute derived values
   const sortedCreditCards = useMemo(() => {
     if (!creditCards.length) return [];
@@ -612,15 +601,6 @@ const CreditCards = ({
           Credit Cards
         </h1>
         <div className='flex items-center space-x-3'>
-          {creditCards.length > 0 && (
-            <button
-              onClick={handleOpenMigration}
-              className='glass-button glass-button--primary flex items-center space-x-2'
-            >
-              <Plus size={16} />
-              <span>Smart Link Expenses</span>
-            </button>
-          )}
           {/* Only show Add Credit Card button when credit cards exist */}
           {creditCards.length > 0 && (
             <button
@@ -1013,13 +993,6 @@ const CreditCards = ({
         creditCards={creditCards}
         onClose={handleDeleteModalClose}
         onDelete={handleDeleteConfirmed}
-      />
-
-      {/* Credit Card Migration Modal */}
-      <CreditCardMigrationModal
-        isOpen={migrationModal.isOpen}
-        onClose={() => setMigrationModal({ isOpen: false })}
-        onComplete={handleMigrationComplete}
       />
 
       {/* Inline Account Creation Modal */}

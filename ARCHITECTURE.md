@@ -794,7 +794,6 @@ re-deriving urgency itself.
 | `ChooseFundingAccountModal` | `src/components/ChooseFundingAccountModal.jsx` | Picks which account funds a card's payment expense — used both when auto-creating a new card's payment (with a "use default" shortcut) and when changing an existing card's funding source |
 | `CreateAccountModal` | `src/components/CreateAccountModal.jsx` | Inline "create an account" fallback inside the credit-card funding flow when no accounts exist yet |
 | `CreditCardDeletionModal` | `src/components/CreditCardDeletionModal.jsx` | Enhanced deletion with expense reassignment |
-| `CreditCardMigrationModal` | `src/components/CreditCardMigrationModal.jsx` | Auto-link expenses to credit cards |
 
 ### Category System
 
