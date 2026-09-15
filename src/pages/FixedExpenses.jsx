@@ -3,20 +3,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import AddExpensePanel from '../components/AddExpensePanel.jsx';
 import Calendar from '../components/Calendar/Calendar.jsx';
-import CalendarCycleButton from '../components/Calendar/CalendarCycleButton.jsx';
 import PayCycleNudgeBanner from '../components/Calendar/PayCycleNudgeBanner.jsx';
 import PayCycleNudgeToast from '../components/Calendar/PayCycleNudgeToast.jsx';
 import FixedExpensesHero from '../components/FixedExpensesHero.jsx';
-import MarkAsPaidModal from '../components/MarkAsPaidModal.jsx';
 import OneOffExpensesView from '../components/OneOffExpensesView.jsx';
 import PayDateCountdownCard from '../components/PayDateCountdownCard.jsx';
 import PriorityExpenseList from '../components/PriorityExpenseList.jsx';
 import ProjectedBalanceCard from '../components/ProjectedBalanceCard.jsx';
-import {
-  advanceDueDateByFrequency,
-  DEFAULT_PAY_FREQUENCY,
-  PAY_FREQUENCIES,
-} from '../constants/payFrequency';
+import ResolveExpenseModal from '../components/ResolveExpenseModal.jsx';
 import { dbHelpers } from '../db/database-clean';
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { usePaycheckCalculations } from '../hooks/usePaycheckCalculations';
@@ -30,7 +24,6 @@ import {
   usePaycheckSettings,
   usePendingTransactions,
   useReloadExpenses,
-  useReloadPaycheckSettings,
   useSetPanelOpen,
 } from '../stores/useAppStore';
 import { DateUtils } from '../utils/dateUtils';
@@ -42,12 +35,30 @@ import '../components/Calendar/calendar.css';
 /** Set to true to show pay cycle nudge as toast instead of banner. */
 const USE_NUDGE_TOAST = true;
 
+const EMPTY_ID_SET = new Set();
+
 const FixedExpenses = () => {
-  const [showResetPrompt, setShowResetPrompt] = useState(false);
   const [payNowExpense, setPayNowExpense] = useState(null);
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'oneoffs'
   const expensesTableRef = useRef(null);
+
+  // Derived from recurringResolutionLog: which expense ids are an already-
+  // resolved recurring cycle (stop showing as actionable - the cadence has
+  // moved on, whether or not it was paid in full) and which are a Balance
+  // Due spun off from one (worth a badge wherever they show up). Refetched
+  // whenever fixedExpenses changes, since that's already the signal a
+  // resolve/undo just happened.
+  const [resolutionLinkage, setResolutionLinkage] = useState({
+    resolvedExpenseIds: EMPTY_ID_SET,
+    balanceDueExpenseIds: EMPTY_ID_SET,
+  });
+
+  // The Virtual Ledger's 'virtual' cycles for the visible month, one
+  // dbHelpers.getVirtualLedger call per active template. Calendar-only —
+  // these are forecast entries, never real rows, so nothing else in the
+  // page (summary totals, the priority list) should ever see them.
+  const [virtualExpenses, setVirtualExpenses] = useState([]);
 
   // Use Zustand store for data
   const accounts = useAccounts();
@@ -56,68 +67,17 @@ const FixedExpenses = () => {
   const paycheckSettings = usePaycheckSettings();
   const pendingTransactions = usePendingTransactions();
   const isLoading = useIsLoading();
-  const reloadPaycheckSettings = useReloadPaycheckSettings();
   const reloadExpenses = useReloadExpenses();
   const isAddPanelOpen = useIsPanelOpen();
   const setAddPanelOpen = useSetPanelOpen();
 
   // Add useExpenseOperations hook (must be unconditional for rules-of-hooks)
-  const { updateExpenseV4, deleteExpense, markAsPaid } = useExpenseOperations();
+  const { updateExpenseV4, deleteExpense, markAsPaid, resolveCycle } =
+    useExpenseOperations();
 
   // Initialize paycheck service (memoized — only recalculates when paycheckSettings changes)
   const { paycheckService, paycheckDates } =
     usePaycheckCalculations(paycheckSettings);
-
-  const handleResetCycle = useCallback(async () => {
-    try {
-      try {
-        await dbHelpers.snapshotExpensesForMonth();
-      } catch (_) {
-        // Snapshot is best-effort; reset continues
-      }
-      const currentFrequency =
-        paycheckSettings?.frequency || DEFAULT_PAY_FREQUENCY;
-      const updatePromises = fixedExpenses.map(expense => {
-        let newDueDate = expense.dueDate;
-        if (expense.dueDate) {
-          const advanced = advanceDueDateByFrequency(
-            expense.dueDate,
-            currentFrequency,
-          );
-          newDueDate = advanced !== null ? advanced : expense.dueDate;
-        }
-        return updateExpenseV4(
-          expense.id,
-          { paidAmount: 0, status: 'pending', dueDate: newDueDate },
-          false,
-        );
-      });
-      await Promise.all(updatePromises);
-
-      if (paycheckDates.nextPayDate) {
-        await dbHelpers.updatePaycheckSettings({
-          lastPaycheckDate: paycheckDates.nextPayDate,
-          frequency: paycheckSettings?.frequency || DEFAULT_PAY_FREQUENCY,
-        });
-        await reloadPaycheckSettings();
-      }
-
-      await reloadExpenses();
-      setShowResetPrompt(false);
-      notify.success('New pay cycle started successfully');
-    } catch (error) {
-      logger.error('Error resetting cycle:', error);
-      notify.error('Failed to reset cycle. Please try again.');
-      setShowResetPrompt(false);
-    }
-  }, [
-    fixedExpenses,
-    updateExpenseV4,
-    paycheckDates,
-    paycheckSettings,
-    reloadPaycheckSettings,
-    reloadExpenses,
-  ]);
 
   const formatMonthKey = date => {
     const year = date.getFullYear();
@@ -182,7 +142,17 @@ const FixedExpenses = () => {
     if (!confirmed) return;
     try {
       for (const exp of unpaid) {
-        await markAsPaid(exp.id);
+        // A recurring-template expense must go through resolveCycle, not
+        // markAsPaid - markAsPaid just sets paidAmount/status and would
+        // silently leave the template's cadence stalled, never
+        // materializing its next cycle. A plain one-off (including a
+        // Balance Due) has no cadence to advance, so markAsPaid is
+        // correct and unchanged for those.
+        if (exp.recurringTemplateId) {
+          await resolveCycle(exp.id, { paidAmount: exp.amount }, false);
+        } else {
+          await markAsPaid(exp.id);
+        }
       }
       await reloadExpenses();
       notify.success(`Marked ${unpaid.length} expense(s) as paid`);
@@ -190,7 +160,7 @@ const FixedExpenses = () => {
       logger.error('Error marking expenses as paid', err);
       notify.error('Failed to mark some expenses as paid');
     }
-  }, [currentMonthExpenses, markAsPaid, reloadExpenses]);
+  }, [currentMonthExpenses, markAsPaid, resolveCycle, reloadExpenses]);
 
   const handleReviewScroll = useCallback(() => {
     expensesTableRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -199,25 +169,6 @@ const FixedExpenses = () => {
   const handlePayNow = useCallback(expense => {
     setPayNowExpense(expense);
   }, []);
-
-  const handleMarkAsPaidConfirm = useCallback(
-    async (newPaidAmount, status) => {
-      if (!payNowExpense) return;
-      try {
-        await updateExpenseV4(
-          payNowExpense.id,
-          { paidAmount: newPaidAmount, status },
-          false,
-        );
-        await reloadExpenses();
-        notify.success('Payment updated');
-      } catch (err) {
-        logger.error('Error updating payment', err);
-        notify.error('Failed to update payment');
-      }
-    },
-    [payNowExpense, updateExpenseV4, reloadExpenses],
-  );
 
   // Deliberately the FULL fixedExpenses array, not currentMonthExpenses. This
   // feeds "what do I owe this week" and "balance after this week" — numbers
@@ -232,13 +183,6 @@ const FixedExpenses = () => {
     () => paycheckService.calculateSummaryTotals(fixedExpenses, paycheckDates),
     [paycheckService, fixedExpenses, paycheckDates],
   );
-
-  const nextPayDisplay = useMemo(() => {
-    if (!paycheckDates.nextPayDate) {
-      return 'the next pay date';
-    }
-    return new Date(paycheckDates.nextPayDate).toLocaleDateString();
-  }, [paycheckDates.nextPayDate]);
 
   const handlePreviousMonth = () => {
     setCurrentMonth(prev => {
@@ -265,23 +209,12 @@ const FixedExpenses = () => {
 
     (async () => {
       try {
-        const { preGenerateOccurrences, getActiveTemplates } = await import(
-          '../services/recurringExpenseService'
-        );
-        const templates = await getActiveTemplates();
-
-        for (const template of templates) {
-          await preGenerateOccurrences(template.id, 2);
-        }
-
+        await dbHelpers.materializeDueTemplates();
         if (!cancelled) {
           await reloadExpenses();
         }
       } catch (error) {
-        logger.warn(
-          'Could not pre-generate recurring expenses for month',
-          error,
-        );
+        logger.warn('Could not materialize due recurring templates', error);
       }
     })();
 
@@ -289,6 +222,73 @@ const FixedExpenses = () => {
       cancelled = true;
     };
   }, [currentMonthKey, reloadExpenses]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const entries = await dbHelpers.getRecurringResolutionLogEntries();
+        if (cancelled) return;
+
+        const resolvedExpenseIds = new Set(entries.map(e => e.expenseId));
+        const balanceDueExpenseIds = new Set(
+          entries
+            .filter(e => e.adjustmentExpenseId)
+            .map(e => e.adjustmentExpenseId),
+        );
+        setResolutionLinkage({ resolvedExpenseIds, balanceDueExpenseIds });
+      } catch (error) {
+        logger.warn('Could not load resolution log linkage', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fixedExpenses]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { start, end } = getMonthRange(currentMonth);
+        const rangeStart = DateUtils.formatDate(start);
+        const rangeEnd = DateUtils.formatDate(end);
+
+        const templates = await dbHelpers.getRecurringExpenseTemplates();
+        const perTemplate = await Promise.all(
+          templates.map(template =>
+            dbHelpers.getVirtualLedger(template.id, rangeStart, rangeEnd),
+          ),
+        );
+        if (cancelled) return;
+
+        const virtual = perTemplate
+          .flat()
+          .filter(entry => entry.state === 'virtual')
+          .map(entry => ({
+            id: `virtual-${entry.template.id}-${entry.cycleDueDate}`,
+            dueDate: entry.cycleDueDate,
+            name: entry.template.name,
+            category: entry.template.category,
+            amount: entry.estimatedAmount ?? 0,
+            paidAmount: 0,
+            recurringTemplateId: entry.template.id,
+            isVariableAmount: entry.template.isVariableAmount || false,
+            isVirtual: true,
+          }));
+        setVirtualExpenses(virtual);
+      } catch (error) {
+        logger.warn('Could not compute virtual ledger for calendar', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentMonth, fixedExpenses]);
 
   // Re-hosted from the now-deleted ExpenseTableContainer, which rendered
   // AddExpensePanel itself. Same behaviour: reload on success, no local
@@ -358,7 +358,6 @@ const FixedExpenses = () => {
             <PayCycleNudgeToast
               nudge={nudge}
               onReviewPastMonth={handleReviewPastMonth}
-              onStartReset={() => setShowResetPrompt(true)}
               onDismiss={dismiss}
               onMarkCurrentMonthPaid={handleMarkCurrentMonthPaid}
               onReviewScroll={handleReviewScroll}
@@ -367,7 +366,6 @@ const FixedExpenses = () => {
             <PayCycleNudgeBanner
               nudge={nudge}
               onReviewPastMonth={handleReviewPastMonth}
-              onStartReset={() => setShowResetPrompt(true)}
               onDismiss={dismiss}
               onMarkCurrentMonthPaid={handleMarkCurrentMonthPaid}
               onReviewScroll={handleReviewScroll}
@@ -402,6 +400,7 @@ const FixedExpenses = () => {
               <Calendar
                 currentMonth={currentMonth}
                 monthExpenses={currentMonthExpenses}
+                virtualExpenses={virtualExpenses}
                 paycheckService={paycheckService}
                 paycheckDates={paycheckDates}
                 onPreviousMonth={handlePreviousMonth}
@@ -422,6 +421,8 @@ const FixedExpenses = () => {
                 accounts={accounts}
                 creditCards={creditCards}
                 onPayNow={handlePayNow}
+                resolvedExpenseIds={resolutionLinkage.resolvedExpenseIds}
+                balanceDueExpenseIds={resolutionLinkage.balanceDueExpenseIds}
               />
 
               <div className='fixed-expenses-new-cycle'>
@@ -439,10 +440,6 @@ const FixedExpenses = () => {
                     {DateUtils.formatShortDate(paycheckDates.nextPayDate)}
                   </p>
                 )}
-                <CalendarCycleButton
-                  onReset={() => setShowResetPrompt(true)}
-                  variant='ghost'
-                />
               </div>
             </div>
           </div>
@@ -455,11 +452,10 @@ const FixedExpenses = () => {
             onDataChange={handleAddPanelDataChange}
           />
 
-          <MarkAsPaidModal
+          <ResolveExpenseModal
             expense={payNowExpense}
             isOpen={!!payNowExpense}
             onClose={() => setPayNowExpense(null)}
-            onConfirm={handleMarkAsPaidConfirm}
           />
         </>
       ) : (
@@ -473,51 +469,8 @@ const FixedExpenses = () => {
           onDelete={deleteExpense}
           onUpdateExpense={updateExpenseV4}
           onReloadExpenses={reloadExpenses}
+          balanceDueExpenseIds={resolutionLinkage.balanceDueExpenseIds}
         />
-      )}
-
-      {/* Reset Confirmation Modal */}
-      {showResetPrompt && (
-        <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
-          <div className='glass-panel p-6 max-w-md mx-4'>
-            <h3 className='text-lg font-semibold text-white mb-4'>
-              Start New Pay Cycle
-            </h3>
-            <div className='text-white/70 mb-6 space-y-2'>
-              <p>This will:</p>
-              <ul className='list-disc list-inside space-y-1 ml-4'>
-                <li>Mark all expenses as unpaid</li>
-                <li>
-                  Advance all expense due dates by one pay period (
-                  {PAY_FREQUENCIES[
-                    paycheckSettings?.frequency || DEFAULT_PAY_FREQUENCY
-                  ]?.label ?? 'Biweekly (every 2 weeks)'}
-                  )
-                </li>
-                <li>Update your last paycheck date to {nextPayDisplay}</li>
-                <li>Reset the calendar to show the new pay cycle</li>
-              </ul>
-              <p className='text-sm text-white/60 mt-3'>
-                Use this when you receive your paycheck and want to start
-                planning payments for the new cycle.
-              </p>
-            </div>
-            <div className='flex gap-3'>
-              <button
-                onClick={() => setShowResetPrompt(false)}
-                className='flex-1 px-4 py-2 glass-button'
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleResetCycle}
-                className='flex-1 px-4 py-2 glass-button glass-button--danger'
-              >
-                Reset
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

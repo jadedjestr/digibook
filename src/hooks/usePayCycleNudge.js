@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { dbHelpers } from '../db/database-clean';
+import { DateUtils } from '../utils/dateUtils';
+import { logger } from '../utils/logger';
 import { getDismissedKeys, markDismissed } from '../utils/nudgeDismissal';
-import { getPayCycleNudge } from '../utils/payCycleNudgeLogic';
+import { getLastMonthKey, getPayCycleNudge } from '../utils/payCycleNudgeLogic';
 
 /**
  * Hook for pay cycle nudge: returns the single nudge to show and a dismiss callback.
@@ -35,6 +38,58 @@ export function usePayCycleNudge({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: re-run when user dismisses
   const dismissed = useMemo(() => getDismissedKeys(), [dismissalVersion]);
 
+  // Virtual Ledger 'virtual' cycles for last month - cadences a template
+  // implies but that never became a real row (e.g. a template whose
+  // startDate predates the cycle it first materialized). Async, so it
+  // can't live in the synchronous nudge useMemo below; feeds in once
+  // resolved.
+  const [virtualGapCycles, setVirtualGapCycles] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const lastMonthKey = currentMonth ? getLastMonthKey(currentMonth) : null;
+    if (!lastMonthKey) {
+      setVirtualGapCycles([]);
+      return undefined;
+    }
+
+    (async () => {
+      try {
+        const [y, m] = lastMonthKey.split('-').map(Number);
+        const rangeStart = DateUtils.formatDate(new Date(y, m - 1, 1));
+        const rangeEnd = DateUtils.formatDate(new Date(y, m, 0));
+
+        const templates = await dbHelpers.getRecurringExpenseTemplates();
+        const perTemplate = await Promise.all(
+          templates.map(template =>
+            dbHelpers.getVirtualLedger(template.id, rangeStart, rangeEnd),
+          ),
+        );
+        if (cancelled) return;
+
+        const gaps = perTemplate
+          .flat()
+          .filter(entry => entry.state === 'virtual')
+          .map(entry => ({
+            id: `virtual-${entry.template.id}-${entry.cycleDueDate}`,
+            dueDate: entry.cycleDueDate,
+            name: entry.template.name,
+            amount: entry.estimatedAmount ?? 0,
+            paidAmount: 0,
+            recurringTemplateId: entry.template.id,
+            isVirtual: true,
+          }));
+        setVirtualGapCycles(gaps);
+      } catch (error) {
+        logger.warn('Could not compute virtual gap cycles for nudge', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentMonth]);
+
   const nudge = useMemo(() => {
     const result = getPayCycleNudge({
       fixedExpenses,
@@ -44,6 +99,7 @@ export function usePayCycleNudge({
       paycheckService,
       today: new Date(),
       dismissed,
+      virtualGapCycles,
     });
     return result.nudge;
   }, [
@@ -53,6 +109,7 @@ export function usePayCycleNudge({
     paycheckDates,
     paycheckService,
     dismissed,
+    virtualGapCycles,
   ]);
 
   useEffect(() => {

@@ -25,7 +25,10 @@ const CSV_MONEY_FIELDS = {
 // 7 adds the `appearance` object (glass tint, ambient strength, ambient
 // colours). It is additive and optional: a version 6 file imports fine and
 // simply leaves the current theme alone.
-const CURRENT_DATA_VERSION = 7;
+// 8 adds `recurringResolutionLog` (Undo / Payment History for the recurring
+// "resolve cycle" flow). It is additive and optional: a version 7 file
+// imports fine and simply starts with no resolution history.
+const CURRENT_DATA_VERSION = 8;
 
 /**
  * Normalize version to number for comparison

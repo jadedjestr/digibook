@@ -74,28 +74,32 @@ export function isNearEndOfMonth(
 }
 
 /**
- * Get the single nudge to show, or null. Priority: past_month -> catch_up -> reset.
+ * Get the single nudge to show, or null. Priority: past_month -> catch_up.
  *
  * @param {Object} options
  * @param {Array} options.fixedExpenses - All fixed expenses
  * @param {Date} options.currentMonth - Viewed month
  * @param {Array} options.currentMonthExpenses - Expenses in viewed month
- * @param {Object} options.paycheckDates - { nextPayDate, followingPayDate }
- * @param {Object} options.paycheckService - PaycheckService instance (shouldPromptReset)
  * @param {Date} [options.today] - Default: new Date()
  * @param {Set|Object} [options.dismissed] - Set of dismissKeys to skip
  * @param {Object} [options.config] - Override PAY_CYCLE_NUDGE_CONFIG
+ * @param {Array} [options.virtualGapCycles] - Virtual Ledger 'virtual'
+ *   entries for last month, already shaped like an expense (dueDate,
+ *   amount, paidAmount: 0). A cycle a template's own cadence implies but
+ *   that never became a real row - e.g. a template whose startDate
+ *   predates its first materialized cycle. Merged into last month's
+ *   unpaid count so the past_month nudge catches gaps a real-row-only
+ *   scan structurally cannot.
  * @returns {{ nudge: object|null }}
  */
 export function getPayCycleNudge({
   fixedExpenses = [],
   currentMonth,
   currentMonthExpenses = [],
-  paycheckDates = {},
-  paycheckService,
   today = new Date(),
   dismissed = new Set(),
   config = PAY_CYCLE_NUDGE_CONFIG,
+  virtualGapCycles = [],
 }) {
   const dismissedSet =
     dismissed instanceof Set ? dismissed : new Set(Object.keys(dismissed));
@@ -109,7 +113,10 @@ export function getPayCycleNudge({
   // 1. Past month: today is after last month; last month has unpaid; not dismissed
   if (lastMonthKey && todayKey && todayKey > lastMonthKey) {
     const pastMonthExpenses = getExpensesInMonth(fixedExpenses, lastMonthKey);
-    const unpaid = pastMonthExpenses.filter(isUnpaidOrPartial);
+    const unpaid = [
+      ...pastMonthExpenses.filter(isUnpaidOrPartial),
+      ...(virtualGapCycles || []),
+    ];
     const dismissKey = `past_month_${lastMonthKey}`;
     if (unpaid.length > 0 && !dismissedSet.has(dismissKey)) {
       const lastMonthDate = new Date(`${lastMonthKey}-01`);
@@ -150,29 +157,6 @@ export function getPayCycleNudge({
             unpaidInCurrentMonthCount: unpaidInCurrent.length,
             isNearEndOfMonth: true,
           },
-          dismissKey,
-        },
-      };
-    }
-  }
-
-  // 3. Reset: shouldPromptReset and not dismissed
-  if (paycheckService && currentMonthExpenses && paycheckDates?.nextPayDate) {
-    const dismissKey = `reset_${currentMonthKey || todayKey}`;
-    if (
-      !dismissedSet.has(dismissKey) &&
-      paycheckService.shouldPromptReset(currentMonthExpenses, paycheckDates)
-    ) {
-      const nextPayDisplay =
-        paycheckDates.nextPayDate &&
-        (() => {
-          const d = DateUtils.parseDate(paycheckDates.nextPayDate);
-          return d ? d.toLocaleDateString() : paycheckDates.nextPayDate;
-        })();
-      return {
-        nudge: {
-          type: 'reset',
-          payload: { nextPayDisplay: nextPayDisplay || 'the next pay date' },
           dismissKey,
         },
       };

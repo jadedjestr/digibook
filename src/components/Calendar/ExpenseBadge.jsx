@@ -2,16 +2,22 @@ import PropTypes from 'prop-types';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import QuickActions from './QuickActions';
+import ResolveExpenseModal from '../ResolveExpenseModal';
 
 /**
  * Individual expense badge with PaycheckService status integration
  */
 const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
-  const [showQuickActions, setShowQuickActions] = useState(false);
+  const [showResolveModal, setShowResolveModal] = useState(false);
+
+  // A Virtual Ledger forecast entry - not a real row, nothing to resolve
+  // yet. Skip status math entirely; it's not "due" in any actionable sense.
+  const isVirtual = expense.isVirtual === true;
 
   // Calculate status using PaycheckService
-  const status = paycheckService.calculateExpenseStatus(expense, paycheckDates);
+  const status = isVirtual
+    ? null
+    : paycheckService.calculateExpenseStatus(expense, paycheckDates);
 
   // Format expense display text (returns name and amount for separate elements)
   const formatExpenseText = expense => {
@@ -19,6 +25,14 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
 
     // Truncate long names
     const displayName = name.length > 15 ? `${name.substring(0, 15)}...` : name;
+
+    if (isVirtual) {
+      // Estimated, not committed - the Virtual Ledger's estimatedAmount for
+      // a variable-amount template is a guess, and for a fixed-amount
+      // template it's the same number that'll materialize anyway. Either
+      // way, "~" signals this isn't a real bill yet.
+      return { displayName, amountText: `~$${amount.toLocaleString()}` };
+    }
 
     // Amount text; include paid status when partially paid
     let amountText = `$${amount.toLocaleString()}`;
@@ -50,7 +64,9 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   };
 
   const { displayName, amountText } = formatExpenseText(expense);
-  const statusClass = getStatusClass(status);
+  const statusClass = isVirtual
+    ? 'expense-badge--virtual'
+    : getStatusClass(status);
   const remainingAmount = expense.amount - (expense.paidAmount || 0);
 
   // Check if this is a recurring expense
@@ -60,25 +76,39 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   const recurringClass = isRecurring ? 'expense-badge--recurring' : '';
   const oneOffClass = !isRecurring ? 'expense-badge--oneoff' : '';
 
+  const title = isVirtual
+    ? `${expense.name} - ~$${expense.amount.toLocaleString()}\nForecast: not due yet${expense.isVariableAmount ? ' (estimated - amount varies)' : ''}`
+    : `${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${status}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : '\n📅 One-time Expense'}`;
+
+  // Virtual entries are a forecast, not a real row - nothing exists yet to
+  // resolve, so the badge isn't interactive.
+  const handleActivate = isVirtual
+    ? undefined
+    : e => {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowResolveModal(true);
+      };
+
   return (
     <>
       <div
         className={`expense-badge ${statusClass} ${recurringClass} ${oneOffClass}`.trim()}
-        title={`${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${status}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : '\n📅 One-time Expense'}`}
-        role='button'
-        tabIndex={0}
-        onClick={e => {
-          e.preventDefault();
-          e.stopPropagation();
-          setShowQuickActions(true);
-        }}
-        onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            e.stopPropagation();
-            setShowQuickActions(true);
-          }
-        }}
+        title={title}
+        role={isVirtual ? undefined : 'button'}
+        tabIndex={isVirtual ? undefined : 0}
+        onClick={handleActivate}
+        onKeyDown={
+          isVirtual
+            ? undefined
+            : e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowResolveModal(true);
+                }
+              }
+        }
       >
         {!isRecurring && (
           <span
@@ -92,11 +122,12 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
         <span className='expense-badge-amount'>{amountText}</span>
       </div>
 
-      {showQuickActions &&
+      {showResolveModal &&
         createPortal(
-          <QuickActions
-            selectedExpense={expense}
-            onClose={() => setShowQuickActions(false)}
+          <ResolveExpenseModal
+            expense={expense}
+            isOpen={showResolveModal}
+            onClose={() => setShowResolveModal(false)}
           />,
           document.body,
         )}
@@ -106,11 +137,13 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
 
 ExpenseBadge.propTypes = {
   expense: PropTypes.shape({
-    id: PropTypes.number.isRequired,
+    id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
     name: PropTypes.string.isRequired,
     amount: PropTypes.number.isRequired,
     paidAmount: PropTypes.number,
     recurringTemplateId: PropTypes.number,
+    isVariableAmount: PropTypes.bool,
+    isVirtual: PropTypes.bool,
   }).isRequired,
   paycheckService: PropTypes.shape({
     calculateExpenseStatus: PropTypes.func.isRequired,

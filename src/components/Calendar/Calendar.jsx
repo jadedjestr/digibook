@@ -15,6 +15,7 @@ import './calendar.css';
 const Calendar = ({
   currentMonth,
   monthExpenses,
+  virtualExpenses,
   paycheckService,
   paycheckDates,
   onPreviousMonth,
@@ -54,9 +55,14 @@ const Calendar = ({
       date.setDate(startDate.getDate() + i);
 
       const dateString = DateUtils.formatDate(date);
-      const dayExpenses = (monthExpenses || []).filter(
-        expense => expense.dueDate === dateString,
-      );
+      const dayExpenses = [
+        ...(monthExpenses || []).filter(
+          expense => expense.dueDate === dateString,
+        ),
+        ...(virtualExpenses || []).filter(
+          expense => expense.dueDate === dateString,
+        ),
+      ];
 
       // Paycheck date?
       const isNextPayDate = paycheckDates.nextPayDate === dateString;
@@ -76,7 +82,7 @@ const Calendar = ({
     }
 
     return days;
-  }, [currentMonth, monthExpenses, paycheckDates]);
+  }, [currentMonth, monthExpenses, virtualExpenses, paycheckDates]);
 
   // Day selection handler
   const handleDaySelect = useCallback(dateString => {
@@ -184,6 +190,7 @@ const Calendar = ({
 Calendar.propTypes = {
   currentMonth: PropTypes.instanceOf(Date).isRequired,
   monthExpenses: PropTypes.arrayOf(PropTypes.object),
+  virtualExpenses: PropTypes.arrayOf(PropTypes.object),
   paycheckService: PropTypes.object.isRequired,
   paycheckDates: PropTypes.shape({
     nextPayDate: PropTypes.string,
@@ -196,6 +203,7 @@ Calendar.propTypes = {
 
 Calendar.defaultProps = {
   monthExpenses: [],
+  virtualExpenses: [],
 };
 
 export default Calendar;

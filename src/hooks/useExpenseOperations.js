@@ -123,13 +123,10 @@ export const useExpenseOperations = () => {
           }
           updatesToApply.paidAmount = paidAmountNumber;
 
-          const result = await dbHelpers.applyExpensePaymentChangeAtomic(
+          await dbHelpers.applyExpensePaymentChangeAtomic(
             expenseId,
             updatesToApply,
           );
-          if (result?.templateIdAdvanced != null) {
-            refreshTemplates();
-          }
           await Promise.all([reloadAccounts(), reloadExpenses()]);
         } else {
           // Update in database with V4 validation
@@ -166,8 +163,46 @@ export const useExpenseOperations = () => {
       updateExpenseInStore,
       reloadExpenses,
       reloadAccounts,
-      refreshTemplates,
     ],
+  );
+
+  /**
+   * Resolve a recurring template's current cycle: Pay Full, Partial, or
+   * Skip (paidAmount: 0). Unlike updateExpenseV4, this always advances the
+   * template's cadence immediately and may spin off a Balance Due for any
+   * shortfall - see dbHelpers.resolveCycle. Only call this for an expense
+   * that has a recurringTemplateId; use updateExpenseV4 for one-offs and
+   * Balance Due, which are never resolved through this path.
+   */
+  const resolveCycle = useCallback(
+    async (expenseId, { paidAmount }, showNotification = true) => {
+      try {
+        // Optimistic update
+        updateExpenseInStore(expenseId, { paidAmount });
+
+        await dbHelpers.resolveCycle(expenseId, { paidAmount });
+
+        // The template's cadence just advanced and a Balance Due may have
+        // been created - refresh both.
+        refreshTemplates();
+        await Promise.all([reloadAccounts(), reloadExpenses()]);
+
+        logger.success(`Cycle resolved: ${expenseId}`);
+        if (showNotification) {
+          notify.success('Payment updated');
+        }
+      } catch (error) {
+        logger.error('Error resolving cycle:', error);
+
+        // Revert optimistic update
+        await reloadExpenses();
+        if (showNotification) {
+          notify.error(`Failed to update payment: ${error.message}`);
+        }
+        throw error;
+      }
+    },
+    [updateExpenseInStore, refreshTemplates, reloadAccounts, reloadExpenses],
   );
 
   /**
@@ -430,6 +465,7 @@ export const useExpenseOperations = () => {
     // V4 Actions (new dual foreign key architecture)
     addExpenseV4,
     updateExpenseV4,
+    resolveCycle,
     getPaymentSourceInfo,
     getCreditCardPaymentInfo,
     validateExpensePaymentSources,

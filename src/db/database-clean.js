@@ -3,6 +3,7 @@ import Dexie from 'dexie';
 import {
   advanceDueDateByFrequency,
   DEFAULT_PAY_FREQUENCY,
+  getMostRecentImpliedPayDate,
   VALID_PAY_FREQUENCIES,
 } from '../constants/payFrequency';
 import {
@@ -14,7 +15,9 @@ import { dataIntegrity } from '../utils/crypto';
 import { DateUtils } from '../utils/dateUtils';
 import { generateId } from '../utils/generateId';
 import { logger } from '../utils/logger';
+import { calculateNextDueDate } from '../utils/recurrenceMath';
 import { parseMoneyInput, validatePaidAmount } from '../utils/validation';
+import { computeCycleStates } from '../utils/virtualLedger';
 
 const MAX_AUDIT_LOG_ENTRIES = 500;
 const UUID_REGEX =
@@ -27,7 +30,7 @@ const isValidUuid = value =>
 /**
  * Clean Consolidated Digibook Database Schema
  *
- * Consolidated Dexie schema, currently at version 9 (see this.version(9)
+ * Consolidated Dexie schema, currently at version 10 (see this.version(10)
  * below for the full migration history). Not the same as
  * CURRENT_DATA_VERSION in services/dataManager.js, which gates the
  * separate JSON/backup export-import file contract.
@@ -243,6 +246,42 @@ export class DigibookDBClean extends Dexie {
           'id, reason, timestamp, version, createdAt, updatedAt, deletedAt',
         incomeSources:
           'id, accountId, isEnabled, lastGeneratedDate, createdAt, updatedAt, deletedAt',
+      })
+      .upgrade(() => {});
+
+    // Version 10: recurringResolutionLog table. Records every time a
+    // recurring cycle is resolved (Pay Full / Partial / Skip) so the
+    // cadence can advance immediately without pre-generating rows, and so
+    // Undo has an exact prior state to reverse to rather than re-deriving
+    // one from frequency math.
+    this.version(10)
+      .stores({
+        accounts:
+          'id, name, type, currentBalance, isDefault, createdAt, updatedAt, deletedAt',
+        pendingTransactions:
+          'id, accountId, amount, category, description, createdAt, updatedAt, deletedAt, categoryId, incomeSourceId',
+        fixedExpenses:
+          'id, name, dueDate, amount, accountId, creditCardId, targetCreditCardId, category, paidAmount, status, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, recurringTemplateId, createdAt, updatedAt, deletedAt, categoryId',
+        categories:
+          'id, name, color, icon, isDefault, createdAt, sortOrder, updatedAt, deletedAt',
+        creditCards:
+          'id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt, updatedAt, deletedAt',
+        paycheckSettings:
+          'id, lastPaycheckDate, frequency, createdAt, updatedAt, deletedAt',
+        userPreferences:
+          'id, component, preferences, createdAt, lastExportDate, updatedAt, deletedAt',
+        monthlyExpenseHistory:
+          '[expenseId+month+year], expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt, updatedAt, deletedAt',
+        recurringExpenseTemplates:
+          'id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt, deletedAt, categoryId',
+        auditLogs:
+          'id, timestamp, actionType, entityType, entityId, details, updatedAt, deletedAt',
+        backups:
+          'id, reason, timestamp, version, createdAt, updatedAt, deletedAt',
+        incomeSources:
+          'id, accountId, isEnabled, lastGeneratedDate, createdAt, updatedAt, deletedAt',
+        recurringResolutionLog:
+          'id, templateId, expenseId, adjustmentExpenseId, cycleDueDate, resolvedAt, createdAt, updatedAt, deletedAt',
       })
       .upgrade(() => {});
   }
@@ -528,6 +567,154 @@ async function addAuditLogEntry(actionType, entityType, entityId, details) {
 }
 
 /**
+ * Apply the balance-mutation side of a payment change: debit/credit the
+ * right account(s)/card(s) for paymentDifference, and write a best-effort
+ * audit log entry. Shared by applyExpensePaymentChangeAtomic and
+ * resolveCycle so the credit-card dual-balance-update logic (and every
+ * other payment-source branch) lives in exactly one place - a Balance Due
+ * payment reuses this unmodified, with zero duplication, since it still
+ * goes through applyExpensePaymentChangeAtomic like any other expense.
+ *
+ * Caller must invoke this from inside an open 'rw' transaction whose table
+ * list includes db.accounts, db.creditCards, and db.auditLogs, and must
+ * not call it when paymentDifference === 0.
+ *
+ * @param {Object} sanitizedExpense - the expense as it will be after the
+ *   update, already sanitized (category/accountId/creditCardId/
+ *   targetCreditCardId kept mutually consistent)
+ * @param {number} paymentDifference - newPaidAmount - previousPaidAmount
+ * @param {string} expenseId
+ * @param {string} ts - ISO timestamp, shared with the caller's other
+ *   writes in the same transaction
+ */
+async function applyPaymentDelta(
+  sanitizedExpense,
+  paymentDifference,
+  expenseId,
+  ts,
+) {
+  if (sanitizedExpense.category === 'Credit Card Payment') {
+    if (!sanitizedExpense.accountId) {
+      throw new Error('Credit Card Payment requires funding accountId');
+    }
+    if (!sanitizedExpense.targetCreditCardId) {
+      throw new Error('Credit Card Payment requires targetCreditCardId');
+    }
+
+    const fundingAccount = await db.accounts.get(sanitizedExpense.accountId);
+    if (!fundingAccount) {
+      throw new Error(
+        `Funding account not found: ${sanitizedExpense.accountId}`,
+      );
+    }
+
+    const targetCard = await db.creditCards.get(
+      sanitizedExpense.targetCreditCardId,
+    );
+    if (!targetCard || targetCard.deletedAt) {
+      throw new Error(
+        `Target credit card not found: ${sanitizedExpense.targetCreditCardId}`,
+      );
+    }
+
+    const newAccountBalance =
+      Number(fundingAccount.currentBalance || 0) - paymentDifference;
+    const newCardBalance = Number(targetCard.balance || 0) - paymentDifference;
+
+    await db.accounts.update(fundingAccount.id, {
+      currentBalance: newAccountBalance,
+      updatedAt: ts,
+    });
+    await db.creditCards.update(targetCard.id, {
+      balance: newCardBalance,
+      updatedAt: ts,
+    });
+
+    try {
+      await addAuditLogEntry('PAYMENT', 'creditCardPayment', expenseId, {
+        amount: paymentDifference,
+        fundingAccountId: fundingAccount.id,
+        targetCreditCardId: targetCard.id,
+        newAccountBalance,
+        newCreditCardBalance: newCardBalance,
+      });
+    } catch (auditErr) {
+      logger.warn('Audit log (credit card payment) failed:', auditErr);
+    }
+  } else if (sanitizedExpense.accountId) {
+    const account = await db.accounts.get(sanitizedExpense.accountId);
+    if (!account) {
+      throw new Error(`Account not found: ${sanitizedExpense.accountId}`);
+    }
+
+    const newBalance = Number(account.currentBalance || 0) - paymentDifference;
+    await db.accounts.update(account.id, {
+      currentBalance: newBalance,
+      updatedAt: ts,
+    });
+
+    try {
+      await addAuditLogEntry('PAYMENT', 'account', account.id, {
+        expenseId,
+        amount: paymentDifference,
+        newBalance,
+      });
+    } catch (auditErr) {
+      logger.warn('Audit log (account payment) failed:', auditErr);
+    }
+  } else if (sanitizedExpense.creditCardId) {
+    const creditCard = await db.creditCards.get(sanitizedExpense.creditCardId);
+    if (!creditCard || creditCard.deletedAt) {
+      throw new Error(
+        `Credit card not found: ${sanitizedExpense.creditCardId}`,
+      );
+    }
+
+    // Credit card charges increase debt.
+    const newBalance = Number(creditCard.balance || 0) + paymentDifference;
+    await db.creditCards.update(creditCard.id, {
+      balance: newBalance,
+      updatedAt: ts,
+    });
+
+    try {
+      await addAuditLogEntry('PAYMENT', 'creditCard', creditCard.id, {
+        expenseId,
+        amount: paymentDifference,
+        newBalance,
+      });
+    } catch (auditErr) {
+      logger.warn('Audit log (credit card charge) failed:', auditErr);
+    }
+  } else {
+    throw new Error(
+      'No payment source specified (expected accountId or creditCardId)',
+    );
+  }
+}
+
+/**
+ * Compute what a recurring template's current cycle amount actually is
+ * right now - the fixed baseAmount for most templates, or (for a
+ * credit-card-payment template, isVariableAmount) the card's current
+ * minimum payment. The one place this computation lives, so a lazily
+ * materialized real row and a not-yet-real "virtual" ledger entry always
+ * agree on what the amount would be.
+ * @param {Object} template
+ * @returns {Promise<number>}
+ */
+async function computeTemplateCycleAmount(template) {
+  if (!template.targetCreditCardId) return template.baseAmount;
+  const card = await db.creditCards.get(template.targetCreditCardId);
+  if (!card) return template.baseAmount;
+  if (card.balance <= 0) return 0;
+  if (template.minimumPaymentOverride != null) {
+    return template.minimumPaymentOverride;
+  }
+  return getDefaultMinimumPaymentAmount(card);
+}
+
+/**
  * Resolve category UUID from display name (non-deleted category only).
  * @param {string|null|undefined} categoryName
  * @returns {Promise<string|null>}
@@ -585,6 +772,7 @@ export const dbHelpers = {
       await db.recurringExpenseTemplates.clear();
       await db.auditLogs.clear();
       await db.incomeSources.clear();
+      await db.recurringResolutionLog.clear();
       logger.success('Database cleared successfully');
     } catch (error) {
       logger.error('Error clearing database:', error);
@@ -871,7 +1059,7 @@ export const dbHelpers = {
   /**
    * Recompute `amount` on pending (unpaid), template-linked Credit Card
    * Payment expenses for this card after balance/minimumPayment changes,
-   * mirroring the same calculation generateRecurringExpense() uses. Never
+   * mirroring the same calculation computeTemplateCycleAmount() uses. Never
    * touches already-paid expenses, so settled payment history is never
    * rewritten.
    */
@@ -1439,185 +1627,133 @@ export const dbHelpers = {
     }
   },
 
-  // Helper function to calculate next due date based on frequency
+  // Helper function to calculate next due date based on frequency.
+  // Delegates to the standalone calculateNextDueDate in utils/recurrenceMath
+  // (imported above) so DB-free callers, like the Virtual Ledger, can use
+  // the exact same logic without pulling in Dexie.
   calculateNextDueDate(
     startDate,
     frequency,
     intervalValue = 1,
     intervalUnit = 'months',
   ) {
-    // Ensure intervalValue is a valid number
-    const validIntervalValue =
-      Number.isInteger(intervalValue) && intervalValue > 0 ? intervalValue : 1;
-
-    // Ensure intervalUnit is valid
-    const validIntervalUnit = ['days', 'weeks', 'months', 'years'].includes(
+    return calculateNextDueDate(
+      startDate,
+      frequency,
+      intervalValue,
       intervalUnit,
-    )
-      ? intervalUnit
-      : 'months';
-
-    const date = DateUtils.parseDate(startDate);
-    if (!date || isNaN(date.getTime())) {
-      throw new Error(`Invalid start date for recurring expense: ${startDate}`);
-    }
-
-    switch (frequency) {
-      case 'monthly':
-        date.setMonth(date.getMonth() + validIntervalValue);
-        break;
-      case 'quarterly': {
-        const addMonths = 3 * validIntervalValue;
-        date.setMonth(date.getMonth() + addMonths);
-        break;
-      }
-      case 'biannually': {
-        const addMonths = 6 * validIntervalValue;
-        date.setMonth(date.getMonth() + addMonths);
-        break;
-      }
-      case 'annually':
-        date.setFullYear(date.getFullYear() + validIntervalValue);
-        break;
-      case 'custom':
-        // Handle different interval units
-        switch (validIntervalUnit) {
-          case 'days':
-            date.setDate(date.getDate() + validIntervalValue);
-            break;
-          case 'weeks': {
-            const addDays = validIntervalValue * 7;
-            date.setDate(date.getDate() + addDays);
-            break;
-          }
-          case 'months':
-            date.setMonth(date.getMonth() + validIntervalValue);
-            break;
-          case 'years':
-            date.setFullYear(date.getFullYear() + validIntervalValue);
-            break;
-          default:
-            // Fallback to months for backward compatibility
-            date.setMonth(date.getMonth() + validIntervalValue);
-        }
-        break;
-      default:
-        throw new Error(`Unsupported frequency: ${frequency}`);
-    }
-
-    return DateUtils.formatDate(date);
+    );
   },
 
   // Generate next occurrence from template
-  async generateRecurringExpense(templateId) {
-    try {
-      const template = await db.recurringExpenseTemplates.get(templateId);
-      if (!template || !template.isActive) {
-        throw new Error('Template not found or inactive');
-      }
-
-      // Self-heal: stop generating from a template whose linked credit
-      // card has since been (soft-)deleted - covers installs where the
-      // card was deleted before deleteCreditCard started deactivating
-      // linked templates.
-      const linkedCardId = template.targetCreditCardId || template.creditCardId;
-      if (linkedCardId) {
-        const linkedCard = await db.creditCards.get(linkedCardId);
-        if (!linkedCard || linkedCard.deletedAt) {
-          await this.updateRecurringExpenseTemplate(templateId, {
-            isActive: false,
-          });
-          throw new Error(
-            'Linked credit card has been deleted; template deactivated',
-          );
-        }
-      }
-
-      // Check if template has an end date and if we've passed it
-      if (template.endDate) {
-        const todayString = DateUtils.today();
-        const today = DateUtils.parseDate(todayString);
-        const endDate = DateUtils.parseDate(template.endDate);
-
-        if (endDate && today && today > endDate) {
-          // Template has expired, deactivate it
-          await this.updateRecurringExpenseTemplate(templateId, {
-            isActive: false,
-          });
-          throw new Error('Template has reached its end date');
-        }
-      }
-
-      // Normalize intervalUnit for backward compatibility
-      const normalizedTemplate = {
-        ...template,
-        intervalUnit: template.intervalUnit || 'months',
-      };
-
-      let expenseAmount = normalizedTemplate.baseAmount;
-      if (normalizedTemplate.targetCreditCardId) {
-        const card = await db.creditCards.get(
-          normalizedTemplate.targetCreditCardId,
-        );
-        if (card) {
-          if (card.balance <= 0) {
-            expenseAmount = 0;
-          } else if (normalizedTemplate.minimumPaymentOverride != null) {
-            expenseAmount = normalizedTemplate.minimumPaymentOverride;
-          } else {
-            expenseAmount = getDefaultMinimumPaymentAmount(card);
-          }
-        }
-      }
-
-      const newExpense = {
-        name: normalizedTemplate.name,
-        dueDate: normalizedTemplate.nextDueDate,
-        amount: expenseAmount,
-        accountId: normalizedTemplate.accountId || null,
-        creditCardId: normalizedTemplate.creditCardId || null,
-        targetCreditCardId: normalizedTemplate.targetCreditCardId || null,
-        category: normalizedTemplate.category,
-        paidAmount: 0,
-        status: 'pending',
-        recurringTemplateId: templateId,
-        isAutoCreated: normalizedTemplate.isAutoCreated || false,
-      };
-
-      const expenseId = await this.addFixedExpenseV4(newExpense);
-
-      // Calculate next due date
-      const newNextDueDate = this.calculateNextDueDate(
-        normalizedTemplate.nextDueDate,
-        normalizedTemplate.frequency,
-        normalizedTemplate.intervalValue || 1,
-        normalizedTemplate.intervalUnit || 'months',
-      );
-
-      // Check if the next due date would exceed the end date
-      let shouldDeactivate = false;
-      if (template.endDate) {
-        const endDate = DateUtils.parseDate(template.endDate);
-        const nextDue = DateUtils.parseDate(newNextDueDate);
-
-        if (endDate && nextDue && nextDue > endDate) {
-          // Next occurrence would be after end date, deactivate template
-          shouldDeactivate = true;
-        }
-      }
-
-      await this.updateRecurringExpenseTemplate(templateId, {
-        lastGenerated: template.nextDueDate,
-        nextDueDate: shouldDeactivate ? null : newNextDueDate,
-        isActive: !shouldDeactivate, // Deactivate if we've reached the end
-      });
-
-      logger.success(`Generated recurring expense: ${template.name}`);
-      return expenseId;
-    } catch (error) {
-      logger.error('Error generating recurring expense:', error);
-      throw new Error('Failed to generate recurring expense');
+  /**
+   * Materialize a template's current cycle as a real fixedExpenses row, if
+   * (and only if) it's actually due and doesn't already exist. This is the
+   * single place a real row for a recurring template ever gets created -
+   * replaces the old bulk "pre-generate 6 months" approach entirely.
+   *
+   * Deliberately does NOT touch template.nextDueDate/lastGenerated - the
+   * cadence only ever advances when a cycle is resolved (see
+   * resolveCycle), never on materialization. That split is what makes
+   * this function safe to call repeatedly (every app load, every Fixed
+   * Expenses page visit) without ever creating a second row for an
+   * unresolved cycle.
+   *
+   * @param {string} templateId
+   * @returns {Promise<string|null>} the (existing or newly-created)
+   *   expense id, or null if nothing is due yet
+   */
+  async materializeCurrentCycle(templateId) {
+    const template = await db.recurringExpenseTemplates.get(templateId);
+    if (!template || !template.isActive) {
+      throw new Error('Template not found or inactive');
     }
+
+    // Self-heal: stop materializing from a template whose linked credit
+    // card has since been (soft-)deleted - covers installs where the
+    // card was deleted before deleteCreditCard started deactivating
+    // linked templates.
+    const linkedCardId = template.targetCreditCardId || template.creditCardId;
+    if (linkedCardId) {
+      const linkedCard = await db.creditCards.get(linkedCardId);
+      if (!linkedCard || linkedCard.deletedAt) {
+        await this.updateRecurringExpenseTemplate(templateId, {
+          isActive: false,
+        });
+        throw new Error(
+          'Linked credit card has been deleted; template deactivated',
+        );
+      }
+    }
+
+    // Check if template has an end date and if we've passed it
+    if (template.endDate) {
+      const todayString = DateUtils.today();
+      const today = DateUtils.parseDate(todayString);
+      const endDate = DateUtils.parseDate(template.endDate);
+
+      if (endDate && today && today > endDate) {
+        await this.updateRecurringExpenseTemplate(templateId, {
+          isActive: false,
+        });
+        throw new Error('Template has reached its end date');
+      }
+    }
+
+    if (!template.nextDueDate) return null;
+    if (template.nextDueDate > DateUtils.today()) return null; // not due yet
+
+    const existing = await db.fixedExpenses
+      .where('recurringTemplateId')
+      .equals(templateId)
+      .filter(e => !e.deletedAt && e.dueDate === template.nextDueDate)
+      .first();
+    if (existing) return existing.id; // already materialized - idempotent
+
+    const normalizedTemplate = {
+      ...template,
+      intervalUnit: template.intervalUnit || 'months',
+    };
+    const expenseAmount = await computeTemplateCycleAmount(normalizedTemplate);
+
+    const newExpense = {
+      name: normalizedTemplate.name,
+      dueDate: normalizedTemplate.nextDueDate,
+      amount: expenseAmount,
+      accountId: normalizedTemplate.accountId || null,
+      creditCardId: normalizedTemplate.creditCardId || null,
+      targetCreditCardId: normalizedTemplate.targetCreditCardId || null,
+      category: normalizedTemplate.category,
+      paidAmount: 0,
+      status: 'pending',
+      recurringTemplateId: templateId,
+      isAutoCreated: normalizedTemplate.isAutoCreated || false,
+    };
+
+    return this.addFixedExpenseV4(newExpense);
+  },
+
+  /**
+   * Materialize the current cycle for every active template. Safe to call
+   * on every app load / page visit - materializeCurrentCycle is
+   * idempotent, and one template's failure doesn't block the rest.
+   * @returns {Promise<Array<{templateId: string, expenseId: string}>>}
+   */
+  async materializeDueTemplates() {
+    const templates = await this.getRecurringExpenseTemplates();
+    const results = [];
+    for (const template of templates) {
+      try {
+        const expenseId = await this.materializeCurrentCycle(template.id);
+        if (expenseId) results.push({ templateId: template.id, expenseId });
+      } catch (error) {
+        logger.warn(
+          `materializeCurrentCycle failed for template ${template.id}:`,
+          error,
+        );
+      }
+    }
+    return results;
   },
 
   async setDefaultAccount(accountId) {
@@ -2389,6 +2525,62 @@ export const dbHelpers = {
     }
   },
 
+  /**
+   * Self-heal the paycheck cadence anchor (lastPaycheckDate) when it has
+   * drifted stale - e.g. the app wasn't opened for a while, or the user
+   * changed frequency. calculateNextPayDates always rolls the anchor
+   * forward to the next date >= today, so it can't itself say how far past
+   * the expected payday we are; getMostRecentImpliedPayDate can.
+   *
+   * A gap of up to 2 days is the "safe zone" and is left alone - it's
+   * normal for the user to open the app a little before or after payday.
+   * A gap of 3+ days silently advances the anchor to the most recent
+   * implied payday and records a best-effort audit log entry.
+   *
+   * @returns {Promise<{advanced: boolean, previousDate?: string, newDate?: string}>}
+   */
+  async selfHealPaycheckAnchor() {
+    const settings = await this.getPaycheckSettings();
+    if (!settings?.lastPaycheckDate || !settings?.frequency) {
+      return { advanced: false };
+    }
+
+    const today = DateUtils.today();
+    const impliedDate = getMostRecentImpliedPayDate(
+      settings.lastPaycheckDate,
+      settings.frequency,
+      today,
+    );
+    const daysPast = DateUtils.daysBetween(impliedDate, today);
+
+    if (daysPast === null || daysPast <= 2) {
+      return { advanced: false };
+    }
+
+    const previousDate = settings.lastPaycheckDate;
+    await this.updatePaycheckSettings({
+      lastPaycheckDate: impliedDate,
+      frequency: settings.frequency,
+    });
+
+    try {
+      await addAuditLogEntry(
+        'SELF_HEAL_PAYCHECK_ANCHOR',
+        'paycheckSettings',
+        settings.id,
+        {
+          previousDate,
+          newDate: impliedDate,
+          daysPast,
+        },
+      );
+    } catch (auditErr) {
+      logger.warn('Audit log (self-heal paycheck anchor) failed:', auditErr);
+    }
+
+    return { advanced: true, previousDate, newDate: impliedDate };
+  },
+
   // Income source helpers
   //
   // An income source says where a paycheck lands and roughly how much to
@@ -2937,7 +3129,7 @@ export const dbHelpers = {
       // The existence-check and template-insert must be atomic to prevent a
       // race (e.g. React StrictMode's double-invoked mount effect, or two
       // page visits close together) from both seeing "no template yet" and
-      // both creating one. generateRecurringExpense() is deliberately kept
+      // both creating one. materializeCurrentCycle() is deliberately kept
       // OUTSIDE this transaction - it calls addFixedExpenseV4(), which does
       // a dynamic `await import(...)` partway through, and running a
       // dynamic import mid-transaction can throw TransactionInactiveError
@@ -2995,7 +3187,7 @@ export const dbHelpers = {
         return;
       }
 
-      await this.generateRecurringExpense(result.templateId);
+      await this.materializeCurrentCycle(result.templateId);
       logger.success(
         `Created payment expense for card "${result.cardName}" (template ${result.templateId})`,
       );
@@ -3601,6 +3793,7 @@ export const dbHelpers = {
         auditLogs: await db.auditLogs.toArray(),
         recurringExpenseTemplates: await db.recurringExpenseTemplates.toArray(),
         incomeSources: await db.incomeSources.toArray(),
+        recurringResolutionLog: await db.recurringResolutionLog.toArray(),
 
         // Not a table — appearance lives in localStorage because it must be
         // applied before first paint. It rides along so a backup opened on
@@ -3641,6 +3834,7 @@ export const dbHelpers = {
         db.monthlyExpenseHistory,
         db.auditLogs,
         db.incomeSources,
+        db.recurringResolutionLog,
         async () => {
           // Clear existing data (inline so failures abort the transaction)
           await db.accounts.clear();
@@ -3654,6 +3848,7 @@ export const dbHelpers = {
           await db.recurringExpenseTemplates.clear();
           await db.auditLogs.clear();
           await db.incomeSources.clear();
+          await db.recurringResolutionLog.clear();
 
           // Import core data first (order matters for app invariants)
           await bulkPutChunked(db.accounts, data.accounts);
@@ -3684,6 +3879,14 @@ export const dbHelpers = {
 
           // Income sources reference an account, so they follow accounts.
           await bulkPutChunked(db.incomeSources, data.incomeSources);
+
+          // Resolution log rows reference both a recurring template and a
+          // fixed expense (plus optionally a second fixed expense as the
+          // adjustment row), so they must follow both of those imports.
+          await bulkPutChunked(
+            db.recurringResolutionLog,
+            data.recurringResolutionLog,
+          );
         },
       );
 
@@ -3831,6 +4034,7 @@ export const dbHelpers = {
         'recurringExpenseTemplates',
         'backups',
         'incomeSources',
+        'recurringResolutionLog',
       ];
       for (const field of optionalArrayFields) {
         if (data[field] !== undefined && data[field] !== null) {
@@ -4026,6 +4230,36 @@ export const dbHelpers = {
         } else if (hasValue(targetCreditCardId)) {
           errors.push(
             `recurringExpenseTemplates[${idx}]: targetCreditCardId must be null unless category is Credit Card Payment`,
+          );
+        }
+      }
+
+      // Resolution log rows must reference a real template and a real
+      // expense. adjustmentExpenseId is optional - a Skip resolution creates
+      // no Balance Due row, so it's legitimately null/undefined there.
+      const fixedExpenseIds = new Set(
+        (data.fixedExpenses || []).map(e => toRefId(e?.id)).filter(Boolean),
+      );
+      for (const [idx, entry] of (
+        data.recurringResolutionLog || []
+      ).entries()) {
+        const templateId = toRefId(entry?.templateId);
+        const expenseId = toRefId(entry?.expenseId);
+        const adjustmentExpenseId = toRefId(entry?.adjustmentExpenseId);
+
+        if (!templateId || !templateIds.has(templateId)) {
+          errors.push(
+            `recurringResolutionLog[${idx}]: invalid templateId (${entry?.templateId})`,
+          );
+        }
+        if (!expenseId || !fixedExpenseIds.has(expenseId)) {
+          errors.push(
+            `recurringResolutionLog[${idx}]: invalid expenseId (${entry?.expenseId})`,
+          );
+        }
+        if (adjustmentExpenseId && !fixedExpenseIds.has(adjustmentExpenseId)) {
+          errors.push(
+            `recurringResolutionLog[${idx}]: invalid adjustmentExpenseId (${entry?.adjustmentExpenseId})`,
           );
         }
       }
@@ -4310,16 +4544,23 @@ export const dbHelpers = {
       '../utils/expenseValidation'
     );
 
+    // Note: this function no longer advances a recurring template's
+    // cadence, even when the payment reaches the full amount. That's
+    // resolveCycle's job now (see below) - it's the only path that should
+    // ever move a template's nextDueDate forward, so "was this cycle
+    // resolved" always has exactly one source of truth (the
+    // recurringResolutionLog), not two different call paths that could
+    // disagree. A recurring-template expense should be paid through
+    // resolveCycle, not this function directly; this function still
+    // handles one-off expenses (including Balance Due, which is just a
+    // normal one-off) exactly as before.
     const result = await db.transaction(
       'rw',
       db.fixedExpenses,
       db.accounts,
       db.creditCards,
       db.auditLogs,
-      db.recurringExpenseTemplates,
       async () => {
-        let templateIdAdvanced = null;
-        let templateIdToGenerate = null;
         const currentExpense = await db.fixedExpenses.get(expenseId);
         if (!currentExpense || currentExpense.deletedAt) {
           throw new Error(`Expense with ID ${expenseId} not found`);
@@ -4358,197 +4599,418 @@ export const dbHelpers = {
 
         // No balance change needed.
         if (paymentDifference === 0) {
-          return { templateIdAdvanced, templateIdToGenerate };
+          return {};
         }
 
-        // Apply balance deltas based on payment source.
-        if (sanitizedExpense.category === 'Credit Card Payment') {
-          if (!sanitizedExpense.accountId) {
-            throw new Error('Credit Card Payment requires funding accountId');
-          }
-          if (!sanitizedExpense.targetCreditCardId) {
-            throw new Error('Credit Card Payment requires targetCreditCardId');
-          }
-
-          const fundingAccount = await db.accounts.get(
-            sanitizedExpense.accountId,
-          );
-          if (!fundingAccount) {
-            throw new Error(
-              `Funding account not found: ${sanitizedExpense.accountId}`,
-            );
-          }
-
-          const targetCard = await db.creditCards.get(
-            sanitizedExpense.targetCreditCardId,
-          );
-          if (!targetCard || targetCard.deletedAt) {
-            throw new Error(
-              `Target credit card not found: ${sanitizedExpense.targetCreditCardId}`,
-            );
-          }
-
-          const newAccountBalance =
-            Number(fundingAccount.currentBalance || 0) - paymentDifference;
-          const newCardBalance =
-            Number(targetCard.balance || 0) - paymentDifference;
-
-          await db.accounts.update(fundingAccount.id, {
-            currentBalance: newAccountBalance,
-            updatedAt: ts,
-          });
-          await db.creditCards.update(targetCard.id, {
-            balance: newCardBalance,
-            updatedAt: ts,
-          });
-
-          try {
-            await addAuditLogEntry('PAYMENT', 'creditCardPayment', expenseId, {
-              amount: paymentDifference,
-              fundingAccountId: fundingAccount.id,
-              targetCreditCardId: targetCard.id,
-              newAccountBalance,
-              newCreditCardBalance: newCardBalance,
-            });
-          } catch (auditErr) {
-            logger.warn('Audit log (credit card payment) failed:', auditErr);
-          }
-        } else if (sanitizedExpense.accountId) {
-          const account = await db.accounts.get(sanitizedExpense.accountId);
-          if (!account) {
-            throw new Error(`Account not found: ${sanitizedExpense.accountId}`);
-          }
-
-          const newBalance =
-            Number(account.currentBalance || 0) - paymentDifference;
-          await db.accounts.update(account.id, {
-            currentBalance: newBalance,
-            updatedAt: ts,
-          });
-
-          try {
-            await addAuditLogEntry('PAYMENT', 'account', account.id, {
-              expenseId,
-              amount: paymentDifference,
-              newBalance,
-            });
-          } catch (auditErr) {
-            logger.warn('Audit log (account payment) failed:', auditErr);
-          }
-        } else if (sanitizedExpense.creditCardId) {
-          const creditCard = await db.creditCards.get(
-            sanitizedExpense.creditCardId,
-          );
-          if (!creditCard || creditCard.deletedAt) {
-            throw new Error(
-              `Credit card not found: ${sanitizedExpense.creditCardId}`,
-            );
-          }
-
-          // Credit card charges increase debt.
-          const newBalance =
-            Number(creditCard.balance || 0) + paymentDifference;
-          await db.creditCards.update(creditCard.id, {
-            balance: newBalance,
-            updatedAt: ts,
-          });
-
-          try {
-            await addAuditLogEntry('PAYMENT', 'creditCard', creditCard.id, {
-              expenseId,
-              amount: paymentDifference,
-              newBalance,
-            });
-          } catch (auditErr) {
-            logger.warn('Audit log (credit card charge) failed:', auditErr);
-          }
-        } else {
-          throw new Error(
-            'No payment source specified (expected accountId or creditCardId)',
-          );
-        }
-
-        // Advance recurring template when expense just became fully paid
-        const templateId = sanitizedExpense.recurringTemplateId;
-        if (
-          templateId &&
-          derivedStatus === 'paid' &&
-          sanitizedExpense.amount > 0
-        ) {
-          const template = await db.recurringExpenseTemplates.get(templateId);
-          if (template && template.nextDueDate) {
-            const expenseDueNorm = DateUtils.formatDate(
-              DateUtils.parseDate(sanitizedExpense.dueDate),
-            );
-            const templateNextNorm = DateUtils.formatDate(
-              DateUtils.parseDate(template.nextDueDate),
-            );
-            if (expenseDueNorm === templateNextNorm) {
-              const normalizedTemplate = {
-                ...template,
-                intervalUnit: template.intervalUnit || 'months',
-              };
-              const newNextDueDate = this.calculateNextDueDate(
-                normalizedTemplate.nextDueDate,
-                normalizedTemplate.frequency,
-                normalizedTemplate.intervalValue || 1,
-                normalizedTemplate.intervalUnit || 'months',
-              );
-              let shouldDeactivate = false;
-              let nextDueToSet = newNextDueDate;
-              if (template.endDate) {
-                const endDate = DateUtils.parseDate(template.endDate);
-                const nextDue = DateUtils.parseDate(newNextDueDate);
-                if (endDate && nextDue && nextDue > endDate) {
-                  shouldDeactivate = true;
-                  nextDueToSet = null;
-                }
-              }
-              await this.updateRecurringExpenseTemplate(templateId, {
-                lastGenerated: template.nextDueDate,
-                nextDueDate: nextDueToSet,
-                ...(shouldDeactivate && { isActive: false }),
-              });
-              templateIdAdvanced = templateId;
-
-              // generateRecurringExpense() calls addFixedExpenseV4(), which
-              // does a dynamic import partway through - that can silently
-              // break an open Dexie transaction (see createExpenseForCard
-              // for the same fix). Deferred to after this transaction
-              // commits, below, rather than called inline here.
-              //
-              // Note: this means a template gets advanced twice for one
-              // full-payment event - once here, once more inside
-              // generateRecurringExpense's own advance (which runs against
-              // the value just set above). So nextDueDate ends up one full
-              // cycle ahead of the newly-generated expense's own dueDate,
-              // and this fast path will never match again for this
-              // template on any later payment. That's fine: useAppStore's
-              // preGenerateOccurrences() already walks every active
-              // template forward on each app load and backfills any
-              // missing occurrence, so the next bill still gets created -
-              // just on next load instead of instantly on payment.
-              if (template.targetCreditCardId) {
-                templateIdToGenerate = templateId;
-              }
-            }
-          }
-        }
-
-        return { templateIdAdvanced, templateIdToGenerate };
+        await applyPaymentDelta(
+          sanitizedExpense,
+          paymentDifference,
+          expenseId,
+          ts,
+        );
+        return {};
       },
     );
     void this.trimAuditLogs();
 
-    if (result.templateIdToGenerate) {
-      try {
-        await this.generateRecurringExpense(result.templateIdToGenerate);
-      } catch (genError) {
-        logger.error('Error generating next CC payment occurrence:', genError);
+    return result;
+  },
+
+  /**
+   * Resolve a recurring template's current cycle: Pay Full, Partial, or
+   * Skip. Skip is simply paidAmount: 0 - same path, same rules, not a
+   * separate mechanism. Any resolution - full, partial, or skip -
+   * advances the template's cadence immediately; it never waits for a
+   * full payment the way the old fast path inside
+   * applyExpensePaymentChangeAtomic used to. A shortfall (paidAmount less
+   * than the cycle's committed amount) spins off a Balance Due: a normal
+   * one-off fixedExpenses row, due today, that inherits the origin bill's
+   * category/accountId/creditCardId/targetCreditCardId verbatim - this is
+   * what makes a skipped credit-card payment's Balance Due correctly
+   * reduce the card's tracked balance when it's eventually paid, since
+   * only an expense carrying that category/link goes through the
+   * credit-card branch of applyPaymentDelta.
+   *
+   * Writes a recurringResolutionLog row as a HARD write inside the same
+   * transaction as the payment/balance mutation and the cadence advance -
+   * unlike the best-effort audit log below, a failure here must abort the
+   * whole transaction, since this table is the source of truth for Undo
+   * and Payment History, not a trace.
+   *
+   * @param {string} expenseId - the real, currently-pending row for this
+   *   template's current cycle
+   * @param {Object} params
+   * @param {number} params.paidAmount - amount being paid now (0 for Skip)
+   * @returns {Promise<{logId: string, adjustmentExpenseId: string|null, templateId: string}>}
+   */
+  async resolveCycle(expenseId, { paidAmount }) {
+    const paidAmountCheck = validatePaidAmount(paidAmount);
+    if (!paidAmountCheck.isValid) {
+      throw new Error(paidAmountCheck.error);
+    }
+
+    // Hoisted above the transaction for the same reason
+    // applyExpensePaymentChangeAtomic and createExpenseForCard do this: a
+    // dynamic import mid-transaction can throw TransactionInactiveError.
+    const { validateExpense, sanitizeExpenseData } = await import(
+      '../utils/expenseValidation'
+    );
+
+    const result = await db.transaction(
+      'rw',
+      db.fixedExpenses,
+      db.accounts,
+      db.creditCards,
+      db.auditLogs,
+      db.recurringExpenseTemplates,
+      db.recurringResolutionLog,
+      async () => {
+        const expense = await db.fixedExpenses.get(expenseId);
+        if (!expense || expense.deletedAt) {
+          throw new Error(`Expense with ID ${expenseId} not found`);
+        }
+        if (!expense.recurringTemplateId) {
+          throw new Error(
+            'resolveCycle requires a recurring-template expense; use applyExpensePaymentChangeAtomic (via updateExpenseV4) for one-offs and Balance Due',
+          );
+        }
+
+        const template = await db.recurringExpenseTemplates.get(
+          expense.recurringTemplateId,
+        );
+        if (!template) {
+          throw new Error(`Template not found: ${expense.recurringTemplateId}`);
+        }
+
+        const committedAmount = Number(expense.amount || 0);
+
+        // Partial payment is disabled entirely for variable-amount bills -
+        // only Full or Skip are ever legal here, enforced at the DB layer
+        // too, not just hidden in the UI.
+        if (
+          template.isVariableAmount &&
+          paidAmount !== 0 &&
+          paidAmount !== committedAmount
+        ) {
+          throw new Error(
+            'Partial payment is not available for variable-amount bills',
+          );
+        }
+        if (paidAmount > committedAmount) {
+          throw new Error('paidAmount cannot exceed the committed amount');
+        }
+
+        const previousPaidAmount = Number(expense.paidAmount || 0);
+        const paymentDifference = paidAmount - previousPaidAmount;
+        const ts = nowIso();
+        const newStatus =
+          committedAmount > 0 && paidAmount >= committedAmount
+            ? 'paid'
+            : 'pending';
+
+        const sanitizedExpense = sanitizeExpenseData({
+          ...expense,
+          paidAmount,
+          status: newStatus,
+        });
+        validateExpense(sanitizedExpense);
+
+        await db.fixedExpenses.update(expenseId, {
+          paidAmount,
+          status: newStatus,
+          updatedAt: ts,
+        });
+
+        if (paymentDifference !== 0) {
+          await applyPaymentDelta(
+            sanitizedExpense,
+            paymentDifference,
+            expenseId,
+            ts,
+          );
+        }
+
+        // Shortfall becomes a Balance Due - a normal one-off expense,
+        // inheriting the origin's category/payment-source verbatim.
+        let adjustmentExpenseId = null;
+        const shortfall = committedAmount - paidAmount;
+        if (shortfall > 0.004) {
+          const balanceDueData = sanitizeExpenseData({
+            name: `${expense.name} (Balance Due)`,
+            dueDate: DateUtils.today(),
+            amount: shortfall,
+            accountId: expense.accountId || null,
+            creditCardId: expense.creditCardId || null,
+            targetCreditCardId: expense.targetCreditCardId || null,
+            category: expense.category,
+            categoryId: expense.categoryId ?? null,
+            paidAmount: 0,
+            status: 'pending',
+            recurringTemplateId: null,
+            isAutoCreated: true,
+          });
+          validateExpense(balanceDueData);
+          adjustmentExpenseId = generateId();
+          await db.fixedExpenses.add({
+            ...balanceDueData,
+            id: adjustmentExpenseId,
+            createdAt: ts,
+            updatedAt: ts,
+            deletedAt: null,
+          });
+        }
+
+        // Advance cadence unconditionally - Full, Partial, and Skip all
+        // advance. This is the core behavior change from the old
+        // full-payment-only fast path.
+        const previousNextDueDate = template.nextDueDate;
+        const previousLastGenerated = template.lastGenerated;
+        let nextDueToSet = null;
+        let shouldDeactivate = false;
+        if (previousNextDueDate) {
+          const newNextDueDate = calculateNextDueDate(
+            previousNextDueDate,
+            template.frequency,
+            template.intervalValue || 1,
+            template.intervalUnit || 'months',
+          );
+          nextDueToSet = newNextDueDate;
+          if (template.endDate) {
+            const endDate = DateUtils.parseDate(template.endDate);
+            const nextDue = DateUtils.parseDate(newNextDueDate);
+            if (endDate && nextDue && nextDue > endDate) {
+              shouldDeactivate = true;
+              nextDueToSet = null;
+            }
+          }
+        }
+        await this.updateRecurringExpenseTemplate(template.id, {
+          lastGenerated: previousNextDueDate,
+          nextDueDate: nextDueToSet,
+          ...(shouldDeactivate && { isActive: false }),
+        });
+
+        // HARD write - no try/catch swallow, unlike the audit log below.
+        // A failure here must abort the whole transaction.
+        const logId = generateId();
+        await db.recurringResolutionLog.add({
+          id: logId,
+          templateId: template.id,
+          expenseId,
+          cycleDueDate: expense.dueDate,
+          resolvedAt: ts,
+          committedAmount,
+          paidAmount,
+          wasSkipped: paidAmount === 0,
+          adjustmentExpenseId,
+          previousNextDueDate,
+          previousLastGenerated,
+          previousExpensePaidAmount: previousPaidAmount,
+          previousExpenseStatus: expense.status,
+          createdAt: ts,
+          updatedAt: ts,
+          deletedAt: null,
+        });
+
+        try {
+          await addAuditLogEntry('RESOLVE_CYCLE', 'fixedExpense', expenseId, {
+            templateId: template.id,
+            paidAmount,
+            committedAmount,
+            adjustmentExpenseId,
+          });
+        } catch (auditErr) {
+          logger.warn('Audit log (resolve cycle) failed:', auditErr);
+        }
+
+        return { logId, adjustmentExpenseId, templateId: template.id };
+      },
+    );
+
+    void this.trimAuditLogs();
+
+    // Best-effort, outside the transaction - idempotent/upsert by design,
+    // safe to call on every resolution rather than only on a manual reset.
+    try {
+      await this.snapshotExpensesForMonth();
+    } catch (snapshotErr) {
+      logger.warn('Snapshot after resolveCycle failed:', snapshotErr);
+    }
+
+    return result;
+  },
+
+  /**
+   * Every non-deleted (not undone) resolution log entry, across every
+   * template. Read-only, for UI code that needs to know which expense ids
+   * are "already resolved" (should stop showing as actionable) and which
+   * expense ids are "a spun-off Balance Due" (should get its own badge) -
+   * see FixedExpenses.jsx for how these two derived sets get built and
+   * passed down.
+   * @returns {Promise<Array>}
+   */
+  async getRecurringResolutionLogEntries() {
+    return db.recurringResolutionLog.filter(e => !e.deletedAt).toArray();
+  },
+
+  /**
+   * The Virtual Ledger for one template within [rangeStart, rangeEnd] -
+   * every cycle classified resolved/pending/virtual (see
+   * src/utils/virtualLedger.js for what each means), each entry enriched
+   * with the template itself so a caller has name/category/etc without a
+   * second fetch. The one place "what does this cadence imply" gets
+   * computed for display purposes - Calendar's forecast (virtual entries
+   * in a future window) and the past_month nudge's gap detection (virtual
+   * entries in a past window) are both thin filters over this same
+   * result, not separate computations.
+   * @param {string} templateId
+   * @param {string} rangeStart - YYYY-MM-DD, inclusive
+   * @param {string} rangeEnd - YYYY-MM-DD, inclusive
+   * @returns {Promise<Array>}
+   */
+  async getVirtualLedger(templateId, rangeStart, rangeEnd) {
+    const template = await db.recurringExpenseTemplates.get(templateId);
+    if (!template || template.deletedAt) return [];
+
+    const [resolutionLogEntries, realExpenses] = await Promise.all([
+      db.recurringResolutionLog
+        .where('templateId')
+        .equals(templateId)
+        .toArray(),
+      db.fixedExpenses
+        .where('recurringTemplateId')
+        .equals(templateId)
+        .toArray(),
+    ]);
+    const estimatedAmount = await computeTemplateCycleAmount(template);
+
+    return computeCycleStates(template, {
+      resolutionLogEntries,
+      realExpenses,
+      rangeStart,
+      rangeEnd,
+      estimatedAmount,
+    }).map(entry => ({ ...entry, template }));
+  },
+
+  /**
+   * Read-only: the most recent non-deleted recurringResolutionLog entry
+   * for a template, if it's currently undoable (not blocked by a settled
+   * Balance Due). Backs both an Undo button's enabled state and its
+   * confirmation copy.
+   * @param {string} templateId
+   * @returns {Promise<{entry: Object, blockedReason: string|null}|null>}
+   */
+  async getLastUndoableResolution(templateId) {
+    const entries = await db.recurringResolutionLog
+      .where('templateId')
+      .equals(templateId)
+      .filter(e => !e.deletedAt)
+      .toArray();
+    if (entries.length === 0) return null;
+
+    entries.sort((a, b) => (b.resolvedAt > a.resolvedAt ? 1 : -1));
+    const entry = entries[0];
+
+    let blockedReason = null;
+    if (entry.adjustmentExpenseId) {
+      const balanceDue = await db.fixedExpenses.get(entry.adjustmentExpenseId);
+      if (balanceDue && Number(balanceDue.paidAmount || 0) > 0) {
+        blockedReason =
+          'The Balance Due this created already has a payment on it';
       }
     }
 
-    return { templateIdAdvanced: result.templateIdAdvanced };
+    return { entry, blockedReason };
+  },
+
+  /**
+   * Undo a template's single most recent resolution (Pay Full / Partial /
+   * Skip) - LIFO, one step, the same rule undo follows anywhere else in
+   * the app. Blocked if the Balance Due it created has already been paid
+   * against, since undoing would erase a real payment. Reverses the
+   * payment/balance delta, restores the row's prior status, soft-deletes
+   * the Balance Due it created (if any), restores the template's cadence
+   * from the entry's own snapshot, and soft-deletes the log entry itself
+   * (never hard-deleted, so history stays inspectable).
+   * @param {string} templateId
+   */
+  async undoLastResolution(templateId) {
+    const candidateInfo = await this.getLastUndoableResolution(templateId);
+    if (!candidateInfo) {
+      throw new Error('Nothing to undo for this template');
+    }
+    if (candidateInfo.blockedReason) {
+      throw new Error(candidateInfo.blockedReason);
+    }
+    const candidate = candidateInfo.entry;
+
+    return db.transaction(
+      'rw',
+      db.fixedExpenses,
+      db.accounts,
+      db.creditCards,
+      db.auditLogs,
+      db.recurringExpenseTemplates,
+      db.recurringResolutionLog,
+      async () => {
+        const expense = await db.fixedExpenses.get(candidate.expenseId);
+        const ts = nowIso();
+
+        if (expense) {
+          const reverseDelta =
+            candidate.previousExpensePaidAmount -
+            Number(expense.paidAmount || 0);
+          if (reverseDelta !== 0) {
+            await applyPaymentDelta(
+              { ...expense, paidAmount: candidate.previousExpensePaidAmount },
+              reverseDelta,
+              candidate.expenseId,
+              ts,
+            );
+          }
+          await db.fixedExpenses.update(candidate.expenseId, {
+            paidAmount: candidate.previousExpensePaidAmount,
+            status: candidate.previousExpenseStatus,
+            updatedAt: ts,
+          });
+        }
+
+        if (candidate.adjustmentExpenseId) {
+          await db.fixedExpenses.update(candidate.adjustmentExpenseId, {
+            deletedAt: ts,
+            updatedAt: ts,
+          });
+        }
+
+        // Undoing a resolution can only ever un-deactivate a template
+        // (resolving a cycle requires it to have been active beforehand),
+        // never deactivate one.
+        await this.updateRecurringExpenseTemplate(templateId, {
+          nextDueDate: candidate.previousNextDueDate,
+          lastGenerated: candidate.previousLastGenerated,
+          isActive: true,
+        });
+
+        await db.recurringResolutionLog.update(candidate.id, {
+          deletedAt: ts,
+          updatedAt: ts,
+        });
+
+        try {
+          await addAuditLogEntry(
+            'UNDO_RESOLVE_CYCLE',
+            'fixedExpense',
+            candidate.expenseId,
+            { templateId, logId: candidate.id },
+          );
+        } catch (auditErr) {
+          logger.warn('Audit log (undo resolve cycle) failed:', auditErr);
+        }
+
+        return { undone: candidate.id };
+      },
+    );
   },
 
   /**

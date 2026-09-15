@@ -153,12 +153,19 @@ export async function getTemplatesDueForGeneration() {
 }
 
 /**
- * Generate the next occurrence of a recurring expense
+ * Materialize a template's current cycle as a real expense, if it's due
+ * and doesn't already exist. Named generateNextOccurrence for backward
+ * compatibility with existing callers (e.g. AddExpensePanel's "first
+ * occurrence is due now" check) - it's a thin wrapper over
+ * dbHelpers.materializeCurrentCycle, which is idempotent and returns null
+ * rather than creating anything when the cycle isn't due yet.
  */
 export async function generateNextOccurrence(templateId) {
   try {
-    const generatedId = await dbHelpers.generateRecurringExpense(templateId);
-    logger.success(`Generated next occurrence for template ${templateId}`);
+    const generatedId = await dbHelpers.materializeCurrentCycle(templateId);
+    if (generatedId) {
+      logger.success(`Generated next occurrence for template ${templateId}`);
+    }
     return generatedId;
   } catch (error) {
     logger.error('Error generating next occurrence:', error);
@@ -249,165 +256,10 @@ export async function convertExpenseToRecurring(expense, recurringData) {
   return convertFixedExpenseToRecurring(expense.id, recurringData);
 }
 
-/**
- * Pre-generate multiple occurrences of a recurring expense template
- * Generates expenses up to a specified horizon (e.g., 6 months ahead)
- */
-export async function preGenerateOccurrences(templateId, monthsAhead = 6) {
-  try {
-    const template = await getTemplate(templateId);
-    if (!template || !template.isActive) {
-      return { generated: 0, skipped: 0 };
-    }
-
-    const today = DateUtils.today();
-    const todayDate = DateUtils.parseDate(today);
-    const horizonDate = new Date(todayDate);
-    horizonDate.setMonth(horizonDate.getMonth() + monthsAhead);
-
-    // Get all existing expenses for this template to check for duplicates
-    const allExpenses = await dbHelpers.getFixedExpenses();
-    const existingExpenses = allExpenses.filter(
-      expense => expense.recurringTemplateId === templateId,
-    );
-    const existingDates = new Set(
-      existingExpenses.map(expense => expense.dueDate),
-    );
-
-    let generated = 0;
-    let skipped = 0;
-
-    // Determine starting date
-    let currentDueDate = template.nextDueDate || template.startDate;
-    let currentDueDateObj = DateUtils.parseDate(currentDueDate);
-
-    // If nextDueDate is in the future, start from startDate instead
-    if (!currentDueDateObj || currentDueDateObj > todayDate) {
-      currentDueDate = template.startDate;
-      currentDueDateObj = DateUtils.parseDate(currentDueDate);
-    }
-
-    // Check if template has an end date
-    const endDate = template.endDate
-      ? DateUtils.parseDate(template.endDate)
-      : null;
-
-    // Generate occurrences until we reach the horizon or end date
-    while (currentDueDateObj && currentDueDateObj <= horizonDate) {
-      // Stop if we've passed the end date
-      if (endDate && currentDueDateObj > endDate) {
-        break;
-      }
-
-      const dateString = DateUtils.formatDate(currentDueDateObj);
-
-      // Check if this occurrence already exists
-      if (existingDates.has(dateString)) {
-        skipped++;
-
-        // Calculate next date manually since we skipped this one
-        currentDueDate = dbHelpers.calculateNextDueDate(
-          dateString,
-          template.frequency,
-          template.intervalValue || 1,
-          template.intervalUnit || 'months',
-        );
-      } else {
-        try {
-          // Temporarily update template's nextDueDate to generate this occurrence
-          await dbHelpers.updateRecurringExpenseTemplate(templateId, {
-            nextDueDate: dateString,
-          });
-
-          // Generate the occurrence (this will update nextDueDate to the next occurrence)
-          await generateNextOccurrence(templateId);
-
-          // Refresh template to get updated nextDueDate
-          const updatedTemplate = await getTemplate(templateId);
-          currentDueDate = updatedTemplate.nextDueDate || currentDueDate;
-          generated++;
-        } catch (error) {
-          logger.warn(
-            `Failed to generate occurrence for ${dateString}:`,
-            error,
-          );
-          skipped++;
-
-          // Calculate next date manually if generation failed
-          currentDueDate = dbHelpers.calculateNextDueDate(
-            dateString,
-            template.frequency,
-            template.intervalValue || 1,
-            template.intervalUnit || 'months',
-          );
-        }
-      }
-
-      currentDueDateObj = DateUtils.parseDate(currentDueDate);
-
-      // Safety check to prevent infinite loops
-      if (!currentDueDateObj || isNaN(currentDueDateObj.getTime())) {
-        logger.error(`Invalid date calculated: ${currentDueDate}`);
-        break;
-      }
-    }
-
-    logger.success(
-      `Pre-generated ${generated} occurrences for template ${templateId} (${skipped} skipped)`,
-    );
-    return { generated, skipped };
-  } catch (error) {
-    logger.error('Error pre-generating occurrences:', error);
-    throw error;
-  }
-}
-
-/**
- * Regenerate unpaid future occurrences when a template is edited
- * Deletes unpaid future expenses and regenerates them with updated template data
- */
-export async function regenerateUnpaidOccurrences(templateId) {
-  try {
-    const template = await getTemplate(templateId);
-    if (!template) {
-      throw new Error('Template not found');
-    }
-
-    const today = DateUtils.today();
-    const allExpenses = await dbHelpers.getFixedExpenses();
-
-    // Find unpaid future expenses for this template
-    const unpaidFutureExpenses = allExpenses.filter(
-      expense =>
-        expense.recurringTemplateId === templateId &&
-        expense.dueDate > today &&
-        (expense.paidAmount || 0) === 0,
-    );
-
-    // Delete unpaid future expenses
-    let deleted = 0;
-    for (const expense of unpaidFutureExpenses) {
-      try {
-        await dbHelpers.deleteFixedExpense(expense.id);
-        deleted++;
-      } catch (error) {
-        logger.warn(`Failed to delete expense ${expense.id}:`, error);
-      }
-    }
-
-    logger.info(
-      `Deleted ${deleted} unpaid future expenses for template ${templateId}`,
-    );
-
-    // Regenerate occurrences with updated template data
-    const result = await preGenerateOccurrences(templateId, 6);
-
-    logger.success(
-      `Regenerated ${result.generated} occurrences for template ${templateId}`,
-    );
-    return { deleted, ...result };
-  } catch (error) {
-    logger.error('Error regenerating unpaid occurrences:', error);
-    throw error;
-  }
-}
+// preGenerateOccurrences and regenerateUnpaidOccurrences (the bulk
+// "pre-generate N months of real rows" mechanism) have been removed.
+// Recurring templates now materialize one cycle at a time, lazily, via
+// dbHelpers.materializeCurrentCycle/materializeDueTemplates - see the
+// "One Bill at a Time" redesign. Neither function had a production
+// caller left once useAppStore.js, FixedExpenses.jsx, AddExpensePanel.jsx,
+// and createExpenseForCard were switched to the lazy path.

@@ -508,221 +508,56 @@ describe('dbHelpers.applyExpensePaymentChangeAtomic (atomic paidAmount)', () => 
     expect(logs).toHaveLength(0);
   });
 
-  describe('recurring template advance on full pay', () => {
-    it('advances template nextDueDate when recurring expense is marked fully paid', async () => {
-      await db.recurringExpenseTemplates.bulkPut([
-        {
-          id: '1',
-          name: 'Citi Payment',
-          baseAmount: 100,
-          frequency: 'monthly',
-          intervalValue: 1,
-          startDate: '2026-01-01',
-          lastGenerated: null,
-          nextDueDate: '2026-02-05',
-          category: 'Credit Card Payment',
-          accountId: '1',
-          notes: '',
-          isActive: true,
-          isVariableAmount: false,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ]);
+  // Recurring-template cadence advance moved to resolveCycle (see
+  // resolveCycle.test.js) - applyExpensePaymentChangeAtomic no longer
+  // touches recurringExpenseTemplates at all, for any expense.
+  it('never touches recurringExpenseTemplates, even for a recurring-linked expense', async () => {
+    await db.recurringExpenseTemplates.bulkPut([
+      {
+        id: '1',
+        name: 'Citi Payment',
+        baseAmount: 100,
+        frequency: 'monthly',
+        intervalValue: 1,
+        startDate: '2026-01-01',
+        lastGenerated: null,
+        nextDueDate: '2026-02-05',
+        category: 'Credit Card Payment',
+        accountId: '1',
+        notes: '',
+        isActive: true,
+        isVariableAmount: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
 
-      await db.fixedExpenses.bulkPut([
-        {
-          id: '1',
-          name: 'Citi Payment',
-          dueDate: '2026-02-05',
-          amount: 100,
-          accountId: '1',
-          creditCardId: null,
-          targetCreditCardId: '1',
-          category: 'Credit Card Payment',
-          paidAmount: 0,
-          status: 'pending',
-          recurringTemplateId: '1',
-          createdAt: now,
-        },
-      ]);
-
-      const result = await dbHelpers.applyExpensePaymentChangeAtomic('1', {
-        paidAmount: 100,
-      });
-
-      const [template] = await db.recurringExpenseTemplates.toArray();
-      const [expense] = await db.fixedExpenses.toArray();
-
-      expect(expense.paidAmount).toBe(100);
-      expect(expense.status).toBe('paid');
-      expect(template.nextDueDate).toBe('2026-03-05');
-      expect(template.lastGenerated).toBe('2026-02-05');
-      expect(result).toEqual({ templateIdAdvanced: '1' });
-    });
-
-    it('does not advance template when payment is partial', async () => {
-      await db.recurringExpenseTemplates.bulkPut([
-        {
-          id: '1',
-          name: 'Citi Payment',
-          baseAmount: 100,
-          frequency: 'monthly',
-          intervalValue: 1,
-          startDate: '2026-01-01',
-          lastGenerated: null,
-          nextDueDate: '2026-02-05',
-          category: 'Credit Card Payment',
-          accountId: '1',
-          notes: '',
-          isActive: true,
-          isVariableAmount: false,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ]);
-
-      await db.fixedExpenses.bulkPut([
-        {
-          id: '1',
-          name: 'Citi Payment',
-          dueDate: '2026-02-05',
-          amount: 100,
-          accountId: '1',
-          creditCardId: null,
-          targetCreditCardId: '1',
-          category: 'Credit Card Payment',
-          paidAmount: 0,
-          status: 'pending',
-          recurringTemplateId: '1',
-          createdAt: now,
-        },
-      ]);
-
-      const result = await dbHelpers.applyExpensePaymentChangeAtomic('1', {
-        paidAmount: 50,
-      });
-
-      const [template] = await db.recurringExpenseTemplates.toArray();
-
-      expect(template.nextDueDate).toBe('2026-02-05');
-      expect(result).toEqual({ templateIdAdvanced: null });
-    });
-
-    it('does not advance template when expense dueDate does not match template nextDueDate', async () => {
-      await db.recurringExpenseTemplates.bulkPut([
-        {
-          id: '1',
-          name: 'Citi Payment',
-          baseAmount: 100,
-          frequency: 'monthly',
-          intervalValue: 1,
-          startDate: '2026-01-01',
-          lastGenerated: null,
-          nextDueDate: '2026-02-05',
-          category: 'Credit Card Payment',
-          accountId: '1',
-          notes: '',
-          isActive: true,
-          isVariableAmount: false,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ]);
-
-      await db.fixedExpenses.bulkPut([
-        {
-          id: '1',
-          name: 'Citi Payment',
-          dueDate: '2026-03-10',
-          amount: 100,
-          accountId: '1',
-          creditCardId: null,
-          targetCreditCardId: '1',
-          category: 'Credit Card Payment',
-          paidAmount: 0,
-          status: 'pending',
-          recurringTemplateId: '1',
-          createdAt: now,
-        },
-      ]);
-
-      const result = await dbHelpers.applyExpensePaymentChangeAtomic('1', {
-        paidAmount: 100,
-      });
-
-      const [template] = await db.recurringExpenseTemplates.toArray();
-
-      expect(template.nextDueDate).toBe('2026-02-05');
-      expect(result).toEqual({ templateIdAdvanced: null });
-    });
-
-    it('generates the next occurrence after a full payment when the template has targetCreditCardId set (regression: dynamic import mid-transaction)', async () => {
-      await db.recurringExpenseTemplates.bulkPut([
-        {
-          id: '1',
-          name: 'Citi Payment',
-          baseAmount: 100,
-          frequency: 'monthly',
-          intervalValue: 1,
-          startDate: '2026-01-01',
-          lastGenerated: null,
-          nextDueDate: '2026-02-05',
-          category: 'Credit Card Payment',
-          accountId: '1',
-          targetCreditCardId: '1',
-          notes: '',
-          isActive: true,
-          isVariableAmount: false,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ]);
-
-      await db.fixedExpenses.bulkPut([
-        {
-          id: '1',
-          name: 'Citi Payment',
-          dueDate: '2026-02-05',
-          amount: 100,
-          accountId: '1',
-          creditCardId: null,
-          targetCreditCardId: '1',
-          category: 'Credit Card Payment',
-          paidAmount: 0,
-          status: 'pending',
-          recurringTemplateId: '1',
-          createdAt: now,
-        },
-      ]);
-
-      const result = await dbHelpers.applyExpensePaymentChangeAtomic('1', {
-        paidAmount: 100,
-      });
-      expect(result).toEqual({ templateIdAdvanced: '1' });
-
-      const [template] = await db.recurringExpenseTemplates.toArray();
-      expect(template.nextDueDate).toBe('2026-04-05');
-      expect(template.lastGenerated).toBe('2026-03-05');
-
-      // The actual regression guard: before this fix, generateRecurringExpense's
-      // nested dynamic import silently broke the transaction and this second
-      // row was never created.
-      const allExpenses = await db.fixedExpenses.toArray();
-      expect(allExpenses).toHaveLength(2);
-      const nextOccurrence = allExpenses.find(e => e.id !== '1');
-      expect(nextOccurrence).toMatchObject({
-        dueDate: '2026-03-05',
-        status: 'pending',
+    await db.fixedExpenses.bulkPut([
+      {
+        id: '1',
+        name: 'Citi Payment',
+        dueDate: '2026-02-05',
+        amount: 100,
+        accountId: '1',
+        creditCardId: null,
+        targetCreditCardId: '1',
+        category: 'Credit Card Payment',
         paidAmount: 0,
+        status: 'pending',
         recurringTemplateId: '1',
+        createdAt: now,
+      },
+    ]);
 
-        // The shared fixture's card (id '1') has balance 50; paying this
-        // $100 expense drives it to -50, so the newly generated bill
-        // correctly has no amount due yet (generateRecurringExpense's own
-        // balance<=0 rule).
-        amount: 0,
-      });
-    });
+    await dbHelpers.applyExpensePaymentChangeAtomic('1', { paidAmount: 100 });
+
+    const [template] = await db.recurringExpenseTemplates.toArray();
+    const [expense] = await db.fixedExpenses.toArray();
+
+    expect(expense.paidAmount).toBe(100);
+    expect(expense.status).toBe('paid');
+    expect(template.nextDueDate).toBe('2026-02-05'); // unchanged
+    expect(template.lastGenerated).toBe(null); // unchanged
+    expect(await db.fixedExpenses.count()).toBe(1); // no second row generated
   });
 });

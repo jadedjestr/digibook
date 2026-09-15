@@ -475,6 +475,185 @@ describe('incomeSources survive an export/import round-trip', () => {
   });
 });
 
+describe('recurringResolutionLog survives an export/import round-trip', () => {
+  const now = '2026-02-01T00:00:00.000Z';
+
+  beforeEach(async () => {
+    await Promise.all([
+      db.accounts.clear(),
+      db.recurringExpenseTemplates.clear(),
+      db.fixedExpenses.clear(),
+      db.recurringResolutionLog.clear(),
+    ]);
+  });
+
+  // If missing from exportData, every backup taken after this ships silently
+  // drops resolution history, and Undo/Payment History looks empty after a
+  // restore.
+  it('exports and re-imports the resolution log entry', async () => {
+    await db.accounts.put({
+      id: '1',
+      name: 'Checking',
+      type: 'checking',
+      currentBalance: 100,
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+    await db.recurringExpenseTemplates.put({
+      id: 'tpl-1',
+      name: 'Rent',
+      baseAmount: 1000,
+      frequency: 'monthly',
+      intervalValue: 1,
+      intervalUnit: 'months',
+      startDate: '2026-02-01',
+      nextDueDate: '2026-03-01',
+      category: 'Housing',
+      accountId: '1',
+      creditCardId: null,
+      targetCreditCardId: null,
+      notes: '',
+      isActive: true,
+      isVariableAmount: false,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+
+    // The resolved cycle's own expense row...
+    await db.fixedExpenses.put({
+      id: 'exp-1',
+      name: 'Rent',
+      dueDate: '2026-02-01',
+      amount: 1000,
+      accountId: '1',
+      creditCardId: null,
+      targetCreditCardId: null,
+      category: 'Housing',
+      paidAmount: 800,
+      status: 'paid',
+      recurringTemplateId: 'tpl-1',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+
+    // ...and the Balance Due row a Partial resolution spun off.
+    await db.fixedExpenses.put({
+      id: 'exp-2',
+      name: 'Rent (balance due)',
+      dueDate: '2026-02-01',
+      amount: 200,
+      accountId: '1',
+      creditCardId: null,
+      targetCreditCardId: null,
+      category: 'Housing',
+      paidAmount: 0,
+      status: 'pending',
+      recurringTemplateId: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+    await db.recurringResolutionLog.put({
+      id: 'log-1',
+      templateId: 'tpl-1',
+      expenseId: 'exp-1',
+      cycleDueDate: '2026-02-01',
+      resolvedAt: now,
+      committedAmount: 1000,
+      paidAmount: 800,
+      wasSkipped: false,
+      adjustmentExpenseId: 'exp-2',
+      previousNextDueDate: '2026-02-01',
+      previousLastGenerated: null,
+      previousExpensePaidAmount: 0,
+      previousExpenseStatus: 'pending',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    });
+
+    const exported = await dbHelpers.exportData();
+    expect(exported.recurringResolutionLog).toHaveLength(1);
+
+    await db.recurringResolutionLog.clear();
+    await dbHelpers.importData(exported);
+
+    const [restored] = await db.recurringResolutionLog.toArray();
+    expect(restored).toMatchObject({
+      id: 'log-1',
+      templateId: 'tpl-1',
+      expenseId: 'exp-1',
+      adjustmentExpenseId: 'exp-2',
+      committedAmount: 1000,
+      paidAmount: 800,
+      wasSkipped: false,
+    });
+  });
+
+  it('accepts a resolution log entry with no adjustmentExpenseId (Skip resolution)', async () => {
+    const result = await dbHelpers.validateImportData({
+      accounts: [{ id: 'acc-1', currentBalance: 100 }],
+      creditCards: [],
+      pendingTransactions: [],
+      fixedExpenses: [{ id: 'exp-1', accountId: 'acc-1', category: 'Housing' }],
+      categories: [],
+      recurringExpenseTemplates: [
+        { id: 'tpl-1', accountId: 'acc-1', category: 'Housing' },
+      ],
+      recurringResolutionLog: [
+        {
+          id: 'log-1',
+          templateId: 'tpl-1',
+          expenseId: 'exp-1',
+          adjustmentExpenseId: null,
+        },
+      ],
+    });
+
+    expect(result.isValid).toBe(true);
+  });
+
+  it('rejects a resolution log entry whose templateId, expenseId, or adjustmentExpenseId does not resolve', async () => {
+    const result = await dbHelpers.validateImportData({
+      accounts: [],
+      creditCards: [],
+      pendingTransactions: [],
+      fixedExpenses: [{ id: 'exp-1' }],
+      categories: [],
+      recurringExpenseTemplates: [{ id: 'tpl-1' }],
+      recurringResolutionLog: [
+        {
+          id: 'log-1',
+          templateId: 'ghost-template',
+          expenseId: 'ghost-expense',
+          adjustmentExpenseId: 'ghost-adjustment',
+        },
+      ],
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(
+      result.errors.some(e =>
+        e.includes('recurringResolutionLog[0]: invalid templateId'),
+      ),
+    ).toBe(true);
+    expect(
+      result.errors.some(e =>
+        e.includes('recurringResolutionLog[0]: invalid expenseId'),
+      ),
+    ).toBe(true);
+    expect(
+      result.errors.some(e =>
+        e.includes('recurringResolutionLog[0]: invalid adjustmentExpenseId'),
+      ),
+    ).toBe(true);
+  });
+});
+
 describe('dbHelpers.validateImportData (balance sanity checks)', () => {
   const now = '2026-02-01T00:00:00.000Z';
 

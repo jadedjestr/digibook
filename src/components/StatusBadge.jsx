@@ -30,6 +30,10 @@ const StatusBadge = ({ status, className = '', variant = 'default' }) => {
     switch (status) {
       case 'Paid':
         return 'badge-success';
+      case 'Resolved':
+        return 'badge-success';
+      case 'Balance Due':
+        return 'badge-warning';
       case 'Partially Paid':
         return 'badge-warning';
       case 'Overdue':

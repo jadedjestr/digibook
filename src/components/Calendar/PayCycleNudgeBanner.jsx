@@ -17,7 +17,6 @@ function fillMessage(template, payload = {}) {
 const PayCycleNudgeBanner = ({
   nudge,
   onReviewPastMonth,
-  onStartReset,
   onDismiss,
   onMarkCurrentMonthPaid,
   onReviewScroll,
@@ -47,9 +46,6 @@ const PayCycleNudgeBanner = ({
     } else if (nudge.type === 'catch_up') {
       onMarkCurrentMonthPaid?.();
       onAction?.(nudge, 'mark_paid');
-    } else if (nudge.type === 'reset') {
-      onStartReset?.();
-      onAction?.(nudge, 'start_reset');
     }
   };
 
@@ -59,9 +55,6 @@ const PayCycleNudgeBanner = ({
     } else if (nudge.type === 'catch_up') {
       onReviewScroll?.();
       onAction?.(nudge, 'review');
-    } else if (nudge.type === 'reset') {
-      handleDismiss(false);
-      onAction?.(nudge, 'dismiss');
     }
   };
 
@@ -124,12 +117,11 @@ const PayCycleNudgeBanner = ({
 
 PayCycleNudgeBanner.propTypes = {
   nudge: PropTypes.shape({
-    type: PropTypes.oneOf(['past_month', 'catch_up', 'reset']).isRequired,
+    type: PropTypes.oneOf(['past_month', 'catch_up']).isRequired,
     payload: PropTypes.object,
     dismissKey: PropTypes.string.isRequired,
   }),
   onReviewPastMonth: PropTypes.func,
-  onStartReset: PropTypes.func,
   onDismiss: PropTypes.func.isRequired,
   onMarkCurrentMonthPaid: PropTypes.func,
   onReviewScroll: PropTypes.func,
@@ -139,7 +131,6 @@ PayCycleNudgeBanner.propTypes = {
 PayCycleNudgeBanner.defaultProps = {
   nudge: null,
   onReviewPastMonth: undefined,
-  onStartReset: undefined,
   onMarkCurrentMonthPaid: undefined,
   onReviewScroll: undefined,
   onAction: undefined,

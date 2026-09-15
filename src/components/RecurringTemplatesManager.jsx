@@ -1,7 +1,7 @@
-import { Edit, Pause, Play, Trash2 } from 'lucide-react';
+import { Edit, Pause, Play, Trash2, Undo2 } from 'lucide-react';
 import { useMemo, useState, useEffect, useCallback } from 'react';
 
-import { db } from '../db/database-clean';
+import { db, dbHelpers } from '../db/database-clean';
 import {
   getTemplate,
   updateTemplate,
@@ -15,6 +15,7 @@ import {
   useReloadExpenses,
   useRefreshTemplates,
 } from '../stores/useAppStore';
+import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
@@ -85,6 +86,68 @@ const RecurringTemplatesManager = () => {
   useEffect(() => {
     loadTemplates();
   }, [loadTemplates]);
+
+  // Per-template: is there a most-recent resolution to undo, and if so, is
+  // it currently blocked (the Balance Due it created already has a
+  // payment on it)? Keyed by templateId. One DB read per template - fine
+  // at personal-finance-app scale.
+  const [undoInfoByTemplateId, setUndoInfoByTemplateId] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const entries = await Promise.all(
+        templates.map(async template => {
+          try {
+            const info = await dbHelpers.getLastUndoableResolution(template.id);
+            return [template.id, info];
+          } catch (error) {
+            logger.warn(
+              `Could not load undo info for template ${template.id}:`,
+              error,
+            );
+            return [template.id, null];
+          }
+        }),
+      );
+      if (!cancelled) {
+        setUndoInfoByTemplateId(Object.fromEntries(entries));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [templates]);
+
+  const handleUndo = useCallback(
+    async template => {
+      const info = undoInfoByTemplateId[template.id];
+      if (!info || info.blockedReason) return;
+
+      const { entry } = info;
+      const confirmed = window.confirm(
+        `Undo the most recent resolution for "${template.name}"? ` +
+          `This reverses the ${formatCurrency(entry.paidAmount)} payment ` +
+          `recorded on ${DateUtils.formatShortDate(entry.cycleDueDate)}` +
+          `${entry.adjustmentExpenseId ? ' and removes the Balance Due it created' : ''}.`,
+      );
+      if (!confirmed) return;
+
+      try {
+        await dbHelpers.undoLastResolution(template.id);
+        await loadTemplates();
+        await reloadExpenses();
+        refreshTemplates();
+        notify.success('Resolution undone');
+      } catch (error) {
+        logger.error('Error undoing resolution:', error);
+        notify.error(`Failed to undo: ${error.message}`);
+      }
+    },
+    [undoInfoByTemplateId, loadTemplates, reloadExpenses, refreshTemplates],
+  );
 
   // Handle edit
   const handleEdit = useCallback(async template => {
@@ -290,6 +353,29 @@ const RecurringTemplatesManager = () => {
                         <Play size={16} />
                       )}
                     </button>
+                    {(() => {
+                      const undoInfo = undoInfoByTemplateId[template.id];
+                      const disabled =
+                        !undoInfo || Boolean(undoInfo.blockedReason);
+
+                      let title = 'Nothing to undo yet';
+                      if (undoInfo?.blockedReason) {
+                        title = undoInfo.blockedReason;
+                      } else if (undoInfo) {
+                        title = `Undo: $${undoInfo.entry.paidAmount} paid on ${undoInfo.entry.cycleDueDate}`;
+                      }
+
+                      return (
+                        <button
+                          onClick={() => handleUndo(template)}
+                          disabled={disabled}
+                          className={`p-1 ${disabled ? 'text-white/20 cursor-not-allowed' : 'text-purple-400 hover:text-purple-300'}`}
+                          title={title}
+                        >
+                          <Undo2 size={16} />
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={() => handleDelete(template)}
                       className='p-1 text-red-400 hover:text-red-300'

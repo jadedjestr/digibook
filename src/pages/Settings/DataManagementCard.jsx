@@ -4,41 +4,18 @@ import { useState, useEffect } from 'react';
 
 import { dbHelpers } from '../../db/database-clean';
 import { dataManager } from '../../services/dataManager';
-import { DateUtils } from '../../utils/dateUtils';
 import { exportJSONData } from '../../utils/exportUtils';
 import { logger } from '../../utils/logger';
 
-const buildDedupeKey = (dateString, expense) =>
-  `${dateString || ''}|${expense.name || ''}|${expense.category || ''}|${
-    expense.amount || ''
-  }`;
-
-const DataManagementCard = ({
-  onDataChange,
-  reloadExpenses,
-  globalCategories,
-  fixedExpenses,
-  startCurrent,
-  setPendingFutureCheck,
-  shouldShowFuturePrompt,
-  onFuturePromptDismissed,
-}) => {
+const DataManagementCard = ({ onDataChange, globalCategories }) => {
   const [importFile, setImportFile] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState('');
-  const [showFutureGenPrompt, setShowFutureGenPrompt] = useState(false);
-  const [selectedHorizon, setSelectedHorizon] = useState(3);
   const [lastExportDate, setLastExportDate] = useState(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [backupList, setBackupList] = useState([]);
   const [restoringId, setRestoringId] = useState(null);
-
-  useEffect(() => {
-    if (shouldShowFuturePrompt) {
-      setShowFutureGenPrompt(true);
-    }
-  }, [shouldShowFuturePrompt]);
 
   useEffect(() => {
     const load = async () => {
@@ -169,7 +146,6 @@ const DataManagementCard = ({
         );
 
         await refreshAfterDbReplace();
-        setPendingFutureCheck(true);
         setImportFile(null);
 
         const skipped = result?.skipped ?? [];
@@ -247,105 +223,6 @@ const DataManagementCard = ({
       } finally {
         setRestoringId(null);
       }
-    }
-  };
-
-  const handleGenerateFutureExpenses = async () => {
-    try {
-      const horizon = Math.min(Math.max(selectedHorizon, 1), 6);
-      const { preGenerateOccurrences, createTemplate } = await import(
-        '../../services/recurringExpenseService'
-      );
-
-      const existingKeys = new Set(
-        (fixedExpenses || []).map(exp => buildDedupeKey(exp.dueDate, exp)),
-      );
-
-      const isCurrentMonthExpense = expense => {
-        const parsed = DateUtils.parseDate(expense.dueDate);
-        if (!parsed) return false;
-        return (
-          parsed.getFullYear() === startCurrent.getFullYear() &&
-          parsed.getMonth() === startCurrent.getMonth()
-        );
-      };
-
-      const getFutureDates = dueDate => {
-        const base = DateUtils.parseDate(dueDate);
-        if (!base) return [];
-        const dates = [];
-        for (let i = 1; i <= horizon; i++) {
-          const d = new Date(base);
-          d.setMonth(d.getMonth() + i);
-          dates.push(DateUtils.formatDate(d));
-        }
-        return dates;
-      };
-
-      for (const expense of fixedExpenses || []) {
-        if (!isCurrentMonthExpense(expense)) continue;
-
-        const futureDates = getFutureDates(expense.dueDate);
-        const needsGeneration = futureDates.some(
-          date => !existingKeys.has(buildDedupeKey(date, expense)),
-        );
-        if (!needsGeneration) continue;
-
-        if (expense.recurringTemplateId) {
-          await preGenerateOccurrences(expense.recurringTemplateId, horizon);
-        } else {
-          const parsedDue = DateUtils.parseDate(expense.dueDate);
-          const startFrom =
-            parsedDue != null
-              ? (() => {
-                  const d = new Date(parsedDue);
-                  d.setMonth(d.getMonth() + 1);
-                  return DateUtils.formatDate(d);
-                })()
-              : DateUtils.today();
-
-          const templateId = await createTemplate({
-            name: expense.name,
-            baseAmount: expense.amount,
-            frequency: 'monthly',
-            intervalValue: 1,
-            intervalUnit: 'months',
-            startDate: startFrom,
-            nextDueDate: startFrom,
-            endDate: null,
-            category: expense.category,
-            accountId: expense.accountId || null,
-            creditCardId: expense.creditCardId || null,
-            targetCreditCardId: expense.targetCreditCardId || null,
-            notes: expense.notes || '',
-            isVariableAmount: expense.isVariableAmount || false,
-          });
-
-          try {
-            await dbHelpers.updateFixedExpenseV4(expense.id, {
-              recurringTemplateId: templateId,
-            });
-          } catch (linkError) {
-            logger.warn(
-              'Could not link expense to new template (continuing generation):',
-              linkError,
-            );
-          }
-
-          await preGenerateOccurrences(templateId, horizon);
-        }
-
-        futureDates.forEach(date =>
-          existingKeys.add(buildDedupeKey(date, expense)),
-        );
-      }
-
-      await reloadExpenses();
-      setShowFutureGenPrompt(false);
-      onFuturePromptDismissed?.();
-    } catch (error) {
-      logger.error('Error generating future expenses:', error);
-      alert(`Failed to generate future expenses: ${error.message}`);
     }
   };
 
@@ -488,49 +365,6 @@ const DataManagementCard = ({
         </div>
       </div>
 
-      {showFutureGenPrompt && (
-        <div className='glass-panel p-4 space-y-3'>
-          <h5 className='text-primary font-semibold'>
-            No future fixed expenses detected
-          </h5>
-          <p className='text-secondary text-sm'>
-            Generate upcoming months from this month&apos;s fixed expenses? This
-            will create or reuse recurring templates and populate future months,
-            skipping duplicates.
-          </p>
-          <div className='flex items-center space-x-2'>
-            {[1, 3, 6].map(value => (
-              <button
-                key={value}
-                onClick={() => setSelectedHorizon(value)}
-                className={`glass-button glass-button--sm ${
-                  selectedHorizon === value ? 'glass-button--primary' : ''
-                }`}
-              >
-                {value} {value === 1 ? 'month' : 'months'}
-              </button>
-            ))}
-          </div>
-          <div className='flex space-x-3'>
-            <button
-              onClick={handleGenerateFutureExpenses}
-              className='glass-button glass-button--primary flex-1'
-            >
-              Generate
-            </button>
-            <button
-              onClick={() => {
-                setShowFutureGenPrompt(false);
-                onFuturePromptDismissed?.();
-              }}
-              className='glass-button flex-1'
-            >
-              Skip
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Clear Data Section */}
       <div>
         <h4 className='text-primary font-medium mb-3'>Clear Data</h4>
@@ -606,13 +440,7 @@ const DataManagementCard = ({
 
 DataManagementCard.propTypes = {
   onDataChange: PropTypes.func.isRequired,
-  reloadExpenses: PropTypes.func.isRequired,
   globalCategories: PropTypes.object.isRequired,
-  fixedExpenses: PropTypes.array,
-  startCurrent: PropTypes.object.isRequired,
-  setPendingFutureCheck: PropTypes.func.isRequired,
-  shouldShowFuturePrompt: PropTypes.bool,
-  onFuturePromptDismissed: PropTypes.func,
 };
 
 export default DataManagementCard;

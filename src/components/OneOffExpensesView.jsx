@@ -29,6 +29,7 @@ const OneOffExpensesView = ({
   onDelete,
   onUpdateExpense,
   onReloadExpenses,
+  balanceDueExpenseIds,
 }) => {
   const [expandedMonths, setExpandedMonths] = useState(new Set());
   const [selectedExpenses, setSelectedExpenses] = useState(new Set());
@@ -398,6 +399,9 @@ const OneOffExpensesView = ({
                                 <span className='text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full border border-purple-500/30'>
                                   One-time
                                 </span>
+                                {balanceDueExpenseIds.has(expense.id) && (
+                                  <StatusBadge status='Balance Due' />
+                                )}
                               </div>
                               <div className='text-sm text-white/70'>
                                 Due:{' '}
@@ -558,6 +562,11 @@ OneOffExpensesView.propTypes = {
   onDelete: PropTypes.func.isRequired,
   onUpdateExpense: PropTypes.func.isRequired,
   onReloadExpenses: PropTypes.func.isRequired,
+  balanceDueExpenseIds: PropTypes.instanceOf(Set),
+};
+
+OneOffExpensesView.defaultProps = {
+  balanceDueExpenseIds: new Set(),
 };
 
 export default OneOffExpensesView;

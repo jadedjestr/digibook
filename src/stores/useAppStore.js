@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 
 import { dbHelpers, initializeDatabase } from '../db/database-clean';
 import { logger } from '../utils/logger';
+import { notify } from '../utils/notifications';
 
 /**
  * Global application state store using Zustand
@@ -122,37 +123,54 @@ export const useAppStore = create(
             }
           })();
 
-          // Pre-generate occurrences for existing templates (background task)
-          // This doesn't block app load - runs asynchronously
+          // Materialize each active template's current cycle as a real
+          // row, if it's due and doesn't already exist (background task,
+          // doesn't block app load). Lazy, one cycle at a time - no more
+          // bulk pre-generation.
           (async () => {
             try {
-              const { preGenerateOccurrences, getActiveTemplates } =
-                await import('../services/recurringExpenseService');
-              const activeTemplates = await getActiveTemplates();
+              await dbHelpers.materializeDueTemplates();
 
-              for (const template of activeTemplates) {
-                try {
-                  await preGenerateOccurrences(template.id, 6);
-                } catch (error) {
-                  logger.warn(
-                    `Failed to pre-generate for template ${template.id}:`,
-                    error,
-                  );
-                }
-              }
-
-              // Reload expenses after pre-generation to show new occurrences
+              // Reload expenses to show anything newly materialized
               const [updatedExpensesData] = await Promise.all([
                 dbHelpers.getFixedExpenses(),
               ]);
               set({ fixedExpenses: updatedExpensesData });
             } catch (error) {
               logger.warn(
-                'Could not pre-generate recurring expenses on load:',
+                'Could not materialize due recurring templates on load:',
                 error,
               );
 
               // Don't fail app load if this fails
+            }
+          })();
+
+          // Correct a stale paycheck cadence anchor (background task,
+          // doesn't block app load). This runs on every app mount, before
+          // the user can navigate to Settings, so it - not
+          // PaycheckManager's own mount effect - is almost always the call
+          // that actually flips the anchor and must be the one to toast.
+          // PaycheckManager still calls selfHealPaycheckAnchor() too (for
+          // the rare case it wins the race, or this task fails); since only
+          // whichever call actually advances the anchor gets `advanced:
+          // true` back, at most one of the two ever toasts.
+          (async () => {
+            try {
+              const { advanced } = await dbHelpers.selfHealPaycheckAnchor();
+              if (advanced) {
+                notify.info(
+                  'Your pay-cycle anchor date was updated automatically.',
+                );
+                set({
+                  paycheckSettings: await dbHelpers.getPaycheckSettings(),
+                });
+              }
+            } catch (error) {
+              logger.warn(
+                'Could not self-heal paycheck anchor on load:',
+                error,
+              );
             }
           })();
         } catch (error) {

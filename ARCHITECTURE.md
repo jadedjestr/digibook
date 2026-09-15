@@ -167,7 +167,7 @@ contract.
 - **Engine:** IndexedDB (browser-native)
 - **ORM:** Dexie.js
 - **Database Name:** `DigibookDB_Fresh`
-- **Current Schema Version:** 8
+- **Current Schema Version:** 10
 
 ### Schema Evolution
 
@@ -182,6 +182,7 @@ contract.
 | V7 | Added `sortOrder` on `categories` for custom drag-and-drop ordering (existing categories backfilled alphabetically on upgrade) |
 | V8 | **UUID migration** — all tables switched from auto-increment integer `id` to string UUID primary keys (assigned application-side via `generateId()` on every new record — the schema upgrade itself does no data backfill); added soft-delete support (`deletedAt`) and `updatedAt` timestamps on every table; added `categoryId` on `fixedExpenses`, `pendingTransactions`, and `recurringExpenseTemplates` |
 | V9 | Added `incomeSources` table (expected paycheck: target account, expected amount, enabled flag, `lastGeneratedDate` high-water mark); added `incomeSourceId` on `pendingTransactions` so auto-generated payday rows can be traced back to their source |
+| V10 | Added `recurringResolutionLog` table. Records every time a recurring cycle is resolved (Pay Full / Partial / Skip) so the cadence can advance immediately without pre-generating rows, and so Undo has an exact prior state to reverse to rather than re-deriving one from frequency math |
 
 ### Tables
 
@@ -409,6 +410,35 @@ from `paycheckSettings` rather than duplicated here.
 | `lastGeneratedDate` | YYYY-MM-DD \| null | Yes | High-water mark, and the **sole** duplicate guard. It cannot be inferred from existing rows: a confirmed paycheck is soft-deleted and would vanish from any "dates already generated" set, causing it to be generated again |
 | `createdAt` / `updatedAt` / `deletedAt` | ISO string | Yes | Standard timestamps |
 
+#### `recurringResolutionLog`
+Records every time a recurring template's current cycle is resolved — Pay
+Full, Partial, or Skip (added V10). This is the source of truth for Undo and
+Payment History, not a trace: it is written as a hard write inside the same
+transaction as the payment/balance mutation and the cadence advance, so a
+failure here aborts the whole resolution rather than leaving a silent gap.
+Undoing a resolution (`dbHelpers.undoLastResolution`) reads a row's
+`previous*` fields to reverse the template and expense back to their prior
+state, then soft-deletes the row itself.
+
+| Column | Type | Indexed | Description |
+|---|---|---|---|
+| `id` | UUID string | PK | Unique identifier |
+| `templateId` | string | Yes | The recurring template whose cycle was resolved |
+| `expenseId` | string | Yes | The materialized expense row this resolution paid, partially paid, or skipped |
+| `adjustmentExpenseId` | string \| null | Yes | The Balance Due row spun off when `paidAmount` fell short of the cycle's committed amount, or null when the cycle was paid in full |
+| `cycleDueDate` | string | Yes | The due date of the cycle that was resolved |
+| `resolvedAt` | ISO string | Yes | When the resolution happened |
+| `committedAmount` | number | No | The cycle's expected amount at resolution time |
+| `paidAmount` | number | No | Amount actually paid now (0 for Skip) |
+| `wasSkipped` | boolean | No | `paidAmount === 0` |
+| `previousNextDueDate` | string \| null | No | The template's `nextDueDate` before this resolution advanced it; restored on Undo |
+| `previousLastGenerated` | string \| null | No | The template's `lastGenerated` before this resolution; restored on Undo |
+| `previousExpensePaidAmount` | number | No | The expense's `paidAmount` before this resolution; restored on Undo |
+| `previousExpenseStatus` | string | No | The expense's `status` before this resolution; restored on Undo |
+| `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; set when the resolution is undone |
+
 ### Entity Relationships
 
 ```
@@ -525,16 +555,17 @@ does not move money — balance changes go through
 | `calculateExpenseStatus(expense, paycheckDates)` | Returns one of: Paid, Partially Paid, Overdue, Pay This Week, Pay with Next Check, Pay with Following Check |
 | `getStatusColor(status)` | Maps status to Tailwind color classes |
 | `calculateSummaryTotals(expenses, paycheckDates)` | Aggregates remaining amounts by status bucket (this week, next check, overdue) |
-| `shouldPromptReset(expenses, paycheckDates)` | Returns true when all expenses are paid/overdue AND next paycheck is in a new month |
 
-The interval math itself (weekly/biweekly day-count advance, monthly calendar advance with day clamping) lives in `src/constants/payFrequency.js` as a single `PAY_FREQUENCIES` contract, so `PaycheckService` and the pay-cycle-reset flow share one implementation instead of duplicating interval logic.
+The interval math itself (weekly/biweekly day-count advance, monthly calendar advance with day clamping) lives in `src/constants/payFrequency.js` as a single `PAY_FREQUENCIES` contract, so `PaycheckService` and the paycheck-anchor self-heal (§5.8) share one implementation instead of duplicating interval logic.
 
 ### 5.3 RecurringExpenseService
 
 **Path:** `src/services/recurringExpenseService.js`
 **Pattern:** Functional (exported async functions, no class)
 
-**Responsibility:** Manage recurring expense templates and auto-generate future expense instances.
+**Responsibility:** Manage recurring expense templates. Each template's current cycle is materialized as a real expense lazily, one at a time — see `dbHelpers.materializeCurrentCycle`/`materializeDueTemplates` in `src/db/database-clean.js`, which own creation; this service no longer pre-generates rows in bulk. A cycle's cadence only ever advances when it's resolved (`dbHelpers.resolveCycle`), never on materialization.
+
+A future cycle that hasn't materialized yet (and a past cycle that never did) can still be reasoned about without creating anything, via `dbHelpers.getVirtualLedger(templateId, rangeStart, rangeEnd)` — a thin DB-fetching wrapper around the pure `computeCycleStates` in `src/utils/virtualLedger.js` that classifies each cycle in range as `resolved`/`pending`/`virtual`. The Calendar's forecast (§6.2) and the past-month nudge's gap detection (§6.3) are both just filters over this same function's output.
 
 **Key Functions:**
 
@@ -544,12 +575,12 @@ The interval math itself (weekly/biweekly day-count advance, monthly calendar ad
 | `updateTemplate(templateId, updates)` | Updates template properties |
 | `deleteTemplate(templateId)` | Deletes a template |
 | `getActiveTemplates()` | Returns all active templates |
-| `getTemplatesDueForGeneration()` | Filters templates where `nextDueDate <= today` |
-| `generateNextOccurrence(templateId)` | Creates the next expense instance and advances `nextDueDate` |
-| `autoGenerateDueExpenses()` | Batch-generates all overdue occurrences |
-| `preGenerateOccurrences(templateId, monthsAhead)` | Pre-generates up to N months of future expenses, skipping duplicates |
-| `regenerateUnpaidOccurrences(templateId)` | Deletes unpaid future expenses and regenerates with updated template data |
+| `getTemplatesDueForGeneration()` | Filters templates where `nextDueDate <= today` (currently unused by any caller — see note below) |
+| `generateNextOccurrence(templateId)` | Thin wrapper over `dbHelpers.materializeCurrentCycle` — materializes the current cycle if it's due and doesn't already exist; does not advance `nextDueDate` |
+| `autoGenerateDueExpenses()` | Batch-materializes all due templates via `generateNextOccurrence` (currently unused by any caller — see note below) |
 | `convertFixedExpenseToRecurring(expenseId, recurringData)` | Converts a one-off expense into a recurring template |
+
+`getTemplatesDueForGeneration` and `autoGenerateDueExpenses` predate this file's other callers being switched to `dbHelpers.materializeDueTemplates()` directly and are not currently invoked from anywhere in the app — flagged as a separate, small cleanup candidate, not touched as part of the lazy-generation change.
 
 **Frequency Options (bill recurrence, not paycheck frequency):** monthly, quarterly (3mo), biannually (6mo), annually (12mo), custom
 
@@ -634,6 +665,25 @@ accident:
 Runs on app load from `useAppStore.loadData` as a fire-and-forget task, beside
 the recurring pre-generation, so a failure can never block startup.
 
+### 5.8 Paycheck anchor self-heal (Safe Zone)
+
+**Path:** `src/db/database-clean.js` (helper on `dbHelpers`)
+
+Corrects a stale `paycheckSettings.lastPaycheckDate` without requiring the
+user to do anything. Uses `getMostRecentImpliedPayDate` (`src/constants/payFrequency.js`,
+[Section 9](#9-utilities)) to find the most recent payday the current anchor
+implies, then compares it against the stored anchor.
+
+| Helper | Description |
+|---|---|
+| `selfHealPaycheckAnchor()` | No-op (`{ advanced: false }`) when paycheck settings, `lastPaycheckDate`, or `frequency` are missing, or when the anchor is within 2 days of the implied payday (the "Safe Zone"). At 3+ days past, advances `lastPaycheckDate` via `updatePaycheckSettings`, writes a best-effort audit log entry (`SELF_HEAL_PAYCHECK_ANCHOR`), and returns `{ advanced: true, previousDate, newDate }` |
+
+Runs from two places:
+- `useAppStore.loadData()` — silent fire-and-forget, alongside the recurring-template and income-generation background tasks above; refreshes the store's `paycheckSettings` slice only if it advanced.
+- `PaycheckManager.jsx`'s mount effect — awaited before loading paycheck settings into the editor; shows `notify.info(...)` only when the anchor actually moved.
+
+This replaces the anchor-drift protection the now-removed Reset Cycle flow used to provide, with a self-correcting check instead of a manual bulk pay-cycle advance.
+
 ---
 
 ## 6. Custom Hooks
@@ -652,7 +702,8 @@ The primary interface for all expense mutations. Wraps database operations with 
 | `updateExpense(id, updates)` / `updateExpenseV4(id, updates)` | Update with optimistic UI, V4 validation, self-healing for legacy data |
 | `deleteExpense(id)` | Delete with optimistic removal |
 | `duplicateExpense(original, overrides)` | Clone expense with reset payment status |
-| `markAsPaid(id)` | Set `paidAmount` = `amount`, trigger balance updates — used both by inline "mark paid" actions and by `MarkAsPaidModal`'s full/partial payment flow |
+| `markAsPaid(id)` | Set `paidAmount` = `amount`, trigger balance updates — for a plain one-off expense (including a Balance Due); a recurring-template expense goes through `resolveCycle` instead |
+| `resolveCycle(id, { paidAmount })` | Pay Full / Partial / Skip a recurring template's current cycle via `dbHelpers.resolveCycle` — advances the template's cadence immediately and may spin off a Balance Due. Used by `ResolveExpenseModal`, the unified "mark paid" UI |
 | `getPaymentSourceInfo(expense)` | Display info for expense's funding source |
 | `getCreditCardPaymentInfo(expense)` | Two-field display info for CC payment expenses |
 | `validateExpensePaymentSources(expense)` | Validate referenced entities exist |
@@ -675,7 +726,9 @@ Memoized wrapper around `PaycheckService`. Only recalculates when `paycheckSetti
 
 Wraps the pure `getPayCycleNudge()` logic (`src/utils/payCycleNudgeLogic.js`) as a memoized hook for the Fixed Expenses Month view. Re-derives the active nudge (if any) from `fixedExpenses`, the viewed month, paycheck dates, and session/monthly dismissal state (`src/utils/nudgeDismissal.js`, backed by `sessionStorage`).
 
-**Returns:** `{ nudge, dismiss }` — `nudge` is `null` or one of the `past_month` / `catch_up` / `reset` shapes described in the Fixed Expenses view; `dismiss(dismissKey, dontShowAgainThisMonth)` records the dismissal and fires the optional `onNudgeDismissed` callback.
+Also runs a separate async effect, keyed on `currentMonth`, that fetches last month's `dbHelpers.getVirtualLedger` per active template and keeps only its `virtual` cycles — cadences a template implies but that never became a real row (e.g. its `startDate` predates the first cycle that ever materialized). Fed into `getPayCycleNudge` as `virtualGapCycles`, merged into the `past_month` branch's unpaid count, so the nudge can catch a gap a real-row-only scan structurally cannot.
+
+**Returns:** `{ nudge, dismiss }` — `nudge` is `null` or one of the `past_month` / `catch_up` shapes described in the Fixed Expenses view; `dismiss(dismissKey, dontShowAgainThisMonth)` records the dismissal and fires the optional `onNudgeDismissed` callback.
 
 ### 6.4 `usePersistedState`
 
@@ -746,13 +799,11 @@ Dev-only hook that tracks render counts and timing for performance debugging.
 
 | Component | Path | Description |
 |---|---|---|
-| `Calendar` | `src/components/Calendar/Calendar.jsx` | Main calendar container with month navigation |
+| `Calendar` | `src/components/Calendar/Calendar.jsx` | Main calendar container with month navigation. Takes a `virtualExpenses` prop (built by `FixedExpenses.jsx` via `dbHelpers.getVirtualLedger` per active template for the viewed month) and merges it into each day's real `monthExpenses`, so a not-yet-due cycle shows as a forecast entry |
 | `CalendarGrid` | `src/components/Calendar/CalendarGrid.jsx` | 7-column grid layout |
 | `CalendarDay` | `src/components/Calendar/CalendarDay.jsx` | Individual day cell with expense badges |
 | `CalendarHeader` | `src/components/Calendar/CalendarHeader.jsx` | Day-of-week headers |
-| `CalendarCycleButton` | `src/components/Calendar/CalendarCycleButton.jsx` | Pay cycle reset trigger |
-| `ExpenseBadge` | `src/components/Calendar/ExpenseBadge.jsx` | Expense indicator on calendar days (name/amount split) |
-| `QuickActions` | `src/components/Calendar/QuickActions.jsx` | Quick action popup on day click |
+| `ExpenseBadge` | `src/components/Calendar/ExpenseBadge.jsx` | Expense indicator on calendar days (name/amount split); click opens `ResolveExpenseModal`. A virtual (forecast) entry — `expense.isVirtual`— renders dashed/muted via `expense-badge--virtual`, shows an estimated `~$` amount, and isn't clickable, since nothing real exists yet to resolve |
 | `PayCycleNudgeBanner` | `src/components/Calendar/PayCycleNudgeBanner.jsx` | Renders the active pay-cycle nudge (see [Section 6.3](#63-usepaycyclenudge)) above the calendar |
 | `PayCycleNudgeToast` | `src/components/Calendar/PayCycleNudgeToast.jsx` | Optional toast presentation of the same nudge |
 
@@ -779,11 +830,11 @@ re-deriving urgency itself.
 | Component | Path | Description |
 |---|---|---|
 | `AddExpensePanel` | `src/components/AddExpensePanel.jsx` | Slide-out panel for adding expenses |
-| `MarkAsPaidModal` | `src/components/MarkAsPaidModal.jsx` | Full/partial "Pay Now" confirmation, used by the priority list's Pay Now action |
+| `ResolveExpenseModal` | `src/components/ResolveExpenseModal.jsx` | Unified Pay Full / Partial / Skip confirmation — replaces the old MarkAsPaidModal and Calendar/QuickActions. Branches internally: a recurring-template expense resolves via `resolveCycle` (Skip available, Partial hidden for a variable-amount template); a one-off (including a Balance Due) resolves via `updateExpenseV4`, Full/Partial only. Used by the priority list's Pay Now action and by clicking a calendar day's expense badge |
 | `MissingExpensesModal` | `src/components/MissingExpensesModal.jsx` | Warns when a credit card has no linked payment expense; offers to create it |
 | `RecurringExpenseModal` | `src/components/RecurringExpenseModal.jsx` | Convert expense to recurring template |
 | `DuplicateExpenseModal` | `src/components/DuplicateExpenseModal.jsx` | Duplicate an expense with modifications |
-| `RecurringTemplatesManager` | `src/components/RecurringTemplatesManager.jsx` | Full templates CRUD interface |
+| `RecurringTemplatesManager` | `src/components/RecurringTemplatesManager.jsx` | Templates CRUD, plus an Undo action per template (reverses its single most recent resolution via `dbHelpers.undoLastResolution`, blocked once the Balance Due it created has a payment on it) |
 
 ### Credit Card Components
 
@@ -850,7 +901,7 @@ re-deriving urgency itself.
 | `AccountSelectorErrorBoundary` | `src/components/AccountSelectorErrorBoundary.jsx` | Isolates `AccountSelector` crashes with a retry/reset UI |
 | `AccountValidationAlert` | `src/components/AccountValidationAlert.jsx` | Flags fixed expenses pointing at a deleted account, with a link to fix them |
 | `PaymentSourceSelector` | `src/components/PaymentSourceSelector.jsx` | Combined account/credit card selector |
-| `PaycheckManager` | `src/components/PaycheckManager.jsx` | Paycheck settings editor (date + frequency) |
+| `PaycheckManager` | `src/components/PaycheckManager.jsx` | Paycheck settings editor (date + frequency); self-heals a stale pay-cycle anchor on mount and toasts if it advanced (§5.8) |
 | `AppearanceCard` | `src/pages/Settings/AppearanceCard.jsx` | Glass transparency, ambient strength, and the ambient palette. Each control writes one CSS variable, so it re-tints the whole app live — including the card being adjusted |
 | `PrivacyWrapper` | `src/components/PrivacyWrapper.jsx` | Conditionally hides content in privacy mode |
 
@@ -881,7 +932,7 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
 
 **Path:** `src/constants/payFrequency.js`
 
-The single source of truth for pay-frequency interval math, shared by `PaycheckService` and the pay-cycle-reset flow so the logic isn't duplicated.
+The single source of truth for pay-frequency interval math, shared by `PaycheckService` and the paycheck-anchor self-heal ([§5.8](#58-paycheck-anchor-self-heal-safe-zone)) so the logic isn't duplicated.
 
 | Export | Description |
 |---|---|
@@ -890,6 +941,7 @@ The single source of truth for pay-frequency interval math, shared by `PaycheckS
 | `VALID_PAY_FREQUENCIES` | `Object.keys(PAY_FREQUENCIES)` |
 | `advanceDueDateByFrequency(dateString, frequency)` | Advances a single due date by one pay period for the given frequency |
 | `calculateNextPayDates(lastPaycheckDate, frequency)` | Pure function returning `{ nextPayDate, followingPayDate, daysUntilNextPay, daysUntilFollowingPay }`, always rolled forward past today |
+| `getMostRecentImpliedPayDate(lastPaycheckDate, frequency, referenceDate)` | Pure function that walks the anchor forward one pay period at a time (reusing each frequency's `advanceDueDate` step) to find the most recent implied payday on or before `referenceDate` (defaults to today); powers the paycheck-anchor self-heal ([§5.8](#58-paycheck-anchor-self-heal-safe-zone)) |
 
 ### `payCycleNudgeLogic.js` / `payCycleNudgeConfig.js` / `payCycleNudgeTypes.js`
 
@@ -899,7 +951,7 @@ Pure logic behind the Pay Cycle Nudge feature (the Fixed Expenses view):
 
 | Export | Description |
 |---|---|
-| `getPayCycleNudge(options)` | Priority-ordered decision function: past_month → catch_up → reset, or `{ nudge: null }` |
+| `getPayCycleNudge(options)` | Priority-ordered decision function: past_month → catch_up, or `{ nudge: null }` |
 | `getMonthKey` / `getLastMonthKey` | `YYYY-MM` helpers for month comparisons |
 | `getExpensesInMonth(expenses, monthKey)` | Filters expenses due within a given month |
 | `isUnpaidOrPartial(expense)` | `paidAmount < amount` |
@@ -1399,7 +1451,6 @@ backups: `dbHelpers.exportData()`, all three lists inside
 6. Database updated atomically (single Dexie transaction): JSON fully replaces every table (`dbHelpers.importData()`); CSV upserts into the one table it detected from the file's headers, by id, without touching any other table (`dbHelpers.importSingleTable()`)
 7. Category cache invalidated
 8. Store reloaded from fresh database
-9. Future expense generation prompt shown if applicable
 
 ### Backup System (BackupManager)
 
@@ -1623,12 +1674,12 @@ npm run quality  # Runs: lint → format:check → test:run
 | **Dual Foreign Key** | V4 architecture where expenses use either `accountId` or `creditCardId`, never both |
 | **Credit Card Payment** | Special expense category where money moves from a bank account to a credit card |
 | **Pay Cycle** | The period between two paychecks — 7, 14, or ~30 days depending on the user's configured pay frequency (weekly, biweekly, or monthly) |
-| **Pay Cycle Nudge** | A priority-ordered banner/toast (past-month → catch-up → reset) that proactively surfaces unpaid expenses or an available cycle reset on the Fixed Expenses Month view |
+| **Pay Cycle Nudge** | A priority-ordered banner/toast (past-month → catch-up) that proactively surfaces unpaid expenses on the Fixed Expenses Month view |
 | **Recurring Template** | A template that auto-generates future expense instances on a schedule |
 | **Optimistic Update** | Updating the UI immediately before the database confirms the write |
 | **Glass Morphism** | Design style using backdrop blur and transparency for a frosted glass effect |
 | **V4 Migration** | Automatic conversion of V3 data (where credit card IDs were stored as `"cc-N"` strings in accountId) to the V4 dual foreign key format |
 | **V8 UUID Migration** | Schema change from auto-increment integer ids to app-generated `crypto.randomUUID()` string ids on every table, done without a data backfill since there was no existing installed base to migrate |
-| **Self-Healing** | The system's ability to auto-infer missing data (e.g., matching a Credit Card Payment to its target card by name) |
+| **Self-Healing** | The system's ability to auto-infer missing data or auto-correct drift without user action (e.g., matching a Credit Card Payment to its target card by name; correcting a stale paycheck anchor, [§5.8](#58-paycheck-anchor-self-heal-safe-zone)) |
 | **Pre-Generation** | Creating future expense instances from recurring templates up to N months ahead |
 | **PWA (Progressive Web App)** | The installable, offline-capable delivery mode added via `vite-plugin-pwa` — caches the app shell only, never financial data |

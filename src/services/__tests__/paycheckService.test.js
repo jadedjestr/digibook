@@ -196,6 +196,47 @@ describe('calculateExpenseStatus — the actual fix', () => {
   });
 });
 
+describe('calculateExpenseStatus — resolvedExpenseIds (resolveCycle)', () => {
+  // A resolved recurring cycle can have paidAmount < amount (a partial
+  // payment that already advanced the template's cadence) without still
+  // being owed - the short-circuit exists so that doesn't display as
+  // Overdue/Partially Paid forever.
+  test('a resolved expense reports Resolved even though it would otherwise be Overdue and partially paid', () => {
+    const resolvedButShortPaid = expense({
+      id: 'e-resolved',
+      paidAmount: 40,
+      dueDate: '2026-09-01', // in the past relative to paycheckDates
+    });
+    const resolvedExpenseIds = new Set(['e-resolved']);
+    expect(
+      service.calculateExpenseStatus(
+        resolvedButShortPaid,
+        paycheckDates,
+        resolvedExpenseIds,
+      ),
+    ).toBe('Resolved');
+  });
+
+  test('an expense not in resolvedExpenseIds falls through to the normal rules unchanged', () => {
+    const notResolved = expense({ id: 'e-other', dueDate: '2026-09-01' });
+    const resolvedExpenseIds = new Set(['e-resolved']);
+    expect(
+      service.calculateExpenseStatus(
+        notResolved,
+        paycheckDates,
+        resolvedExpenseIds,
+      ),
+    ).toBe('Overdue');
+  });
+
+  test('omitting resolvedExpenseIds entirely behaves exactly as before - every existing call site keeps working unchanged', () => {
+    const anyExpense = expense({ paidAmount: 40, dueDate: '2026-09-01' });
+    expect(service.calculateExpenseStatus(anyExpense, paycheckDates)).toBe(
+      'Overdue',
+    );
+  });
+});
+
 describe('calculateSummaryTotals — the actual fix', () => {
   test('a partially-paid expense contributes its remaining amount, not zero', () => {
     const totals = service.calculateSummaryTotals(
@@ -253,48 +294,5 @@ describe('calculateSummaryTotals — the actual fix', () => {
       payThisWeekTotal: 60,
       payNextCheckTotal: 100,
     });
-  });
-});
-
-describe('shouldPromptReset — the disclosed side effect', () => {
-  // shouldPromptReset compares its dates against the real wall-clock date
-  // (`new Date()` inside the function), not a fixed one — so "a date last
-  // month" and "a date next month" are computed relative to whenever this
-  // suite actually runs, rather than hardcoded against 2026.
-  //
-  // Day 15, deliberately, on every one of these — never day 1 or the last
-  // day of a month. shouldPromptReset parses nextPayDate with the native
-  // `new Date(string)` constructor rather than DateUtils.parseDate, and a
-  // bare 'YYYY-MM-DD' string parses as UTC midnight: in a timezone behind
-  // UTC that reads back as the previous day locally, which flips the month
-  // for anything landing on day 1. That's a real, pre-existing bug in
-  // shouldPromptReset, unrelated to the fix here — worth its own report,
-  // not silently papered over — but this test's job is the status fix, so
-  // it stays clear of that edge rather than tripping on it.
-  const toISODate = d => d.toISOString().slice(0, 10);
-  const now = new Date();
-  const lastMonth = toISODate(
-    new Date(now.getFullYear(), now.getMonth() - 1, 15),
-  );
-  const nextMonth = toISODate(
-    new Date(now.getFullYear(), now.getMonth() + 1, 15),
-  );
-  const monthAfterNext = toISODate(
-    new Date(now.getFullYear(), now.getMonth() + 2, 15),
-  );
-
-  test('a partially-paid, overdue expense now counts toward "settled", like a fully-unpaid overdue one does', () => {
-    // Before this fix, a lingering partial payment on an overdue bill could
-    // block this prompt indefinitely, since its status was neither 'Paid'
-    // nor 'Overdue'. This pins the corrected — and disclosed — behaviour.
-    const futurePaycheckDates = {
-      nextPayDate: nextMonth,
-      followingPayDate: monthAfterNext,
-    };
-    const result = service.shouldPromptReset(
-      [expense({ paidAmount: 40, dueDate: lastMonth })],
-      futurePaycheckDates,
-    );
-    expect(result).toBe(true);
   });
 });

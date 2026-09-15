@@ -71,8 +71,21 @@ export class PaycheckService {
    * unchanged simplification, not a source of truth — calculateSummaryTotals
    * no longer reads this at all, precisely so a future display tweak here
    * can never again silently change what a dollar total adds up to.
+   *
+   * @param {Object} expense
+   * @param {Object} paycheckDates
+   * @param {Set<string>} [resolvedExpenseIds] - optional; expense ids with
+   *   a non-deleted recurringResolutionLog entry. A resolved recurring
+   *   cycle can have paidAmount < amount (a partial payment that already
+   *   advanced the template's cadence) without still being owed - without
+   *   this short-circuit it would otherwise display as Overdue/Partially
+   *   Paid forever. Omitted entirely, this function behaves exactly as it
+   *   did before resolveCycle existed - every existing caller that hasn't
+   *   been updated to pass this keeps working unchanged.
    */
-  calculateExpenseStatus(expense, paycheckDates) {
+  calculateExpenseStatus(expense, paycheckDates, resolvedExpenseIds) {
+    if (resolvedExpenseIds?.has(expense.id)) return 'Resolved';
+
     const progress = this.getPaymentProgress(expense);
     if (progress === 'Paid') return 'Paid';
 
@@ -95,6 +108,8 @@ export class PaycheckService {
   // Get status color for badges
   getStatusColor(status) {
     switch (status) {
+      case 'Resolved':
+        return 'bg-green-500/20 text-green-300 border-green-500/30';
       case 'Paid':
         return 'bg-green-500/20 text-green-300 border-green-500/30';
       case 'Partially Paid':
@@ -157,42 +172,5 @@ export class PaycheckService {
     });
 
     return totals;
-  }
-
-  // Check if monthly reset should be prompted
-  shouldPromptReset(expenses, paycheckDates) {
-    if (!expenses.length) return false;
-
-    const today = new Date();
-    const nextPayDate = new Date(paycheckDates.nextPayDate);
-
-    // Check if all expenses are paid or overdue.
-    //
-    // A side effect of fixing calculateExpenseStatus(): a bill that is both
-    // overdue and partially paid used to report 'Partially Paid' here,
-    // which is neither 'Paid' nor 'Overdue' — so a single lingering partial
-    // payment could silently block this prompt forever, even once every
-    // other bill in the period was settled or overdue. It now reports
-    // 'Overdue' and counts toward this check, the same as a bill that was
-    // never paid at all. That reads as the intended behaviour — a period
-    // whose only remaining bill is overdue has run its course whether or
-    // not part of it was paid — but it is a genuine behaviour change here,
-    // not just a display fix, so it's called out on its own.
-    const allPaidOrOverdue = expenses.every(expense => {
-      const status = this.calculateExpenseStatus(expense, paycheckDates);
-      return status === 'Paid' || status === 'Overdue';
-    });
-
-    // Check if next paycheck is in a new calendar month
-    const nextPayMonth = nextPayDate.getMonth();
-    const todayMonth = today.getMonth();
-    const nextPayYear = nextPayDate.getFullYear();
-    const todayYear = today.getFullYear();
-
-    const isNewMonth =
-      nextPayYear > todayYear ||
-      (nextPayYear === todayYear && nextPayMonth > todayMonth);
-
-    return allPaidOrOverdue && isNewMonth;
   }
 }

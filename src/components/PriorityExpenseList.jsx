@@ -28,12 +28,22 @@ const PriorityExpenseList = ({
   accounts,
   creditCards,
   onPayNow,
+  resolvedExpenseIds,
+  balanceDueExpenseIds,
 }) => {
   const { overdue, thisWeek, later } = useMemo(() => {
     const sections = { overdue: [], thisWeek: [], later: [] };
 
     for (const expense of expenses) {
       if (paycheckService.getPaymentProgress(expense) === 'Paid') continue;
+
+      // A resolved recurring cycle can have paidAmount < amount (a
+      // partial payment that already advanced the template's cadence)
+      // without still being owed — the cadence has moved on and any
+      // shortfall now lives in its own Balance Due row. Without this
+      // check the original row would keep showing here as actionable
+      // forever, alongside the Balance Due that actually replaced it.
+      if (resolvedExpenseIds.has(expense.id)) continue;
 
       const timing = paycheckService.getTimingBucket(expense, paycheckDates);
 
@@ -65,7 +75,7 @@ const PriorityExpenseList = ({
       thisWeek: sections.thisWeek,
       later: sections.later,
     };
-  }, [expenses, paycheckService, paycheckDates]);
+  }, [expenses, paycheckService, paycheckDates, resolvedExpenseIds]);
 
   const renderRow = expense => (
     <PriorityExpenseRow
@@ -74,6 +84,7 @@ const PriorityExpenseList = ({
       accounts={accounts}
       creditCards={creditCards}
       onPayNow={onPayNow}
+      isBalanceDue={balanceDueExpenseIds.has(expense.id)}
     />
   );
 
@@ -125,6 +136,13 @@ PriorityExpenseList.propTypes = {
   accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
   creditCards: PropTypes.arrayOf(PropTypes.object).isRequired,
   onPayNow: PropTypes.func.isRequired,
+  resolvedExpenseIds: PropTypes.instanceOf(Set),
+  balanceDueExpenseIds: PropTypes.instanceOf(Set),
+};
+
+PriorityExpenseList.defaultProps = {
+  resolvedExpenseIds: new Set(),
+  balanceDueExpenseIds: new Set(),
 };
 
 export default PriorityExpenseList;

@@ -18,12 +18,7 @@ import RecurringTemplatesManager from '../components/RecurringTemplatesManager';
 import { useGlobalCategories } from '../contexts/GlobalCategoryContext';
 import { dbHelpers } from '../db/database-clean';
 import { dataManager } from '../services/dataManager';
-import {
-  useFixedExpenses,
-  useReloadCategories,
-  useReloadExpenses,
-} from '../stores/useAppStore';
-import { DateUtils } from '../utils/dateUtils';
+import { useReloadCategories } from '../stores/useAppStore';
 import { logger } from '../utils/logger';
 
 import AppearanceCard from './Settings/AppearanceCard';
@@ -33,50 +28,14 @@ import DataManagementCard from './Settings/DataManagementCard';
 const Settings = ({ onDataChange }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [pendingFutureCheck, setPendingFutureCheck] = useState(false);
-  const [shouldShowFuturePrompt, setShouldShowFuturePrompt] = useState(false);
 
   const globalCategories = useGlobalCategories();
-  const fixedExpenses = useFixedExpenses();
   const reloadCategories = useReloadCategories();
-  const reloadExpenses = useReloadExpenses();
 
   const handleCategoryDataChange = useCallback(async () => {
     await reloadCategories();
     onDataChange();
   }, [reloadCategories, onDataChange]);
-
-  const handleFuturePromptDismissed = useCallback(() => {
-    setShouldShowFuturePrompt(false);
-  }, []);
-
-  const { currentMonthHasData, nextMonthHasData, startCurrent } =
-    useMemo(() => {
-      const today = new Date();
-      const currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      const currentEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      const nextStart = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-      const nextEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0);
-
-      const isInRange = (dateString, start, end) => {
-        const parsed = DateUtils.parseDate(dateString);
-        if (!parsed) return false;
-        return parsed >= start && parsed <= end;
-      };
-
-      const hasCurrent = (fixedExpenses || []).some(expense =>
-        isInRange(expense.dueDate, currentStart, currentEnd),
-      );
-      const hasNext = (fixedExpenses || []).some(expense =>
-        isInRange(expense.dueDate, nextStart, nextEnd),
-      );
-
-      return {
-        currentMonthHasData: hasCurrent,
-        nextMonthHasData: hasNext,
-        startCurrent: currentStart,
-      };
-    }, [fixedExpenses]);
 
   useEffect(() => {
     const initializeSettings = async () => {
@@ -120,17 +79,6 @@ const Settings = ({ onDataChange }) => {
     initializeSettings();
   }, []);
 
-  useEffect(() => {
-    if (!pendingFutureCheck) return;
-
-    if (currentMonthHasData && !nextMonthHasData) {
-      setShouldShowFuturePrompt(true);
-    } else {
-      setShouldShowFuturePrompt(false);
-    }
-    setPendingFutureCheck(false);
-  }, [pendingFutureCheck, currentMonthHasData, nextMonthHasData]);
-
   const cards = useMemo(
     () => [
       {
@@ -149,13 +97,7 @@ const Settings = ({ onDataChange }) => {
         content: (
           <DataManagementCard
             onDataChange={onDataChange}
-            reloadExpenses={reloadExpenses}
             globalCategories={globalCategories}
-            fixedExpenses={fixedExpenses}
-            startCurrent={startCurrent}
-            setPendingFutureCheck={setPendingFutureCheck}
-            shouldShowFuturePrompt={shouldShowFuturePrompt}
-            onFuturePromptDismissed={handleFuturePromptDismissed}
           />
         ),
       },
@@ -209,17 +151,7 @@ const Settings = ({ onDataChange }) => {
         ),
       },
     ],
-    [
-      onDataChange,
-      handleCategoryDataChange,
-      handleFuturePromptDismissed,
-      reloadExpenses,
-      globalCategories,
-      fixedExpenses,
-      startCurrent,
-      setPendingFutureCheck,
-      shouldShowFuturePrompt,
-    ],
+    [onDataChange, handleCategoryDataChange, globalCategories],
   );
 
   if (isLoading) {

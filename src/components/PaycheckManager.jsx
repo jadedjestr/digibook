@@ -32,8 +32,22 @@ const PaycheckManager = ({ onDataChange }) => {
   const [learnedAmount, setLearnedAmount] = useState(null);
 
   useEffect(() => {
-    loadPaycheckSettings();
+    (async () => {
+      await selfHealPaycheckAnchor();
+      await loadPaycheckSettings();
+    })();
   }, []);
+
+  const selfHealPaycheckAnchor = async () => {
+    try {
+      const { advanced } = await dbHelpers.selfHealPaycheckAnchor();
+      if (advanced) {
+        notify.info('Your pay-cycle anchor date was updated automatically.');
+      }
+    } catch (error) {
+      logger.error('Error self-healing paycheck anchor:', error);
+    }
+  };
 
   const loadPaycheckSettings = async () => {
     try {

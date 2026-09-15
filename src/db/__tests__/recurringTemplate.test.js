@@ -92,7 +92,7 @@ describe('addRecurringExpenseTemplate - nextDueDate', () => {
   });
 });
 
-describe('generateRecurringExpense - deleted credit card self-heal', () => {
+describe('materializeCurrentCycle - deleted credit card self-heal', () => {
   const now = '2026-02-01T00:00:00.000Z';
 
   beforeEach(async () => {
@@ -142,8 +142,8 @@ describe('generateRecurringExpense - deleted credit card self-heal', () => {
       { id: 'tpl-1', ...baseTemplate },
     ]);
 
-    await expect(dbHelpers.generateRecurringExpense('tpl-1')).rejects.toThrow(
-      /Failed to generate recurring expense/i,
+    await expect(dbHelpers.materializeCurrentCycle('tpl-1')).rejects.toThrow(
+      /Linked credit card has been deleted/i,
     );
 
     const template = await db.recurringExpenseTemplates.get('tpl-1');
@@ -156,8 +156,8 @@ describe('generateRecurringExpense - deleted credit card self-heal', () => {
       { id: 'tpl-2', ...baseTemplate },
     ]);
 
-    await expect(dbHelpers.generateRecurringExpense('tpl-2')).rejects.toThrow(
-      /Failed to generate recurring expense/i,
+    await expect(dbHelpers.materializeCurrentCycle('tpl-2')).rejects.toThrow(
+      /Linked credit card has been deleted/i,
     );
 
     const template = await db.recurringExpenseTemplates.get('tpl-2');

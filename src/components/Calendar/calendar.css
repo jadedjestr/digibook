@@ -177,62 +177,6 @@
   );
 }
 
-.calendar-cycle-button {
-  @apply glass-button glass-button--sm;
-  padding: 0.5rem 1rem;
-  min-height: 36px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  background: linear-gradient(
-    135deg,
-    rgba(224, 145, 92, 0.1) 0%,
-    rgba(224, 145, 92, 0.15) 50%,
-    rgba(224, 145, 92, 0.1) 100%
-  );
-  border-color: rgba(224, 145, 92, 0.2);
-  color: rgba(240, 192, 155, 1);
-  transition: all var(--duration-fast) var(--easing-standard);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.calendar-cycle-button:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(224, 145, 92, 0.15) 0%,
-    rgba(224, 145, 92, 0.2) 50%,
-    rgba(224, 145, 92, 0.15) 100%
-  );
-  border-color: rgba(224, 145, 92, 0.3);
-  transform: translateY(-1px);
-  box-shadow: var(--glass-elevation-1);
-}
-
-.calendar-cycle-button:active {
-  transform: translateY(0px);
-  box-shadow: var(--glass-elevation-0);
-}
-
-.calendar-cycle-button--ghost {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.calendar-cycle-button--ghost:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.9);
-  transform: translateY(-1px);
-}
-
-.calendar-cycle-icon {
-  width: 14px;
-  height: 14px;
-  opacity: 0.8;
-}
-
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -253,11 +197,17 @@
   gap: 2px;
 }
 
-/* Calendar Day - lighter empty cells (border and opacity reduced) */
+/* Calendar Day - lighter empty cells (border and opacity reduced).
+   No backdrop-filter here: .calendar-container (the card this grid sits
+   in) already blurs the real page content once via glass-surface--elevated.
+   Every cell sits on that same already-blurred surface, so a per-cell blur
+   on top blurs nothing new - it only adds up to ~42 redundant compositing
+   layers, which is enough to overwhelm the GPU compositor on some
+   hardware and wash the whole page out toward white when another blurred
+   layer (a modal backdrop) is added on top. */
 .calendar-day {
   min-height: 100px;
   background: rgba(255, 255, 255, 0.02);
-  backdrop-filter: blur(var(--glass-blur-light));
   border: 0.5px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
   padding: 0.5rem;
@@ -494,6 +444,20 @@
   @apply bg-gray-500/20 text-gray-300 border-gray-500/30;
 }
 
+/* Virtual Ledger forecast entry: not a real row yet, nothing to resolve -
+   dashed and muted so it reads as a projection, not an actionable bill. */
+.expense-badge--virtual {
+  @apply bg-white/5 text-white/50 border-white/20;
+  border-style: dashed;
+  cursor: default;
+  font-style: italic;
+}
+
+.expense-badge--virtual:hover {
+  transform: none;
+  box-shadow: none;
+}
+
 /* Recurring Expense Badge Styling */
 .expense-badge--recurring {
   @apply bg-amber-500/15 text-amber-200 border-amber-500/25;
@@ -537,6 +501,20 @@
 .expense-badge--recurring.expense-badge--overdue {
   @apply bg-red-500/15 text-red-200 border-red-500/25;
   animation: recurringUrgentPulse 2s ease-in-out infinite;
+}
+
+/* Every virtual entry is also --recurring (only templates produce them) -
+   this combined selector's higher specificity keeps the muted/dashed
+   forecast look from being overridden by the amber recurring styling
+   above. */
+.expense-badge--recurring.expense-badge--virtual {
+  @apply bg-white/5 text-white/50 border-white/20;
+  box-shadow: none;
+}
+
+.expense-badge--recurring.expense-badge--virtual:hover {
+  @apply bg-white/5 border-white/20;
+  box-shadow: none;
 }
 
 .expense-badge--recurring.expense-badge--overdue::before {

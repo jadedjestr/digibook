@@ -124,6 +124,59 @@ describe('payCycleNudgeLogic', () => {
       expect(result.nudge).toBeNull();
     });
 
+    it('merges virtualGapCycles into last month unpaid count even with no real rows', () => {
+      const today = new Date(2025, 2, 15); // March 15
+      const currentMonth = new Date(2025, 2, 1); // March
+      const virtualGapCycles = [
+        {
+          id: 'virtual-1-2025-02-10',
+          dueDate: '2025-02-10',
+          amount: 45,
+          paidAmount: 0,
+          isVirtual: true,
+        },
+      ];
+      const result = getPayCycleNudge({
+        fixedExpenses: [],
+        currentMonth,
+        currentMonthExpenses: [],
+        paycheckDates: {},
+        paycheckService: null,
+        today,
+        virtualGapCycles,
+      });
+      expect(result.nudge).not.toBeNull();
+      expect(result.nudge.type).toBe('past_month');
+      expect(result.nudge.payload.unpaidCount).toBe(1);
+      expect(result.nudge.payload.unpaidExpenses).toEqual(virtualGapCycles);
+    });
+
+    it('adds virtualGapCycles on top of real unpaid expenses for the count', () => {
+      const today = new Date(2025, 2, 15);
+      const currentMonth = new Date(2025, 2, 1);
+      const fixedExpenses = [
+        { id: 1, dueDate: '2025-02-10', amount: 100, paidAmount: 0 },
+      ];
+      const virtualGapCycles = [
+        {
+          id: 'virtual-1-2025-02-24',
+          dueDate: '2025-02-24',
+          amount: 45,
+          paidAmount: 0,
+        },
+      ];
+      const result = getPayCycleNudge({
+        fixedExpenses,
+        currentMonth,
+        currentMonthExpenses: [],
+        paycheckDates: {},
+        paycheckService: null,
+        today,
+        virtualGapCycles,
+      });
+      expect(result.nudge.payload.unpaidCount).toBe(2);
+    });
+
     it('returns catch_up nudge when current month, near end of month, and unpaid in currentMonthExpenses', () => {
       const today = new Date(2025, 2, 25); // March 25 - near end
       const currentMonth = new Date(2025, 2, 1);
@@ -143,28 +196,6 @@ describe('payCycleNudgeLogic', () => {
       expect(result.nudge.type).toBe('catch_up');
       expect(result.nudge.payload.unpaidInCurrentMonthCount).toBe(1);
       expect(result.nudge.dismissKey).toBe('catch_up_2025-03');
-    });
-
-    it('returns reset nudge when shouldPromptReset is true', () => {
-      const currentMonth = new Date(2025, 2, 1);
-      const currentMonthExpenses = [
-        { id: 1, dueDate: '2025-03-10', amount: 100, paidAmount: 100 },
-      ];
-      const paycheckService = {
-        shouldPromptReset: () => true,
-      };
-      const result = getPayCycleNudge({
-        fixedExpenses: [],
-        currentMonth,
-        currentMonthExpenses,
-        paycheckDates: { nextPayDate: '2025-04-04' },
-        paycheckService,
-        today: new Date(2025, 2, 20),
-      });
-      expect(result.nudge).not.toBeNull();
-      expect(result.nudge.type).toBe('reset');
-      expect(result.nudge.payload.nextPayDisplay).toBeDefined();
-      expect(result.nudge.dismissKey).toContain('reset_');
     });
 
     it('prioritizes past_month over catch_up when both qualify', () => {
@@ -202,22 +233,6 @@ describe('payCycleNudgeLogic', () => {
         paycheckService: null,
         today,
         dismissed: new Set(['past_month_2025-02']),
-      });
-      expect(result.nudge).toBeNull();
-    });
-
-    it('skips reset when paycheckDates.nextPayDate is missing', () => {
-      const currentMonth = new Date(2025, 2, 1);
-      const paycheckService = { shouldPromptReset: () => true };
-      const result = getPayCycleNudge({
-        fixedExpenses: [],
-        currentMonth,
-        currentMonthExpenses: [
-          { id: 1, dueDate: '2025-03-01', amount: 100, paidAmount: 100 },
-        ],
-        paycheckDates: {},
-        paycheckService,
-        today: new Date(2025, 2, 20),
       });
       expect(result.nudge).toBeNull();
     });
