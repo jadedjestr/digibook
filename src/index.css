@@ -1248,71 +1248,64 @@
   /* Bidirectional swipe-to-reveal (useSwipeToReveal). Opt-in modifier,
      added alongside .glass-row-list-item rather than folded into it, so
      any future non-swipe consumer of the base class is unaffected.
-     Turns the row into the clipping/positioning box for the sliding
-     content + the two rails underneath it. padding:0 is required, not
-     cosmetic — .glass-row-list-item-content below carries the padding
-     instead, and an absolutely-positioned rail is inset from its
-     positioned ancestor's *padding* box, not its border box, so keeping
-     padding on both would pull the rails inward off the row's true
-     edges. */
+     Turns the row into the clipping box for the sliding track. */
   .glass-row-list-item--swipeable {
     position: relative;
     overflow: hidden;
     padding: 0;
   }
 
-  /* Takes over exactly the flex layout .glass-row-list-item used to
-     apply directly to its children. background re-reads the same
-     --glass-fill the outer box already computes for itself (custom
-     properties cascade to descendants even though `background` itself
-     doesn't) — without it this div is transparent and the rail colors
-     underneath show through even when the row is closed. The transition
-     animates the open/close snap; --dragging turns it off so a live
-     drag tracks the finger 1:1 instead of chasing a delayed value. */
+  /* [left rail][content][right rail], wider than the visible row by
+     2 * railWidth so both rails sit fully outside the clipped viewport
+     at rest — occlusion is spatial, not opacity-based, so it's correct
+     at every --glass-tint value (unlike the old translucent-overlay
+     approach, which broke at low tint settings). flex: 0 0 <basis>, not
+     the default 0 1 auto, is required: with the default flex-shrink:1,
+     this lone flex item's declared overflow would get shrunk straight
+     back down to fit --swipeable's width, erasing the whole technique.
+     translateX keeps the hook's `offset` (-72..+72, rest 0) unchanged
+     and just re-centers it onto the track: rest must show track-local
+     [72, 72+W), i.e. shift left by railWidth — so
+     translateX = offset - railWidth. Keep 72/144 in sync with
+     SWIPE_RAIL_WIDTH in AccountRow.jsx / PendingTransactionRow.jsx. The
+     transition animates the open/close snap; --dragging turns it off so
+     a live drag tracks the finger 1:1 instead of chasing a delayed
+     value. */
+  .glass-row-list-item-track {
+    display: flex;
+    flex: 0 0 calc(100% + 144px);
+    transition: transform var(--duration-normal) var(--easing-standard);
+  }
+
+  .glass-row-list-item-track--dragging {
+    transition: none;
+  }
+
   .glass-row-list-item-content {
-    /* Must stretch to the row's full width, not shrink-to-fit — it's the
-       only normally-flowing child left once the two rails are pulled out
-       of flow by position:absolute, and a lone flex item under
-       justify-content:space-between still defaults to its own content
-       width otherwise, leaving whichever rail is wider than the leftover
-       gap visible at rest instead of fully covered. */
+    /* The two 72px rails are fixed-basis flex siblings; flex:1 here
+       fills whatever's left, which resolves to exactly the row's full
+       visible width. */
     flex: 1;
-    position: relative;
-    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-md);
     padding: var(--space-sm) var(--space-md);
-    background: rgba(255, 255, 255, var(--glass-fill));
-    transition: transform var(--duration-normal) var(--easing-standard);
   }
 
-  .glass-row-list-item-content--dragging {
-    transition: none;
-  }
-
-  /* One action rail, full row height, sized to a single tap target. Keep
-     this width in sync with SWIPE_RAIL_WIDTH in AccountRow.jsx /
+  /* One action rail, full row height (from the track's default
+     align-items: stretch), sized to a single tap target. Keep this
+     width in sync with SWIPE_RAIL_WIDTH in AccountRow.jsx /
      PendingTransactionRow.jsx. No color classes here — each rail button
      carries its semantic color as the same Tailwind utilities the
-     always-visible icon buttons already use. */
+     always-visible icon buttons already use. DOM/flex order alone
+     determines left vs. right now; the --left/--right modifier classes
+     stay as styling-free markers for JSX/tests. */
   .glass-row-list-item-swipe-rail {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 72px;
+    flex: 0 0 72px;
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-
-  .glass-row-list-item-swipe-rail--left {
-    left: 0;
-  }
-
-  .glass-row-list-item-swipe-rail--right {
-    right: 0;
   }
 
   /* Floating Sidebar */

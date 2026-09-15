@@ -317,6 +317,23 @@ describe('glass-row-list-item--swipeable CSS', () => {
     expect(swipeableMatch[1]).toMatch(/overflow:\s*hidden/);
   });
 
+  test('the track does not shrink below its overflow-sized basis', async () => {
+    const { readFileSync } = await import('fs');
+    const { resolve } = await import('path');
+    const css = readFileSync(resolve(__dirname, '../../index.css'), 'utf8');
+
+    const trackMatch = css.match(/\.glass-row-list-item-track\s*\{([^}]*)\}/);
+    expect(
+      trackMatch,
+      '.glass-row-list-item-track rule not found',
+    ).not.toBeNull();
+
+    // flex: 0 0 <basis> - flex-shrink must be pinned to 0, or the
+    // flexbox algorithm silently shrinks this lone overflowing child
+    // back down to fit, defeating the whole spatial-occlusion technique.
+    expect(trackMatch[1]).toMatch(/flex:\s*0\s+0\s+/);
+  });
+
   test('the mobile flex-wrap rule targets the content wrapper, not the outer item', async () => {
     const { readFileSync } = await import('fs');
     const { resolve } = await import('path');
