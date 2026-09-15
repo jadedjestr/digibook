@@ -19,20 +19,25 @@ vi.mock('../../utils/logger', () => ({
 /**
  * Guards a layering bug that looked like a rendering glitch.
  *
- * Every page is wrapped in `.page-transition`. Its entrance animation ends on
- * `transform: translateY(0)`, so an `animation-fill-mode` of `forwards` or
- * `both` left a permanent — if visually identity — transform on that wrapper.
- * A non-`none` transform creates a stacking context and becomes the containing
- * block for `position: fixed` descendants, which had two consequences:
+ * Originally this panel portalled the backdrop and the panel as two
+ * *separate* fixed-position elements ranked by explicit z-index (9999 vs
+ * 10000). Every page is wrapped in `.page-transition`, whose entrance
+ * animation ends on `transform: translateY(0)` — an `animation-fill-mode`
+ * of `forwards`/`both` would have left a permanent transform on that
+ * wrapper, which creates a stacking context and becomes the containing
+ * block for `position: fixed` descendants. That would have trapped the
+ * panel's z-index 10000 inside the wrapper and lost it to the backdrop's
+ * 9999 (portalled straight to body), painting the backdrop *over* the
+ * panel.
  *
- *   1. the panel's z-index 10000 was trapped inside the wrapper and lost to
- *      the backdrop's 9999, which is portalled to body — so the backdrop
- *      painted *over* the panel, blurring the form the user was typing into;
- *   2. `right: 0` resolved against the padded wrapper rather than the
- *      viewport, leaving the panel 39px short of the screen edge.
- *
- * jsdom has no layout engine, so paint order cannot be asserted here. These
- * tests instead pin the two structural facts the correct behaviour rests on.
+ * The panel now matches every other modal in the app: one portal, one
+ * `fixed` wrapper, with the backdrop and the panel as plain DOM siblings
+ * inside it (backdrop first, panel second, no explicit z-index on either).
+ * Normal stacking order alone guarantees the panel paints above the
+ * backdrop, so the ordering can no longer be lost to a trapped z-index —
+ * there is no z-index to trap. jsdom has no layout engine, so paint order
+ * itself can't be asserted here; these tests instead pin the structural
+ * facts that guarantee it.
  */
 
 const HOLDS_FINAL_FRAME = /\b(forwards|both)\b/;
@@ -40,40 +45,45 @@ const HOLDS_FINAL_FRAME = /\b(forwards|both)\b/;
 const defaultProps = {
   isOpen: true,
   onClose: () => {},
-  accounts: [],
+
+  // A default account must exist, or the panel renders the "add an
+  // account first" gate instead of the layering this file actually tests.
+  accounts: [{ id: 'acct-1', name: 'Checking', isDefault: true }],
   creditCards: [],
   onDataChange: () => {},
 };
 
 describe('AddExpensePanel layering', () => {
-  test('renders the panel into document.body, matching its backdrop', () => {
+  test('backdrop and panel share one portal, one fixed wrapper', () => {
     render(<AddExpensePanel {...defaultProps} />);
 
     const heading = screen.getByText('Add New Expense');
-    const panel = heading.closest('div[class*="w-[450px]"]');
+    const panel = heading.closest('div[class*="max-w-lg"]');
+    const backdrop = document.body.querySelector('[aria-label="Close panel"]');
 
     expect(panel).not.toBeNull();
+    expect(backdrop).not.toBeNull();
 
-    // The backdrop is portalled to body. If the panel is not, the two live in
-    // different stacking contexts and their z-indexes cannot be compared.
-    expect(panel.parentElement).toBe(document.body);
+    // Both portalled to body, as siblings inside the SAME fixed wrapper -
+    // not two independently-portalled fixed elements ranked by z-index.
+    expect(panel.parentElement).toBe(backdrop.parentElement);
+    expect(panel.parentElement.parentElement).toBe(document.body);
   });
 
-  test('the panel outranks the backdrop', () => {
+  test('the panel follows the backdrop in DOM order, so it paints on top', () => {
     render(<AddExpensePanel {...defaultProps} />);
 
     const heading = screen.getByText('Add New Expense');
-    const panel = heading.closest('div[class*="w-[450px]"]');
-    const backdrop = [...document.body.children].find(
-      el =>
-        typeof el.className === 'string' &&
-        el.className.includes('backdrop-blur'),
-    );
+    const panel = heading.closest('div[class*="max-w-lg"]');
+    const backdrop = document.body.querySelector('[aria-label="Close panel"]');
 
-    expect(backdrop).toBeDefined();
-    expect(Number(panel.style.zIndex)).toBeGreaterThan(
-      Number(backdrop.style.zIndex),
-    );
+    // Neither carries an explicit z-index - normal stacking order is what
+    // ranks them, and normal stacking order paints later siblings on top.
+    expect(panel.style.zIndex).toBe('');
+    expect(backdrop.style.zIndex).toBe('');
+
+    const siblings = [...panel.parentElement.children];
+    expect(siblings.indexOf(panel)).toBeGreaterThan(siblings.indexOf(backdrop));
   });
 });
 
