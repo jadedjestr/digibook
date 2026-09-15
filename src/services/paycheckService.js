@@ -134,12 +134,25 @@ export class PaycheckService {
    * switching on calculateExpenseStatus()'s display string. That string
    * collapses "partially paid" over whatever is still owed and when it's
    * due, so a bill that was 43% paid used to vanish from every bucket here
-   * — not just be miscounted, entirely absent, because 'Partially Paid'
+   * — not a wrong amount, an absent one, because 'Partially Paid'
    * was never one of the switch's cases. Money owed and when it's due are
    * independent facts; only reading them independently keeps that from
    * happening again.
+   *
+   * @param {Array} expenses
+   * @param {Object} paycheckDates
+   * @param {Set<string>} [resolvedExpenseIds] - optional; expense ids with
+   *   a non-deleted recurringResolutionLog entry. A resolved recurring
+   *   cycle can have paidAmount < amount (Skip is £0, a partial is the
+   *   rest) without still being owed — its shortfall lives in the spun-off
+   *   Balance Due expense, a different id that is NOT in this set and
+   *   keeps counting. Without this, a skip double-counts the debt: the
+   *   resolved original and its Balance Due both land in a bucket. Omitted
+   *   entirely, this function behaves exactly as it did before
+   *   resolveCycle existed — every existing caller that hasn't been
+   *   updated to pass this keeps working unchanged.
    */
-  calculateSummaryTotals(expenses, paycheckDates) {
+  calculateSummaryTotals(expenses, paycheckDates, resolvedExpenseIds) {
     const totals = {
       payThisWeekTotal: 0,
       payNextCheckTotal: 0,
@@ -148,6 +161,7 @@ export class PaycheckService {
 
     expenses.forEach(expense => {
       if (this.getPaymentProgress(expense) === 'Paid') return;
+      if (resolvedExpenseIds?.has(expense.id)) return;
 
       const remainingAmount = expense.amount - (expense.paidAmount || 0);
       if (remainingAmount <= 0) return;

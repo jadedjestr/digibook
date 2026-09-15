@@ -179,9 +179,23 @@ const FixedExpenses = () => {
   // effort making trustworthy. The calendar itself keeps its own
   // currentMonthExpenses below, unaffected — it legitimately needs one
   // specific month to lay out its day grid; only the money side changes.
+  // The resolved set comes from the same resolution log the priority list
+  // reads: a skipped/short-paid cycle's row is no longer owed (its
+  // shortfall lives in the spun-off Balance Due, a different id), so it
+  // must not count here a second time.
   const summaryTotals = useMemo(
-    () => paycheckService.calculateSummaryTotals(fixedExpenses, paycheckDates),
-    [paycheckService, fixedExpenses, paycheckDates],
+    () =>
+      paycheckService.calculateSummaryTotals(
+        fixedExpenses,
+        paycheckDates,
+        resolutionLinkage.resolvedExpenseIds,
+      ),
+    [
+      paycheckService,
+      fixedExpenses,
+      paycheckDates,
+      resolutionLinkage.resolvedExpenseIds,
+    ],
   );
 
   const handlePreviousMonth = () => {

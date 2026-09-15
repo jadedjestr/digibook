@@ -296,3 +296,55 @@ describe('calculateSummaryTotals — the actual fix', () => {
     });
   });
 });
+
+describe('calculateSummaryTotals — resolvedExpenseIds (the skip double-count fix)', () => {
+  // After a Skip or a short Partial, resolveCycle advances the cadence and
+  // spins the shortfall off into a Balance Due expense — a DIFFERENT id.
+  // The resolved original row is still in fixedExpenses, unpaid, at its old
+  // due date. Without the resolved set, both rows count: the debt appears
+  // twice in the hero and the projection card.
+  test('a resolved expense is excluded from every bucket when the set is passed', () => {
+    const totals = service.calculateSummaryTotals(
+      [expense({ id: 'e-resolved', dueDate: '2026-09-20' })], // due this week, unpaid
+      paycheckDates,
+      new Set(['e-resolved']),
+    );
+    expect(totals).toEqual({
+      payThisWeekTotal: 0,
+      payNextCheckTotal: 0,
+      overdueTotal: 0,
+    });
+  });
+
+  test('a resolved expense that has since gone past due is NOT phantom-overdue', () => {
+    const totals = service.calculateSummaryTotals(
+      [expense({ id: 'e-resolved', dueDate: '2026-09-01' })],
+      paycheckDates,
+      new Set(['e-resolved']),
+    );
+    expect(totals.overdueTotal).toBe(0);
+  });
+
+  test('the skip scenario counts the debt exactly once: resolved original out, Balance Due in', () => {
+    const totals = service.calculateSummaryTotals(
+      [
+        expense({ id: 'e-original', dueDate: '2026-09-20', amount: 15.99 }), // resolved, unpaid
+        expense({
+          id: 'e-balance-due',
+          dueDate: '2026-09-15', // Balance Due is due today
+          amount: 15.99,
+        }),
+      ],
+      paycheckDates,
+      new Set(['e-original']), // Balance Due id is deliberately NOT here
+    );
+    expect(totals.payThisWeekTotal).toBe(15.99);
+    expect(totals.overdueTotal).toBe(0);
+  });
+
+  test('omitting resolvedExpenseIds entirely behaves exactly as before', () => {
+    const row = expense({ id: 'e-resolved', dueDate: '2026-09-20' });
+    const totals = service.calculateSummaryTotals([row], paycheckDates);
+    expect(totals.payThisWeekTotal).toBe(100);
+  });
+});
