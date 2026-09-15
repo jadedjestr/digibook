@@ -52,6 +52,31 @@ describe('computeCycleStates', () => {
     expect(result[0].expense).toBe(realExpenses[0]);
   });
 
+  it('classifies a real row at a FUTURE due date as pending, not virtual', () => {
+    // A first occurrence materialized at creation (within the current pay
+    // period) exists as a real row before its due date. It must read as
+    // 'pending' - actionable, shown in the priority list - while later
+    // cycles remain 'virtual' forecasts. This is the calendar/priority-list
+    // consistency invariant.
+    const newTemplate = { ...baseTemplate, startDate: '2026-09-17' };
+    const realExpenses = [
+      { id: 'exp-1', dueDate: '2026-09-17', amount: 15.99, deletedAt: null },
+    ];
+    const result = computeCycleStates(newTemplate, {
+      realExpenses,
+      rangeStart: '2026-09-01',
+      rangeEnd: '2026-10-31',
+      estimatedAmount: 15.99,
+    });
+
+    const first = result.find(r => r.cycleDueDate === '2026-09-17');
+    const second = result.find(r => r.cycleDueDate === '2026-10-17');
+    expect(first.state).toBe('pending');
+    expect(first.expense).toBe(realExpenses[0]);
+    expect(second.state).toBe('virtual');
+    expect(second.expense).toBeNull();
+  });
+
   it('classifies a cycle with a resolution log entry as resolved, even at the same date as a real row', () => {
     const realExpenses = [
       { id: 'exp-1', dueDate: '2026-09-14', amount: 89.5, deletedAt: null },

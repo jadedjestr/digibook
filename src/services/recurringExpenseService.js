@@ -158,11 +158,15 @@ export async function getTemplatesDueForGeneration() {
  * compatibility with existing callers (e.g. AddExpensePanel's "first
  * occurrence is due now" check) - it's a thin wrapper over
  * dbHelpers.materializeCurrentCycle, which is idempotent and returns null
- * rather than creating anything when the cycle isn't due yet.
+ * rather than creating anything when the cycle isn't due yet. `options`
+ * passes straight through - see materializeCurrentCycle's allowFuture.
  */
-export async function generateNextOccurrence(templateId) {
+export async function generateNextOccurrence(templateId, options = {}) {
   try {
-    const generatedId = await dbHelpers.materializeCurrentCycle(templateId);
+    const generatedId = await dbHelpers.materializeCurrentCycle(
+      templateId,
+      options,
+    );
     if (generatedId) {
       logger.success(`Generated next occurrence for template ${templateId}`);
     }
@@ -171,6 +175,22 @@ export async function generateNextOccurrence(templateId) {
     logger.error('Error generating next occurrence:', error);
     throw error;
   }
+}
+
+/**
+ * The date through which a brand-new recurring template's first occurrence
+ * should be materialized immediately, so it shows up in the actionable
+ * priority list / hero totals rather than only as a virtual calendar
+ * forecast: through the next paycheck when pay cycle settings exist, and
+ * through today (the old due-date-only behaviour) when they don't.
+ *
+ * @param {string|null} nextPayDate - YYYY-MM-DD from calculateNextPayDates,
+ *   or null when paycheck settings are unconfigured
+ * @param {string} [today] - YYYY-MM-DD; defaults to DateUtils.today()
+ * @returns {string} YYYY-MM-DD materialize-through boundary
+ */
+export function firstOccurrenceMaterializeThrough(nextPayDate, today) {
+  return nextPayDate || today || DateUtils.today();
 }
 
 /**

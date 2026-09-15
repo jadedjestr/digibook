@@ -1660,10 +1660,17 @@ export const dbHelpers = {
    * unresolved cycle.
    *
    * @param {string} templateId
+   * @param {Object} [options]
+   * @param {boolean} [options.allowFuture=false] - materialize the current
+   *   cycle even when nextDueDate is still ahead of today. Callers opt in
+   *   when a first occurrence lands within the current pay period (e.g. a
+   *   bill just created in AddExpensePanel) so it is actionable in the
+   *   priority list and hero totals instead of existing only as a virtual
+   *   calendar forecast. Idempotency and every other guard are unchanged.
    * @returns {Promise<string|null>} the (existing or newly-created)
    *   expense id, or null if nothing is due yet
    */
-  async materializeCurrentCycle(templateId) {
+  async materializeCurrentCycle(templateId, { allowFuture = false } = {}) {
     const template = await db.recurringExpenseTemplates.get(templateId);
     if (!template || !template.isActive) {
       throw new Error('Template not found or inactive');
@@ -1701,7 +1708,13 @@ export const dbHelpers = {
     }
 
     if (!template.nextDueDate) return null;
-    if (template.nextDueDate > DateUtils.today()) return null; // not due yet
+
+    // Default: only materialize a cycle that is actually due. allowFuture
+    // opts in to materializing it ahead of its due date (see jsdoc above) -
+    // everything below (idempotency, cadence hands-off) is identical.
+    if (!allowFuture && template.nextDueDate > DateUtils.today()) {
+      return null; // not due yet
+    }
 
     const existing = await db.fixedExpenses
       .where('recurringTemplateId')
@@ -3187,7 +3200,12 @@ export const dbHelpers = {
         return;
       }
 
-      await this.materializeCurrentCycle(result.templateId);
+      // allowFuture: the card's due date is often still ahead of today, and
+      // the payment bill must be actionable (priority list, hero totals) as
+      // soon as the template exists, not only as a calendar forecast.
+      await this.materializeCurrentCycle(result.templateId, {
+        allowFuture: true,
+      });
       logger.success(
         `Created payment expense for card "${result.cardName}" (template ${result.templateId})`,
       );

@@ -15,7 +15,9 @@ const MAX_CYCLES = 5000;
  *    this cycle (Pay Full / Partial / Skip already happened).
  *  - 'pending':  a real fixedExpenses row exists for this cycle, not yet
  *    resolved. There is at most one of these per template at any time -
- *    it's always exactly "today's bill."
+ *    the current cycle's bill, which may be due later within the current
+ *    pay period (a first occurrence materialized at creation) rather than
+ *    strictly today.
  *  - 'virtual':  neither exists. Nothing is stored; the entry is computed
  *    live so a forecast (Calendar) or a gap check (the past_month nudge)
  *    can reason about a cycle that was never materialized.

@@ -3,9 +3,11 @@ import PropTypes from 'prop-types';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
+import { calculateNextPayDates } from '../constants/payFrequency';
 import { dbHelpers } from '../db/database-clean';
 import {
   createTemplate,
+  firstOccurrenceMaterializeThrough,
   generateNextOccurrence,
   getFrequencyLabel,
   FREQUENCY_OPTIONS,
@@ -13,6 +15,7 @@ import {
 import {
   useCategories,
   useFixedExpenses,
+  usePaycheckSettings,
   useReloadAccounts,
 } from '../stores/useAppStore';
 import { createPaymentSource } from '../types/paymentSource';
@@ -55,6 +58,11 @@ const AddExpensePanel = ({
   creditCards = [],
   onDataChange,
 }) => {
+  // Pay cycle anchor: decides whether a brand-new recurring template's
+  // first occurrence is materialized immediately (within the current pay
+  // period, so it's actionable in the priority list and hero totals) or
+  // left for the due-date sweep.
+  const paycheckSettings = usePaycheckSettings();
   const [formData, setFormData] = useState(emptyFormData);
   const [isCreditCardPayment, setIsCreditCardPayment] = useState(false);
   const [isRecurring, setIsRecurring] = useState(false);
@@ -369,12 +377,25 @@ const AddExpensePanel = ({
 
         const templateId = await createTemplate(templateData);
 
-        // If the first occurrence is due now, generate it via the unified path
+        // Materialize the first occurrence immediately when it lands within
+        // the current pay period, so it is actionable in the priority list
+        // and hero totals instead of existing only as a virtual calendar
+        // forecast. Without paycheck settings there is no pay period to
+        // anchor to - fall back to the old due-date-only behaviour.
         const today = DateUtils.today();
+        const materializeThrough = firstOccurrenceMaterializeThrough(
+          calculateNextPayDates(
+            paycheckSettings?.lastPaycheckDate,
+            paycheckSettings?.frequency,
+          ).nextPayDate,
+          today,
+        );
         let generatedExpenseId = null;
-        if (recurring.startDate && recurring.startDate <= today) {
+        if (recurring.startDate && recurring.startDate <= materializeThrough) {
           try {
-            generatedExpenseId = await generateNextOccurrence(templateId);
+            generatedExpenseId = await generateNextOccurrence(templateId, {
+              allowFuture: true,
+            });
             logger.success(
               `Recurring expense created. First occurrence added for ${recurring.startDate}.`,
             );
