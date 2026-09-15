@@ -48,7 +48,7 @@ MobileMenuButton.propTypes = {
 const MobileOverlay = ({ isMobileMenuOpen, setIsMobileMenuOpen }) =>
   isMobileMenuOpen && (
     <div
-      className='lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40'
+      className='lg:hidden fixed inset-0 bg-black/60 z-40'
       onClick={() => setIsMobileMenuOpen(false)}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -98,7 +98,7 @@ const SidebarContent = ({
               Liquid Cash
             </span>
             {defaultAccount.isDefault && (
-              <span className='text-xs badge-info px-2 py-1 rounded-full backdrop-blur-sm'>
+              <span className='text-xs badge-info px-2 py-1 rounded-full'>
                 Default
               </span>
             )}
@@ -130,7 +130,7 @@ const SidebarContent = ({
                 onClick={() => handlePageChange(item.id)}
                 className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 glass-focus ${
                   isActive
-                    ? 'bg-white/20 text-white shadow-lg backdrop-blur-sm'
+                    ? 'bg-white/20 text-white shadow-lg'
                     : 'text-secondary hover:bg-white/10 hover:text-white'
                 }`}
               >

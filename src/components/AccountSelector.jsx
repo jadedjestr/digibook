@@ -181,7 +181,7 @@ const AccountSelector = ({
         </button>
 
         {isOpen && (
-          <div className='absolute top-full left-0 right-0 z-[10001] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto backdrop-blur-md animate-in slide-in-from-top-2 duration-200'>
+          <div className='absolute top-full left-0 right-0 z-[10001] mt-2 bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-96 overflow-y-auto animate-in slide-in-from-top-2 duration-200'>
             {allAccounts.map(account => (
               <button
                 key={`${account.type}-${account.id}`}
@@ -326,7 +326,7 @@ const AccountSelector = ({
       {isOpen &&
         createPortal(
           <div
-            className='fixed z-[10001] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-64 overflow-y-auto backdrop-blur-md'
+            className='fixed z-[10001] bg-slate-900/95 border border-white/30 rounded-lg shadow-2xl max-h-64 overflow-y-auto'
             style={{
               top: dropdownPosition.top,
               left: dropdownPosition.left,

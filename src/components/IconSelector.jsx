@@ -74,7 +74,7 @@ const IconSelector = ({ value, onChange, categories }) => {
   // Modal component to be rendered in portal
   const Modal = () => (
     <div
-      className='fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4'
+      className='fixed inset-0 bg-black/60 flex items-center justify-center p-4'
       style={{ zIndex: 999999 }}
     >
       <div

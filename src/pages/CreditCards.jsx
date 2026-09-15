@@ -735,7 +735,7 @@ const CreditCards = ({
       {isAddModalOpen &&
         createPortal(
           <div
-            className='fixed bg-black/50 backdrop-blur-sm flex items-start justify-center z-50 overflow-y-auto py-8'
+            className='fixed bg-black/60 flex items-start justify-center z-50 overflow-y-auto py-8'
             style={{
               top: 0,
               left: 0,

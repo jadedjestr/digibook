@@ -78,7 +78,7 @@ const CategoryCard = ({
             {category.name}
           </h4>
           {category.isDefault && (
-            <span className='text-xs badge-info px-1.5 py-0.5 rounded-full backdrop-blur-sm flex-shrink-0'>
+            <span className='text-xs badge-info px-1.5 py-0.5 rounded-full flex-shrink-0'>
               Default
             </span>
           )}
@@ -91,7 +91,7 @@ const CategoryCard = ({
       </div>
 
       {/* Hover Actions */}
-      <div className='absolute inset-0 bg-black/50 backdrop-blur-sm rounded-lg opacity-0 hover:opacity-100 transition-opacity duration-200 flex items-center justify-center space-x-2'>
+      <div className='absolute inset-0 bg-black/60 rounded-lg opacity-0 hover:opacity-100 transition-opacity duration-200 flex items-center justify-center space-x-2'>
         {showDragHandle && dragHandleProps && (
           <span
             className='absolute top-2 right-2 p-1.5 cursor-grab active:cursor-grabbing rounded text-white/60 hover:text-white hover:bg-white/20'

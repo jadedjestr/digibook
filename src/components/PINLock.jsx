@@ -71,10 +71,10 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
   };
 
   return (
-    <div className='fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50'>
+    <div className='fixed inset-0 bg-black/60 flex items-center justify-center z-50'>
       <div className='glass-panel max-w-md w-full mx-4'>
         <div className='text-center mb-6'>
-          <div className='inline-flex items-center justify-center w-16 h-16 bg-white/10 rounded-full mb-4 backdrop-blur-sm'>
+          <div className='inline-flex items-center justify-center w-16 h-16 bg-white/10 rounded-full mb-4'>
             <Shield size={32} className='text-primary' />
           </div>
           <h2 className='text-2xl font-bold text-primary text-shadow-lg mb-2'>
