@@ -38,7 +38,8 @@ const CSV_MONEY_FIELDS = {
 // interestAccruedThrough, interestStateVersion, lastInterestOperation). It
 // is additive and optional: a version 9 file imports fine and its loans
 // simply stay untracked (interestAccruedThrough absent/null).
-const CURRENT_DATA_VERSION = 10;
+// 11 versions safe loan undo receipts; older clients must not rewrite them.
+const CURRENT_DATA_VERSION = 11;
 
 /**
  * Normalize version to number for comparison
@@ -720,23 +721,9 @@ class BackupManager {
    * Clean export data by removing null/undefined and empty values
    */
   async cleanExportData(data) {
-    try {
-      const cleaned = JSON.parse(
-        JSON.stringify(data, (key, value) => {
-          if (value === null || value === undefined) return undefined;
-          if (typeof value === 'string' && value.trim() === '')
-            return undefined;
-          if (Array.isArray(value) && value.length === 0) return undefined;
-          if (typeof value === 'object' && Object.keys(value).length === 0)
-            return undefined;
-          return value;
-        }),
-      );
-      return cleaned;
-    } catch (error) {
-      logger.error('Error cleaning export data:', error);
-      return data;
-    }
+    // Receipt snapshots distinguish null/missing fields; financial backups must
+    // round-trip them rather than pruning supposedly empty values.
+    return JSON.parse(JSON.stringify(data));
   }
 
   /**
@@ -942,6 +929,9 @@ export const fixCommonExpenseIssues = expense => {
  * @returns {Object} Validated and fixed data
  */
 export const validateImportedDataV4 = importedData => {
+  // New receipts capture exact source rows. Heuristic legacy expense repairs
+  // would change those rows behind the receipt and invalidate safe undo.
+  if (Number(importedData.version) >= 11) return { ...importedData };
   const validatedData = { ...importedData };
 
   // Validate and fix expenses

@@ -13,8 +13,10 @@ import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
 import { useFixedExpenses } from '../stores/useAppStore';
 import { formatCurrency } from '../utils/accountUtils';
+import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
+import { parseMoneyInput } from '../utils/validation';
 
 const getDaysUntilDue = dueDate => {
   if (!dueDate) return null;
@@ -41,6 +43,7 @@ const emptyFormData = {
   unpaidInterest: '',
   interestAccruedThrough: '',
   confirmExcludesInterest: false,
+  correctFinancialSnapshot: false,
 };
 
 const Loans = ({ onDataChange, accounts = [] }) => {
@@ -161,8 +164,8 @@ const Loans = ({ onDataChange, accounts = [] }) => {
   // the same formula the materialization path uses, so what the user sees
   // while filling out the form matches what actually gets billed.
   const paymentPreview = useMemo(() => {
-    const balance = parseFloat(formData.balance);
-    const interestRate = parseFloat(formData.interestRate);
+    const balance = parseMoneyInput(formData.balance).value;
+    const interestRate = parseMoneyInput(formData.interestRate).value;
     if (
       !Number.isFinite(balance) ||
       !Number.isFinite(interestRate) ||
@@ -190,15 +193,21 @@ const Loans = ({ onDataChange, accounts = [] }) => {
     if (!formData.name.trim()) {
       newErrors.name = 'Name is required';
     }
-    if (formData.balance === '' || parseFloat(formData.balance) < 0) {
+    if (
+      formData.balance === '' ||
+      parseMoneyInput(formData.balance).value < 0
+    ) {
       newErrors.balance = 'Balance must be a positive number';
     }
-    if (formData.interestRate === '' || parseFloat(formData.interestRate) < 0) {
+    if (
+      formData.interestRate === '' ||
+      parseMoneyInput(formData.interestRate).value < 0
+    ) {
       newErrors.interestRate = 'Interest rate must be a positive number';
     }
     if (
       formData.principalAmount !== '' &&
-      parseFloat(formData.principalAmount) < 0
+      parseMoneyInput(formData.principalAmount).value < 0
     ) {
       newErrors.principalAmount =
         'Original principal must be a positive number';
@@ -212,26 +221,31 @@ const Loans = ({ onDataChange, accounts = [] }) => {
       newErrors.targetPayoffDate = paymentPreview.message;
     }
 
-    const hasUnpaidInterest = formData.unpaidInterest !== '';
-    const hasAccruedThrough = formData.interestAccruedThrough !== '';
+    const preservingFinancialState =
+      editingLoan?.interestAccruedThrough && !formData.correctFinancialSnapshot;
+    const hasUnpaidInterest =
+      !preservingFinancialState && formData.unpaidInterest !== '';
+    const hasAccruedThrough =
+      !preservingFinancialState && formData.interestAccruedThrough !== '';
     if (hasUnpaidInterest !== hasAccruedThrough) {
       newErrors.interestAccruedThrough =
         'Fill in both unpaid interest and the as-of date, or leave both blank';
     } else if (hasAccruedThrough) {
-      const unpaidInterest = parseFloat(formData.unpaidInterest);
+      const unpaidInterest = parseMoneyInput(formData.unpaidInterest).value;
       if (!Number.isFinite(unpaidInterest) || unpaidInterest < 0) {
         newErrors.unpaidInterest = 'Unpaid interest must be zero or more';
       }
-      if (
-        formData.interestAccruedThrough > new Date().toISOString().slice(0, 10)
-      ) {
+      if (formData.interestAccruedThrough > DateUtils.today()) {
         newErrors.interestAccruedThrough = 'As-of date cannot be in the future';
       }
       if (!formData.confirmExcludesInterest) {
         newErrors.confirmExcludesInterest =
           'Confirm the balance above excludes unpaid interest';
       }
-    } else if (editingLoan?.interestAccruedThrough) {
+    } else if (
+      editingLoan?.interestAccruedThrough &&
+      !preservingFinancialState
+    ) {
       // Tracking, once on, isn't silently turned off by clearing the
       // form - disabling it is a separate, undefined action in v1.
       newErrors.interestAccruedThrough =
@@ -260,12 +274,12 @@ const Loans = ({ onDataChange, accounts = [] }) => {
       const loanData = {
         name: formData.name,
         lender: formData.lender || '',
-        balance: parseFloat(formData.balance),
+        balance: parseMoneyInput(formData.balance).value,
         principalAmount:
           formData.principalAmount !== ''
-            ? parseFloat(formData.principalAmount)
+            ? parseMoneyInput(formData.principalAmount).value
             : null,
-        interestRate: parseFloat(formData.interestRate),
+        interestRate: parseMoneyInput(formData.interestRate).value,
         dueDate: formData.dueDate,
         targetPayoffDate: formData.targetPayoffDate,
       };
@@ -274,11 +288,38 @@ const Loans = ({ onDataChange, accounts = [] }) => {
         formData.unpaidInterest !== '' &&
         formData.interestAccruedThrough !== ''
       ) {
-        loanData.unpaidInterest = parseFloat(formData.unpaidInterest);
+        loanData.unpaidInterest = parseMoneyInput(
+          formData.unpaidInterest,
+        ).value;
         loanData.interestAccruedThrough = formData.interestAccruedThrough;
       }
 
       if (editingLoan) {
+        if (
+          editingLoan.interestAccruedThrough &&
+          !formData.correctFinancialSnapshot
+        ) {
+          for (const key of [
+            'balance',
+            'interestRate',
+            'unpaidInterest',
+            'interestAccruedThrough',
+          ])
+            delete loanData[key];
+        }
+        const snapshotKeys = [
+          'balance',
+          'interestRate',
+          'unpaidInterest',
+          'interestAccruedThrough',
+        ];
+        for (const key of Object.keys(loanData)) {
+          if (
+            loanData[key] === editingLoan[key] &&
+            !(formData.correctFinancialSnapshot && snapshotKeys.includes(key))
+          )
+            delete loanData[key];
+        }
         await dbHelpers.updateLoan(
           editingLoan.id,
           loanData,
@@ -491,10 +532,11 @@ const Loans = ({ onDataChange, accounts = [] }) => {
         fundingAccountId != null ? String(fundingAccountId) : '',
       unpaidInterest:
         loan.interestAccruedThrough != null
-          ? (loan.unpaidInterest ?? 0).toString()
+          ? Math.max(0, loan.unpaidInterest ?? 0).toFixed(2)
           : '',
       interestAccruedThrough: loan.interestAccruedThrough || '',
       confirmExcludesInterest: Boolean(loan.interestAccruedThrough),
+      correctFinancialSnapshot: false,
     });
     setInitialFundingAccountId(fundingAccountId ?? null);
     setIsAddModalOpen(true);
@@ -717,6 +759,10 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   </label>
                   <input
                     id='loan-balance'
+                    disabled={
+                      Boolean(editingLoan?.interestAccruedThrough) &&
+                      !formData.correctFinancialSnapshot
+                    }
                     type='number'
                     inputMode='decimal'
                     step='0.01'
@@ -732,6 +778,30 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   )}
                 </div>
 
+                {editingLoan?.interestAccruedThrough && (
+                  <label className='block text-sm text-ink-soft'>
+                    <input
+                      type='checkbox'
+                      checked={formData.correctFinancialSnapshot}
+                      onChange={e => {
+                        const enabled = e.target.checked;
+                        const projection = dbHelpers.computeLoanInterest(
+                          editingLoan,
+                          DateUtils.today(),
+                        );
+                        setFormData(prev => ({
+                          ...prev,
+                          correctFinancialSnapshot: enabled,
+                          unpaidInterest:
+                            projection.collectibleInterest.toFixed(2),
+                          interestAccruedThrough: DateUtils.today(),
+                        }));
+                      }}
+                    />{' '}
+                    Correct financial snapshot (clears payment undo). Confirm
+                    principal, interest, rate and as-of date together.
+                  </label>
+                )}
                 <div className='glass-panel p-4'>
                   <p className='text-sm font-medium text-white mb-1'>
                     Real interest tracking (optional)
@@ -750,6 +820,10 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   </label>
                   <input
                     id='loan-unpaid-interest'
+                    disabled={
+                      Boolean(editingLoan?.interestAccruedThrough) &&
+                      !formData.correctFinancialSnapshot
+                    }
                     type='number'
                     inputMode='decimal'
                     step='0.01'
@@ -776,6 +850,10 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   <div style={{ overflow: 'hidden', width: '100%' }}>
                     <input
                       id='loan-interest-as-of'
+                      disabled={
+                        Boolean(editingLoan?.interestAccruedThrough) &&
+                        !formData.correctFinancialSnapshot
+                      }
                       type='date'
                       value={formData.interestAccruedThrough}
                       onChange={e =>
@@ -858,6 +936,10 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   </label>
                   <input
                     id='loan-interest-rate'
+                    disabled={
+                      Boolean(editingLoan?.interestAccruedThrough) &&
+                      !formData.correctFinancialSnapshot
+                    }
                     type='number'
                     inputMode='decimal'
                     step='0.01'

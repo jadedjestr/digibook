@@ -4,6 +4,7 @@ import { dbHelpers } from '../db/database-clean';
 import { createPaymentService } from '../services/paymentService';
 import {
   useAccounts,
+  useLoans,
   useAddExpense,
   useCreditCards,
   useFixedExpenses,
@@ -41,6 +42,7 @@ import { notify } from '../utils/notifications';
 export const useExpenseOperations = () => {
   const fixedExpenses = useFixedExpenses();
   const accounts = useAccounts();
+  const loans = useLoans();
   const creditCards = useCreditCards();
   const updateExpenseInStore = useUpdateExpense();
   const _addExpenseToStore = useAddExpense();
@@ -59,7 +61,7 @@ export const useExpenseOperations = () => {
    * This is the main update function - updateExpense delegates to this
    */
   const updateExpenseV4 = useCallback(
-    async (expenseId, updates, showNotification = true) => {
+    async (expenseId, updates, showNotification = true, loanRequest) => {
       try {
         const currentExpense = await dbHelpers.getFixedExpenseV4(expenseId);
         if (!currentExpense) {
@@ -112,8 +114,12 @@ export const useExpenseOperations = () => {
           validateCreditCardPayment(mergedExpense);
         }
 
-        // Optimistic update
-        updateExpenseInStore(expenseId, updatesToApply);
+        const trackedLoan = loans.find(
+          loan =>
+            loan.id === currentExpense.targetLoanId &&
+            loan.interestAccruedThrough,
+        );
+        if (!trackedLoan) updateExpenseInStore(expenseId, updatesToApply);
 
         // Handle paidAmount changes atomically (expense + balances).
         if (updatesToApply.paidAmount !== undefined) {
@@ -126,6 +132,13 @@ export const useExpenseOperations = () => {
           await dbHelpers.applyExpensePaymentChangeAtomic(
             expenseId,
             updatesToApply,
+            {
+              loanRequest:
+                loanRequest ??
+                (trackedLoan
+                  ? { expectedVersion: trackedLoan.interestStateVersion || 0 }
+                  : undefined),
+            },
           );
           await Promise.all([reloadAccounts(), reloadExpenses()]);
         } else {
@@ -150,7 +163,7 @@ export const useExpenseOperations = () => {
         logger.error('Error updating expense:', error);
 
         // Revert optimistic update
-        await reloadExpenses();
+        await Promise.all([reloadAccounts(), reloadExpenses()]);
         if (showNotification) {
           notify.error(`Failed to update expense: ${error.message}`);
         }
@@ -159,6 +172,7 @@ export const useExpenseOperations = () => {
     },
     [
       accounts,
+      loans,
       creditCards,
       updateExpenseInStore,
       reloadExpenses,
@@ -180,7 +194,7 @@ export const useExpenseOperations = () => {
   const resolveCycle = useCallback(
     async (
       expenseId,
-      { paidAmount, shortfallOutcome, pauseTemplateOnForgive },
+      { paidAmount, shortfallOutcome, pauseTemplateOnForgive, loanRequest },
       showNotification = true,
     ) => {
       try {
@@ -191,6 +205,7 @@ export const useExpenseOperations = () => {
           paidAmount,
           shortfallOutcome,
           pauseTemplateOnForgive,
+          loanRequest,
         });
 
         // The template's cadence just advanced and a Balance Due may have
@@ -206,7 +221,7 @@ export const useExpenseOperations = () => {
         logger.error('Error resolving cycle:', error);
 
         // Revert optimistic update
-        await reloadExpenses();
+        await Promise.all([reloadAccounts(), reloadExpenses()]);
         if (showNotification) {
           notify.error(`Failed to update payment: ${error.message}`);
         }

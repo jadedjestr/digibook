@@ -1,11 +1,13 @@
 import { Edit, Trash2, AlertTriangle } from 'lucide-react';
 import PropTypes from 'prop-types';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { DateUtils } from '../utils/dateUtils';
+import { generateId } from '../utils/generateId';
 import { formatLoanBalance, getLoanPayoffProgress } from '../utils/loanUtils';
 import { notify } from '../utils/notifications';
+import { parseMoneyInput } from '../utils/validation';
 
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
@@ -25,6 +27,9 @@ const EnhancedLoanCard = ({
   const [isCorrecting, setIsCorrecting] = useState(false);
   const [correctionAmount, setCorrectionAmount] = useState('');
   const [isBusy, setIsBusy] = useState(false);
+  const [shortfallOutcome, setShortfallOutcome] = useState('');
+  const correctionRequest = useRef(null);
+  const [correctionTarget, setCorrectionTarget] = useState(null);
 
   const balanceInfo = formatLoanBalance(loan.balance);
   const progress = getLoanPayoffProgress(loan);
@@ -38,7 +43,9 @@ const EnhancedLoanCard = ({
     return dbHelpers.computeLoanInterest(loan, DateUtils.today());
   }, [isTracked, loan]);
   const undoableOperation =
-    isTracked && loan.lastInterestOperation?.status === 'active'
+    isTracked &&
+    loan.lastInterestOperation?.version === 2 &&
+    loan.lastInterestOperation?.status === 'active'
       ? loan.lastInterestOperation
       : null;
 
@@ -49,6 +56,7 @@ const EnhancedLoanCard = ({
       await dbHelpers.undoLastLoanInterestOperation(
         loan.id,
         undoableOperation.operationId,
+        { expectedVersion: loan.interestStateVersion },
       );
       notify.success('Payment undone');
       onInterestOperationComplete?.();
@@ -64,23 +72,44 @@ const EnhancedLoanCard = ({
     setCorrectionAmount(
       Number.isFinite(cashAmount) ? cashAmount.toFixed(2) : '',
     );
+    correctionRequest.current = null;
+    setCorrectionTarget({
+      receipt: undoableOperation,
+      version: loan.interestStateVersion,
+    });
+    setShortfallOutcome('');
     setIsCorrecting(true);
   };
 
   const handleSubmitCorrection = async e => {
     e.preventDefault();
-    if (!undoableOperation) return;
-    const value = parseFloat(correctionAmount);
-    if (!Number.isFinite(value) || value < 0) {
+    if (!correctionTarget) return;
+    const target = correctionTarget.receipt;
+    const parsed = parseMoneyInput(correctionAmount);
+    const value = parsed.value;
+    if (!parsed.ok || value < 0) {
       notify.error('Enter a valid amount');
       return;
     }
+    const signature = JSON.stringify([
+      value,
+      shortfallOutcome,
+      target.operationId,
+    ]);
+    if (correctionRequest.current?.signature !== signature)
+      correctionRequest.current = { signature, id: generateId() };
     setIsBusy(true);
     try {
       await dbHelpers.correctLatestLoanPayment(
         loan.id,
-        undoableOperation.affectedExpenseId,
+        target.affectedExpenseId,
         value,
+        {
+          operationId: target.operationId,
+          expectedVersion: correctionTarget.version,
+          requestId: correctionRequest.current.id,
+          shortfallOutcome: shortfallOutcome || null,
+        },
       );
       notify.success('Payment corrected');
       setIsCorrecting(false);
@@ -328,6 +357,15 @@ const EnhancedLoanCard = ({
         )}
       </div>
 
+      {isTracked &&
+        loan.lastInterestOperation &&
+        loan.lastInterestOperation.version !== 2 && (
+          <p className='text-sm text-ink-soft'>
+            This older payment has no safe undo snapshot. Its balances are
+            preserved; use a financial snapshot correction if needed.
+          </p>
+        )}
+
       {/* Interest tracking: undo / correct the latest payment */}
       {undoableOperation && !isCorrecting && (
         <div className='flex gap-2 mt-2'>
@@ -352,7 +390,7 @@ const EnhancedLoanCard = ({
       {undoableOperation && isCorrecting && (
         <form
           onSubmit={handleSubmitCorrection}
-          className='flex items-center gap-2 mt-2'
+          className='flex flex-wrap items-center gap-2 mt-2'
         >
           <label htmlFor={`loan-correct-${loan.id}`} className='sr-only'>
             Corrected payment amount
@@ -367,6 +405,28 @@ const EnhancedLoanCard = ({
             onChange={e => setCorrectionAmount(e.target.value)}
             className='glass-input rounded-lg px-2 py-1 text-sm w-28'
           />
+          {correctionTarget?.receipt.cycle &&
+            Number(correctionAmount) > 0 &&
+            correctionTarget.receipt.previousExpensePaidAmount +
+              Number(correctionAmount) <
+              correctionTarget.receipt.expenseAfter.amount && (
+              <label className='text-sm text-ink-soft'>
+                Remaining scheduled amount
+                <select
+                  aria-label='Corrected shortfall'
+                  value={shortfallOutcome}
+                  required
+                  onChange={e => setShortfallOutcome(e.target.value)}
+                  className='glass-input'
+                >
+                  <option value=''>Choose a reminder</option>
+                  <option value='deferred'>Create catch-up bill</option>
+                  <option value='forgiven'>
+                    No catch-up bill (debt remains)
+                  </option>
+                </select>
+              </label>
+            )}
           <button
             type='submit'
             disabled={isBusy}
@@ -408,8 +468,13 @@ EnhancedLoanCard.propTypes = {
     dueDate: PropTypes.string,
     targetPayoffDate: PropTypes.string,
     unpaidInterest: PropTypes.number,
+    interestStateVersion: PropTypes.number,
     interestAccruedThrough: PropTypes.string,
     lastInterestOperation: PropTypes.shape({
+      version: PropTypes.number,
+      cycle: PropTypes.object,
+      expenseAfter: PropTypes.object,
+      previousExpensePaidAmount: PropTypes.number,
       operationId: PropTypes.string,
       affectedExpenseId: PropTypes.oneOfType([
         PropTypes.string,

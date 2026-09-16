@@ -677,63 +677,52 @@ optionally opt into real-interest-tracking — filling in `unpaidInterest` and
 amount). An untracked loan (`interestAccruedThrough: null`, the default) is
 completely unaffected by anything in this subsection.
 
-**The math** lives in one pure, module-private function,
-`computeLoanInterest(loan, asOfIso, payment?)` in `database-clean.js`,
-exposed read-only as `dbHelpers.computeLoanInterest` for the UI's live
-previews (a loan card's Unpaid Interest/Total Owed stats, the payment
-confirmation's interest/principal preview line, the payoff calculator's
-unpaid-interest note) — the same function computes both the projection and,
-with a `payment` argument, the actual posted split, so they can never
-disagree. Interest accrues daily-simple, actual civil calendar days
-(`DateUtils.daysBetween`) over a fixed 365-day year — a leap day still counts
-as one elapsed day, the denominator never changes to 366. `unpaidInterest` is
-never rounded while it's just accruing; rounding happens only at display and
-at cash allocation (`roundMoney`, a small helper with a fixed floating-point
-tolerance). On a payment, interest is paid first, then principal, and the
-leftover sub-cent fraction (`interestAfter`) is carried forward *signed* —
-not clamped to zero — so cent-precision cash paid against an exact raw
-interest amount never silently drifts. Only a full payoff clears that
-residual, never real unpaid interest.
+**The math** lives in `src/utils/loanInterest.js`, exposed read-only as
+`dbHelpers.computeLoanInterest`. Validated calendar dates become UTC day
+ordinals: DST cannot add a day, and invalid/backdated dates are rejected.
+The model is daily simple interest with a fixed 365-day denominator. Dollar
+storage remains numeric; cash allocations round to cents while raw interest
+keeps its signed sub-cent remainder. Full payoff clears only that remainder.
 
-**Payment posting.** Both payment routes that can pay a loan —
-`resolveCycle` (recurring cycles) and `applyExpensePaymentChangeAtomic`
-(one-off and Balance Due payments) — funnel through the same module-private
-`applyPaymentDelta`, which already branches on `category === 'Loan Payment'`.
-That branch itself now splits again on whether the target loan is tracked:
-untracked keeps the original flat `balance -= paymentDifference` exactly as
-before V-next; tracked instead calls `computeLoanInterest` with the payment
-amount, writes the resulting principal/interest/accrual-date split, bumps
-`interestStateVersion`, and writes a single undo receipt to
-`lastInterestOperation`. A tracked loan never accepts a raw negative
-`paidAmount` edit through this path — reducing an already-recorded payment
-only happens through `dbHelpers.correctLatestLoanPayment` (below), which
-knows how to unwind a split payment correctly; a flat negative-delta reversal
-would overshoot principal by the interest portion.
+**Posting and receipts.** Both recurring and one-off payments use
+`applyPaymentDelta`. Tracked payments have a unique operation ID, expected
+loan version, original effective date, and a version-2 receipt on
+`lastInterestOperation`. Recurring receipts include before/after template,
+resolution and catch-up bill snapshots. The posted bill is marked
+`loanInterestTracked` so generic edit paths cannot reassign recorded cash.
+Legacy receipts remain readable but are not eligible for undo/correction.
+No Dexie schema/index change or new ledger table is required.
 
-**Undo and correction.** `dbHelpers.undoLastLoanInterestOperation(loanId,
-operationId)` restores principal, unpaid interest, and the accrual date to
-the receipt's *before* snapshot together, refunds the exact cash amount to
-the funding account's *current* balance (never its historical one, so
-unrelated spending since is preserved), and marks the receipt `undone`
-rather than discarding it — a retried undo request then returns "already
-undone" instead of refunding twice. Only the latest operation is ever
-undoable: a later payment or a direct correction invalidates it via the
-`interestStateVersion` check. The base feature's own recurring-cycle undo,
-`undoLastResolution` (§5.9-adjacent, template-scoped, pre-dates interest
-tracking), delegates to this same function for a tracked loan's
-balance/interest side rather than running its own flat-delta reversal,
-so one undo mechanism covers both routes without duplicating the interest
-math. `dbHelpers.correctLatestLoanPayment(loanId, expenseId, newPaidAmount)`
-is "the last payment was actually $X" — internally an undo followed by a
-fresh post of the corrected amount, in one transaction, never exposing an
-undone-but-not-yet-replaced intermediate state.
+**Undo and correction.** Both loan-card undo and `undoLastResolution` use
+`restoreLoanOperation` inside their write transaction. It checks the operation,
+loan version/state and affected records, refunds cash against the account's
+current balance, restores the bill and recurring schedule, reverses the
+resolution, and retires an unchanged catch-up bill. Missing/deleted accounts,
+changed dependencies or a later cycle bill block the operation. Each required
+update must affect one record or the transaction aborts. Repeated undo returns
+its prior result without another refund.
 
-A **direct correction** — editing `balance`, `interestRate`,
-`unpaidInterest`, or `interestAccruedThrough` on a tracked loan through
-`updateLoan` — is treated as a fresh snapshot, not a recalculation of
-history: it bumps `interestStateVersion` and clears `lastInterestOperation`,
-invalidating any pending undo, the same way a resolution-log-based undo is
-invalidated by any change to what it would restore.
+`correctLatestLoanPayment(loanId, expenseId, correctedCashAmount, options)`
+restores and replaces the latest payment in one transaction, retaining its
+original effective date and earlier cumulative paid baseline. Zero means undo,
+not skip. A recurring shortfall requires an explicit catch-up/no-reminder
+choice; neither choice forgives debt. Request IDs and expected versions guard
+retries and stale UI actions. Older requests are rejected after newer activity;
+there is no unbounded idempotency history or multi-step undo.
+
+**Editing.** Metadata patches preserve raw interest and undo eligibility.
+The Edit Loan form requires an explicit financial-snapshot mode to change
+principal, interest, rate and as-of date together. This correction increments
+the loan version and clears the receipt; it does not retroactively recompute
+past payments. Display-rounded fields never replace untouched raw interest.
+
+**Portability.** Exports read all financial tables in one read transaction.
+Format 11 preserves nulls and nested receipt snapshots; native imports bypass
+legacy heuristic expense repair. Both import and backup restore validate loan
+state and receipt calculations/references before clearing data. Tracked loans
+and linked records cannot be partially replaced from CSV. Old loans without
+an accrual date remain untracked. The obsolete, uncalled `updateFixedExpense`
+helper was removed; supported edits use `updateFixedExpenseV4`.
 
 ### 5.4 DataManager
 
@@ -1575,10 +1564,11 @@ decoratively stops carrying meaning where it matters.
 
 `CURRENT_DATA_VERSION` in `src/services/dataManager.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **10**
+looks like, the other what the database looks like — and it is currently **11**
 (5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was; 7 → 8 when
 `recurringResolutionLog` was added; 8 → 9 when `loans` was added; 9 → 10 when
-`loans` gained real-interest-tracking fields — see §5.3.1).
+`loans` gained real-interest-tracking fields; 10 → 11 for safe version-2
+undo receipts and lossless snapshot backups — see §5.3.1).
 
 Because transfer between devices is by file rather than sync, this is a
 product-level compatibility requirement, not an implementation detail: a file

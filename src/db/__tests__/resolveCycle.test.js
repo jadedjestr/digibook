@@ -636,7 +636,8 @@ describe('dbHelpers.resolveCycle', () => {
       expect(loan.unpaidInterest).toBeCloseTo(0, 6);
       expect(loan.interestStateVersion).toBe(1);
       expect(loan.lastInterestOperation).toMatchObject({
-        operationId: 'exp-loan-1',
+        operationId: expect.any(String),
+        affectedExpenseId: 'exp-loan-1',
         status: 'active',
       });
     });

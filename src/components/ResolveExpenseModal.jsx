@@ -1,11 +1,12 @@
 import PropTypes from 'prop-types';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { useLoans } from '../stores/useAppStore';
 import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
+import { generateId } from '../utils/generateId';
 import { notify } from '../utils/notifications';
 import { validatePaidAmount } from '../utils/validation';
 
@@ -44,6 +45,10 @@ const SHORTFALL_EPSILON = 0.004;
 const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
   const { updateExpenseV4, resolveCycle } = useExpenseOperations();
   const loans = useLoans();
+  const paymentRequest = useRef(null);
+  useEffect(() => {
+    paymentRequest.current = null;
+  }, [isOpen, expense?.id]);
 
   const amountDue = expense
     ? (expense.amount ?? 0) - (expense.paidAmount ?? 0)
@@ -137,13 +142,31 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
       // before posting - identical inputs to what the payment-posting
       // path itself will use, so this is exactly what's about to happen,
       // not a guess.
-      const split = previewSplit(paidAmountValue);
+      const delta = paidAmountValue - (expense.paidAmount || 0);
+      const split = previewSplit(delta);
+      let loanRequest;
+      if (trackedLoan) {
+        const signature = JSON.stringify([paidAmountValue, outcomeOptions]);
+        if (paymentRequest.current?.signature !== signature) {
+          paymentRequest.current = {
+            signature,
+            operationId: generateId(),
+            expectedVersion: trackedLoan.interestStateVersion || 0,
+          };
+        }
+        loanRequest = paymentRequest.current;
+      }
 
       if (isRecurring) {
-        await resolveCycle(expense.id, {
-          paidAmount: paidAmountValue,
-          ...outcomeOptions,
-        });
+        await resolveCycle(
+          expense.id,
+          {
+            paidAmount: paidAmountValue,
+            ...outcomeOptions,
+            ...(loanRequest ? { loanRequest } : {}),
+          },
+          ...(loanRequest ? [false] : []),
+        );
       } else {
         const status =
           paidAmountValue >= (expense.amount ?? 0) ? 'paid' : 'pending';
@@ -151,14 +174,18 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
           expense.id,
           { paidAmount: paidAmountValue, status },
           false,
+          ...(loanRequest ? [loanRequest] : []),
         );
       }
       if (split && split.principalPaid === 0) {
         notify.info('This payment did not reduce principal');
       }
       onClose();
-    } catch {
-      // Both hooks already show their own error toast - keep the modal
+    } catch (error) {
+      if (trackedLoan || !isRecurring)
+        notify.error(error.message || 'Payment could not be saved');
+
+      // Keep the modal
       // open so the user can see it and retry rather than losing their
       // place.
     } finally {
@@ -312,7 +339,9 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
             />
             {trackedLoan &&
               (() => {
-                const split = previewSplit(parseFloat(paidAmount));
+                const split = previewSplit(
+                  Number(paidAmount) - (expense.paidAmount || 0),
+                );
                 if (!split) return null;
                 return (
                   <p className='text-xs text-white/50 mb-3'>

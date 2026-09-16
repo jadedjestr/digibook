@@ -15,6 +15,13 @@ import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
 import { dataIntegrity } from '../utils/crypto';
 import { DateUtils } from '../utils/dateUtils';
 import { generateId } from '../utils/generateId';
+import {
+  civilDay,
+  computeLoanInterest,
+  roundMoney,
+  validateInterestState,
+  validatePortableLoans,
+} from '../utils/loanInterest';
 import { logger } from '../utils/logger';
 import { calculateNextDueDate } from '../utils/recurrenceMath';
 import { parseMoneyInput, validatePaidAmount } from '../utils/validation';
@@ -671,7 +678,7 @@ async function applyPaymentDelta(
     }
 
     const fundingAccount = await db.accounts.get(sanitizedExpense.accountId);
-    if (!fundingAccount) {
+    if (!fundingAccount || fundingAccount.deletedAt) {
       throw new Error(
         `Funding account not found: ${sanitizedExpense.accountId}`,
       );
@@ -719,7 +726,7 @@ async function applyPaymentDelta(
     }
 
     const fundingAccount = await db.accounts.get(sanitizedExpense.accountId);
-    if (!fundingAccount) {
+    if (!fundingAccount || fundingAccount.deletedAt) {
       throw new Error(
         `Funding account not found: ${sanitizedExpense.accountId}`,
       );
@@ -739,6 +746,13 @@ async function applyPaymentDelta(
     // correctLatestLoanPayment) - never by a raw negative paidAmount edit
     // reaching this function, which would have no way to reverse the
     // interest/principal split correctly.
+    if (
+      tracked &&
+      (!Number.isFinite(fundingAccount.currentBalance) ||
+        sanitizedExpense.creditCardId ||
+        sanitizedExpense.targetCreditCardId)
+    )
+      throw new Error('Invalid loan funding source');
     if (tracked && paymentDifference < 0) {
       throw new Error(
         'Cannot reduce a tracked loan payment directly; use "Correct latest payment" or Undo instead',
@@ -757,16 +771,29 @@ async function applyPaymentDelta(
         updatedAt: ts,
       };
     } else {
-      const today = DateUtils.today();
+      const today = priorState.request?.effectiveDate ?? DateUtils.today();
       const before = {
+        interestRate: targetLoan.interestRate,
         balance: Number(targetLoan.balance || 0),
         unpaidInterest: Number(targetLoan.unpaidInterest || 0),
         interestAccruedThrough: targetLoan.interestAccruedThrough,
       };
-      const posted = computeLoanInterest(targetLoan, today, paymentDifference);
+      const posted =
+        paymentDifference === 0
+          ? {
+              principalAfter: before.balance,
+              interestAfter: before.unpaidInterest,
+              interestPaid: 0,
+              principalPaid: 0,
+            }
+          : computeLoanInterest(targetLoan, today, paymentDifference);
 
       const receipt = {
-        operationId: expenseId,
+        version: 2,
+        operationId: priorState.request?.operationId ?? generateId(),
+        requestSignature: priorState.request?.signature ?? '',
+        effectiveDate: today,
+        versionAfter: (targetLoan.interestStateVersion || 0) + 1,
         interestStateVersionAtOperation: targetLoan.interestStateVersion || 0,
         affectedExpenseId: expenseId,
         affectedAccountId: fundingAccount.id,
@@ -777,9 +804,11 @@ async function applyPaymentDelta(
         previousExpenseStatus: priorState.previousStatus ?? 'pending',
         before,
         after: {
+          interestRate: targetLoan.interestRate,
           balance: posted.principalAfter,
           unpaidInterest: posted.interestAfter,
-          interestAccruedThrough: today,
+          interestAccruedThrough:
+            paymentDifference === 0 ? before.interestAccruedThrough : today,
         },
         status: 'active',
         createdAt: ts,
@@ -788,7 +817,8 @@ async function applyPaymentDelta(
       loanUpdate = {
         balance: posted.principalAfter,
         unpaidInterest: posted.interestAfter,
-        interestAccruedThrough: today,
+        interestAccruedThrough:
+          paymentDifference === 0 ? before.interestAccruedThrough : today,
         interestStateVersion: (targetLoan.interestStateVersion || 0) + 1,
         lastInterestOperation: receipt,
         updatedAt: ts,
@@ -800,11 +830,11 @@ async function applyPaymentDelta(
       };
     }
 
-    await db.accounts.update(fundingAccount.id, {
+    await updateRequired(db.accounts, fundingAccount.id, {
       currentBalance: newAccountBalance,
       updatedAt: ts,
     });
-    await db.loans.update(targetLoan.id, loanUpdate);
+    await updateRequired(db.loans, targetLoan.id, loanUpdate);
 
     try {
       await addAuditLogEntry('PAYMENT', 'loanPayment', expenseId, {
@@ -921,108 +951,6 @@ function calculateRequiredLoanPayment(
 }
 
 /**
- * Round-half-up to the cent, with a narrow floating-point tolerance so
- * representable noise (e.g. 0.1 + 0.2) doesn't flip a rounding decision
- * at a cent boundary. The one place every loan-interest dollar amount
- * gets rounded - interest itself is never rounded while it's accruing.
- */
-function roundMoney(amount) {
-  // A fixed absolute tolerance, well above float noise from chained
-  // arithmetic (typically ~1e-10 to 1e-13) and well below a hundredth of
-  // a cent, so a value that's really AT a half-cent boundary rounds
-  // predictably instead of falling the wrong way on representable noise
-  // (e.g. 0.145 landing as 0.14499999999999).
-  const TOLERANCE = 1e-9;
-  const nudge = amount >= 0 ? TOLERANCE : -TOLERANCE;
-  return Math.round((amount + nudge) * 100) / 100;
-}
-
-/**
- * Interest accrual and, when `payment` is given, payment allocation for a
- * loan with real-interest tracking on (loan.interestAccruedThrough is a
- * valid date). Pure - no DB access. Interest accrues over actual elapsed
- * civil calendar days (DateUtils.daysBetween, the same day-counting
- * convention used everywhere else in this file) divided by a fixed 365,
- * regardless of leap years - a leap day inside the interval still counts
- * as one elapsed day, the denominator never changes to 366. Same-day
- * calls accrue no new interest.
- *
- * `unpaidInterest` itself is never rounded while it's just accruing -
- * only at the two moments that actually matter: showing a number to the
- * user (display), and turning a raw amount into real, cent-precision
- * cash (a payment). This is why `interestAfter` below is signed and NOT
- * clamped to zero - cent-precision cash allocated against an exact raw
- * interest amount rarely lands on it perfectly, and the sub-cent
- * remainder (credit or debit) carries forward into the next accrual
- * instead of being silently discarded.
- *
- * @param {{balance:number, interestRate:number, unpaidInterest:number,
- *   interestAccruedThrough:string}} loan
- * @param {string} asOfIso - today's date (display) or the payment date
- *   (posting)
- * @param {number} [payment] - cash amount being applied; omit for a
- *   display-only projection
- * @returns {{
- *   rawInterest: number,
- *   collectibleInterest: number,
- *   totalOwedToday: number,
- *   interestPaid?: number,
- *   principalPaid?: number,
- *   principalAfter?: number,
- *   interestAfter?: number,
- *   payoff?: number,
- * }}
- */
-function computeLoanInterest(loan, asOfIso, payment) {
-  const daysElapsed = Math.max(
-    0,
-    DateUtils.daysBetween(loan.interestAccruedThrough, asOfIso) || 0,
-  );
-  const balance = Number(loan.balance || 0);
-  const accruedSince =
-    balance * (Number(loan.interestRate || 0) / 100 / 365) * daysElapsed;
-  const rawInterest = Number(loan.unpaidInterest || 0) + accruedSince;
-  const collectibleInterest = Math.max(0, roundMoney(rawInterest));
-
-  if (payment === undefined) {
-    return {
-      rawInterest,
-      collectibleInterest,
-      totalOwedToday: roundMoney(balance + collectibleInterest),
-    };
-  }
-
-  const payoff = roundMoney(balance + collectibleInterest);
-  if (payment > payoff) {
-    throw new Error(
-      `Payment ${payment} exceeds payoff amount ${payoff} for loan ${loan.id}`,
-    );
-  }
-
-  const interestPaid = Math.min(payment, collectibleInterest);
-  const principalPaid = roundMoney(payment - interestPaid);
-  const principalAfter = roundMoney(balance - principalPaid);
-  let interestAfter = rawInterest - interestPaid;
-
-  // Full payoff clears only the sub-cent residual - never real unpaid
-  // interest just because principal reaches zero.
-  if (principalAfter === 0 && payment === payoff) {
-    interestAfter = 0;
-  }
-
-  return {
-    rawInterest,
-    collectibleInterest,
-    totalOwedToday: payoff,
-    interestPaid,
-    principalPaid,
-    principalAfter,
-    interestAfter,
-    payoff,
-  };
-}
-
-/**
  * Compute what a recurring template's current cycle amount actually is
  * right now - the fixed baseAmount for most templates, or (for a
  * credit-card-payment template, isVariableAmount) the card's current
@@ -1103,6 +1031,448 @@ let ensureLoanPaymentExpensesLinkedPromise = null;
  * Database helper functions
  * These provide a clean API for all database operations
  */
+// A receipt is deliberately one operation, not a history stack. Version 2
+// contains enough source state to reverse either entry point safely.
+const loanState = loan => ({
+  balance: loan.balance,
+  unpaidInterest: loan.unpaidInterest ?? 0,
+  interestAccruedThrough: loan.interestAccruedThrough,
+  interestRate: loan.interestRate,
+});
+const stable = value =>
+  JSON.stringify(value, (_, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.keys(v)
+            .sort()
+            .filter(k => k !== 'updatedAt' && v[k] !== undefined)
+            .map(k => [k, v[k]]),
+        )
+      : v,
+  );
+const matches = (a, b) => stable(a) === stable(b);
+const requireRow = (row, label) => {
+  if (!row || row.deletedAt)
+    throw new Error(`${label} is missing or deleted; operation refused`);
+  return row;
+};
+async function updateRequired(table, id, patch) {
+  if ((await table.update(id, patch)) !== 1)
+    throw new Error('A required financial record is missing');
+}
+function loanTables() {
+  return [
+    db.loans,
+    db.accounts,
+    db.creditCards,
+    db.fixedExpenses,
+    db.auditLogs,
+    db.recurringExpenseTemplates,
+    db.recurringResolutionLog,
+    db.paycheckSettings,
+  ];
+}
+async function prepareLoanRequest(expenseId, supplied, payload) {
+  const expense = await db.fixedExpenses.get(expenseId);
+  const loan = expense?.targetLoanId
+    ? await db.loans.get(expense.targetLoanId)
+    : null;
+  if (!loan?.interestAccruedThrough) return null;
+  if (expense.category !== 'Loan Payment')
+    throw new Error('Loan payment links are inconsistent');
+  return {
+    operationId: supplied?.operationId ?? generateId(),
+    expectedVersion:
+      supplied?.expectedVersion ?? (loan.interestStateVersion || 0),
+    signature: stable({ expenseId, ...payload }),
+    effectiveDate: DateUtils.today(),
+  };
+}
+async function checkLoanRequest(expense, request) {
+  if (!request) return null;
+  const loan = requireRow(await db.loans.get(expense.targetLoanId), 'Loan');
+  const receipt = loan.lastInterestOperation;
+  if (receipt?.operationId === request.operationId) {
+    if (
+      receipt.requestSignature !== request.signature ||
+      receipt.status !== 'active'
+    )
+      throw new Error('This operation has changed or was undone');
+    return receipt.result ?? {};
+  }
+  if ((loan.interestStateVersion || 0) !== request.expectedVersion)
+    throw new Error('STALE_WRITE: Loan changed; refresh before paying');
+  return null;
+}
+async function finalizeLoanReceipt(expense, cycle = null, result = {}) {
+  const loan = await db.loans.get(expense.targetLoanId);
+  if (!loan?.interestAccruedThrough) return;
+  const receipt = loan.lastInterestOperation;
+  await updateRequired(db.fixedExpenses, expense.id, {
+    loanInterestTracked: true,
+  });
+  await updateRequired(db.loans, loan.id, {
+    lastInterestOperation: {
+      ...receipt,
+      expenseAfter: await db.fixedExpenses.get(expense.id),
+      cycle,
+      result,
+    },
+  });
+}
+async function assertUndoableLoan(loanId, operationId, expectedVersion) {
+  const loan = requireRow(await db.loans.get(loanId), 'Loan');
+  const receipt = loan.lastInterestOperation;
+  if (receipt?.version !== 2)
+    throw new Error(
+      'This older payment has no safe undo snapshot; use a balance correction',
+    );
+  if (receipt.operationId !== operationId)
+    throw new Error('Operation ID does not match the current receipt');
+  if (receipt.status !== 'active')
+    throw new Error('No undoable loan operation');
+  if (
+    (expectedVersion !== undefined &&
+      loan.interestStateVersion !== expectedVersion) ||
+    loan.interestStateVersion !== receipt.versionAfter ||
+    !matches(loanState(loan), receipt.after)
+  ) {
+    throw new Error('Loan has changed since this payment; undo refused');
+  }
+  const expense = requireRow(
+    await db.fixedExpenses.get(receipt.affectedExpenseId),
+    'Affected expense',
+  );
+  if (!matches(expense, receipt.expenseAfter))
+    throw new Error('The bill changed after this payment; undo refused');
+  const account = requireRow(
+    await db.accounts.get(receipt.affectedAccountId),
+    'Funding account',
+  );
+  if (!Number.isFinite(account.currentBalance))
+    throw new Error('Invalid account balance');
+  if (receipt.cycle) {
+    const cycle = receipt.cycle;
+    const template = requireRow(
+      await db.recurringExpenseTemplates.get(cycle.templateBefore.id),
+      'Template',
+    );
+    const resolution = requireRow(
+      await db.recurringResolutionLog.get(cycle.resolutionAfter.id),
+      'Resolution',
+    );
+    if (
+      !matches(template, cycle.templateAfter) ||
+      !matches(resolution, cycle.resolutionAfter)
+    )
+      throw new Error('The recurring cycle changed; undo refused');
+    if (cycle.adjustmentAfter) {
+      const adjustment = await db.fixedExpenses.get(cycle.adjustmentAfter.id);
+      if (!matches(adjustment, cycle.adjustmentAfter))
+        throw new Error('The catch-up bill changed; undo refused');
+    }
+    const laterBills = await db.fixedExpenses
+      .where('recurringTemplateId')
+      .equals(template.id)
+      .toArray();
+    if (
+      laterBills.some(
+        row => !row.deletedAt && !cycle.existingExpenseIds.includes(row.id),
+      )
+    )
+      throw new Error('A later cycle bill exists; undo refused');
+  }
+  return { loan, receipt, expense, account };
+}
+async function restoreLoanOperation(loanId, operationId, expectedVersion) {
+  const { loan, receipt, expense, account } = await assertUndoableLoan(
+    loanId,
+    operationId,
+    expectedVersion,
+  );
+  const ts = nowIso();
+  await updateRequired(db.accounts, account.id, {
+    currentBalance: roundMoney(account.currentBalance + receipt.cashAmount),
+    updatedAt: ts,
+  });
+  await updateRequired(db.fixedExpenses, expense.id, {
+    paidAmount: receipt.previousExpensePaidAmount,
+    status: receipt.previousExpenseStatus,
+    updatedAt: ts,
+  });
+  if (receipt.cycle) {
+    const cycle = receipt.cycle;
+    await updateRequired(
+      db.recurringExpenseTemplates,
+      cycle.templateBefore.id,
+      { ...cycle.templateBefore, updatedAt: ts },
+    );
+    await updateRequired(db.recurringResolutionLog, cycle.resolutionAfter.id, {
+      deletedAt: ts,
+      updatedAt: ts,
+    });
+    if (cycle.adjustmentAfter)
+      await updateRequired(db.fixedExpenses, cycle.adjustmentAfter.id, {
+        deletedAt: ts,
+        updatedAt: ts,
+      });
+  }
+  await updateRequired(db.loans, loanId, {
+    ...receipt.before,
+    interestStateVersion: loan.interestStateVersion + 1,
+    lastInterestOperation: {
+      ...receipt,
+      status: 'undone',
+      undoneVersion: loan.interestStateVersion + 1,
+    },
+    updatedAt: ts,
+  });
+  return receipt;
+}
+
+async function resolveLoanOrBillCycle(
+  expenseId,
+  { paidAmount, shortfallOutcome = null, pauseTemplateOnForgive = false },
+  validators,
+  request,
+  isCorrection = false,
+) {
+  const { validateExpense, sanitizeExpenseData } = validators;
+  const expense = await db.fixedExpenses.get(expenseId);
+  if (!expense || expense.deletedAt) {
+    throw new Error(`Expense with ID ${expenseId} not found`);
+  }
+  if (!expense.recurringTemplateId) {
+    throw new Error(
+      'resolveCycle requires a recurring-template expense; use applyExpensePaymentChangeAtomic (via updateExpenseV4) for one-offs and Balance Due',
+    );
+  }
+
+  const retried = await checkLoanRequest(expense, request);
+  if (retried) return retried;
+  const duplicate = await db.recurringResolutionLog
+    .where('expenseId')
+    .equals(expenseId)
+    .filter(row => !row.deletedAt)
+    .first();
+  if (duplicate) throw new Error('This cycle is already resolved');
+  const template = await db.recurringExpenseTemplates.get(
+    expense.recurringTemplateId,
+  );
+  if (!template || template.deletedAt || !template.isActive) {
+    throw new Error(`Template not found: ${expense.recurringTemplateId}`);
+  }
+
+  const committedAmount = Number(expense.amount || 0);
+
+  // Partial payment is disabled entirely for variable-amount bills -
+  // only Full or Skip are ever legal here, enforced at the DB layer
+  // too, not just hidden in the UI.
+  if (
+    !isCorrection &&
+    template.isVariableAmount &&
+    paidAmount !== 0 &&
+    paidAmount !== committedAmount
+  ) {
+    throw new Error(
+      'Partial payment is not available for variable-amount bills',
+    );
+  }
+  if (paidAmount > committedAmount) {
+    throw new Error('paidAmount cannot exceed the committed amount');
+  }
+
+  const previousPaidAmount = Number(expense.paidAmount || 0);
+  const paymentDifference = paidAmount - previousPaidAmount;
+  const ts = nowIso();
+  const newStatus =
+    committedAmount > 0 && paidAmount >= committedAmount ? 'paid' : 'pending';
+
+  const sanitizedExpense = sanitizeExpenseData({
+    ...expense,
+    paidAmount,
+    status: newStatus,
+  });
+  validateExpense(sanitizedExpense);
+
+  await db.fixedExpenses.update(expenseId, {
+    paidAmount,
+    status: newStatus,
+    updatedAt: ts,
+  });
+
+  if (paymentDifference !== 0 || request) {
+    await applyPaymentDelta(
+      sanitizedExpense,
+      paymentDifference,
+      expenseId,
+      ts,
+      {
+        request,
+        previousPaidAmount,
+        previousStatus: expense.status,
+      },
+    );
+  }
+
+  // Shortfall never silently means "owed today" - the caller must
+  // say whether it's deferred (still owed, later) or forgiven (not
+  // owed at all). See resolveCycle's own docstring.
+  let adjustmentExpenseId = null;
+  let deferredDueDate = null;
+  const shortfall = committedAmount - paidAmount;
+  if (shortfall > 0.004) {
+    if (shortfallOutcome === null) {
+      throw new Error(
+        'shortfallOutcome ("deferred" or "forgiven") is required when paidAmount leaves a shortfall',
+      );
+    }
+    if (shortfallOutcome === 'deferred') {
+      deferredDueDate = DateUtils.today();
+      const paycheckRows = await db.paycheckSettings.toArray();
+      const settings = paycheckRows.find(s => !s.deletedAt) || null;
+      if (settings?.lastPaycheckDate) {
+        const { nextPayDate } = calculateNextPayDates(
+          settings.lastPaycheckDate,
+          settings.frequency,
+        );
+        if (nextPayDate) {
+          deferredDueDate = nextPayDate;
+        }
+      }
+
+      const balanceDueData = sanitizeExpenseData({
+        name: `${expense.name} (Balance Due)`,
+        dueDate: deferredDueDate,
+        amount: shortfall,
+        accountId: expense.accountId || null,
+        creditCardId: expense.creditCardId || null,
+        targetCreditCardId: expense.targetCreditCardId || null,
+        targetLoanId: expense.targetLoanId || null,
+        category: expense.category,
+        categoryId: expense.categoryId ?? null,
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: null,
+        isAutoCreated: true,
+      });
+      validateExpense(balanceDueData);
+      adjustmentExpenseId = generateId();
+      await db.fixedExpenses.add({
+        ...balanceDueData,
+        id: adjustmentExpenseId,
+        createdAt: ts,
+        updatedAt: ts,
+        deletedAt: null,
+      });
+    }
+
+    // 'forgiven': no Balance Due row at all - adjustmentExpenseId
+    // stays null.
+  } else if (shortfallOutcome !== null) {
+    throw new Error(
+      'shortfallOutcome must not be provided when there is no shortfall',
+    );
+  }
+
+  // Advance cadence unconditionally - Full, Partial, and Skip all
+  // advance. This is the core behavior change from the old
+  // full-payment-only fast path.
+  const previousNextDueDate = template.nextDueDate;
+  const previousLastGenerated = template.lastGenerated;
+  let nextDueToSet = null;
+  let shouldDeactivate = false;
+  if (previousNextDueDate) {
+    const newNextDueDate = calculateNextDueDate(
+      previousNextDueDate,
+      template.frequency,
+      template.intervalValue || 1,
+      template.intervalUnit || 'months',
+    );
+    nextDueToSet = newNextDueDate;
+    if (template.endDate) {
+      const endDate = DateUtils.parseDate(template.endDate);
+      const nextDue = DateUtils.parseDate(newNextDueDate);
+      if (endDate && nextDue && nextDue > endDate) {
+        shouldDeactivate = true;
+        nextDueToSet = null;
+      }
+    }
+  }
+
+  // Pausing on forgive is folded into this same atomic update and
+  // the same transaction as everything else here - a separate
+  // follow-up call from the UI could fail independently and leave
+  // a forgiven cycle with the template still silently active.
+  const shouldPauseForForgive =
+    shortfallOutcome === 'forgiven' && pauseTemplateOnForgive === true;
+  await dbHelpers.updateRecurringExpenseTemplate(template.id, {
+    lastGenerated: previousNextDueDate,
+    nextDueDate: nextDueToSet,
+    ...((shouldDeactivate || shouldPauseForForgive) && {
+      isActive: false,
+    }),
+  });
+
+  // HARD write - no try/catch swallow, unlike the audit log below.
+  // A failure here must abort the whole transaction.
+  const logId = generateId();
+  await db.recurringResolutionLog.add({
+    id: logId,
+    templateId: template.id,
+    expenseId,
+    cycleDueDate: expense.dueDate,
+    resolvedAt: ts,
+    committedAmount,
+    paidAmount,
+    wasSkipped: paidAmount === 0,
+    adjustmentExpenseId,
+    shortfallOutcome,
+    deferredDueDate,
+    templatePausedOnForgive: shouldPauseForForgive,
+    previousNextDueDate,
+    previousLastGenerated,
+    previousExpensePaidAmount: previousPaidAmount,
+    previousExpenseStatus: expense.status,
+    createdAt: ts,
+    updatedAt: ts,
+    deletedAt: null,
+  });
+
+  try {
+    await addAuditLogEntry('RESOLVE_CYCLE', 'fixedExpense', expenseId, {
+      templateId: template.id,
+      paidAmount,
+      committedAmount,
+      adjustmentExpenseId,
+      shortfallOutcome,
+      templatePausedOnForgive: shouldPauseForForgive,
+    });
+  } catch (auditErr) {
+    logger.warn('Audit log (resolve cycle) failed:', auditErr);
+  }
+
+  const result = { logId, adjustmentExpenseId, templateId: template.id };
+  if (request) {
+    const cycle = {
+      templateBefore: template,
+      templateAfter: await db.recurringExpenseTemplates.get(template.id),
+      resolutionAfter: await db.recurringResolutionLog.get(logId),
+      adjustmentAfter: adjustmentExpenseId
+        ? await db.fixedExpenses.get(adjustmentExpenseId)
+        : null,
+      existingExpenseIds: (
+        await db.fixedExpenses
+          .where('recurringTemplateId')
+          .equals(template.id)
+          .toArray()
+      ).map(row => row.id),
+    };
+    await finalizeLoanReceipt(expense, cycle, result);
+  }
+  return result;
+}
+
 export const dbHelpers = {
   // Database management
   async clearDatabase() {
@@ -1593,6 +1963,7 @@ export const dbHelpers = {
         );
       }
       if (hasAccruedThrough && loan.interestAccruedThrough !== null) {
+        civilDay(loan.interestAccruedThrough);
         if (!DateUtils.isValidDate(loan.interestAccruedThrough)) {
           throw new Error('interestAccruedThrough must be a valid date');
         }
@@ -1845,49 +2216,34 @@ export const dbHelpers = {
             );
           }
 
-          if (
-            updates.interestAccruedThrough !== undefined &&
-            updates.interestAccruedThrough !== null
-          ) {
-            if (!DateUtils.isValidDate(updates.interestAccruedThrough)) {
-              throw new Error('interestAccruedThrough must be a valid date');
-            }
-            if (updates.interestAccruedThrough > DateUtils.today()) {
-              throw new Error('interestAccruedThrough cannot be in the future');
+          const financialKeys = [
+            'balance',
+            'interestRate',
+            'unpaidInterest',
+            'interestAccruedThrough',
+          ];
+          const financialChanged = financialKeys.some(
+            key => updates[key] !== undefined && updates[key] !== current[key],
+          );
+          const merged = { ...current, ...updates };
+          if (current.interestAccruedThrough && !merged.interestAccruedThrough)
+            throw new Error('Disabling interest tracking is not supported');
+          if (merged.interestAccruedThrough) {
+            validateInterestState(merged);
+            if (merged.interestAccruedThrough > DateUtils.today())
+              throw new Error('Balance date cannot be in the future');
+            if (financialChanged) {
+              if (!financialKeys.every(key => updates[key] !== undefined))
+                throw new Error(
+                  'Confirm principal, interest, rate and as-of date together',
+                );
+              if (updates.unpaidInterest < 0)
+                throw new Error('Entered unpaid interest must be nonnegative');
             }
           }
-          if (
-            updates.unpaidInterest !== undefined &&
-            (!Number.isFinite(updates.unpaidInterest) ||
-              updates.unpaidInterest < 0)
-          ) {
-            throw new Error('unpaidInterest must be a finite number >= 0');
-          }
-
           const ts = nowIso();
-
-          // A direct edit to balance, rate, or the interest-tracking
-          // fields on a tracked loan is a fresh snapshot, not a
-          // recalculation of history - it invalidates any pending undo
-          // (the receipt no longer describes a state this loan can
-          // return to) and bumps interestStateVersion so a stale undo
-          // elsewhere is refused rather than silently applied. This
-          // never fires for the internal payment-posting/undo/correction
-          // paths, which write db.loans.update directly and never call
-          // this function.
-          const willBeTracked =
-            updates.interestAccruedThrough !== undefined
-              ? !!updates.interestAccruedThrough
-              : !!current.interestAccruedThrough;
-          const isDirectCorrection =
-            willBeTracked &&
-            (updates.balance !== undefined ||
-              updates.interestRate !== undefined ||
-              updates.unpaidInterest !== undefined ||
-              updates.interestAccruedThrough !== undefined);
-
           const loanUpdate = { ...updates, updatedAt: ts };
-          if (isDirectCorrection) {
+          if (merged.interestAccruedThrough && financialChanged) {
             loanUpdate.interestStateVersion =
               (current.interestStateVersion || 0) + 1;
             loanUpdate.lastInterestOperation = null;
@@ -1917,7 +2273,7 @@ export const dbHelpers = {
       ) {
         throw error;
       }
-      throw new Error('Failed to update loan');
+      throw error;
     }
   },
 
@@ -2141,30 +2497,6 @@ export const dbHelpers = {
     } catch (error) {
       logger.error('Error adding fixed expense:', error);
       throw new Error(`Failed to add fixed expense: ${error.message}`);
-    }
-  },
-
-  /**
-   * @deprecated Use updateFixedExpenseV4() instead. This does not support V4
-   * dual foreign key format (creditCardId). Will be removed in a future version.
-   */
-  async updateFixedExpense(id, updates) {
-    logger.warn(
-      'updateFixedExpense() is deprecated. Use updateFixedExpenseV4() instead for proper V4 format support.',
-    );
-    try {
-      const payload = { ...updates, updatedAt: nowIso() };
-      if (Object.prototype.hasOwnProperty.call(updates, 'category')) {
-        payload.categoryId =
-          updates.categoryId !== undefined
-            ? updates.categoryId
-            : await resolveCategoryIdByName(updates.category);
-      }
-      await db.fixedExpenses.update(id, payload);
-      logger.success(`Fixed expense updated successfully: ${id}`);
-    } catch (error) {
-      logger.error('Error updating fixed expense:', error);
-      throw new Error('Failed to update fixed expense');
     }
   },
 
@@ -4929,28 +5261,34 @@ export const dbHelpers = {
 
   async exportData() {
     try {
-      const data = {
-        accounts: await db.accounts.toArray(),
-        creditCards: await db.creditCards.toArray(),
-        loans: await db.loans.toArray(),
-        pendingTransactions: await db.pendingTransactions.toArray(),
-        fixedExpenses: await db.fixedExpenses.toArray(),
-        categories: await db.categories.toArray(),
-        paycheckSettings: await db.paycheckSettings.toArray(),
-        userPreferences: await db.userPreferences.toArray(),
-        monthlyExpenseHistory: await db.monthlyExpenseHistory.toArray(),
-        auditLogs: await db.auditLogs.toArray(),
-        recurringExpenseTemplates: await db.recurringExpenseTemplates.toArray(),
-        incomeSources: await db.incomeSources.toArray(),
-        recurringResolutionLog: await db.recurringResolutionLog.toArray(),
+      const data = await db.transaction(
+        'r',
+        db.tables.filter(table => table.name !== 'backups'),
+        async () => ({
+          version: 11,
+          accounts: await db.accounts.toArray(),
+          creditCards: await db.creditCards.toArray(),
+          loans: await db.loans.toArray(),
+          pendingTransactions: await db.pendingTransactions.toArray(),
+          fixedExpenses: await db.fixedExpenses.toArray(),
+          categories: await db.categories.toArray(),
+          paycheckSettings: await db.paycheckSettings.toArray(),
+          userPreferences: await db.userPreferences.toArray(),
+          monthlyExpenseHistory: await db.monthlyExpenseHistory.toArray(),
+          auditLogs: await db.auditLogs.toArray(),
+          recurringExpenseTemplates:
+            await db.recurringExpenseTemplates.toArray(),
+          incomeSources: await db.incomeSources.toArray(),
+          recurringResolutionLog: await db.recurringResolutionLog.toArray(),
 
-        // Not a table — appearance lives in localStorage because it must be
-        // applied before first paint. It rides along so a backup opened on
-        // another device looks like the device it came from.
-        appearance: getAppearanceSnapshot(),
+          // Not a table — appearance lives in localStorage because it must be
+          // applied before first paint. It rides along so a backup opened on
+          // another device looks like the device it came from.
+          appearance: getAppearanceSnapshot(),
 
-        exportDate: new Date().toISOString(),
-      };
+          exportDate: new Date().toISOString(),
+        }),
+      );
 
       logger.success('Data exported successfully');
       return data;
@@ -4962,6 +5300,7 @@ export const dbHelpers = {
 
   async importData(data) {
     try {
+      validatePortableLoans(data);
       normalizePaycheckSettings(data);
 
       // Atomic full-replace import:
@@ -5084,7 +5423,44 @@ export const dbHelpers = {
         throw new Error(`Invalid references: ${fkErrors.join(', ')}`);
       }
 
-      await db.transaction('rw', db[tableName], async () => {
+      await db.transaction('rw', [db[tableName], db.loans], async () => {
+        const tracked = await db.loans
+          .filter(loan => Boolean(loan.interestAccruedThrough))
+          .toArray();
+        for (const item of items) {
+          if (
+            tableName === 'loans' &&
+            (item.interestAccruedThrough ||
+              item.lastInterestOperation ||
+              tracked.some(loan => loan.id === item.id))
+          )
+            throw new Error(
+              'Tracked loans require a complete JSON backup, not CSV replacement',
+            );
+          if (
+            [
+              'fixedExpenses',
+              'recurringExpenseTemplates',
+              'recurringResolutionLog',
+            ].includes(tableName) &&
+            tracked.length
+          ) {
+            const existing = await db[tableName].get(item.id);
+            if (
+              tracked.some(
+                loan =>
+                  [existing?.targetLoanId, item.targetLoanId].includes(
+                    loan.id,
+                  ) ||
+                  loan.lastInterestOperation?.cycle?.resolutionAfter?.id ===
+                    item.id,
+              )
+            )
+              throw new Error(
+                'Loan payment records require a complete JSON backup',
+              );
+          }
+        }
         await bulkPutChunked(db[tableName], items);
       });
 
@@ -5152,6 +5528,11 @@ export const dbHelpers = {
   async validateImportData(data) {
     try {
       const errors = [];
+      try {
+        validatePortableLoans(data);
+      } catch (error) {
+        errors.push(error.message);
+      }
 
       if (!data || typeof data !== 'object') {
         return { isValid: false, errors: ['Invalid data: expected an object'] };
@@ -5711,6 +6092,31 @@ export const dbHelpers = {
         throw new Error(`Expense with ID ${id} not found`);
       }
 
+      if (
+        currentExpense.loanInterestTracked &&
+        Number(currentExpense.paidAmount || 0) > 0
+      ) {
+        const protectedKeys = [
+          'paidAmount',
+          'accountId',
+          'targetLoanId',
+          'category',
+          'creditCardId',
+          'targetCreditCardId',
+          'recurringTemplateId',
+        ];
+        if (
+          protectedKeys.some(
+            key =>
+              updates[key] !== undefined &&
+              updates[key] !== currentExpense[key],
+          )
+        )
+          throw new Error(
+            'Use the loan payment controls; a recorded payment cannot be reassigned',
+          );
+      }
+
       // Merge current data with updates and validate
       const updatedExpense = { ...currentExpense, ...updates };
       const sanitizedData = sanitizeExpenseData(updatedExpense);
@@ -5810,6 +6216,10 @@ export const dbHelpers = {
       '../utils/expenseValidation'
     );
 
+    const request = await prepareLoanRequest(expenseId, options.loanRequest, {
+      updates,
+    });
+
     // Note: this function no longer advances a recurring template's
     // cadence, even when the payment reaches the full amount. That's
     // resolveCycle's job now (see below) - it's the only path that should
@@ -5833,6 +6243,19 @@ export const dbHelpers = {
           throw new Error(`Expense with ID ${expenseId} not found`);
         }
 
+        const retried = await checkLoanRequest(currentExpense, request);
+        if (retried) return retried;
+        if (
+          request &&
+          ['targetLoanId', 'category', 'accountId', 'recurringTemplateId'].some(
+            key =>
+              updates[key] !== undefined &&
+              updates[key] !== currentExpense[key],
+          )
+        )
+          throw new Error(
+            'Payment source cannot change while recording a payment',
+          );
         const updatedExpense = { ...currentExpense, ...updates };
         const sanitizedExpense = sanitizeExpenseData(updatedExpense);
         validateExpense(sanitizedExpense, options);
@@ -5875,10 +6298,12 @@ export const dbHelpers = {
           expenseId,
           ts,
           {
+            request,
             previousPaidAmount,
             previousStatus: currentExpense.status,
           },
         );
+        if (request) await finalizeLoanReceipt(currentExpense);
         return {};
       },
     );
@@ -5931,7 +6356,12 @@ export const dbHelpers = {
    */
   async resolveCycle(
     expenseId,
-    { paidAmount, shortfallOutcome = null, pauseTemplateOnForgive = false },
+    {
+      paidAmount,
+      shortfallOutcome = null,
+      pauseTemplateOnForgive = false,
+      loanRequest,
+    },
   ) {
     const paidAmountCheck = validatePaidAmount(paidAmount);
     if (!paidAmountCheck.isValid) {
@@ -5959,6 +6389,11 @@ export const dbHelpers = {
       '../utils/expenseValidation'
     );
 
+    const request = await prepareLoanRequest(expenseId, loanRequest, {
+      paidAmount,
+      shortfallOutcome,
+      pauseTemplateOnForgive,
+    });
     const result = await db.transaction(
       'rw',
       db.fixedExpenses,
@@ -5970,213 +6405,12 @@ export const dbHelpers = {
       db.recurringResolutionLog,
       db.paycheckSettings,
       async () => {
-        const expense = await db.fixedExpenses.get(expenseId);
-        if (!expense || expense.deletedAt) {
-          throw new Error(`Expense with ID ${expenseId} not found`);
-        }
-        if (!expense.recurringTemplateId) {
-          throw new Error(
-            'resolveCycle requires a recurring-template expense; use applyExpensePaymentChangeAtomic (via updateExpenseV4) for one-offs and Balance Due',
-          );
-        }
-
-        const template = await db.recurringExpenseTemplates.get(
-          expense.recurringTemplateId,
-        );
-        if (!template) {
-          throw new Error(`Template not found: ${expense.recurringTemplateId}`);
-        }
-
-        const committedAmount = Number(expense.amount || 0);
-
-        // Partial payment is disabled entirely for variable-amount bills -
-        // only Full or Skip are ever legal here, enforced at the DB layer
-        // too, not just hidden in the UI.
-        if (
-          template.isVariableAmount &&
-          paidAmount !== 0 &&
-          paidAmount !== committedAmount
-        ) {
-          throw new Error(
-            'Partial payment is not available for variable-amount bills',
-          );
-        }
-        if (paidAmount > committedAmount) {
-          throw new Error('paidAmount cannot exceed the committed amount');
-        }
-
-        const previousPaidAmount = Number(expense.paidAmount || 0);
-        const paymentDifference = paidAmount - previousPaidAmount;
-        const ts = nowIso();
-        const newStatus =
-          committedAmount > 0 && paidAmount >= committedAmount
-            ? 'paid'
-            : 'pending';
-
-        const sanitizedExpense = sanitizeExpenseData({
-          ...expense,
-          paidAmount,
-          status: newStatus,
-        });
-        validateExpense(sanitizedExpense);
-
-        await db.fixedExpenses.update(expenseId, {
-          paidAmount,
-          status: newStatus,
-          updatedAt: ts,
-        });
-
-        if (paymentDifference !== 0) {
-          await applyPaymentDelta(
-            sanitizedExpense,
-            paymentDifference,
-            expenseId,
-            ts,
-            {
-              previousPaidAmount,
-              previousStatus: expense.status,
-            },
-          );
-        }
-
-        // Shortfall never silently means "owed today" - the caller must
-        // say whether it's deferred (still owed, later) or forgiven (not
-        // owed at all). See resolveCycle's own docstring.
-        let adjustmentExpenseId = null;
-        let deferredDueDate = null;
-        const shortfall = committedAmount - paidAmount;
-        if (shortfall > 0.004) {
-          if (shortfallOutcome === null) {
-            throw new Error(
-              'shortfallOutcome ("deferred" or "forgiven") is required when paidAmount leaves a shortfall',
-            );
-          }
-          if (shortfallOutcome === 'deferred') {
-            deferredDueDate = DateUtils.today();
-            const paycheckRows = await db.paycheckSettings.toArray();
-            const settings = paycheckRows.find(s => !s.deletedAt) || null;
-            if (settings?.lastPaycheckDate) {
-              const { nextPayDate } = calculateNextPayDates(
-                settings.lastPaycheckDate,
-                settings.frequency,
-              );
-              if (nextPayDate) {
-                deferredDueDate = nextPayDate;
-              }
-            }
-
-            const balanceDueData = sanitizeExpenseData({
-              name: `${expense.name} (Balance Due)`,
-              dueDate: deferredDueDate,
-              amount: shortfall,
-              accountId: expense.accountId || null,
-              creditCardId: expense.creditCardId || null,
-              targetCreditCardId: expense.targetCreditCardId || null,
-              targetLoanId: expense.targetLoanId || null,
-              category: expense.category,
-              categoryId: expense.categoryId ?? null,
-              paidAmount: 0,
-              status: 'pending',
-              recurringTemplateId: null,
-              isAutoCreated: true,
-            });
-            validateExpense(balanceDueData);
-            adjustmentExpenseId = generateId();
-            await db.fixedExpenses.add({
-              ...balanceDueData,
-              id: adjustmentExpenseId,
-              createdAt: ts,
-              updatedAt: ts,
-              deletedAt: null,
-            });
-          }
-
-          // 'forgiven': no Balance Due row at all - adjustmentExpenseId
-          // stays null.
-        } else if (shortfallOutcome !== null) {
-          throw new Error(
-            'shortfallOutcome must not be provided when there is no shortfall',
-          );
-        }
-
-        // Advance cadence unconditionally - Full, Partial, and Skip all
-        // advance. This is the core behavior change from the old
-        // full-payment-only fast path.
-        const previousNextDueDate = template.nextDueDate;
-        const previousLastGenerated = template.lastGenerated;
-        let nextDueToSet = null;
-        let shouldDeactivate = false;
-        if (previousNextDueDate) {
-          const newNextDueDate = calculateNextDueDate(
-            previousNextDueDate,
-            template.frequency,
-            template.intervalValue || 1,
-            template.intervalUnit || 'months',
-          );
-          nextDueToSet = newNextDueDate;
-          if (template.endDate) {
-            const endDate = DateUtils.parseDate(template.endDate);
-            const nextDue = DateUtils.parseDate(newNextDueDate);
-            if (endDate && nextDue && nextDue > endDate) {
-              shouldDeactivate = true;
-              nextDueToSet = null;
-            }
-          }
-        }
-
-        // Pausing on forgive is folded into this same atomic update and
-        // the same transaction as everything else here - a separate
-        // follow-up call from the UI could fail independently and leave
-        // a forgiven cycle with the template still silently active.
-        const shouldPauseForForgive =
-          shortfallOutcome === 'forgiven' && pauseTemplateOnForgive === true;
-        await this.updateRecurringExpenseTemplate(template.id, {
-          lastGenerated: previousNextDueDate,
-          nextDueDate: nextDueToSet,
-          ...((shouldDeactivate || shouldPauseForForgive) && {
-            isActive: false,
-          }),
-        });
-
-        // HARD write - no try/catch swallow, unlike the audit log below.
-        // A failure here must abort the whole transaction.
-        const logId = generateId();
-        await db.recurringResolutionLog.add({
-          id: logId,
-          templateId: template.id,
+        return resolveLoanOrBillCycle(
           expenseId,
-          cycleDueDate: expense.dueDate,
-          resolvedAt: ts,
-          committedAmount,
-          paidAmount,
-          wasSkipped: paidAmount === 0,
-          adjustmentExpenseId,
-          shortfallOutcome,
-          deferredDueDate,
-          templatePausedOnForgive: shouldPauseForForgive,
-          previousNextDueDate,
-          previousLastGenerated,
-          previousExpensePaidAmount: previousPaidAmount,
-          previousExpenseStatus: expense.status,
-          createdAt: ts,
-          updatedAt: ts,
-          deletedAt: null,
-        });
-
-        try {
-          await addAuditLogEntry('RESOLVE_CYCLE', 'fixedExpense', expenseId, {
-            templateId: template.id,
-            paidAmount,
-            committedAmount,
-            adjustmentExpenseId,
-            shortfallOutcome,
-            templatePausedOnForgive: shouldPauseForForgive,
-          });
-        } catch (auditErr) {
-          logger.warn('Audit log (resolve cycle) failed:', auditErr);
-        }
-
-        return { logId, adjustmentExpenseId, templateId: template.id };
+          { paidAmount, shortfallOutcome, pauseTemplateOnForgive },
+          { validateExpense, sanitizeExpenseData },
+          request,
+        );
       },
     );
 
@@ -6308,6 +6542,11 @@ export const dbHelpers = {
       db.recurringExpenseTemplates,
       db.recurringResolutionLog,
       async () => {
+        const currentCandidate = await db.recurringResolutionLog.get(
+          candidate.id,
+        );
+        if (!currentCandidate || currentCandidate.deletedAt)
+          throw new Error('This resolution was already undone');
         const expense = await db.fixedExpenses.get(candidate.expenseId);
         const ts = nowIso();
 
@@ -6319,43 +6558,31 @@ export const dbHelpers = {
           const tracked = !!targetLoan?.interestAccruedThrough;
 
           if (tracked) {
-            // A tracked loan's balance/interest can only be unwound via
-            // the receipt-based restore - the flat reverseDelta math
-            // below assumes the whole cash amount reduced principal,
-            // which isn't true once a payment splits into interest and
-            // principal. The receipt must still match this exact
-            // resolution's payment, or something else has touched the
-            // loan since and undo is refused rather than guessed at.
             const receipt = targetLoan.lastInterestOperation;
-            if (
-              !receipt ||
-              receipt.status !== 'active' ||
-              receipt.affectedExpenseId !== candidate.expenseId
-            ) {
+            if (receipt?.cycle?.resolutionAfter?.id !== candidate.id)
               throw new Error(
-                'This loan has changed since this payment; undo refused',
+                'This loan has changed since this resolution; undo refused',
               );
-            }
-            await this.undoLastLoanInterestOperation(
+            await restoreLoanOperation(
               targetLoan.id,
               receipt.operationId,
-              { skipExpenseRevert: true },
+              targetLoan.interestStateVersion,
             );
-          } else {
-            const reverseDelta =
-              candidate.previousExpensePaidAmount -
-              Number(expense.paidAmount || 0);
-            if (reverseDelta !== 0) {
-              await applyPaymentDelta(
-                {
-                  ...expense,
-                  paidAmount: candidate.previousExpensePaidAmount,
-                },
-                reverseDelta,
-                candidate.expenseId,
-                ts,
-              );
-            }
+            return { undone: candidate.id };
+          }
+          const reverseDelta =
+            candidate.previousExpensePaidAmount -
+            Number(expense.paidAmount || 0);
+          if (reverseDelta !== 0) {
+            await applyPaymentDelta(
+              {
+                ...expense,
+                paidAmount: candidate.previousExpensePaidAmount,
+              },
+              reverseDelta,
+              candidate.expenseId,
+              ts,
+            );
           }
 
           await db.fixedExpenses.update(candidate.expenseId, {
@@ -6405,190 +6632,148 @@ export const dbHelpers = {
     );
   },
 
-  /**
-   * Read-only: the loan's single undo receipt, if it's currently
-   * undoable (an 'active' lastInterestOperation). Backs a loan card's
-   * Undo/Correct-latest-payment buttons.
-   * @param {string} loanId
-   * @returns {Promise<Object|null>}
-   */
+  /** Legacy receipts lack the snapshots needed for a safe reversal. */
   async getUndoableLoanOperation(loanId) {
     const loan = await db.loans.get(loanId);
-    if (!loan?.lastInterestOperation) return null;
-    if (loan.lastInterestOperation.status !== 'active') return null;
-    return loan.lastInterestOperation;
-  },
-
-  /**
-   * Undo a tracked loan's single most recent interest-affecting payment -
-   * recurring or one-off - restoring principal, unpaid interest and the
-   * accrual date to exactly what they were before it, and refunding the
-   * exact cash amount to the funding account's CURRENT balance (never its
-   * historical one, so unrelated spending since is preserved). Only the
-   * latest operation is ever undoable: a later payment, a direct
-   * correction, or an already-undone receipt all block it.
-   *
-   * The receipt is marked 'undone' rather than discarded, so a retried
-   * undo request (same operationId) returns the same "already undone"
-   * refusal instead of refunding twice.
-   *
-   * @param {string} loanId
-   * @param {string} operationId - must match the loan's current receipt
-   * @param {Object} [options]
-   * @param {boolean} [options.skipExpenseRevert] - when true, the caller
-   *   (undoLastResolution) restores the affected fixedExpenses row
-   *   itself using its own recurringResolutionLog snapshot; this
-   *   function only restores the loan and funding account.
-   * @returns {Promise<{undone: true, loanId: string, expenseId: string}>}
-   */
-  async undoLastLoanInterestOperation(loanId, operationId, options = {}) {
-    const { skipExpenseRevert = false } = options;
-    return db.transaction(
-      'rw',
-      db.loans,
-      db.accounts,
-      db.fixedExpenses,
-      db.auditLogs,
-      async () => {
-        const loan = await db.loans.get(loanId);
-        const receipt = loan?.lastInterestOperation;
-
-        if (!receipt || receipt.status !== 'active') {
-          throw new Error('No undoable loan operation');
-        }
-        if (receipt.operationId !== operationId) {
-          throw new Error('Operation ID does not match the current receipt');
-        }
-        if (
-          (loan.interestStateVersion || 0) !==
-          receipt.interestStateVersionAtOperation + 1
-        ) {
-          throw new Error('Loan has changed since this payment; undo refused');
-        }
-
-        const expense = await db.fixedExpenses.get(receipt.affectedExpenseId);
-        if (!expense) {
-          throw new Error('Affected expense no longer exists; undo refused');
-        }
-
-        const ts = nowIso();
-
-        await db.loans.update(loanId, {
-          balance: receipt.before.balance,
-          unpaidInterest: receipt.before.unpaidInterest,
-          interestAccruedThrough: receipt.before.interestAccruedThrough,
-          interestStateVersion: (loan.interestStateVersion || 0) + 1,
-          lastInterestOperation: { ...receipt, status: 'undone' },
-          updatedAt: ts,
-        });
-
-        const account = await db.accounts.get(receipt.affectedAccountId);
-        if (account) {
-          await db.accounts.update(account.id, {
-            currentBalance:
-              Number(account.currentBalance || 0) + receipt.cashAmount,
-            updatedAt: ts,
-          });
-        }
-
-        if (!skipExpenseRevert) {
-          await db.fixedExpenses.update(receipt.affectedExpenseId, {
-            paidAmount: receipt.previousExpensePaidAmount,
-            status: receipt.previousExpenseStatus,
-            updatedAt: ts,
-          });
-        }
-
-        try {
-          await addAuditLogEntry('UNDO', 'loanInterestOperation', loanId, {
-            operationId: receipt.operationId,
-            refundedTo: receipt.affectedAccountId,
-            cashAmount: receipt.cashAmount,
-          });
-        } catch (auditErr) {
-          logger.warn('Audit log (loan undo) failed:', auditErr);
-        }
-
-        return {
-          undone: true,
-          loanId,
-          expenseId: receipt.affectedExpenseId,
-        };
-      },
-    );
-  },
-
-  /**
-   * "Correct latest payment": the last payment on a tracked loan was
-   * actually $newPaidAmount, not what was recorded. Internally undoes
-   * the original payment and re-applies the corrected amount, together,
-   * as one atomic user-facing action - never exposing an intermediate
-   * undone-but-not-yet-replaced state. Only legal against the loan's
-   * single most recent payment (same "latest operation only" rule as
-   * plain Undo); refused once a newer payment or a direct correction has
-   * superseded the receipt.
-   *
-   * @param {string} loanId
-   * @param {string} expenseId - must be the loan's current
-   *   lastInterestOperation.affectedExpenseId
-   * @param {number} newPaidAmount
-   * @returns {Promise<{corrected: true}>}
-   */
-  async correctLatestLoanPayment(loanId, expenseId, newPaidAmount) {
-    const paidAmountCheck = validatePaidAmount(newPaidAmount);
-    if (!paidAmountCheck.isValid) {
-      throw new Error(paidAmountCheck.error);
-    }
-
-    const loan = await db.loans.get(loanId);
     const receipt = loan?.lastInterestOperation;
-    if (!receipt || receipt.status !== 'active') {
-      throw new Error('No correctable payment for this loan');
-    }
-    if (receipt.affectedExpenseId !== expenseId) {
-      throw new Error('This is not the most recent payment for this loan');
-    }
+    return receipt?.version === 2 && receipt.status === 'active'
+      ? receipt
+      : null;
+  },
 
-    const { sanitizeExpenseData } = await import('../utils/expenseValidation');
+  async undoLastLoanInterestOperation(loanId, operationId, options = {}) {
+    return db.transaction('rw', loanTables(), async () => {
+      const loan = requireRow(await db.loans.get(loanId), 'Loan');
+      const receipt = loan.lastInterestOperation;
+      if (
+        receipt?.version === 2 &&
+        receipt.operationId === operationId &&
+        receipt.status === 'undone' &&
+        loan.interestStateVersion === receipt.undoneVersion
+      ) {
+        return { undone: true, loanId, expenseId: receipt.affectedExpenseId };
+      }
+      const restored = await restoreLoanOperation(
+        loanId,
+        operationId,
+        options.expectedVersion,
+      );
+      return { undone: true, loanId, expenseId: restored.affectedExpenseId };
+    });
+  },
 
-    return db.transaction(
-      'rw',
-      db.loans,
-      db.accounts,
-      db.fixedExpenses,
-      db.auditLogs,
-      async () => {
-        await this.undoLastLoanInterestOperation(loanId, receipt.operationId);
-
-        const expense = await db.fixedExpenses.get(expenseId);
-        if (!expense) {
-          throw new Error(`Expense with ID ${expenseId} not found`);
-        }
-        const sanitized = sanitizeExpenseData({
-          ...expense,
-          paidAmount: newPaidAmount,
-        });
-        const ts = nowIso();
-
-        await db.fixedExpenses.update(expenseId, {
-          paidAmount: newPaidAmount,
-          status:
-            sanitized.amount > 0 && newPaidAmount >= sanitized.amount
-              ? 'paid'
-              : 'pending',
-          updatedAt: ts,
-        });
-
-        if (newPaidAmount !== 0) {
-          await applyPaymentDelta(sanitized, newPaidAmount, expenseId, ts, {
-            previousPaidAmount: 0,
-            previousStatus: 'pending',
-          });
-        }
-
+  /** Replace only the last cash payment, preserving its original date/baseline. */
+  async correctLatestLoanPayment(
+    loanId,
+    expenseId,
+    correctedCashAmount,
+    options = {},
+  ) {
+    const parsed = parseMoneyInput(correctedCashAmount);
+    if (
+      !parsed.ok ||
+      correctedCashAmount < 0 ||
+      Math.abs(roundMoney(correctedCashAmount) - correctedCashAmount) > 1e-8
+    )
+      throw new Error('Enter a valid cent-precision payment amount');
+    const initial = requireRow(await db.loans.get(loanId), 'Loan');
+    const operationId =
+      options.operationId ?? initial.lastInterestOperation?.operationId;
+    const expectedVersion =
+      options.expectedVersion ?? initial.interestStateVersion;
+    const requestId = options.requestId ?? generateId();
+    const signature = stable({
+      operationId,
+      expectedVersion,
+      correctedCashAmount,
+      shortfallOutcome: options.shortfallOutcome ?? null,
+    });
+    const validators = await import('../utils/expenseValidation');
+    return db.transaction('rw', loanTables(), async () => {
+      const current = requireRow(await db.loans.get(loanId), 'Loan');
+      if (current.lastInterestOperation?.correctionRequest?.id === requestId) {
+        if (
+          current.lastInterestOperation.correctionRequest.signature !==
+          signature
+        )
+          throw new Error('Correction request changed');
         return { corrected: true };
-      },
-    );
+      }
+      const { receipt, expense } = await assertUndoableLoan(
+        loanId,
+        operationId,
+        expectedVersion,
+      );
+      if (receipt.affectedExpenseId !== expenseId)
+        throw new Error('This is not the most recent payment for this loan');
+      const cumulative = roundMoney(
+        receipt.previousExpensePaidAmount + correctedCashAmount,
+      );
+      if (
+        correctedCashAmount > 0 &&
+        receipt.cycle &&
+        cumulative < expense.amount &&
+        !['deferred', 'forgiven'].includes(options.shortfallOutcome)
+      ) {
+        throw new Error(
+          'Choose a catch-up reminder or no reminder for the corrected shortfall',
+        );
+      }
+      await restoreLoanOperation(loanId, operationId, expectedVersion);
+      if (correctedCashAmount > 0) {
+        const restoredExpense = await db.fixedExpenses.get(expenseId);
+        const request = {
+          operationId: generateId(),
+          expectedVersion: current.interestStateVersion + 1,
+          effectiveDate: receipt.effectiveDate,
+          signature,
+        };
+        if (receipt.cycle) {
+          await resolveLoanOrBillCycle(
+            expenseId,
+            {
+              paidAmount: cumulative,
+              shortfallOutcome:
+                cumulative < expense.amount ? options.shortfallOutcome : null,
+            },
+            validators,
+            request,
+            true,
+          );
+        } else {
+          const sanitized = validators.sanitizeExpenseData({
+            ...restoredExpense,
+            paidAmount: cumulative,
+          });
+          validators.validateExpense(sanitized);
+          await updateRequired(db.fixedExpenses, expenseId, {
+            paidAmount: cumulative,
+            status: cumulative >= expense.amount ? 'paid' : 'pending',
+            updatedAt: nowIso(),
+          });
+          await applyPaymentDelta(
+            sanitized,
+            correctedCashAmount,
+            expenseId,
+            nowIso(),
+            {
+              request,
+              previousPaidAmount: receipt.previousExpensePaidAmount,
+              previousStatus: receipt.previousExpenseStatus,
+            },
+          );
+          await finalizeLoanReceipt(restoredExpense);
+        }
+      }
+      const updated = await db.loans.get(loanId);
+      await updateRequired(db.loans, loanId, {
+        lastInterestOperation: {
+          ...updated.lastInterestOperation,
+          correctionRequest: { id: requestId, signature },
+        },
+      });
+      return { corrected: true };
+    });
   },
 
   /**

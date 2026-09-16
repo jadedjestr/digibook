@@ -100,7 +100,8 @@ describe('Loan interest tracking: undo and correction', () => {
     expect(account.currentBalance).toBe(700); // 1000 - 300
     expect(loan.interestStateVersion).toBe(1);
     expect(loan.lastInterestOperation).toMatchObject({
-      operationId: 'bill-1',
+      operationId: expect.any(String),
+      affectedExpenseId: 'bill-1',
       status: 'active',
       cashAmount: 300,
     });
@@ -146,7 +147,7 @@ describe('Loan interest tracking: undo and correction', () => {
     // Retrying the same undo does not refund a second time.
     await expect(
       dbHelpers.undoLastLoanInterestOperation('loan-1', receipt.operationId),
-    ).rejects.toThrow(/No undoable loan operation/);
+    ).resolves.toMatchObject({ undone: true });
     const accountAfterRetry = await db.accounts.get('acct-1');
     expect(accountAfterRetry.currentBalance).toBe(1000);
   });
@@ -179,7 +180,12 @@ describe('Loan interest tracking: undo and correction', () => {
     const receipt = await dbHelpers.getUndoableLoanOperation('loan-1');
     expect(receipt).toBeTruthy();
 
-    await dbHelpers.updateLoan('loan-1', { balance: 9700 });
+    await dbHelpers.updateLoan('loan-1', {
+      balance: 9700,
+      unpaidInterest: 0,
+      interestRate: 6,
+      interestAccruedThrough: TODAY,
+    });
 
     const stillUndoable = await dbHelpers.getUndoableLoanOperation('loan-1');
     expect(stillUndoable).toBeNull();
