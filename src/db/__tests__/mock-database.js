@@ -15,6 +15,7 @@ export class MockDatabase {
       fixedExpenses: new Map(),
       categories: new Map(),
       creditCards: new Map(),
+      loans: new Map(),
       paycheckSettings: new Map(),
       userPreferences: new Map(),
       monthlyExpenseHistory: new Map(),
@@ -390,6 +391,19 @@ export class MockDatabase {
       },
       get: id => this.data.creditCards.get(id),
       count: () => this.data.creditCards.size,
+    };
+  }
+
+  get loans() {
+    return {
+      add: data => {
+        const id = this.generateId();
+        const loanData = { ...data, id, createdAt: new Date().toISOString() };
+        this.data.loans.set(id, loanData);
+        return id;
+      },
+      get: id => this.data.loans.get(id),
+      count: () => this.data.loans.size,
     };
   }
 

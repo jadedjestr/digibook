@@ -16,6 +16,8 @@ const CSV_MONEY_FIELDS = {
   fixedExpenses: ['amount', 'paidAmount'],
   recurringExpenseTemplates: ['baseAmount'],
   incomeSources: ['expectedAmount'],
+  loans: ['balance'],
+  creditCards: ['balance', 'creditLimit', 'minimumPayment'],
 };
 
 // Export/import data-format version - distinct from the Dexie schema version
