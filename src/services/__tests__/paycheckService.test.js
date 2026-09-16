@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 
+import { DateUtils } from '../../utils/dateUtils';
 import { PaycheckService } from '../paycheckService';
 
 /**
@@ -326,16 +327,26 @@ describe('calculateSummaryTotals — resolvedExpenseIds (the skip double-count f
   });
 
   test('the skip scenario counts the debt exactly once: resolved original out, Balance Due in', () => {
+    // Date-relative, not hardcoded: a hardcoded "due today" date silently
+    // flips the Balance Due into overdueTotal when the calendar rolls over.
+    const today = DateUtils.today();
     const totals = service.calculateSummaryTotals(
       [
-        expense({ id: 'e-original', dueDate: '2026-09-20', amount: 15.99 }), // resolved, unpaid
+        expense({
+          id: 'e-original',
+          dueDate: DateUtils.addDays(today, 5), // resolved, unpaid, due this week
+          amount: 15.99,
+        }),
         expense({
           id: 'e-balance-due',
-          dueDate: '2026-09-15', // Balance Due is due today
+          dueDate: today, // Balance Due is due today
           amount: 15.99,
         }),
       ],
-      paycheckDates,
+      {
+        nextPayDate: DateUtils.addDays(today, 9),
+        followingPayDate: DateUtils.addDays(today, 23),
+      },
       new Set(['e-original']), // Balance Due id is deliberately NOT here
     );
     expect(totals.payThisWeekTotal).toBe(15.99);
