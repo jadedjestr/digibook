@@ -206,6 +206,13 @@ are load-bearing.
   past — at input time, with a clear reason, rather than accepting it
   silently.
 - Deleting a loan must not strand the bills that pointed at it.
+- Optionally, know how much of a payment is interest vs. principal, and what's
+  owed today beyond the stated balance — opt-in per loan, on the user's own
+  numbers, never inferred. Daily simple interest, fixed 365-day year; a
+  lender using a different convention will read slightly differently, and
+  that gap is disclosed, not hidden. Undoing the loan's most recent payment,
+  or correcting it to a different amount, restores principal and unpaid
+  interest together, exactly — never just the cash.
 
 ---
 

@@ -1,9 +1,11 @@
 import { Edit, Trash2, AlertTriangle } from 'lucide-react';
 import PropTypes from 'prop-types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
+import { DateUtils } from '../utils/dateUtils';
 import { formatLoanBalance, getLoanPayoffProgress } from '../utils/loanUtils';
+import { notify } from '../utils/notifications';
 
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
@@ -14,17 +16,81 @@ const EnhancedLoanCard = ({
   onChangeFundingSource,
   onEdit,
   onDelete,
+  onInterestOperationComplete,
   index = 0,
   className = '',
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [progressWidth, setProgressWidth] = useState(0);
+  const [isCorrecting, setIsCorrecting] = useState(false);
+  const [correctionAmount, setCorrectionAmount] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
 
   const balanceInfo = formatLoanBalance(loan.balance);
   const progress = getLoanPayoffProgress(loan);
   const monthlyInterest =
     (Math.max(loan.balance, 0) * (loan.interestRate / 100)) / 12;
   const daysUntilDue = loan.daysUntilDue || 0;
+
+  const isTracked = Boolean(loan.interestAccruedThrough);
+  const interestToday = useMemo(() => {
+    if (!isTracked) return null;
+    return dbHelpers.computeLoanInterest(loan, DateUtils.today());
+  }, [isTracked, loan]);
+  const undoableOperation =
+    isTracked && loan.lastInterestOperation?.status === 'active'
+      ? loan.lastInterestOperation
+      : null;
+
+  const handleUndo = async () => {
+    if (!undoableOperation) return;
+    setIsBusy(true);
+    try {
+      await dbHelpers.undoLastLoanInterestOperation(
+        loan.id,
+        undoableOperation.operationId,
+      );
+      notify.success('Payment undone');
+      onInterestOperationComplete?.();
+    } catch (error) {
+      notify.error(error.message || 'Failed to undo payment');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleStartCorrect = () => {
+    const cashAmount = undoableOperation?.cashAmount;
+    setCorrectionAmount(
+      Number.isFinite(cashAmount) ? cashAmount.toFixed(2) : '',
+    );
+    setIsCorrecting(true);
+  };
+
+  const handleSubmitCorrection = async e => {
+    e.preventDefault();
+    if (!undoableOperation) return;
+    const value = parseFloat(correctionAmount);
+    if (!Number.isFinite(value) || value < 0) {
+      notify.error('Enter a valid amount');
+      return;
+    }
+    setIsBusy(true);
+    try {
+      await dbHelpers.correctLatestLoanPayment(
+        loan.id,
+        undoableOperation.affectedExpenseId,
+        value,
+      );
+      notify.success('Payment corrected');
+      setIsCorrecting(false);
+      onInterestOperationComplete?.();
+    } catch (error) {
+      notify.error(error.message || 'Failed to correct payment');
+    } finally {
+      setIsBusy(false);
+    }
+  };
 
   // The payment required to hit the target payoff date, computed live for
   // display the same way the materialization path computes it - this
@@ -244,7 +310,80 @@ const EnhancedLoanCard = ({
           <span>Target Payoff</span>
           <span>{formatDate(loan.targetPayoffDate)}</span>
         </div>
+        {isTracked && interestToday && (
+          <>
+            <div className='additional-info-item'>
+              <span>Unpaid Interest</span>
+              <PrivacyWrapper>
+                <span>{formatCurrency(interestToday.collectibleInterest)}</span>
+              </PrivacyWrapper>
+            </div>
+            <div className='additional-info-item'>
+              <span>Total Owed Today</span>
+              <PrivacyWrapper>
+                <span>{formatCurrency(interestToday.totalOwedToday)}</span>
+              </PrivacyWrapper>
+            </div>
+          </>
+        )}
       </div>
+
+      {/* Interest tracking: undo / correct the latest payment */}
+      {undoableOperation && !isCorrecting && (
+        <div className='flex gap-2 mt-2'>
+          <button
+            type='button'
+            onClick={handleUndo}
+            disabled={isBusy}
+            className='loan-card-action-btn text-sm px-3 py-1.5'
+          >
+            Undo last payment
+          </button>
+          <button
+            type='button'
+            onClick={handleStartCorrect}
+            disabled={isBusy}
+            className='loan-card-action-btn text-sm px-3 py-1.5'
+          >
+            Correct latest payment
+          </button>
+        </div>
+      )}
+      {undoableOperation && isCorrecting && (
+        <form
+          onSubmit={handleSubmitCorrection}
+          className='flex items-center gap-2 mt-2'
+        >
+          <label htmlFor={`loan-correct-${loan.id}`} className='sr-only'>
+            Corrected payment amount
+          </label>
+          <input
+            id={`loan-correct-${loan.id}`}
+            type='number'
+            inputMode='decimal'
+            step='0.01'
+            min='0'
+            value={correctionAmount}
+            onChange={e => setCorrectionAmount(e.target.value)}
+            className='glass-input rounded-lg px-2 py-1 text-sm w-28'
+          />
+          <button
+            type='submit'
+            disabled={isBusy}
+            className='loan-card-action-btn text-sm px-3 py-1.5'
+          >
+            Save
+          </button>
+          <button
+            type='button'
+            onClick={() => setIsCorrecting(false)}
+            disabled={isBusy}
+            className='loan-card-action-btn text-sm px-3 py-1.5'
+          >
+            Cancel
+          </button>
+        </form>
+      )}
 
       {/* Visual Alerts */}
       {isPaymentUrgent && (
@@ -268,11 +407,23 @@ EnhancedLoanCard.propTypes = {
     daysUntilDue: PropTypes.number,
     dueDate: PropTypes.string,
     targetPayoffDate: PropTypes.string,
+    unpaidInterest: PropTypes.number,
+    interestAccruedThrough: PropTypes.string,
+    lastInterestOperation: PropTypes.shape({
+      operationId: PropTypes.string,
+      affectedExpenseId: PropTypes.oneOfType([
+        PropTypes.string,
+        PropTypes.number,
+      ]),
+      cashAmount: PropTypes.number,
+      status: PropTypes.string,
+    }),
   }).isRequired,
   fundingSourceName: PropTypes.string,
   onChangeFundingSource: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
+  onInterestOperationComplete: PropTypes.func,
   index: PropTypes.number,
   className: PropTypes.string,
 };
@@ -280,6 +431,7 @@ EnhancedLoanCard.propTypes = {
 EnhancedLoanCard.defaultProps = {
   fundingSourceName: null,
   onChangeFundingSource: undefined,
+  onInterestOperationComplete: undefined,
   index: 0,
   className: '',
 };

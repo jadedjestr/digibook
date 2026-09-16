@@ -185,6 +185,13 @@ contract.
 | V10 | Added `recurringResolutionLog` table. Records every time a recurring cycle is resolved (Pay Full / Partial / Skip) so the cadence can advance immediately without pre-generating rows, and so Undo has an exact prior state to reverse to rather than re-deriving one from frequency math |
 | V11 | Added `loans` table (installment-debt tracking, mirroring `creditCards`); added `targetLoanId` on `fixedExpenses` (indexed, like `targetCreditCardId`) for "Loan Payment" expenses; `recurringExpenseTemplates` also gets `targetLoanId`, unindexed like its existing `targetCreditCardId` |
 
+Post-V11, `loans` gained four real-interest-tracking fields (`unpaidInterest`,
+`interestAccruedThrough`, `interestStateVersion`, `lastInterestOperation`) with
+**no Dexie version bump** — none of the four is ever queried via `.where()`,
+only read off a loan row already fetched by `id`, the same rule that let
+`recurringResolutionLog` gain its Skip/Defer/Forgive fields without one. See
+[§5.3.1](#531-real-interest-tracking) for what they mean.
+
 ### Tables
 
 #### `accounts`
@@ -235,6 +242,10 @@ stored minimum payment; see the "Dynamic loan payment amount" note in
 | `dueDate` | string | Yes | Next payment due date (YYYY-MM-DD); also the amortization `fromDate` used to price a payment before any cycle-specific date exists |
 | `minimumPaymentOverride` | number \| null | Yes | Present in the schema, mirroring the override field recurring templates already carry (see `recurringExpenseTemplates` below) — but unlike that field, nothing in the app currently reads or writes this column on the loan record itself; only the same-named field on the *template* is consulted |
 | `principalAmount` | number | — | Original loan amount, optional (not part of the Dexie index string, same as `notes` on `recurringExpenseTemplates`). Powers `getLoanPayoffProgress`'s percent-paid-off bar ([Section 9](#9-utilities)); when absent, progress can't be computed, though the paid-off state still can be |
+| `unpaidInterest` | number | — | Real-interest-tracking. Interest owed but not yet paid, dollars, unrounded while accruing. ≥ 0 for direct user input; may briefly hold a small negative rounding credit (~-$0.005) internally. See [§5.3.1](#531-real-interest-tracking) |
+| `interestAccruedThrough` | string \| null | — | Real-interest-tracking. The date `unpaidInterest` is accurate as of. **This is the tracking-enabled gate** — `null` means untracked (default, no change from V11 behavior); any valid date means tracked, regardless of the interest amount |
+| `interestStateVersion` | number | — | Real-interest-tracking. Starts at 0, increments on every payment/undo/correction. Guards undo against acting on a stale loan state |
+| `lastInterestOperation` | object \| null | — | Real-interest-tracking. The single undo receipt for the loan's most recent interest-affecting payment (`active` or `undone`); `null` when there's nothing to undo |
 | `createdAt` | ISO string | Yes | Creation timestamp |
 | `updatedAt` | ISO string | Yes | Last update timestamp |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active |
@@ -656,6 +667,74 @@ A future cycle that hasn't materialized yet (and a past cycle that never did) ca
 
 **Frequency Options (bill recurrence, not paycheck frequency):** monthly, quarterly (3mo), biannually (6mo), annually (12mo), custom
 
+#### 5.3.1 Real interest tracking
+
+A loan's calculated payment (above) amortizes *principal* toward the target
+payoff date; it says nothing about interest owed but not yet paid. A loan can
+optionally opt into real-interest-tracking — filling in `unpaidInterest` and
+`interestAccruedThrough` on the Add/Edit Loan form turns it on, even when
+`unpaidInterest` is exactly $0 (the gate is the date being set, never the
+amount). An untracked loan (`interestAccruedThrough: null`, the default) is
+completely unaffected by anything in this subsection.
+
+**The math** lives in one pure, module-private function,
+`computeLoanInterest(loan, asOfIso, payment?)` in `database-clean.js`,
+exposed read-only as `dbHelpers.computeLoanInterest` for the UI's live
+previews (a loan card's Unpaid Interest/Total Owed stats, the payment
+confirmation's interest/principal preview line, the payoff calculator's
+unpaid-interest note) — the same function computes both the projection and,
+with a `payment` argument, the actual posted split, so they can never
+disagree. Interest accrues daily-simple, actual civil calendar days
+(`DateUtils.daysBetween`) over a fixed 365-day year — a leap day still counts
+as one elapsed day, the denominator never changes to 366. `unpaidInterest` is
+never rounded while it's just accruing; rounding happens only at display and
+at cash allocation (`roundMoney`, a small helper with a fixed floating-point
+tolerance). On a payment, interest is paid first, then principal, and the
+leftover sub-cent fraction (`interestAfter`) is carried forward *signed* —
+not clamped to zero — so cent-precision cash paid against an exact raw
+interest amount never silently drifts. Only a full payoff clears that
+residual, never real unpaid interest.
+
+**Payment posting.** Both payment routes that can pay a loan —
+`resolveCycle` (recurring cycles) and `applyExpensePaymentChangeAtomic`
+(one-off and Balance Due payments) — funnel through the same module-private
+`applyPaymentDelta`, which already branches on `category === 'Loan Payment'`.
+That branch itself now splits again on whether the target loan is tracked:
+untracked keeps the original flat `balance -= paymentDifference` exactly as
+before V-next; tracked instead calls `computeLoanInterest` with the payment
+amount, writes the resulting principal/interest/accrual-date split, bumps
+`interestStateVersion`, and writes a single undo receipt to
+`lastInterestOperation`. A tracked loan never accepts a raw negative
+`paidAmount` edit through this path — reducing an already-recorded payment
+only happens through `dbHelpers.correctLatestLoanPayment` (below), which
+knows how to unwind a split payment correctly; a flat negative-delta reversal
+would overshoot principal by the interest portion.
+
+**Undo and correction.** `dbHelpers.undoLastLoanInterestOperation(loanId,
+operationId)` restores principal, unpaid interest, and the accrual date to
+the receipt's *before* snapshot together, refunds the exact cash amount to
+the funding account's *current* balance (never its historical one, so
+unrelated spending since is preserved), and marks the receipt `undone`
+rather than discarding it — a retried undo request then returns "already
+undone" instead of refunding twice. Only the latest operation is ever
+undoable: a later payment or a direct correction invalidates it via the
+`interestStateVersion` check. The base feature's own recurring-cycle undo,
+`undoLastResolution` (§5.9-adjacent, template-scoped, pre-dates interest
+tracking), delegates to this same function for a tracked loan's
+balance/interest side rather than running its own flat-delta reversal,
+so one undo mechanism covers both routes without duplicating the interest
+math. `dbHelpers.correctLatestLoanPayment(loanId, expenseId, newPaidAmount)`
+is "the last payment was actually $X" — internally an undo followed by a
+fresh post of the corrected amount, in one transaction, never exposing an
+undone-but-not-yet-replaced intermediate state.
+
+A **direct correction** — editing `balance`, `interestRate`,
+`unpaidInterest`, or `interestAccruedThrough` on a tracked loan through
+`updateLoan` — is treated as a fresh snapshot, not a recalculation of
+history: it bumps `interestStateVersion` and clears `lastInterestOperation`,
+invalidating any pending undo, the same way a resolution-log-based undo is
+invalidated by any change to what it would restore.
+
 ### 5.4 DataManager
 
 **Path:** `src/services/dataManager.js`
@@ -902,7 +981,7 @@ re-deriving urgency itself.
 | Component | Path | Description |
 |---|---|---|
 | `AddExpensePanel` | `src/components/AddExpensePanel.jsx` | Slide-out panel for adding expenses |
-| `ResolveExpenseModal` | `src/components/ResolveExpenseModal.jsx` | Unified Pay Full / Partial / Skip confirmation — replaces the old MarkAsPaidModal and Calendar/QuickActions. A recurring-template expense resolves via `resolveCycle` (Skip available, Partial hidden for a variable-amount template); a one-off (including a Balance Due) resolves via `updateExpenseV4`, Full/Partial only, unchanged. Whenever a chosen amount leaves a shortfall on a recurring expense, a `shortfallOutcome` step asks "pay after my next paycheck" (deferred) vs. "I don't owe this anymore" (forgiven) before resolving; choosing forgiven adds an explicit inline follow-up asking whether to also pause the template. Used by the priority list's Pay Now action and by clicking a calendar day's expense badge |
+| `ResolveExpenseModal` | `src/components/ResolveExpenseModal.jsx` | Unified Pay Full / Partial / Skip confirmation — replaces the old MarkAsPaidModal and Calendar/QuickActions. A recurring-template expense resolves via `resolveCycle` (Skip available, Partial hidden for a variable-amount template); a one-off (including a Balance Due) resolves via `updateExpenseV4`, Full/Partial only, unchanged. Whenever a chosen amount leaves a shortfall on a recurring expense, a `shortfallOutcome` step asks "pay after my next paycheck" (deferred) vs. "I don't owe this anymore" (forgiven) before resolving; choosing forgiven adds an explicit inline follow-up asking whether to also pause the template. Used by the priority list's Pay Now action and by clicking a calendar day's expense badge. For a tracked-loan payment (§5.3.1), shows a live interest/principal/remaining-principal preview line via `dbHelpers.computeLoanInterest` before confirming, and surfaces "This payment did not reduce principal" after posting when that preview's `principalPaid` was zero |
 | `MissingExpensesModal` | `src/components/MissingExpensesModal.jsx` | Warns when a credit card has no linked payment expense; offers to create it |
 | `RecurringExpenseModal` | `src/components/RecurringExpenseModal.jsx` | Convert expense to recurring template |
 | `DuplicateExpenseModal` | `src/components/DuplicateExpenseModal.jsx` | Duplicate an expense with modifications |
@@ -926,7 +1005,7 @@ and inline "create an account" fallback are shared rather than duplicated —
 
 | Component | Path | Description |
 |---|---|---|
-| `EnhancedLoanCard` | `src/components/EnhancedLoanCard.jsx` | Visual loan card mirroring `EnhancedCreditCard`: balance, payoff-progress bar, and the required payment shown live via `dbHelpers.calculateRequiredLoanPayment` rather than read from a stored field; exposes a "change funding account" action alongside edit/delete |
+| `EnhancedLoanCard` | `src/components/EnhancedLoanCard.jsx` | Visual loan card mirroring `EnhancedCreditCard`: balance, payoff-progress bar, and the required payment shown live via `dbHelpers.calculateRequiredLoanPayment` rather than read from a stored field; exposes a "change funding account" action alongside edit/delete. For a tracked loan (§5.3.1), also shows live Unpaid Interest / Total Owed Today stats via `dbHelpers.computeLoanInterest`, and, whenever the loan has an active `lastInterestOperation`, "Undo last payment" / "Correct latest payment" actions calling `undoLastLoanInterestOperation`/`correctLatestLoanPayment` |
 | `LoanDeletionModal` | `src/components/LoanDeletionModal.jsx` | Deletion flow offering only two options — Unlink or Delete Anyway — not the three `CreditCardDeletionModal` offers, since a loan is never a spendable funding source and "reassign to another loan" isn't a meaningful default |
 
 ### Category System
@@ -956,7 +1035,7 @@ and inline "create an account" fallback are shared rather than duplicated —
 | `OverpaymentAnalysis` | `src/components/OverpaymentAnalysis.jsx` | Where spending exceeds budget |
 | `CreditCardDebtTable` | `src/components/CreditCardDebtTable.jsx` | Credit card debt overview table |
 | `LoanDebtTable` | `src/components/LoanDebtTable.jsx` | Sortable loan overview table mirroring `CreditCardDebtTable` |
-| `LoanPayoffCalculator` | `src/components/LoanPayoffCalculator.jsx` | Payoff calculator mirroring `DebtPayoffCalculator`; seeds its payment field from the loan's own calculated payment (`dbHelpers.calculateRequiredLoanPayment`) rather than a rough estimate, when that formula succeeds |
+| `LoanPayoffCalculator` | `src/components/LoanPayoffCalculator.jsx` | Payoff calculator mirroring `DebtPayoffCalculator`; seeds its payment field from the loan's own calculated payment (`dbHelpers.calculateRequiredLoanPayment`) rather than a rough estimate, when that formula succeeds. The projection amortizes principal alone and is labeled "results may differ from your lender" (daily-simple, fixed 365-day year); for a tracked loan (§5.3.1) it also notes `unpaidInterest` as due before payments land fully on the shown schedule |
 
 Both are rendered on the Insights page in their own section, separate from
 the credit-card debt views above — a loan has no credit limit or utilization
@@ -1496,9 +1575,10 @@ decoratively stops carrying meaning where it matters.
 
 `CURRENT_DATA_VERSION` in `src/services/dataManager.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **9**
+looks like, the other what the database looks like — and it is currently **10**
 (5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was; 7 → 8 when
-`recurringResolutionLog` was added; 8 → 9 when `loans` was added).
+`recurringResolutionLog` was added; 8 → 9 when `loans` was added; 9 → 10 when
+`loans` gained real-interest-tracking fields — see §5.3.1).
 
 Because transfer between devices is by file rather than sync, this is a
 product-level compatibility requirement, not an implementation detail: a file

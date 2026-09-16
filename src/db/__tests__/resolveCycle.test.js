@@ -576,4 +576,103 @@ describe('dbHelpers.resolveCycle', () => {
     expect(template.isActive).toBe(false);
     expect(template.nextDueDate).toBeNull();
   });
+
+  describe('tracked-loan cycle (real interest tracking)', () => {
+    async function seedTrackedLoanTemplate() {
+      await db.loans.update('loan-1', {
+        unpaidInterest: 49.32,
+        interestAccruedThrough: DateUtils.today(),
+        interestStateVersion: 0,
+        lastInterestOperation: null,
+      });
+      await db.recurringExpenseTemplates.bulkPut([
+        {
+          id: 'tpl-loan-1',
+          name: 'Car Loan Payment',
+          baseAmount: 300,
+          frequency: 'monthly',
+          intervalValue: 1,
+          intervalUnit: 'months',
+          startDate: '2026-08-14',
+          lastGenerated: '2026-08-14',
+          nextDueDate: '2026-09-14',
+          category: 'Loan Payment',
+          accountId: 'acc-1',
+          targetLoanId: 'loan-1',
+          isActive: true,
+          isVariableAmount: true,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ]);
+      await db.fixedExpenses.bulkPut([
+        {
+          id: 'exp-loan-1',
+          name: 'Car Loan Payment',
+          dueDate: '2026-09-14',
+          amount: 300,
+          accountId: 'acc-1',
+          creditCardId: null,
+          targetLoanId: 'loan-1',
+          category: 'Loan Payment',
+          paidAmount: 0,
+          status: 'pending',
+          recurringTemplateId: 'tpl-loan-1',
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ]);
+    }
+
+    it('posts interest before principal and writes an undoable receipt', async () => {
+      await seedTrackedLoanTemplate();
+
+      await dbHelpers.resolveCycle('exp-loan-1', { paidAmount: 300 });
+
+      const loan = await db.loans.get('loan-1');
+      expect(loan.balance).toBeCloseTo(9749.32, 2);
+      expect(loan.unpaidInterest).toBeCloseTo(0, 6);
+      expect(loan.interestStateVersion).toBe(1);
+      expect(loan.lastInterestOperation).toMatchObject({
+        operationId: 'exp-loan-1',
+        status: 'active',
+      });
+    });
+
+    it('undoLastResolution delegates a tracked loan’s balance restore to the receipt-based undo', async () => {
+      await seedTrackedLoanTemplate();
+      await dbHelpers.resolveCycle('exp-loan-1', { paidAmount: 300 });
+
+      await dbHelpers.undoLastResolution('tpl-loan-1');
+
+      const loan = await db.loans.get('loan-1');
+      const account = await db.accounts.get('acc-1');
+      const expense = await db.fixedExpenses.get('exp-loan-1');
+      const template = await db.recurringExpenseTemplates.get('tpl-loan-1');
+
+      expect(loan.balance).toBe(10000);
+      expect(loan.unpaidInterest).toBeCloseTo(49.32, 2);
+      expect(loan.lastInterestOperation.status).toBe('undone');
+      expect(account.currentBalance).toBe(1000); // 700 + 300 refunded back
+      expect(expense.paidAmount).toBe(0);
+      expect(expense.status).toBe('pending');
+      expect(template.nextDueDate).toBe('2026-09-14');
+    });
+
+    it('refuses undoLastResolution for a tracked loan whose receipt no longer matches', async () => {
+      await seedTrackedLoanTemplate();
+      await dbHelpers.resolveCycle('exp-loan-1', { paidAmount: 300 });
+
+      // Something else touched the loan's receipt since this resolution.
+      await db.loans.update('loan-1', {
+        lastInterestOperation: null,
+      });
+
+      await expect(dbHelpers.undoLastResolution('tpl-loan-1')).rejects.toThrow(
+        /loan has changed/i,
+      );
+    });
+  });
 });

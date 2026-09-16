@@ -660,6 +660,7 @@ async function applyPaymentDelta(
   paymentDifference,
   expenseId,
   ts,
+  priorState = {},
 ) {
   if (sanitizedExpense.category === 'Credit Card Payment') {
     if (!sanitizedExpense.accountId) {
@@ -731,18 +732,79 @@ async function applyPaymentDelta(
       );
     }
 
+    const tracked = !!targetLoan.interestAccruedThrough;
+
+    // A tracked loan's payment history is only ever unwound through the
+    // interest-aware undo/correction paths (undoLastLoanInterestOperation,
+    // correctLatestLoanPayment) - never by a raw negative paidAmount edit
+    // reaching this function, which would have no way to reverse the
+    // interest/principal split correctly.
+    if (tracked && paymentDifference < 0) {
+      throw new Error(
+        'Cannot reduce a tracked loan payment directly; use "Correct latest payment" or Undo instead',
+      );
+    }
+
     const newAccountBalance =
       Number(fundingAccount.currentBalance || 0) - paymentDifference;
-    const newLoanBalance = Number(targetLoan.balance || 0) - paymentDifference;
+
+    let loanUpdate;
+    let auditExtra = { interestTracked: tracked };
+
+    if (!tracked) {
+      loanUpdate = {
+        balance: Number(targetLoan.balance || 0) - paymentDifference,
+        updatedAt: ts,
+      };
+    } else {
+      const today = DateUtils.today();
+      const before = {
+        balance: Number(targetLoan.balance || 0),
+        unpaidInterest: Number(targetLoan.unpaidInterest || 0),
+        interestAccruedThrough: targetLoan.interestAccruedThrough,
+      };
+      const posted = computeLoanInterest(targetLoan, today, paymentDifference);
+
+      const receipt = {
+        operationId: expenseId,
+        interestStateVersionAtOperation: targetLoan.interestStateVersion || 0,
+        affectedExpenseId: expenseId,
+        affectedAccountId: fundingAccount.id,
+        cashAmount: paymentDifference,
+        interestPaid: posted.interestPaid,
+        principalPaid: posted.principalPaid,
+        previousExpensePaidAmount: priorState.previousPaidAmount ?? 0,
+        previousExpenseStatus: priorState.previousStatus ?? 'pending',
+        before,
+        after: {
+          balance: posted.principalAfter,
+          unpaidInterest: posted.interestAfter,
+          interestAccruedThrough: today,
+        },
+        status: 'active',
+        createdAt: ts,
+      };
+
+      loanUpdate = {
+        balance: posted.principalAfter,
+        unpaidInterest: posted.interestAfter,
+        interestAccruedThrough: today,
+        interestStateVersion: (targetLoan.interestStateVersion || 0) + 1,
+        lastInterestOperation: receipt,
+        updatedAt: ts,
+      };
+      auditExtra = {
+        ...auditExtra,
+        interestPaid: posted.interestPaid,
+        principalPaid: posted.principalPaid,
+      };
+    }
 
     await db.accounts.update(fundingAccount.id, {
       currentBalance: newAccountBalance,
       updatedAt: ts,
     });
-    await db.loans.update(targetLoan.id, {
-      balance: newLoanBalance,
-      updatedAt: ts,
-    });
+    await db.loans.update(targetLoan.id, loanUpdate);
 
     try {
       await addAuditLogEntry('PAYMENT', 'loanPayment', expenseId, {
@@ -750,7 +812,8 @@ async function applyPaymentDelta(
         fundingAccountId: fundingAccount.id,
         targetLoanId: targetLoan.id,
         newAccountBalance,
-        newLoanBalance,
+        newLoanBalance: loanUpdate.balance,
+        ...auditExtra,
       });
     } catch (auditErr) {
       logger.warn('Audit log (loan payment) failed:', auditErr);
@@ -855,6 +918,108 @@ function calculateRequiredLoanPayment(
     payment = (r * balance) / (1 - discountFactor);
   }
   return { success: true, payment };
+}
+
+/**
+ * Round-half-up to the cent, with a narrow floating-point tolerance so
+ * representable noise (e.g. 0.1 + 0.2) doesn't flip a rounding decision
+ * at a cent boundary. The one place every loan-interest dollar amount
+ * gets rounded - interest itself is never rounded while it's accruing.
+ */
+function roundMoney(amount) {
+  // A fixed absolute tolerance, well above float noise from chained
+  // arithmetic (typically ~1e-10 to 1e-13) and well below a hundredth of
+  // a cent, so a value that's really AT a half-cent boundary rounds
+  // predictably instead of falling the wrong way on representable noise
+  // (e.g. 0.145 landing as 0.14499999999999).
+  const TOLERANCE = 1e-9;
+  const nudge = amount >= 0 ? TOLERANCE : -TOLERANCE;
+  return Math.round((amount + nudge) * 100) / 100;
+}
+
+/**
+ * Interest accrual and, when `payment` is given, payment allocation for a
+ * loan with real-interest tracking on (loan.interestAccruedThrough is a
+ * valid date). Pure - no DB access. Interest accrues over actual elapsed
+ * civil calendar days (DateUtils.daysBetween, the same day-counting
+ * convention used everywhere else in this file) divided by a fixed 365,
+ * regardless of leap years - a leap day inside the interval still counts
+ * as one elapsed day, the denominator never changes to 366. Same-day
+ * calls accrue no new interest.
+ *
+ * `unpaidInterest` itself is never rounded while it's just accruing -
+ * only at the two moments that actually matter: showing a number to the
+ * user (display), and turning a raw amount into real, cent-precision
+ * cash (a payment). This is why `interestAfter` below is signed and NOT
+ * clamped to zero - cent-precision cash allocated against an exact raw
+ * interest amount rarely lands on it perfectly, and the sub-cent
+ * remainder (credit or debit) carries forward into the next accrual
+ * instead of being silently discarded.
+ *
+ * @param {{balance:number, interestRate:number, unpaidInterest:number,
+ *   interestAccruedThrough:string}} loan
+ * @param {string} asOfIso - today's date (display) or the payment date
+ *   (posting)
+ * @param {number} [payment] - cash amount being applied; omit for a
+ *   display-only projection
+ * @returns {{
+ *   rawInterest: number,
+ *   collectibleInterest: number,
+ *   totalOwedToday: number,
+ *   interestPaid?: number,
+ *   principalPaid?: number,
+ *   principalAfter?: number,
+ *   interestAfter?: number,
+ *   payoff?: number,
+ * }}
+ */
+function computeLoanInterest(loan, asOfIso, payment) {
+  const daysElapsed = Math.max(
+    0,
+    DateUtils.daysBetween(loan.interestAccruedThrough, asOfIso) || 0,
+  );
+  const balance = Number(loan.balance || 0);
+  const accruedSince =
+    balance * (Number(loan.interestRate || 0) / 100 / 365) * daysElapsed;
+  const rawInterest = Number(loan.unpaidInterest || 0) + accruedSince;
+  const collectibleInterest = Math.max(0, roundMoney(rawInterest));
+
+  if (payment === undefined) {
+    return {
+      rawInterest,
+      collectibleInterest,
+      totalOwedToday: roundMoney(balance + collectibleInterest),
+    };
+  }
+
+  const payoff = roundMoney(balance + collectibleInterest);
+  if (payment > payoff) {
+    throw new Error(
+      `Payment ${payment} exceeds payoff amount ${payoff} for loan ${loan.id}`,
+    );
+  }
+
+  const interestPaid = Math.min(payment, collectibleInterest);
+  const principalPaid = roundMoney(payment - interestPaid);
+  const principalAfter = roundMoney(balance - principalPaid);
+  let interestAfter = rawInterest - interestPaid;
+
+  // Full payoff clears only the sub-cent residual - never real unpaid
+  // interest just because principal reaches zero.
+  if (principalAfter === 0 && payment === payoff) {
+    interestAfter = 0;
+  }
+
+  return {
+    rawInterest,
+    collectibleInterest,
+    totalOwedToday: payoff,
+    interestPaid,
+    principalPaid,
+    principalAfter,
+    interestAfter,
+    payoff,
+  };
 }
 
 /**
@@ -1417,7 +1582,33 @@ export const dbHelpers = {
         throw new Error(check.message);
       }
 
+      // Interest tracking opt-in: both fields or neither. Tracking is on
+      // iff interestAccruedThrough is a valid date - unpaidInterest may
+      // legitimately be exactly $0 and still mean "tracked".
+      const hasUnpaidInterest = loan.unpaidInterest !== undefined;
+      const hasAccruedThrough = loan.interestAccruedThrough !== undefined;
+      if (hasUnpaidInterest !== hasAccruedThrough) {
+        throw new Error(
+          'unpaidInterest and interestAccruedThrough must be provided together, or not at all',
+        );
+      }
+      if (hasAccruedThrough && loan.interestAccruedThrough !== null) {
+        if (!DateUtils.isValidDate(loan.interestAccruedThrough)) {
+          throw new Error('interestAccruedThrough must be a valid date');
+        }
+        if (loan.interestAccruedThrough > DateUtils.today()) {
+          throw new Error('interestAccruedThrough cannot be in the future');
+        }
+        if (!Number.isFinite(loan.unpaidInterest) || loan.unpaidInterest < 0) {
+          throw new Error('unpaidInterest must be a finite number >= 0');
+        }
+      }
+
       const loanData = {
+        unpaidInterest: 0,
+        interestAccruedThrough: null,
+        interestStateVersion: 0,
+        lastInterestOperation: null,
         ...loan,
         id: generateId(),
         createdAt: nowIso(),
@@ -1654,8 +1845,55 @@ export const dbHelpers = {
             );
           }
 
+          if (
+            updates.interestAccruedThrough !== undefined &&
+            updates.interestAccruedThrough !== null
+          ) {
+            if (!DateUtils.isValidDate(updates.interestAccruedThrough)) {
+              throw new Error('interestAccruedThrough must be a valid date');
+            }
+            if (updates.interestAccruedThrough > DateUtils.today()) {
+              throw new Error('interestAccruedThrough cannot be in the future');
+            }
+          }
+          if (
+            updates.unpaidInterest !== undefined &&
+            (!Number.isFinite(updates.unpaidInterest) ||
+              updates.unpaidInterest < 0)
+          ) {
+            throw new Error('unpaidInterest must be a finite number >= 0');
+          }
+
           const ts = nowIso();
-          await db.loans.update(id, { ...updates, updatedAt: ts });
+
+          // A direct edit to balance, rate, or the interest-tracking
+          // fields on a tracked loan is a fresh snapshot, not a
+          // recalculation of history - it invalidates any pending undo
+          // (the receipt no longer describes a state this loan can
+          // return to) and bumps interestStateVersion so a stale undo
+          // elsewhere is refused rather than silently applied. This
+          // never fires for the internal payment-posting/undo/correction
+          // paths, which write db.loans.update directly and never call
+          // this function.
+          const willBeTracked =
+            updates.interestAccruedThrough !== undefined
+              ? !!updates.interestAccruedThrough
+              : !!current.interestAccruedThrough;
+          const isDirectCorrection =
+            willBeTracked &&
+            (updates.balance !== undefined ||
+              updates.interestRate !== undefined ||
+              updates.unpaidInterest !== undefined ||
+              updates.interestAccruedThrough !== undefined);
+
+          const loanUpdate = { ...updates, updatedAt: ts };
+          if (isDirectCorrection) {
+            loanUpdate.interestStateVersion =
+              (current.interestStateVersion || 0) + 1;
+            loanUpdate.lastInterestOperation = null;
+          }
+
+          await db.loans.update(id, loanUpdate);
 
           if (updates.dueDate !== undefined) {
             await this.syncLoanDueDateToExpenses(id, updates.dueDate);
@@ -5365,6 +5603,18 @@ export const dbHelpers = {
     );
   },
 
+  /**
+   * Interest accrual and, when `payment` is given, payment allocation for
+   * a tracked loan (see computeLoanInterest). Thin wrapper, exposed so
+   * loan cards can show live "unpaid interest" / "total owed today" and
+   * the payment confirmation can preview the interest/principal split
+   * before it's posted - both read-only projections through the exact
+   * same math the actual payment-posting path uses.
+   */
+  computeLoanInterest(loan, asOfIso, payment) {
+    return computeLoanInterest(loan, asOfIso, payment);
+  },
+
   // Initialize default data
   async initializeDefaultData() {
     try {
@@ -5624,6 +5874,10 @@ export const dbHelpers = {
           paymentDifference,
           expenseId,
           ts,
+          {
+            previousPaidAmount,
+            previousStatus: currentExpense.status,
+          },
         );
         return {};
       },
@@ -5778,6 +6032,10 @@ export const dbHelpers = {
             paymentDifference,
             expenseId,
             ts,
+            {
+              previousPaidAmount,
+              previousStatus: expense.status,
+            },
           );
         }
 
@@ -6054,17 +6312,52 @@ export const dbHelpers = {
         const ts = nowIso();
 
         if (expense) {
-          const reverseDelta =
-            candidate.previousExpensePaidAmount -
-            Number(expense.paidAmount || 0);
-          if (reverseDelta !== 0) {
-            await applyPaymentDelta(
-              { ...expense, paidAmount: candidate.previousExpensePaidAmount },
-              reverseDelta,
-              candidate.expenseId,
-              ts,
+          const targetLoan =
+            expense.category === 'Loan Payment' && expense.targetLoanId
+              ? await db.loans.get(expense.targetLoanId)
+              : null;
+          const tracked = !!targetLoan?.interestAccruedThrough;
+
+          if (tracked) {
+            // A tracked loan's balance/interest can only be unwound via
+            // the receipt-based restore - the flat reverseDelta math
+            // below assumes the whole cash amount reduced principal,
+            // which isn't true once a payment splits into interest and
+            // principal. The receipt must still match this exact
+            // resolution's payment, or something else has touched the
+            // loan since and undo is refused rather than guessed at.
+            const receipt = targetLoan.lastInterestOperation;
+            if (
+              !receipt ||
+              receipt.status !== 'active' ||
+              receipt.affectedExpenseId !== candidate.expenseId
+            ) {
+              throw new Error(
+                'This loan has changed since this payment; undo refused',
+              );
+            }
+            await this.undoLastLoanInterestOperation(
+              targetLoan.id,
+              receipt.operationId,
+              { skipExpenseRevert: true },
             );
+          } else {
+            const reverseDelta =
+              candidate.previousExpensePaidAmount -
+              Number(expense.paidAmount || 0);
+            if (reverseDelta !== 0) {
+              await applyPaymentDelta(
+                {
+                  ...expense,
+                  paidAmount: candidate.previousExpensePaidAmount,
+                },
+                reverseDelta,
+                candidate.expenseId,
+                ts,
+              );
+            }
           }
+
           await db.fixedExpenses.update(candidate.expenseId, {
             paidAmount: candidate.previousExpensePaidAmount,
             status: candidate.previousExpenseStatus,
@@ -6108,6 +6401,192 @@ export const dbHelpers = {
         }
 
         return { undone: candidate.id };
+      },
+    );
+  },
+
+  /**
+   * Read-only: the loan's single undo receipt, if it's currently
+   * undoable (an 'active' lastInterestOperation). Backs a loan card's
+   * Undo/Correct-latest-payment buttons.
+   * @param {string} loanId
+   * @returns {Promise<Object|null>}
+   */
+  async getUndoableLoanOperation(loanId) {
+    const loan = await db.loans.get(loanId);
+    if (!loan?.lastInterestOperation) return null;
+    if (loan.lastInterestOperation.status !== 'active') return null;
+    return loan.lastInterestOperation;
+  },
+
+  /**
+   * Undo a tracked loan's single most recent interest-affecting payment -
+   * recurring or one-off - restoring principal, unpaid interest and the
+   * accrual date to exactly what they were before it, and refunding the
+   * exact cash amount to the funding account's CURRENT balance (never its
+   * historical one, so unrelated spending since is preserved). Only the
+   * latest operation is ever undoable: a later payment, a direct
+   * correction, or an already-undone receipt all block it.
+   *
+   * The receipt is marked 'undone' rather than discarded, so a retried
+   * undo request (same operationId) returns the same "already undone"
+   * refusal instead of refunding twice.
+   *
+   * @param {string} loanId
+   * @param {string} operationId - must match the loan's current receipt
+   * @param {Object} [options]
+   * @param {boolean} [options.skipExpenseRevert] - when true, the caller
+   *   (undoLastResolution) restores the affected fixedExpenses row
+   *   itself using its own recurringResolutionLog snapshot; this
+   *   function only restores the loan and funding account.
+   * @returns {Promise<{undone: true, loanId: string, expenseId: string}>}
+   */
+  async undoLastLoanInterestOperation(loanId, operationId, options = {}) {
+    const { skipExpenseRevert = false } = options;
+    return db.transaction(
+      'rw',
+      db.loans,
+      db.accounts,
+      db.fixedExpenses,
+      db.auditLogs,
+      async () => {
+        const loan = await db.loans.get(loanId);
+        const receipt = loan?.lastInterestOperation;
+
+        if (!receipt || receipt.status !== 'active') {
+          throw new Error('No undoable loan operation');
+        }
+        if (receipt.operationId !== operationId) {
+          throw new Error('Operation ID does not match the current receipt');
+        }
+        if (
+          (loan.interestStateVersion || 0) !==
+          receipt.interestStateVersionAtOperation + 1
+        ) {
+          throw new Error('Loan has changed since this payment; undo refused');
+        }
+
+        const expense = await db.fixedExpenses.get(receipt.affectedExpenseId);
+        if (!expense) {
+          throw new Error('Affected expense no longer exists; undo refused');
+        }
+
+        const ts = nowIso();
+
+        await db.loans.update(loanId, {
+          balance: receipt.before.balance,
+          unpaidInterest: receipt.before.unpaidInterest,
+          interestAccruedThrough: receipt.before.interestAccruedThrough,
+          interestStateVersion: (loan.interestStateVersion || 0) + 1,
+          lastInterestOperation: { ...receipt, status: 'undone' },
+          updatedAt: ts,
+        });
+
+        const account = await db.accounts.get(receipt.affectedAccountId);
+        if (account) {
+          await db.accounts.update(account.id, {
+            currentBalance:
+              Number(account.currentBalance || 0) + receipt.cashAmount,
+            updatedAt: ts,
+          });
+        }
+
+        if (!skipExpenseRevert) {
+          await db.fixedExpenses.update(receipt.affectedExpenseId, {
+            paidAmount: receipt.previousExpensePaidAmount,
+            status: receipt.previousExpenseStatus,
+            updatedAt: ts,
+          });
+        }
+
+        try {
+          await addAuditLogEntry('UNDO', 'loanInterestOperation', loanId, {
+            operationId: receipt.operationId,
+            refundedTo: receipt.affectedAccountId,
+            cashAmount: receipt.cashAmount,
+          });
+        } catch (auditErr) {
+          logger.warn('Audit log (loan undo) failed:', auditErr);
+        }
+
+        return {
+          undone: true,
+          loanId,
+          expenseId: receipt.affectedExpenseId,
+        };
+      },
+    );
+  },
+
+  /**
+   * "Correct latest payment": the last payment on a tracked loan was
+   * actually $newPaidAmount, not what was recorded. Internally undoes
+   * the original payment and re-applies the corrected amount, together,
+   * as one atomic user-facing action - never exposing an intermediate
+   * undone-but-not-yet-replaced state. Only legal against the loan's
+   * single most recent payment (same "latest operation only" rule as
+   * plain Undo); refused once a newer payment or a direct correction has
+   * superseded the receipt.
+   *
+   * @param {string} loanId
+   * @param {string} expenseId - must be the loan's current
+   *   lastInterestOperation.affectedExpenseId
+   * @param {number} newPaidAmount
+   * @returns {Promise<{corrected: true}>}
+   */
+  async correctLatestLoanPayment(loanId, expenseId, newPaidAmount) {
+    const paidAmountCheck = validatePaidAmount(newPaidAmount);
+    if (!paidAmountCheck.isValid) {
+      throw new Error(paidAmountCheck.error);
+    }
+
+    const loan = await db.loans.get(loanId);
+    const receipt = loan?.lastInterestOperation;
+    if (!receipt || receipt.status !== 'active') {
+      throw new Error('No correctable payment for this loan');
+    }
+    if (receipt.affectedExpenseId !== expenseId) {
+      throw new Error('This is not the most recent payment for this loan');
+    }
+
+    const { sanitizeExpenseData } = await import('../utils/expenseValidation');
+
+    return db.transaction(
+      'rw',
+      db.loans,
+      db.accounts,
+      db.fixedExpenses,
+      db.auditLogs,
+      async () => {
+        await this.undoLastLoanInterestOperation(loanId, receipt.operationId);
+
+        const expense = await db.fixedExpenses.get(expenseId);
+        if (!expense) {
+          throw new Error(`Expense with ID ${expenseId} not found`);
+        }
+        const sanitized = sanitizeExpenseData({
+          ...expense,
+          paidAmount: newPaidAmount,
+        });
+        const ts = nowIso();
+
+        await db.fixedExpenses.update(expenseId, {
+          paidAmount: newPaidAmount,
+          status:
+            sanitized.amount > 0 && newPaidAmount >= sanitized.amount
+              ? 'paid'
+              : 'pending',
+          updatedAt: ts,
+        });
+
+        if (newPaidAmount !== 0) {
+          await applyPaymentDelta(sanitized, newPaidAmount, expenseId, ts, {
+            previousPaidAmount: 0,
+            previousStatus: 'pending',
+          });
+        }
+
+        return { corrected: true };
       },
     );
   },

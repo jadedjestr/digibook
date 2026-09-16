@@ -1,9 +1,11 @@
 import PropTypes from 'prop-types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
+import { useLoans } from '../stores/useAppStore';
 import { formatCurrency } from '../utils/accountUtils';
+import { DateUtils } from '../utils/dateUtils';
 import { notify } from '../utils/notifications';
 import { validatePaidAmount } from '../utils/validation';
 
@@ -41,11 +43,40 @@ const SHORTFALL_EPSILON = 0.004;
  */
 const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
   const { updateExpenseV4, resolveCycle } = useExpenseOperations();
+  const loans = useLoans();
 
   const amountDue = expense
     ? (expense.amount ?? 0) - (expense.paidAmount ?? 0)
     : 0;
   const isRecurring = Boolean(expense?.recurringTemplateId);
+
+  // A tracked loan payment: real-interest-tracking is on for the target
+  // loan (interestAccruedThrough set). Drives the live interest/principal
+  // preview below - a read-only projection through the exact same
+  // computeLoanInterest function the actual payment posts with, so the
+  // preview and the posted split always agree.
+  const trackedLoan = useMemo(() => {
+    if (expense?.category !== 'Loan Payment' || !expense?.targetLoanId) {
+      return null;
+    }
+    const loan = loans.find(l => l.id === expense.targetLoanId);
+    return loan?.interestAccruedThrough ? loan : null;
+  }, [loans, expense?.category, expense?.targetLoanId]);
+
+  const previewSplit = paidAmountValue => {
+    if (!trackedLoan || !(paidAmountValue > 0)) return null;
+    try {
+      return dbHelpers.computeLoanInterest(
+        trackedLoan,
+        DateUtils.today(),
+        paidAmountValue,
+      );
+    } catch {
+      // e.g. paidAmountValue exceeds payoff mid-typing - just show nothing
+      // rather than an error while the user is still entering a number.
+      return null;
+    }
+  };
 
   const [paidAmount, setPaidAmount] = useState(
     amountDue > 0 ? String(amountDue) : '0',
@@ -102,6 +133,12 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
   const runResolution = async (paidAmountValue, outcomeOptions = {}) => {
     setIsSubmitting(true);
     try {
+      // Computed from the loan state as it is right now, immediately
+      // before posting - identical inputs to what the payment-posting
+      // path itself will use, so this is exactly what's about to happen,
+      // not a guess.
+      const split = previewSplit(paidAmountValue);
+
       if (isRecurring) {
         await resolveCycle(expense.id, {
           paidAmount: paidAmountValue,
@@ -115,6 +152,9 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
           { paidAmount: paidAmountValue, status },
           false,
         );
+      }
+      if (split && split.principalPaid === 0) {
+        notify.info('This payment did not reduce principal');
       }
       onClose();
     } catch {
@@ -190,6 +230,18 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
 
         {step === 'choose' && (
           <>
+            {trackedLoan &&
+              (() => {
+                const split = previewSplit(amountDue);
+                if (!split) return null;
+                return (
+                  <p className='text-xs text-white/50 mb-3'>
+                    Interest {formatCurrency(split.interestPaid)} · Principal{' '}
+                    {formatCurrency(split.principalPaid)} · Remaining principal{' '}
+                    {formatCurrency(split.principalAfter)}
+                  </p>
+                );
+              })()}
             <div className='flex flex-col gap-3 mb-4'>
               <button
                 type='button'
@@ -258,6 +310,18 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
               onChange={e => setPaidAmount(e.target.value)}
               className='w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-white mb-3'
             />
+            {trackedLoan &&
+              (() => {
+                const split = previewSplit(parseFloat(paidAmount));
+                if (!split) return null;
+                return (
+                  <p className='text-xs text-white/50 mb-3'>
+                    Interest {formatCurrency(split.interestPaid)} · Principal{' '}
+                    {formatCurrency(split.principalPaid)} · Remaining principal{' '}
+                    {formatCurrency(split.principalAfter)}
+                  </p>
+                );
+              })()}
             {isRecurring && (
               <p className='text-xs text-white/50 mb-3'>
                 If anything&apos;s left over, you&apos;ll be asked how to handle
@@ -367,6 +431,8 @@ ResolveExpenseModal.propTypes = {
     name: PropTypes.string,
     amount: PropTypes.number,
     paidAmount: PropTypes.number,
+    category: PropTypes.string,
+    targetLoanId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
     recurringTemplateId: PropTypes.oneOfType([
       PropTypes.string,
       PropTypes.number,

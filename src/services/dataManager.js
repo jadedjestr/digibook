@@ -16,7 +16,7 @@ const CSV_MONEY_FIELDS = {
   fixedExpenses: ['amount', 'paidAmount'],
   recurringExpenseTemplates: ['baseAmount'],
   incomeSources: ['expectedAmount'],
-  loans: ['balance'],
+  loans: ['balance', 'unpaidInterest'],
   creditCards: ['balance', 'creditLimit', 'minimumPayment'],
 };
 
@@ -34,7 +34,11 @@ const CSV_MONEY_FIELDS = {
 // 9 adds `loans` (installment-debt tracking, mirroring creditCards). It is
 // additive and optional: a version 8 file imports fine and simply starts
 // with no loans.
-const CURRENT_DATA_VERSION = 9;
+// 10 adds real-interest-tracking fields to `loans` (unpaidInterest,
+// interestAccruedThrough, interestStateVersion, lastInterestOperation). It
+// is additive and optional: a version 9 file imports fine and its loans
+// simply stay untracked (interestAccruedThrough absent/null).
+const CURRENT_DATA_VERSION = 10;
 
 /**
  * Normalize version to number for comparison

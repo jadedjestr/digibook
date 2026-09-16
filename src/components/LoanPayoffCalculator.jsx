@@ -300,6 +300,18 @@ const LoanPayoffCalculator = ({ loans = [] }) => {
               <h3 className='text-lg font-semibold text-white'>
                 Payoff Projection
               </h3>
+              <p className='text-xs text-white/50'>
+                This projection amortizes principal alone. Digibook uses daily
+                simple interest, fixed 365-day year - results may differ from
+                your lender.
+              </p>
+              {selectedLoan?.interestAccruedThrough && (
+                <p className='text-sm text-amber-300/90'>
+                  Plus {formatCurrency(selectedLoan.unpaidInterest || 0)} in
+                  unpaid interest, due before payments start landing fully on
+                  this schedule.
+                </p>
+              )}
 
               {payoffResult.payoffMonths === -1 ? (
                 <div className='glass-card p-4 border border-red-500/20 bg-red-500/10'>

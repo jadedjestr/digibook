@@ -34,6 +34,13 @@ const emptyFormData = {
   dueDate: '',
   targetPayoffDate: '',
   fundingAccountId: '',
+
+  // Real-interest tracking opt-in (see PRD/TIP §3): both blank means "not
+  // tracked" - nothing about the existing flow changes. Filling in an "as
+  // of" date is what turns tracking on, even if unpaidInterest is $0.
+  unpaidInterest: '',
+  interestAccruedThrough: '',
+  confirmExcludesInterest: false,
 };
 
 const Loans = ({ onDataChange, accounts = [] }) => {
@@ -205,9 +212,35 @@ const Loans = ({ onDataChange, accounts = [] }) => {
       newErrors.targetPayoffDate = paymentPreview.message;
     }
 
+    const hasUnpaidInterest = formData.unpaidInterest !== '';
+    const hasAccruedThrough = formData.interestAccruedThrough !== '';
+    if (hasUnpaidInterest !== hasAccruedThrough) {
+      newErrors.interestAccruedThrough =
+        'Fill in both unpaid interest and the as-of date, or leave both blank';
+    } else if (hasAccruedThrough) {
+      const unpaidInterest = parseFloat(formData.unpaidInterest);
+      if (!Number.isFinite(unpaidInterest) || unpaidInterest < 0) {
+        newErrors.unpaidInterest = 'Unpaid interest must be zero or more';
+      }
+      if (
+        formData.interestAccruedThrough > new Date().toISOString().slice(0, 10)
+      ) {
+        newErrors.interestAccruedThrough = 'As-of date cannot be in the future';
+      }
+      if (!formData.confirmExcludesInterest) {
+        newErrors.confirmExcludesInterest =
+          'Confirm the balance above excludes unpaid interest';
+      }
+    } else if (editingLoan?.interestAccruedThrough) {
+      // Tracking, once on, isn't silently turned off by clearing the
+      // form - disabling it is a separate, undefined action in v1.
+      newErrors.interestAccruedThrough =
+        'This loan already tracks interest - clearing this would turn tracking off, which isn’t supported yet';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData, paymentPreview]);
+  }, [formData, paymentPreview, editingLoan]);
 
   const closeAddModalAndReset = useCallback(() => {
     setIsAddModalOpen(false);
@@ -236,6 +269,14 @@ const Loans = ({ onDataChange, accounts = [] }) => {
         dueDate: formData.dueDate,
         targetPayoffDate: formData.targetPayoffDate,
       };
+
+      if (
+        formData.unpaidInterest !== '' &&
+        formData.interestAccruedThrough !== ''
+      ) {
+        loanData.unpaidInterest = parseFloat(formData.unpaidInterest);
+        loanData.interestAccruedThrough = formData.interestAccruedThrough;
+      }
 
       if (editingLoan) {
         await dbHelpers.updateLoan(
@@ -448,6 +489,12 @@ const Loans = ({ onDataChange, accounts = [] }) => {
       targetPayoffDate: loan.targetPayoffDate,
       fundingAccountId:
         fundingAccountId != null ? String(fundingAccountId) : '',
+      unpaidInterest:
+        loan.interestAccruedThrough != null
+          ? (loan.unpaidInterest ?? 0).toString()
+          : '',
+      interestAccruedThrough: loan.interestAccruedThrough || '',
+      confirmExcludesInterest: Boolean(loan.interestAccruedThrough),
     });
     setInitialFundingAccountId(fundingAccountId ?? null);
     setIsAddModalOpen(true);
@@ -578,6 +625,10 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                 }
                 onEdit={handleEdit}
                 onDelete={handleDelete}
+                onInterestOperationComplete={() => {
+                  loadLoans();
+                  onDataChange();
+                }}
                 index={index}
               />
             );
@@ -660,7 +711,9 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                     htmlFor='loan-balance'
                     className='block text-sm font-medium text-white mb-2'
                   >
-                    Current Balance
+                    {formData.interestAccruedThrough !== ''
+                      ? 'Remaining Principal'
+                      : 'Current Balance'}
                   </label>
                   <input
                     id='loan-balance'
@@ -675,6 +728,93 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   {errors.balance && (
                     <p className='text-red-400 text-sm mt-1'>
                       {errors.balance}
+                    </p>
+                  )}
+                </div>
+
+                <div className='glass-panel p-4'>
+                  <p className='text-sm font-medium text-white mb-1'>
+                    Real interest tracking (optional)
+                  </p>
+                  <p className='text-white/50 text-xs mb-3'>
+                    Fill in both fields below, from your latest statement, to
+                    track interest separately from principal. Leave both blank
+                    to keep this loan as-is.
+                  </p>
+
+                  <label
+                    htmlFor='loan-unpaid-interest'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
+                    Unpaid Interest Right Now
+                  </label>
+                  <input
+                    id='loan-unpaid-interest'
+                    type='number'
+                    inputMode='decimal'
+                    step='0.01'
+                    min='0'
+                    value={formData.unpaidInterest}
+                    onChange={e =>
+                      handleInputChange('unpaidInterest', e.target.value)
+                    }
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white mb-1'
+                    placeholder='0.00'
+                  />
+                  {errors.unpaidInterest && (
+                    <p className='text-red-400 text-sm mb-2'>
+                      {errors.unpaidInterest}
+                    </p>
+                  )}
+
+                  <label
+                    htmlFor='loan-interest-as-of'
+                    className='block text-sm font-medium text-white mb-2 mt-3'
+                  >
+                    As Of Date
+                  </label>
+                  <div style={{ overflow: 'hidden', width: '100%' }}>
+                    <input
+                      id='loan-interest-as-of'
+                      type='date'
+                      value={formData.interestAccruedThrough}
+                      onChange={e =>
+                        handleInputChange(
+                          'interestAccruedThrough',
+                          e.target.value,
+                        )
+                      }
+                      className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    />
+                  </div>
+                  {errors.interestAccruedThrough && (
+                    <p className='text-red-400 text-sm mt-1'>
+                      {errors.interestAccruedThrough}
+                    </p>
+                  )}
+
+                  {formData.interestAccruedThrough !== '' && (
+                    <label className='flex items-start gap-2 mt-3 text-sm text-white/80'>
+                      <input
+                        type='checkbox'
+                        checked={formData.confirmExcludesInterest}
+                        onChange={e =>
+                          handleInputChange(
+                            'confirmExcludesInterest',
+                            e.target.checked,
+                          )
+                        }
+                        className='mt-0.5'
+                      />
+                      <span>
+                        The balance above is remaining principal only - it does
+                        not include the unpaid interest entered here.
+                      </span>
+                    </label>
+                  )}
+                  {errors.confirmExcludesInterest && (
+                    <p className='text-red-400 text-sm mt-1'>
+                      {errors.confirmExcludesInterest}
                     </p>
                   )}
                 </div>
