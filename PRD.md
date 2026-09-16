@@ -107,6 +107,15 @@ The bank balance is optimistic; the app's job is to be honest.
 - Support partial payment, and correcting or reversing a payment afterwards.
 - Generate future occurrences of recurring bills automatically, far enough
   ahead to be useful and without creating duplicates.
+  - **Known gap:** today this only happens for a bill's very first occurrence,
+    and inconsistently. A credit card's payment bill is made actionable
+    immediately, no matter how far off its due date is. A manually added
+    recurring bill is only made actionable immediately if its first due date
+    falls within the current pay period — otherwise, like every later
+    occurrence of any recurring bill, it only appears in the Overdue/This
+    week/Later list once its due date actually arrives. Until then it's
+    visible only as a forecast on the Calendar, not in this list, which can
+    make an upcoming bill look farther away than it is.
 - When a view is empty, say why and point at the next real thing rather than
   implying there is nothing to pay.
 - Proactively surface unpaid bills from a past period, or a cycle ready to be
