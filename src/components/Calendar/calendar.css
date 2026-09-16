@@ -1116,20 +1116,24 @@
    ============================================================ */
 .fixed-expenses-month-layout {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   gap: 1.5rem;
-  align-items: flex-start;
   margin-top: 0.5rem;
 }
 
+/* Stacked at every width now: the priority list (what to act on) sits
+   above the calendar (what to browse). DOM order is calendar-first, so
+   the explicit orders below put the list on top. */
 .fixed-expenses-calendar-column {
-  flex: 1 1 55%;
+  flex: none;
   min-width: 0;
+  order: 2;
 }
 
 .fixed-expenses-priority-column {
-  flex: 1 1 45%;
-  min-width: 380px;
+  flex: none;
+  min-width: 0;
+  order: 1;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -1151,25 +1155,8 @@
 }
 
 @media (max-width: 1024px) {
-  .fixed-expenses-month-layout {
-    flex-direction: column;
-  }
-
-  .fixed-expenses-calendar-column,
-  .fixed-expenses-priority-column {
-    flex: none;
-    max-width: none;
-    min-width: 0;
-  }
-
-  /* The priority list is what you act on; the calendar is what you
-     browse. On a phone, acting comes first. */
-  .fixed-expenses-priority-column {
-    order: 1;
-  }
-  .fixed-expenses-calendar-column {
-    order: 2;
-  }
+  /* The stacked layout is now the default at every width; only the
+     priority-list meta wrap is still width-specific. */
 
   /* At this width the amount and Pay Now button leave too little room
      for the account name and due-date meta line to fit on one row —
