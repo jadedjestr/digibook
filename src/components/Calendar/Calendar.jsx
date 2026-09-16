@@ -7,6 +7,10 @@ import CalendarGrid from './CalendarGrid';
 import CalendarHeader from './CalendarHeader';
 import './calendar.css';
 
+// Module-level default so a missing prop doesn't create a new Map identity
+// per render (which would invalidate the calendarData memo every time).
+const EMPTY_RESOLUTION_MAP = new Map();
+
 /**
  * Main Calendar component for Fixed Expenses
  * Displays monthly view of expenses with status indicators
@@ -16,6 +20,7 @@ const Calendar = ({
   currentMonth,
   monthExpenses,
   virtualExpenses,
+  resolutionByExpenseId = EMPTY_RESOLUTION_MAP,
   paycheckService,
   paycheckDates,
   onPreviousMonth,
@@ -55,10 +60,18 @@ const Calendar = ({
       date.setDate(startDate.getDate() + i);
 
       const dateString = DateUtils.formatDate(date);
+
+      // Resolved cycles (Skip / short Partial / paid full) are flagged on
+      // the object - same idiom as virtualExpenses' isVirtual - so the
+      // badge can render them settled and inert without prop drilling.
+      // Shallow copy: never mutate the store's expense objects.
       const dayExpenses = [
-        ...(monthExpenses || []).filter(
-          expense => expense.dueDate === dateString,
-        ),
+        ...(monthExpenses || [])
+          .map(expense => {
+            const resolution = resolutionByExpenseId.get(expense.id);
+            return resolution ? { ...expense, resolution } : expense;
+          })
+          .filter(expense => expense.dueDate === dateString),
         ...(virtualExpenses || []).filter(
           expense => expense.dueDate === dateString,
         ),
@@ -82,7 +95,13 @@ const Calendar = ({
     }
 
     return days;
-  }, [currentMonth, monthExpenses, virtualExpenses, paycheckDates]);
+  }, [
+    currentMonth,
+    monthExpenses,
+    virtualExpenses,
+    resolutionByExpenseId,
+    paycheckDates,
+  ]);
 
   // Day selection handler
   const handleDaySelect = useCallback(dateString => {
@@ -191,6 +210,7 @@ Calendar.propTypes = {
   currentMonth: PropTypes.instanceOf(Date).isRequired,
   monthExpenses: PropTypes.arrayOf(PropTypes.object),
   virtualExpenses: PropTypes.arrayOf(PropTypes.object),
+  resolutionByExpenseId: PropTypes.instanceOf(Map),
   paycheckService: PropTypes.object.isRequired,
   paycheckDates: PropTypes.shape({
     nextPayDate: PropTypes.string,

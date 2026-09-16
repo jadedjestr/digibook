@@ -36,6 +36,16 @@ import '../components/Calendar/calendar.css';
 const USE_NUDGE_TOAST = true;
 
 const EMPTY_ID_SET = new Set();
+const EMPTY_RESOLUTION_MAP = new Map();
+
+// Kind of resolution a log entry represents: Skip is a £0 payment; a full
+// payment covers the committed amount; anything between spun off a
+// Balance Due for the shortfall.
+const resolutionTypeOf = entry => {
+  if (entry.wasSkipped) return 'skipped';
+  if (entry.paidAmount >= entry.committedAmount) return 'paid';
+  return 'partial';
+};
 
 const FixedExpenses = () => {
   const [payNowExpense, setPayNowExpense] = useState(null);
@@ -45,13 +55,16 @@ const FixedExpenses = () => {
 
   // Derived from recurringResolutionLog: which expense ids are an already-
   // resolved recurring cycle (stop showing as actionable - the cadence has
-  // moved on, whether or not it was paid in full) and which are a Balance
-  // Due spun off from one (worth a badge wherever they show up). Refetched
-  // whenever fixedExpenses changes, since that's already the signal a
-  // resolve/undo just happened.
+  // moved on, whether or not it was paid in full), which are a Balance
+  // Due spun off from one (worth a badge wherever they show up), and - for
+  // the calendar - what kind of resolution each resolved row was (paid in
+  // full / skipped / partial), so its badge can read as settled instead of
+  // still due. Refetched whenever fixedExpenses changes, since that's
+  // already the signal a resolve/undo just happened.
   const [resolutionLinkage, setResolutionLinkage] = useState({
     resolvedExpenseIds: EMPTY_ID_SET,
     balanceDueExpenseIds: EMPTY_ID_SET,
+    resolvedByExpenseId: EMPTY_RESOLUTION_MAP,
   });
 
   // The Virtual Ledger's 'virtual' cycles for the visible month, one
@@ -251,7 +264,27 @@ const FixedExpenses = () => {
             .filter(e => e.adjustmentExpenseId)
             .map(e => e.adjustmentExpenseId),
         );
-        setResolutionLinkage({ resolvedExpenseIds, balanceDueExpenseIds });
+
+        // Per-expense resolution kind for the calendar's badges: a resolved
+        // cycle must render settled (and inert), not still due. Note the
+        // Balance Due ids are deliberately NOT in this map - they are real,
+        // actionable one-offs.
+        const resolvedByExpenseId = new Map(
+          entries.map(entry => [
+            entry.expenseId,
+            {
+              type: resolutionTypeOf(entry),
+              resolvedAt: entry.resolvedAt,
+              paidAmount: entry.paidAmount,
+              committedAmount: entry.committedAmount,
+            },
+          ]),
+        );
+        setResolutionLinkage({
+          resolvedExpenseIds,
+          balanceDueExpenseIds,
+          resolvedByExpenseId,
+        });
       } catch (error) {
         logger.warn('Could not load resolution log linkage', error);
       }
@@ -415,6 +448,7 @@ const FixedExpenses = () => {
                 currentMonth={currentMonth}
                 monthExpenses={currentMonthExpenses}
                 virtualExpenses={virtualExpenses}
+                resolutionByExpenseId={resolutionLinkage.resolvedByExpenseId}
                 paycheckService={paycheckService}
                 paycheckDates={paycheckDates}
                 onPreviousMonth={handlePreviousMonth}

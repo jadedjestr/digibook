@@ -2,6 +2,7 @@ import PropTypes from 'prop-types';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { DateUtils } from '../../utils/dateUtils';
 import ResolveExpenseModal from '../ResolveExpenseModal';
 
 /**
@@ -14,10 +15,16 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   // yet. Skip status math entirely; it's not "due" in any actionable sense.
   const isVirtual = expense.isVirtual === true;
 
+  // A resolved cycle (paid in full / Skipped / short Partial): the row
+  // still exists but the cycle is settled - its shortfall lives in the
+  // spun-off Balance Due. Settled and inert, never actionable again.
+  const isResolved = expense.resolution !== undefined;
+
   // Calculate status using PaycheckService
-  const status = isVirtual
-    ? null
-    : paycheckService.calculateExpenseStatus(expense, paycheckDates);
+  const status =
+    isVirtual || isResolved
+      ? null
+      : paycheckService.calculateExpenseStatus(expense, paycheckDates);
 
   // Format expense display text (returns name and amount for separate elements)
   const formatExpenseText = expense => {
@@ -64,9 +71,14 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   };
 
   const { displayName, amountText } = formatExpenseText(expense);
-  const statusClass = isVirtual
-    ? 'expense-badge--virtual'
-    : getStatusClass(status);
+  let statusClass;
+  if (isVirtual) {
+    statusClass = 'expense-badge--virtual';
+  } else if (isResolved) {
+    statusClass = `expense-badge--${expense.resolution.type}`; // paid | skipped | partial
+  } else {
+    statusClass = getStatusClass(status);
+  }
   const remainingAmount = expense.amount - (expense.paidAmount || 0);
 
   // Check if this is a recurring expense
@@ -76,13 +88,38 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   const recurringClass = isRecurring ? 'expense-badge--recurring' : '';
   const oneOffClass = !isRecurring ? 'expense-badge--oneoff' : '';
 
-  const title = isVirtual
-    ? `${expense.name} - ~$${expense.amount.toLocaleString()}\nForecast: not due yet${expense.isVariableAmount ? ' (estimated - amount varies)' : ''}`
-    : `${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${status}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : '\n📅 One-time Expense'}`;
+  let title;
+  if (isVirtual) {
+    title = `${expense.name} - ~$${expense.amount.toLocaleString()}\nForecast: not due yet${expense.isVariableAmount ? ' (estimated - amount varies)' : ''}`;
+  } else if (isResolved) {
+    // resolvedAt is an ISO timestamp - formatShortDate's parser needs the
+    // date part only.
+    const paidOn = DateUtils.formatShortDate(
+      expense.resolution.resolvedAt.slice(0, 10),
+    );
+    const shortfall =
+      (expense.resolution.committedAmount || 0) -
+      (expense.resolution.paidAmount || 0);
+    let statusLine;
+    if (expense.resolution.type === 'paid') {
+      statusLine = `Paid in Full on ${paidOn}`;
+    } else if (expense.resolution.type === 'skipped') {
+      statusLine = `Skipped (No Payment) — owed as Balance Due ($${shortfall.toLocaleString()})`;
+    } else {
+      statusLine = `Partial Paid ($${(expense.resolution.paidAmount || 0).toLocaleString()} paid)`;
+    }
+    title = `${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${statusLine}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : '\n📅 One-time Expense'}`;
+  } else {
+    title = `${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${status}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : '\n📅 One-time Expense'}`;
+  }
 
   // Virtual entries are a forecast, not a real row - nothing exists yet to
-  // resolve, so the badge isn't interactive.
-  const handleActivate = isVirtual
+  // resolve. Resolved cycles are settled - re-resolving one would double-
+  // debit the account and double-advance the cadence. Neither is
+  // interactive.
+  const inert = isVirtual || isResolved;
+
+  const handleActivate = inert
     ? undefined
     : e => {
         e.preventDefault();
@@ -95,11 +132,11 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
       <div
         className={`expense-badge ${statusClass} ${recurringClass} ${oneOffClass}`.trim()}
         title={title}
-        role={isVirtual ? undefined : 'button'}
-        tabIndex={isVirtual ? undefined : 0}
+        role={inert ? undefined : 'button'}
+        tabIndex={inert ? undefined : 0}
         onClick={handleActivate}
         onKeyDown={
-          isVirtual
+          inert
             ? undefined
             : e => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -123,6 +160,7 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
       </div>
 
       {showResolveModal &&
+        !inert &&
         createPortal(
           <ResolveExpenseModal
             expense={expense}
@@ -144,6 +182,12 @@ ExpenseBadge.propTypes = {
     recurringTemplateId: PropTypes.number,
     isVariableAmount: PropTypes.bool,
     isVirtual: PropTypes.bool,
+    resolution: PropTypes.shape({
+      type: PropTypes.oneOf(['paid', 'skipped', 'partial']).isRequired,
+      resolvedAt: PropTypes.string.isRequired,
+      paidAmount: PropTypes.number,
+      committedAmount: PropTypes.number,
+    }),
   }).isRequired,
   paycheckService: PropTypes.shape({
     calculateExpenseStatus: PropTypes.func.isRequired,

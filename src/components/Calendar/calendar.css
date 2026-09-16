@@ -444,6 +444,38 @@
   @apply bg-gray-500/20 text-gray-300 border-gray-500/30;
 }
 
+/* Resolved cycle (Skipped / short Partial): the row still exists but the
+   cycle is settled - its shortfall lives in the spun-off Balance Due.
+   Neutral and non-interactive, like a virtual forecast. */
+.expense-badge--skipped {
+  @apply bg-gray-500/20 text-gray-300 border-gray-500/30;
+  cursor: default;
+  font-style: italic;
+}
+
+.expense-badge--partial {
+  @apply bg-yellow-500/20 text-yellow-300 border-yellow-500/30;
+  cursor: default;
+  font-style: italic;
+}
+
+.expense-badge--skipped:hover,
+.expense-badge--partial:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Keep the settled look winning over the amber recurring styling. */
+.expense-badge--recurring.expense-badge--skipped {
+  @apply bg-gray-500/20 text-gray-300 border-gray-500/30;
+  box-shadow: none;
+}
+
+.expense-badge--recurring.expense-badge--partial {
+  @apply bg-yellow-500/20 text-yellow-300 border-yellow-500/30;
+  box-shadow: none;
+}
+
 /* Virtual Ledger forecast entry: not a real row yet, nothing to resolve -
    dashed and muted so it reads as a projection, not an actionable bill. */
 .expense-badge--virtual {

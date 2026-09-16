@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+import { DateUtils } from '../../utils/dateUtils';
 import { db, dbHelpers } from '../database-clean';
 
 vi.mock('../../utils/logger', () => ({
@@ -184,7 +185,11 @@ describe('dbHelpers.resolveCycle', () => {
     expect(template.nextDueDate).toBe('2026-10-14'); // advanced despite partial
     expect(balanceDue).toBeTruthy();
     expect(balanceDue.amount).toBeCloseTo(49.5);
-    expect(balanceDue.dueDate).toBe(new Date().toISOString().split('T')[0]); // due today
+
+    // Use the app's local-time convention (DateUtils.today()), not UTC -
+    // toISOString() flips to the next day after 5pm PDT, making this
+    // time-of-day flaky.
+    expect(balanceDue.dueDate).toBe(DateUtils.today()); // due today
     expect(balanceDue.recurringTemplateId).toBeNull();
     expect(balanceDue.status).toBe('pending');
 
