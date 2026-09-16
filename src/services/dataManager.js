@@ -2,6 +2,7 @@ import { dbHelpers } from '../db/database-clean';
 import {
   validatePaymentSource,
   validateCreditCardPayment,
+  validateLoanPayment,
   sanitizeExpenseData,
 } from '../utils/expenseValidation';
 import { logger } from '../utils/logger';
@@ -28,7 +29,10 @@ const CSV_MONEY_FIELDS = {
 // 8 adds `recurringResolutionLog` (Undo / Payment History for the recurring
 // "resolve cycle" flow). It is additive and optional: a version 7 file
 // imports fine and simply starts with no resolution history.
-const CURRENT_DATA_VERSION = 8;
+// 9 adds `loans` (installment-debt tracking, mirroring creditCards). It is
+// additive and optional: a version 8 file imports fine and simply starts
+// with no loans.
+const CURRENT_DATA_VERSION = 9;
 
 /**
  * Normalize version to number for comparison
@@ -327,6 +331,7 @@ class DataManager {
           converted.accountId = row.accountId || null;
           converted.creditCardId = row.creditCardId || null;
           converted.targetCreditCardId = row.targetCreditCardId || null;
+          converted.targetLoanId = row.targetLoanId || null;
           converted.dueDate = row.dueDate
             ? new Date(row.dueDate).toISOString().split('T')[0]
             : '';
@@ -357,6 +362,7 @@ class DataManager {
           converted.accountId = row.accountId || null;
           converted.creditCardId = row.creditCardId || null;
           converted.targetCreditCardId = row.targetCreditCardId || null;
+          converted.targetLoanId = row.targetLoanId || null;
           converted.isActive =
             row.isActive === 'true' ||
             row.isActive === '1' ||
@@ -853,6 +859,11 @@ export const validateExpenseDataV4 = expense => {
     // Validate credit card payment specific rules
     if (sanitizedExpense.category === 'Credit Card Payment') {
       validateCreditCardPayment(sanitizedExpense);
+    }
+
+    // Validate loan payment specific rules
+    if (sanitizedExpense.category === 'Loan Payment') {
+      validateLoanPayment(sanitizedExpense);
     }
 
     logger.debug(`Validated expense: ${sanitizedExpense.name}`);

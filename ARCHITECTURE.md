@@ -93,7 +93,7 @@ contract.
 │  │  │   liquid    │  │                                        │  │   │
 │  │  │   cash)     │  │  Accounts | PendingTransactions |      │  │   │
 │  │  │             │  │  FixedExpenses | CreditCards |          │  │   │
-│  │  │             │  │  Insights | Settings                    │  │   │
+│  │  │             │  │  Loans | Insights | Settings            │  │   │
 │  │  └────────────┘  └────────────────────────────────────────┘  │   │
 │  │       │                          │                            │   │
 │  │       ▼                          ▼                            │   │
@@ -167,7 +167,7 @@ contract.
 - **Engine:** IndexedDB (browser-native)
 - **ORM:** Dexie.js
 - **Database Name:** `DigibookDB_Fresh`
-- **Current Schema Version:** 10
+- **Current Schema Version:** 11
 
 ### Schema Evolution
 
@@ -183,6 +183,7 @@ contract.
 | V8 | **UUID migration** — all tables switched from auto-increment integer `id` to string UUID primary keys (assigned application-side via `generateId()` on every new record — the schema upgrade itself does no data backfill); added soft-delete support (`deletedAt`) and `updatedAt` timestamps on every table; added `categoryId` on `fixedExpenses`, `pendingTransactions`, and `recurringExpenseTemplates` |
 | V9 | Added `incomeSources` table (expected paycheck: target account, expected amount, enabled flag, `lastGeneratedDate` high-water mark); added `incomeSourceId` on `pendingTransactions` so auto-generated payday rows can be traced back to their source |
 | V10 | Added `recurringResolutionLog` table. Records every time a recurring cycle is resolved (Pay Full / Partial / Skip) so the cadence can advance immediately without pre-generating rows, and so Undo has an exact prior state to reverse to rather than re-deriving one from frequency math |
+| V11 | Added `loans` table (installment-debt tracking, mirroring `creditCards`); added `targetLoanId` on `fixedExpenses` (indexed, like `targetCreditCardId`) for "Loan Payment" expenses; `recurringExpenseTemplates` also gets `targetLoanId`, unindexed like its existing `targetCreditCardId` |
 
 ### Tables
 
@@ -217,6 +218,27 @@ Credit card accounts.
 | `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
 
+#### `loans`
+Installment loans (auto, student, personal, mortgage, etc.) — added V11,
+structurally mirroring `creditCards`. Unlike a credit card, a loan has no
+stored minimum payment; see the "Dynamic loan payment amount" note in
+[§5.3](#53-recurringexpenseservice) for how its payment is priced instead.
+
+| Column | Type | Indexed | Description |
+|---|---|---|---|
+| `id` | UUID string | PK | Unique identifier |
+| `name` | string | Yes | Loan display name |
+| `lender` | string | Yes | Lender/institution name |
+| `balance` | number | Yes | Current outstanding principal |
+| `interestRate` | number | Yes | Annual interest rate (APR, %) |
+| `targetPayoffDate` | string | Yes | Date the loan must reach $0 by (YYYY-MM-DD). Required at creation — `addLoan` rejects a date less than one billing cycle away. Drives the amortized payment calculation ([§5.3](#53-recurringexpenseservice)) |
+| `dueDate` | string | Yes | Next payment due date (YYYY-MM-DD); also the amortization `fromDate` used to price a payment before any cycle-specific date exists |
+| `minimumPaymentOverride` | number \| null | Yes | Present in the schema, mirroring the override field recurring templates already carry (see `recurringExpenseTemplates` below) — but unlike that field, nothing in the app currently reads or writes this column on the loan record itself; only the same-named field on the *template* is consulted |
+| `principalAmount` | number | — | Original loan amount, optional (not part of the Dexie index string, same as `notes` on `recurringExpenseTemplates`). Powers `getLoanPayoffProgress`'s percent-paid-off bar ([Section 9](#9-utilities)); when absent, progress can't be computed, though the paid-off state still can be |
+| `createdAt` | ISO string | Yes | Creation timestamp |
+| `updatedAt` | ISO string | Yes | Last update timestamp |
+| `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active |
+
 #### `fixedExpenses`
 All bills and expenses. The core of the V4 dual foreign key model.
 
@@ -229,6 +251,7 @@ All bills and expenses. The core of the V4 dual foreign key model.
 | `accountId` | string \| null | Yes | Funding bank account (mutually exclusive with `creditCardId`) |
 | `creditCardId` | string \| null | Yes | Credit card to charge (mutually exclusive with `accountId`) |
 | `targetCreditCardId` | string \| null | Yes | For "Credit Card Payment" category only — the card being paid |
+| `targetLoanId` | string \| null | Yes | For "Loan Payment" category only — the loan being paid (V11) |
 | `category` | string | Yes | Category name (e.g., "Utilities", "Credit Card Payment") |
 | `categoryId` | string \| null | Yes | Category reference by id (V8, alongside legacy `category` name) |
 | `paidAmount` | number | Yes | Amount paid so far |
@@ -253,6 +276,10 @@ All bills and expenses. The core of the V4 dual foreign key model.
    - `accountId` = the checking/savings account funding the payment (money goes out)
    - `targetCreditCardId` = the credit card being paid (balance goes down)
    - `creditCardId` must be null
+3. Loan Payment expenses (category = "Loan Payment"), same shape as Credit Card Payment:
+   - `accountId` = the checking/savings account funding the payment (money goes out)
+   - `targetLoanId` = the loan being paid (balance goes down)
+   - `creditCardId` must be null — a loan, like a credit card being paid, is never itself a spendable funding source
 
 #### `pendingTransactions`
 Uncleared deposits, checks, and payments that affect projected balances.
@@ -316,6 +343,7 @@ Templates that auto-generate future expense instances.
 | `accountId` | string \| null | Yes | Default funding account |
 | `creditCardId` | string \| null | — | Default credit card |
 | `targetCreditCardId` | string \| null | — | For credit card payment templates |
+| `targetLoanId` | string \| null | — | For loan payment templates (V11), unindexed for the same reason `targetCreditCardId` is — read via `.filter()` after a table scan, not `.where()` |
 | `notes` | string | Yes | Template notes |
 | `isActive` | boolean | Yes | Whether template is active |
 | `isVariableAmount` | boolean | Yes | Whether amount varies per occurrence |
@@ -463,11 +491,11 @@ accounts ──────────────┐
                        │ accountId
                        ▼
               fixedExpenses ◄──── recurringExpenseTemplates
-                       │                (recurringTemplateId)
-                       │ creditCardId
-                       │ targetCreditCardId
-                       ▼
-              creditCards
+                  │    │                (recurringTemplateId)
+   creditCardId,  │    │ targetLoanId
+ targetCreditCardId    │
+                  ▼    ▼
+           creditCards loans
 
 pendingTransactions ──► accounts (accountId)
 monthlyExpenseHistory ──► fixedExpenses (expenseId)
@@ -514,6 +542,7 @@ monthlyExpenseHistory ──► fixedExpenses (expenseId)
 | `pending` | Pending Transactions | Clock | Yes |
 | `expenses` | Fixed Expenses | Calendar | Yes |
 | `creditCards` | Credit Cards | CreditCard | Yes |
+| `loans` | Loans | Landmark | Yes |
 | `insights` | Insights | BarChart3 | Yes |
 | `settings` | Settings | Settings | No |
 
@@ -580,7 +609,35 @@ The interval math itself (weekly/biweekly day-count advance, monthly calendar ad
 **Path:** `src/services/recurringExpenseService.js`
 **Pattern:** Functional (exported async functions, no class)
 
-**Responsibility:** Manage recurring expense templates. Each template's current cycle is materialized as a real expense lazily, one at a time — see `dbHelpers.materializeCurrentCycle`/`materializeDueTemplates` in `src/db/database-clean.js`, which own creation; this service no longer pre-generates rows in bulk. A cycle's cadence only ever advances when it's resolved (`dbHelpers.resolveCycle`), never on materialization. Exception: a template's *first* occurrence can be materialized immediately at creation via `materializeCurrentCycle`'s `allowFuture` option, so it is actionable in the priority list and hero totals rather than existing only as a virtual calendar forecast — but the two callers gate this differently. `AddExpensePanel` only does so when the first occurrence falls within the *current pay period* (through the next paycheck); a bill whose first due date lands later is not force-materialized and waits for the normal due-date rule. `createExpenseForCard` (auto-creating a credit card's payment bill) has no such gate — it force-materializes unconditionally regardless of how far away the due date is, since a card's due date is often weeks out and the payment still needs to be actionable immediately. This is why a newly-linked credit card's payment bill can appear in `PriorityExpenseList`'s Later section well before a manually-added recurring bill due just as far out.
+**Responsibility:** Manage recurring expense templates. Each template's current cycle is materialized as a real expense lazily, one at a time — see `dbHelpers.materializeCurrentCycle`/`materializeDueTemplates` in `src/db/database-clean.js`, which own creation; this service no longer pre-generates rows in bulk. A cycle's cadence only ever advances when it's resolved (`dbHelpers.resolveCycle`), never on materialization. Exception: a template's *first* occurrence can be materialized immediately at creation via `materializeCurrentCycle`'s `allowFuture` option, so it is actionable in the priority list and hero totals rather than existing only as a virtual calendar forecast — but the three callers gate this differently. `AddExpensePanel` only does so when the first occurrence falls within the *current pay period* (through the next paycheck); a bill whose first due date lands later is not force-materialized and waits for the normal due-date rule. `createExpenseForCard` (auto-creating a credit card's payment bill) and `createExpenseForLoan` (its loan equivalent) have no such gate — both force-materialize unconditionally regardless of how far away the due date is, since a card's or loan's due date is often weeks out and the payment still needs to be actionable immediately. This is why a newly-linked credit card's or loan's payment bill can appear in `PriorityExpenseList`'s Later section well before a manually-added recurring bill due just as far out.
+
+**Dynamic loan payment amount.** A credit-card-payment template falls back on
+a *stored* number when uncalculated — `creditCards.minimumPayment`, a real
+column on the card, read via `getDefaultMinimumPaymentAmount`. A loan has no
+equivalent stored payment column. Instead, every cycle's amount is
+recomputed fresh from the loan's live `balance`, `interestRate`, and
+required `targetPayoffDate` via the module-private
+`calculateRequiredLoanPayment(balance, interestRate, fromDate,
+targetPayoffDate)` in `src/db/database-clean.js` — a standard amortization
+formula solving for the level monthly payment that zeroes `balance` by
+`targetPayoffDate`, priced forward from `fromDate` (the cycle being priced).
+It's exposed read-only as `dbHelpers.calculateRequiredLoanPayment` so the
+Add/Edit Loan form can preview the payment live as balance/rate/date are
+edited, and so `EnhancedLoanCard` can display it without storing a copy.
+Because it is recomputed from the *current* balance every cycle rather than
+following a schedule fixed once at loan creation, it self-corrects after an
+overpayment or a skipped cycle with no separate "final month rounding" logic
+needed — next cycle's payment is just whatever amortizes the balance that is
+actually left. The one place this computation lives is
+`computeTemplateCycleAmount()` — the same function a credit card's variable
+minimum goes through — so a lazily-materialized real expense row and a
+not-yet-real virtual ledger entry (`dbHelpers.getVirtualLedger`, described
+below) always agree on what the amount would be. A `minimumPaymentOverride` set on the *recurring
+template* (not on the loan record) takes precedence over the calculation
+when present, the same as it does for credit cards. The `loans` table also
+carries a same-named `minimumPaymentOverride` column (see the table above),
+but nothing in the app currently reads or writes it — only the
+template-level field is ever consulted.
 
 A future cycle that hasn't materialized yet (and a past cycle that never did) can still be reasoned about without creating anything, via `dbHelpers.getVirtualLedger(templateId, rangeStart, rangeEnd)` — a thin DB-fetching wrapper around the pure `computeCycleStates` in `src/utils/virtualLedger.js` that classifies each cycle in range as `resolved`/`pending`/`virtual`. The Calendar's forecast (§6.2) and the past-month nudge's gap detection (§6.3) are both just filters over this same function's output.
 
@@ -861,6 +918,17 @@ re-deriving urgency itself.
 | `CreateAccountModal` | `src/components/CreateAccountModal.jsx` | Inline "create an account" fallback inside the credit-card funding flow when no accounts exist yet |
 | `CreditCardDeletionModal` | `src/components/CreditCardDeletionModal.jsx` | Enhanced deletion with expense reassignment |
 
+### Loan Components
+
+Structurally mirrors Credit Card Components above; the funding-account picker
+and inline "create an account" fallback are shared rather than duplicated —
+`Loans.jsx` reuses `ChooseFundingAccountModal` and `CreateAccountModal` as-is.
+
+| Component | Path | Description |
+|---|---|---|
+| `EnhancedLoanCard` | `src/components/EnhancedLoanCard.jsx` | Visual loan card mirroring `EnhancedCreditCard`: balance, payoff-progress bar, and the required payment shown live via `dbHelpers.calculateRequiredLoanPayment` rather than read from a stored field; exposes a "change funding account" action alongside edit/delete |
+| `LoanDeletionModal` | `src/components/LoanDeletionModal.jsx` | Deletion flow offering only two options — Unlink or Delete Anyway — not the three `CreditCardDeletionModal` offers, since a loan is never a spendable funding source and "reassign to another loan" isn't a meaningful default |
+
 ### Category System
 
 | Component | Path | Description |
@@ -887,6 +955,14 @@ re-deriving urgency itself.
 | `DebtPayoffCalculator` | `src/components/DebtPayoffCalculator.jsx` | Snowball/Avalanche calculator |
 | `OverpaymentAnalysis` | `src/components/OverpaymentAnalysis.jsx` | Where spending exceeds budget |
 | `CreditCardDebtTable` | `src/components/CreditCardDebtTable.jsx` | Credit card debt overview table |
+| `LoanDebtTable` | `src/components/LoanDebtTable.jsx` | Sortable loan overview table mirroring `CreditCardDebtTable` |
+| `LoanPayoffCalculator` | `src/components/LoanPayoffCalculator.jsx` | Payoff calculator mirroring `DebtPayoffCalculator`; seeds its payment field from the loan's own calculated payment (`dbHelpers.calculateRequiredLoanPayment`) rather than a rough estimate, when that formula succeeds |
+
+Both are rendered on the Insights page in their own section, separate from
+the credit-card debt views above — a loan has no credit limit or utilization
+concept, so it doesn't share `CreditCardDebtTable`/`DebtPayoffCalculator`.
+`App.jsx` threads `loans` (from the `useLoans` store hook) into `<Insights>`
+the same way it already threads `creditCards`.
 
 ### Empty States & Illustrations
 
@@ -895,6 +971,7 @@ re-deriving urgency itself.
 | `EmptyState` | `src/components/EmptyState.jsx` | Shared empty-state layout: illustration + title + optional subtitle + optional CTA button |
 | `AccountsEmptyIllustration` | `src/components/illustrations/AccountsEmptyIllustration.jsx` | SVG illustration for the Accounts empty state |
 | `CreditCardsEmptyIllustration` | `src/components/illustrations/CreditCardsEmptyIllustration.jsx` | SVG illustration for the Credit Cards empty state |
+| `LoansEmptyIllustration` | `src/components/illustrations/LoansEmptyIllustration.jsx` | SVG illustration for the Loans empty state |
 | `FixedExpensesEmptyIllustration` | `src/components/illustrations/FixedExpensesEmptyIllustration.jsx` | SVG illustration for the Fixed Expenses empty state |
 | `PendingEmptyIllustration` | `src/components/illustrations/PendingEmptyIllustration.jsx` | SVG illustration for the Pending Transactions empty state |
 | `DebtPayoffEmptyIllustration` | `src/components/illustrations/DebtPayoffEmptyIllustration.jsx` | SVG illustration for the Debt Payoff Calculator empty state |
@@ -1061,6 +1138,18 @@ Credit card calculation helpers.
 | `getDefaultMinimumPaymentAmount(card)` | Returns `minimumPayment` or 2% of balance |
 | `getMinimumPaymentStatus(card)` | Status based on how payment compares to minimum |
 | `calculateInterestSavings(card, extraPayment)` | Calculate interest saved by paying extra |
+
+### `loanUtils.js`
+
+Loan calculation helpers — deliberately not built on `creditCardUtils.js`. A
+loan's balance is never a "credit" the way an overpaid card's can be, and its
+payment is calculated toward a target payoff date rather than read from a
+stored minimum, so the display framing is genuinely different.
+
+| Function | Description |
+|---|---|
+| `formatLoanBalance(balance)` | Display format (formatted amount, paid-off state, status text/class) |
+| `getLoanPayoffProgress(loan)` | `{ paidAmount, percent, isPaidOff }` — principal paid off so far, from `loan.principalAmount` and `loan.balance`. Unlike credit-card utilization, more progress here is always "success" — there is no danger/warning tier |
 
 ### `crypto.js`
 
@@ -1407,8 +1496,9 @@ decoratively stops carrying meaning where it matters.
 
 `CURRENT_DATA_VERSION` in `src/services/dataManager.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **7**
-(5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was).
+looks like, the other what the database looks like — and it is currently **9**
+(5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was; 7 → 8 when
+`recurringResolutionLog` was added; 8 → 9 when `loans` was added).
 
 Because transfer between devices is by file rather than sync, this is a
 product-level compatibility requirement, not an implementation detail: a file

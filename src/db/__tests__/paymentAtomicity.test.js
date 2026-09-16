@@ -24,6 +24,7 @@ describe('dbHelpers.applyExpensePaymentChangeAtomic (atomic paidAmount)', () => 
     await Promise.all([
       db.accounts.clear(),
       db.creditCards.clear(),
+      db.loans.clear(),
       db.categories.clear(),
       db.paycheckSettings.clear(),
       db.userPreferences.clear(),
@@ -57,6 +58,20 @@ describe('dbHelpers.applyExpensePaymentChangeAtomic (atomic paidAmount)', () => 
         dueDate: '2026-02-15',
         statementClosingDate: '2026-02-01',
         minimumPayment: 25,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+
+    await db.loans.bulkPut([
+      {
+        id: '1',
+        name: 'Car Loan',
+        balance: 10000,
+        interestRate: 6,
+        dueDate: '2026-02-15',
+        targetPayoffDate: '2031-02-15',
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
@@ -559,5 +574,144 @@ describe('dbHelpers.applyExpensePaymentChangeAtomic (atomic paidAmount)', () => 
     expect(template.nextDueDate).toBe('2026-02-05'); // unchanged
     expect(template.lastGenerated).toBe(null); // unchanged
     expect(await db.fixedExpenses.count()).toBe(1); // no second row generated
+  });
+
+  it('applies loan payment atomically and derives status', async () => {
+    await db.fixedExpenses.bulkPut([
+      {
+        id: '1',
+        name: 'Pay Loan',
+        dueDate: '2026-02-15',
+        amount: 180,
+        accountId: '1',
+        creditCardId: null,
+        targetLoanId: '1',
+        category: 'Loan Payment',
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: null,
+        createdAt: now,
+      },
+    ]);
+
+    await dbHelpers.applyExpensePaymentChangeAtomic('1', { paidAmount: 180 });
+
+    const [account] = await db.accounts.toArray();
+    const [loan] = await db.loans.toArray();
+    const [expense] = await db.fixedExpenses.toArray();
+
+    expect(account.currentBalance).toBe(-80); // 100 - 180
+    expect(loan.balance).toBe(9820); // 10000 - 180
+    expect(expense.paidAmount).toBe(180);
+    expect(expense.status).toBe('paid');
+  });
+
+  it('reverses balances correctly when paidAmount decreases (loan payment)', async () => {
+    await db.fixedExpenses.bulkPut([
+      {
+        id: '1',
+        name: 'Pay Loan',
+        dueDate: '2026-02-15',
+        amount: 180,
+        accountId: '1',
+        creditCardId: null,
+        targetLoanId: '1',
+        category: 'Loan Payment',
+        paidAmount: 180,
+        status: 'paid',
+        recurringTemplateId: null,
+        createdAt: now,
+      },
+    ]);
+
+    // Bring balances to the "already paid" state.
+    await db.accounts.update('1', { currentBalance: -80 });
+    await db.loans.update('1', { balance: 9820 });
+
+    await dbHelpers.applyExpensePaymentChangeAtomic('1', { paidAmount: 50 });
+
+    const [account] = await db.accounts.toArray();
+    const [loan] = await db.loans.toArray();
+    const [expense] = await db.fixedExpenses.toArray();
+
+    expect(account.currentBalance).toBe(50); // -80 + 130 reversed
+    expect(loan.balance).toBe(9950); // 9820 + 130 reversed
+    expect(expense.paidAmount).toBe(50);
+    expect(expense.status).toBe('pending');
+  });
+
+  it('rolls back expense + balances if a mid-transaction balance write fails (loan payment)', async () => {
+    await db.fixedExpenses.bulkPut([
+      {
+        id: '1',
+        name: 'Pay Loan',
+        dueDate: '2026-02-15',
+        amount: 180,
+        accountId: '1',
+        creditCardId: null,
+        targetLoanId: '1',
+        category: 'Loan Payment',
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: null,
+        createdAt: now,
+      },
+    ]);
+
+    const originalUpdate = db.loans.update.bind(db.loans);
+    db.loans.update = async () => {
+      throw new Error('Injected failure during loans.update');
+    };
+
+    try {
+      await expect(
+        dbHelpers.applyExpensePaymentChangeAtomic('1', { paidAmount: 180 }),
+      ).rejects.toThrow(/Injected failure/i);
+    } finally {
+      db.loans.update = originalUpdate;
+    }
+
+    const [account] = await db.accounts.toArray();
+    const [loan] = await db.loans.toArray();
+    const [expense] = await db.fixedExpenses.toArray();
+
+    expect(account.currentBalance).toBe(100);
+    expect(loan.balance).toBe(10000);
+    expect(expense.paidAmount).toBe(0);
+    expect(expense.status).toBe('pending');
+  });
+
+  it('rejects paying a Loan Payment expense whose target loan was deleted, with no balance movement', async () => {
+    await db.fixedExpenses.bulkPut([
+      {
+        id: '1',
+        name: 'Pay Loan',
+        dueDate: '2026-02-15',
+        amount: 180,
+        accountId: '1',
+        creditCardId: null,
+        targetLoanId: '1',
+        category: 'Loan Payment',
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: null,
+        createdAt: now,
+      },
+    ]);
+
+    await db.loans.update('1', { deletedAt: now });
+
+    await expect(
+      dbHelpers.applyExpensePaymentChangeAtomic('1', { paidAmount: 180 }),
+    ).rejects.toThrow(/Target loan not found/i);
+
+    const [account] = await db.accounts.toArray();
+    const [loan] = await db.loans.toArray();
+    const [expense] = await db.fixedExpenses.toArray();
+
+    expect(account.currentBalance).toBe(100);
+    expect(loan.balance).toBe(10000);
+    expect(expense.paidAmount).toBe(0);
+    expect(expense.status).toBe('pending');
   });
 });

@@ -21,6 +21,7 @@ import {
   useFixedExpenses,
   useIsLoading,
   useIsPanelOpen,
+  useLoans,
   usePaycheckSettings,
   usePendingTransactions,
   useReloadExpenses,
@@ -80,6 +81,7 @@ const FixedExpenses = () => {
   // Use Zustand store for data
   const accounts = useAccounts();
   const creditCards = useCreditCards();
+  const loans = useLoans();
   const fixedExpenses = useFixedExpenses();
   const paycheckSettings = usePaycheckSettings();
   const pendingTransactions = usePendingTransactions();
@@ -503,6 +505,7 @@ const FixedExpenses = () => {
             onClose={() => setAddPanelOpen(false)}
             accounts={accounts}
             creditCards={creditCards}
+            loans={loans}
             onDataChange={handleAddPanelDataChange}
           />
 
@@ -519,6 +522,7 @@ const FixedExpenses = () => {
           paycheckDates={paycheckDates}
           accounts={accounts}
           creditCards={creditCards}
+          loans={loans}
           onMarkAsPaid={markAsPaid}
           onDelete={deleteExpense}
           onUpdateExpense={updateExpenseV4}

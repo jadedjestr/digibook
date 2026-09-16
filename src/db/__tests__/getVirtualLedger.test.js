@@ -172,4 +172,99 @@ describe('dbHelpers.getVirtualLedger', () => {
     expect(results[0].state).toBe('virtual');
     expect(results[0].estimatedAmount).toBe(45); // minimumPayment, card balance > 0
   });
+
+  it('estimates a virtual cycle amount via the dynamic payoff formula for a loan-payment template', async () => {
+    await db.loans.bulkPut([
+      {
+        id: 'loan-1',
+        name: 'Car Loan',
+        balance: 10000,
+        interestRate: 6,
+        dueDate: '2026-09-14',
+        targetPayoffDate: '2031-09-14',
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+    await db.recurringExpenseTemplates.bulkPut([
+      {
+        id: 'tpl-loan',
+        name: 'Car Loan Payment',
+        baseAmount: 193.33,
+        frequency: 'monthly',
+        intervalValue: 1,
+        intervalUnit: 'months',
+        startDate: '2026-09-14',
+        nextDueDate: '2026-09-14',
+        category: 'Loan Payment',
+        targetLoanId: 'loan-1',
+        isActive: true,
+        isVariableAmount: true,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+
+    const results = await dbHelpers.getVirtualLedger(
+      'tpl-loan',
+      '2026-09-01',
+      '2026-09-30',
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].state).toBe('virtual');
+
+    const expected = dbHelpers.calculateRequiredLoanPayment(
+      10000,
+      6,
+      '2026-09-14',
+      '2031-09-14',
+    );
+    expect(results[0].estimatedAmount).toBeCloseTo(expected.payment, 6);
+  });
+
+  it('a paid-off loan (balance 0) estimates a virtual cycle amount of 0, agreeing with materialization', async () => {
+    await db.loans.bulkPut([
+      {
+        id: 'loan-2',
+        name: 'Paid Off Loan',
+        balance: 0,
+        interestRate: 6,
+        dueDate: '2026-09-14',
+        targetPayoffDate: '2031-09-14',
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+    await db.recurringExpenseTemplates.bulkPut([
+      {
+        id: 'tpl-loan-2',
+        name: 'Paid Off Loan Payment',
+        baseAmount: 193.33,
+        frequency: 'monthly',
+        intervalValue: 1,
+        intervalUnit: 'months',
+        startDate: '2026-09-14',
+        nextDueDate: '2026-09-14',
+        category: 'Loan Payment',
+        targetLoanId: 'loan-2',
+        isActive: true,
+        isVariableAmount: true,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+
+    const results = await dbHelpers.getVirtualLedger(
+      'tpl-loan-2',
+      '2026-09-01',
+      '2026-09-30',
+    );
+
+    expect(results[0].estimatedAmount).toBe(0);
+  });
 });

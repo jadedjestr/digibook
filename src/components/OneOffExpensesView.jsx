@@ -25,6 +25,7 @@ const OneOffExpensesView = ({
   paycheckDates,
   accounts,
   creditCards,
+  loans,
   onMarkAsPaid,
   onDelete,
   onUpdateExpense,
@@ -208,6 +209,7 @@ const OneOffExpensesView = ({
           accountId: expense.accountId || null,
           creditCardId: expense.creditCardId || null,
           targetCreditCardId: expense.targetCreditCardId || null, // For credit card payments
+          targetLoanId: expense.targetLoanId || null, // For loan payments
           notes: expense.notes || '',
           isVariableAmount: expense.isVariableAmount || false,
         });
@@ -546,6 +548,7 @@ const OneOffExpensesView = ({
           onSave={handleBulkConvert}
           accounts={accounts}
           creditCards={creditCards}
+          loans={loans}
         />
       )}
     </div>
@@ -558,6 +561,7 @@ OneOffExpensesView.propTypes = {
   paycheckDates: PropTypes.object.isRequired,
   accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
   creditCards: PropTypes.arrayOf(PropTypes.object).isRequired,
+  loans: PropTypes.arrayOf(PropTypes.object).isRequired,
   onMarkAsPaid: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   onUpdateExpense: PropTypes.func.isRequired,

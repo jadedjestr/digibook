@@ -285,6 +285,46 @@ export class DigibookDBClean extends Dexie {
           'id, templateId, expenseId, adjustmentExpenseId, cycleDueDate, resolvedAt, createdAt, updatedAt, deletedAt',
       })
       .upgrade(() => {});
+
+    // Version 11: loans table (installment-debt tracking, mirroring
+    // creditCards). targetLoanId added to fixedExpenses (indexed, like
+    // targetCreditCardId there, since it's queried via .where()).
+    // recurringExpenseTemplates gets no new index - it reads targetLoanId
+    // the same way it already reads targetCreditCardId/creditCardId today,
+    // via .filter() after a table scan, not .where(). Purely additive, no
+    // data transformation needed (matches the v8/v9/v10 precedent).
+    this.version(11)
+      .stores({
+        accounts:
+          'id, name, type, currentBalance, isDefault, createdAt, updatedAt, deletedAt',
+        pendingTransactions:
+          'id, accountId, amount, category, description, createdAt, updatedAt, deletedAt, categoryId, incomeSourceId',
+        fixedExpenses:
+          'id, name, dueDate, amount, accountId, creditCardId, targetCreditCardId, targetLoanId, category, paidAmount, status, overpaymentAmount, overpaymentPercentage, budgetSatisfied, significantOverpayment, isAutoCreated, isManuallyMapped, mappingConfidence, mappedAt, recurringTemplateId, createdAt, updatedAt, deletedAt, categoryId',
+        categories:
+          'id, name, color, icon, isDefault, createdAt, sortOrder, updatedAt, deletedAt',
+        creditCards:
+          'id, name, balance, creditLimit, interestRate, dueDate, statementClosingDate, minimumPayment, createdAt, updatedAt, deletedAt',
+        loans:
+          'id, name, lender, balance, interestRate, targetPayoffDate, dueDate, minimumPaymentOverride, createdAt, updatedAt, deletedAt',
+        paycheckSettings:
+          'id, lastPaycheckDate, frequency, createdAt, updatedAt, deletedAt',
+        userPreferences:
+          'id, component, preferences, createdAt, lastExportDate, updatedAt, deletedAt',
+        monthlyExpenseHistory:
+          '[expenseId+month+year], expenseId, month, year, budgetAmount, actualAmount, overpaymentAmount, createdAt, updatedAt, deletedAt',
+        recurringExpenseTemplates:
+          'id, name, baseAmount, frequency, intervalValue, startDate, lastGenerated, nextDueDate, category, accountId, notes, isActive, isVariableAmount, createdAt, updatedAt, deletedAt, categoryId',
+        auditLogs:
+          'id, timestamp, actionType, entityType, entityId, details, updatedAt, deletedAt',
+        backups:
+          'id, reason, timestamp, version, createdAt, updatedAt, deletedAt',
+        incomeSources:
+          'id, accountId, isEnabled, lastGeneratedDate, createdAt, updatedAt, deletedAt',
+        recurringResolutionLog:
+          'id, templateId, expenseId, adjustmentExpenseId, cycleDueDate, resolvedAt, createdAt, updatedAt, deletedAt',
+      })
+      .upgrade(() => {});
   }
 }
 
@@ -473,6 +513,9 @@ async function validateSingleTableReferences(tableName, items) {
     const creditCardIds = new Set(
       (await db.creditCards.toArray()).map(c => toRefId(c?.id)).filter(Boolean),
     );
+    const loanIds = new Set(
+      (await db.loans.toArray()).map(l => toRefId(l?.id)).filter(Boolean),
+    );
     const templateIds =
       tableName === 'fixedExpenses'
         ? new Set(
@@ -486,6 +529,7 @@ async function validateSingleTableReferences(tableName, items) {
       const accountId = toRefId(item?.accountId);
       const creditCardId = toRefId(item?.creditCardId);
       const targetCreditCardId = toRefId(item?.targetCreditCardId);
+      const targetLoanId = toRefId(item?.targetLoanId);
       const recurringTemplateId = toRefId(item?.recurringTemplateId);
 
       const hasAccount = hasValue(accountId);
@@ -534,6 +578,28 @@ async function validateSingleTableReferences(tableName, items) {
         );
       }
 
+      if (item?.category === 'Loan Payment') {
+        if (!hasAccount) {
+          errors.push(
+            `${tableName}[${idx}]: Loan Payment must have funding accountId`,
+          );
+        }
+        if (!targetLoanId || !loanIds.has(targetLoanId)) {
+          errors.push(
+            `${tableName}[${idx}]: Loan Payment must have valid targetLoanId`,
+          );
+        }
+        if (hasCreditCard) {
+          errors.push(
+            `${tableName}[${idx}]: Loan Payment cannot use creditCardId`,
+          );
+        }
+      } else if (hasValue(targetLoanId)) {
+        errors.push(
+          `${tableName}[${idx}]: targetLoanId must be null unless category is Loan Payment`,
+        );
+      }
+
       if (
         tableName === 'fixedExpenses' &&
         hasValue(recurringTemplateId) &&
@@ -569,16 +635,17 @@ async function addAuditLogEntry(actionType, entityType, entityId, details) {
 
 /**
  * Apply the balance-mutation side of a payment change: debit/credit the
- * right account(s)/card(s) for paymentDifference, and write a best-effort
- * audit log entry. Shared by applyExpensePaymentChangeAtomic and
- * resolveCycle so the credit-card dual-balance-update logic (and every
- * other payment-source branch) lives in exactly one place - a Balance Due
- * payment reuses this unmodified, with zero duplication, since it still
- * goes through applyExpensePaymentChangeAtomic like any other expense.
+ * right account(s)/card(s)/loan(s) for paymentDifference, and write a
+ * best-effort audit log entry. Shared by applyExpensePaymentChangeAtomic
+ * and resolveCycle so the credit-card/loan dual-balance-update logic (and
+ * every other payment-source branch) lives in exactly one place - a
+ * Balance Due payment reuses this unmodified, with zero duplication, since
+ * it still goes through applyExpensePaymentChangeAtomic like any other
+ * expense.
  *
  * Caller must invoke this from inside an open 'rw' transaction whose table
- * list includes db.accounts, db.creditCards, and db.auditLogs, and must
- * not call it when paymentDifference === 0.
+ * list includes db.accounts, db.creditCards, db.loans, and db.auditLogs,
+ * and must not call it when paymentDifference === 0.
  *
  * @param {Object} sanitizedExpense - the expense as it will be after the
  *   update, already sanitized (category/accountId/creditCardId/
@@ -642,6 +709,52 @@ async function applyPaymentDelta(
     } catch (auditErr) {
       logger.warn('Audit log (credit card payment) failed:', auditErr);
     }
+  } else if (sanitizedExpense.category === 'Loan Payment') {
+    if (!sanitizedExpense.accountId) {
+      throw new Error('Loan Payment requires funding accountId');
+    }
+    if (!sanitizedExpense.targetLoanId) {
+      throw new Error('Loan Payment requires targetLoanId');
+    }
+
+    const fundingAccount = await db.accounts.get(sanitizedExpense.accountId);
+    if (!fundingAccount) {
+      throw new Error(
+        `Funding account not found: ${sanitizedExpense.accountId}`,
+      );
+    }
+
+    const targetLoan = await db.loans.get(sanitizedExpense.targetLoanId);
+    if (!targetLoan || targetLoan.deletedAt) {
+      throw new Error(
+        `Target loan not found: ${sanitizedExpense.targetLoanId}`,
+      );
+    }
+
+    const newAccountBalance =
+      Number(fundingAccount.currentBalance || 0) - paymentDifference;
+    const newLoanBalance = Number(targetLoan.balance || 0) - paymentDifference;
+
+    await db.accounts.update(fundingAccount.id, {
+      currentBalance: newAccountBalance,
+      updatedAt: ts,
+    });
+    await db.loans.update(targetLoan.id, {
+      balance: newLoanBalance,
+      updatedAt: ts,
+    });
+
+    try {
+      await addAuditLogEntry('PAYMENT', 'loanPayment', expenseId, {
+        amount: paymentDifference,
+        fundingAccountId: fundingAccount.id,
+        targetLoanId: targetLoan.id,
+        newAccountBalance,
+        newLoanBalance,
+      });
+    } catch (auditErr) {
+      logger.warn('Audit log (loan payment) failed:', auditErr);
+    }
   } else if (sanitizedExpense.accountId) {
     const account = await db.accounts.get(sanitizedExpense.accountId);
     if (!account) {
@@ -695,16 +808,82 @@ async function applyPaymentDelta(
 }
 
 /**
+ * Whole calendar months between two YYYY-MM-DD date strings (e.g.
+ * 2026-01-15 -> 2026-04-15 is 3). Negative if `toDate` is before
+ * `fromDate`. Used to turn a loan's target payoff date into a remaining
+ * term for the amortization formula below.
+ */
+function wholeMonthsBetween(fromDate, toDate) {
+  const from = DateUtils.parseDate(fromDate);
+  const to = DateUtils.parseDate(toDate);
+  if (!from || !to) return null;
+  const yearDiffInMonths = (to.getFullYear() - from.getFullYear()) * 12;
+  const monthDiff = to.getMonth() - from.getMonth();
+  let months = yearDiffInMonths + monthDiff;
+  if (to.getDate() < from.getDate()) months -= 1;
+  return months;
+}
+
+/**
+ * The monthly payment required to pay `balance` down to $0 by
+ * `targetPayoffDate`, given `interestRate` (APR, percent), amortized from
+ * `fromDate` (the cycle being priced) forward. Recomputed fresh every
+ * cycle from the live balance - not a precomputed schedule - so it
+ * self-corrects after over/under-payments with no separate "final month
+ * rounding" logic needed.
+ * @returns {{success: true, payment: number} | {success: false, message: string}}
+ */
+function calculateRequiredLoanPayment(
+  balance,
+  interestRate,
+  fromDate,
+  targetPayoffDate,
+) {
+  const months = wholeMonthsBetween(fromDate, targetPayoffDate);
+  if (!Number.isFinite(months) || months < 1) {
+    return {
+      success: false,
+      message: 'Target payoff date must be at least one billing cycle away',
+    };
+  }
+  const r = interestRate / 100 / 12;
+  let payment;
+  if (r === 0) {
+    payment = balance / months;
+  } else {
+    const discountFactor = (1 + r) ** -months;
+    payment = (r * balance) / (1 - discountFactor);
+  }
+  return { success: true, payment };
+}
+
+/**
  * Compute what a recurring template's current cycle amount actually is
  * right now - the fixed baseAmount for most templates, or (for a
  * credit-card-payment template, isVariableAmount) the card's current
- * minimum payment. The one place this computation lives, so a lazily
- * materialized real row and a not-yet-real "virtual" ledger entry always
- * agree on what the amount would be.
+ * minimum payment, or (for a loan-payment template) the payment required
+ * to hit the loan's target payoff date. The one place this computation
+ * lives, so a lazily materialized real row and a not-yet-real "virtual"
+ * ledger entry always agree on what the amount would be.
  * @param {Object} template
  * @returns {Promise<number>}
  */
 async function computeTemplateCycleAmount(template) {
+  if (template.targetLoanId) {
+    const loan = await db.loans.get(template.targetLoanId);
+    if (!loan) return template.baseAmount;
+    if (loan.balance <= 0) return 0;
+    if (template.minimumPaymentOverride != null) {
+      return template.minimumPaymentOverride;
+    }
+    const result = calculateRequiredLoanPayment(
+      loan.balance,
+      loan.interestRate,
+      template.nextDueDate,
+      loan.targetPayoffDate,
+    );
+    return result.success ? result.payment : template.baseAmount;
+  }
   if (!template.targetCreditCardId) return template.baseAmount;
   const card = await db.creditCards.get(template.targetCreditCardId);
   if (!card) return template.baseAmount;
@@ -753,6 +932,7 @@ function pickSanitizedUpdates(sanitizedFullExpense, updates) {
 // Not a general mutex - see createExpenseForCard's own transaction for the
 // real cross-entry-point race fix.
 let ensureCreditCardPaymentExpensesLinkedPromise = null;
+let ensureLoanPaymentExpensesLinkedPromise = null;
 
 /**
  * Database helper functions
@@ -767,6 +947,7 @@ export const dbHelpers = {
       await db.fixedExpenses.clear();
       await db.categories.clear();
       await db.creditCards.clear();
+      await db.loans.clear();
       await db.paycheckSettings.clear();
       await db.userPreferences.clear();
       await db.monthlyExpenseHistory.clear();
@@ -1194,6 +1375,342 @@ export const dbHelpers = {
     } catch (error) {
       logger.error('Error deleting credit card:', error);
       throw new Error('Failed to delete credit card');
+    }
+  },
+
+  // Loan helpers
+  async getLoans() {
+    try {
+      const loans = (await db.loans.toArray()).filter(l => !l.deletedAt);
+      return loans.sort((a, b) => a.name.localeCompare(b.name));
+    } catch (error) {
+      logger.error('Error getting loans:', error);
+      throw new Error('Failed to get loans');
+    }
+  },
+
+  async addLoan(loan) {
+    try {
+      if (!loan?.name || typeof loan.name !== 'string' || !loan.name.trim()) {
+        throw new Error('Loan name is required');
+      }
+      if (!Number.isFinite(loan.balance)) {
+        throw new Error('Loan balance must be a finite number');
+      }
+      if (!Number.isFinite(loan.interestRate)) {
+        throw new Error('Loan interest rate must be a finite number');
+      }
+      if (
+        !loan.targetPayoffDate ||
+        !DateUtils.isValidDate(loan.targetPayoffDate)
+      ) {
+        throw new Error('Loan target payoff date is required');
+      }
+      const startDate = loan.dueDate || DateUtils.today();
+      const check = calculateRequiredLoanPayment(
+        loan.balance,
+        loan.interestRate,
+        startDate,
+        loan.targetPayoffDate,
+      );
+      if (!check.success) {
+        throw new Error(check.message);
+      }
+
+      const loanData = {
+        ...loan,
+        id: generateId(),
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        deletedAt: null,
+      };
+
+      await db.loans.add(loanData);
+      const id = loanData.id;
+      logger.success(`Loan added successfully: ${id}`);
+      return id;
+    } catch (error) {
+      logger.error('Error adding loan:', error);
+      throw new Error(`Failed to add loan: ${error.message}`);
+    }
+  },
+
+  /**
+   * Sync due date to all fixed expenses linked to this loan.
+   * Call this when a loan's due date changes so linked loan payment
+   * expenses stay in sync.
+   * @param {string} loanId - Loan ID
+   * @param {string} dueDate - ISO date string (YYYY-MM-DD)
+   * @private Internal helper - use updateLoan for external updates
+   */
+  async syncLoanDueDateToExpenses(loanId, dueDate) {
+    if (dueDate == null) return;
+    const linked = await db.fixedExpenses
+      .where('targetLoanId')
+      .equals(loanId)
+      .filter(e => e.category === 'Loan Payment' && !e.deletedAt)
+      .toArray();
+    const ts = nowIso();
+    for (const expense of linked) {
+      await db.fixedExpenses.update(expense.id, { dueDate, updatedAt: ts });
+    }
+    if (linked.length > 0) {
+      logger.success(
+        `Synced due date to ${linked.length} linked expense(s) for loan ${loanId}`,
+      );
+    }
+  },
+
+  async syncLoanToTemplates(loanId, updates) {
+    try {
+      const templates = await db.recurringExpenseTemplates
+        .filter(
+          t =>
+            t.targetLoanId === loanId &&
+            t.category === 'Loan Payment' &&
+            t.isActive,
+        )
+        .toArray();
+
+      if (!templates.length) return;
+
+      const loan = await db.loans.get(loanId);
+      if (!loan) return;
+
+      for (const template of templates) {
+        const templateUpdates = {};
+
+        if (
+          updates.balance !== undefined ||
+          updates.interestRate !== undefined ||
+          updates.targetPayoffDate !== undefined
+        ) {
+          if (loan.balance <= 0) {
+            templateUpdates.baseAmount = 0;
+          } else {
+            const result = calculateRequiredLoanPayment(
+              loan.balance,
+              loan.interestRate,
+              template.nextDueDate,
+              loan.targetPayoffDate,
+            );
+            if (result.success) {
+              templateUpdates.baseAmount = result.payment;
+            }
+          }
+        }
+
+        if (updates.dueDate !== undefined && updates.dueDate) {
+          templateUpdates.nextDueDate = updates.dueDate;
+        }
+
+        if (Object.keys(templateUpdates).length > 0) {
+          await db.recurringExpenseTemplates.update(template.id, {
+            ...templateUpdates,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      if (templates.length > 0) {
+        logger.success(
+          `Synced ${templates.length} recurring template(s) for loan ${loanId}`,
+        );
+      }
+    } catch (error) {
+      logger.error('Error syncing loan to templates:', error);
+    }
+  },
+
+  async updateFundingAccountForLoan(loanId, accountId) {
+    try {
+      const templates = await db.recurringExpenseTemplates
+        .filter(
+          t =>
+            t.targetLoanId === loanId &&
+            t.category === 'Loan Payment' &&
+            t.isActive,
+        )
+        .toArray();
+
+      if (!templates.length) return;
+
+      const templateIds = new Set(templates.map(t => t.id));
+      const now = new Date().toISOString();
+
+      for (const template of templates) {
+        await db.recurringExpenseTemplates.update(template.id, {
+          accountId,
+          updatedAt: now,
+        });
+      }
+
+      const linkedExpenses = await db.fixedExpenses
+        .filter(
+          e =>
+            e.targetLoanId === loanId && templateIds.has(e.recurringTemplateId),
+        )
+        .toArray();
+
+      const ts = nowIso();
+      for (const expense of linkedExpenses) {
+        await db.fixedExpenses.update(expense.id, { accountId, updatedAt: ts });
+      }
+
+      logger.success(
+        `Updated funding account for loan ${loanId} (${templates.length} template(s), ${linkedExpenses.length} expense(s))`,
+      );
+    } catch (error) {
+      logger.error('Error updating funding account for loan:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Recompute `amount` on pending (unpaid), template-linked Loan Payment
+   * expenses for this loan after balance/interestRate/targetPayoffDate
+   * changes, mirroring the same calculation computeTemplateCycleAmount()
+   * uses. Never touches already-paid expenses, so settled payment history
+   * is never rewritten.
+   */
+  async syncLoanAmountToExpenses(loanId, updates) {
+    if (
+      updates.balance === undefined &&
+      updates.interestRate === undefined &&
+      updates.targetPayoffDate === undefined
+    ) {
+      return;
+    }
+
+    const linked = await db.fixedExpenses
+      .where('targetLoanId')
+      .equals(loanId)
+      .filter(
+        e =>
+          e.category === 'Loan Payment' && !e.deletedAt && e.status !== 'paid',
+      )
+      .toArray();
+    if (linked.length === 0) return;
+
+    const updatedLoan = await db.loans.get(loanId);
+    if (!updatedLoan) return;
+
+    const ts = nowIso();
+    for (const expense of linked) {
+      let newAmount;
+      if (Number(updatedLoan.balance) <= 0) {
+        newAmount = 0;
+      } else {
+        let override = null;
+        if (expense.recurringTemplateId) {
+          const template = await db.recurringExpenseTemplates.get(
+            expense.recurringTemplateId,
+          );
+          if (template && template.minimumPaymentOverride != null) {
+            override = template.minimumPaymentOverride;
+          }
+        }
+        if (override != null) {
+          newAmount = override;
+        } else {
+          const result = calculateRequiredLoanPayment(
+            updatedLoan.balance,
+            updatedLoan.interestRate,
+            expense.dueDate,
+            updatedLoan.targetPayoffDate,
+          );
+          if (!result.success) continue; // leave a stale-but-valid amount alone
+          newAmount = result.payment;
+        }
+      }
+      await db.fixedExpenses.update(expense.id, {
+        amount: newAmount,
+        updatedAt: ts,
+      });
+    }
+    logger.success(
+      `Synced amount to ${linked.length} linked pending expense(s) for loan ${loanId}`,
+    );
+  },
+
+  async updateLoan(id, updates, expectedUpdatedAt) {
+    try {
+      await db.transaction(
+        'rw',
+        db.loans,
+        db.fixedExpenses,
+        db.recurringExpenseTemplates,
+        async () => {
+          const current = await db.loans.get(id);
+          if (!current || current.deletedAt) {
+            throw new Error(`Loan not found: ${id}`);
+          }
+          if (
+            expectedUpdatedAt !== undefined &&
+            current.updatedAt !== expectedUpdatedAt
+          ) {
+            throw new Error(
+              'STALE_WRITE: This loan was changed elsewhere. Close and reopen the edit form to see the latest values.',
+            );
+          }
+
+          const ts = nowIso();
+          await db.loans.update(id, { ...updates, updatedAt: ts });
+
+          if (updates.dueDate !== undefined) {
+            await this.syncLoanDueDateToExpenses(id, updates.dueDate);
+          }
+          if (
+            updates.balance !== undefined ||
+            updates.interestRate !== undefined ||
+            updates.targetPayoffDate !== undefined
+          ) {
+            await this.syncLoanAmountToExpenses(id, updates);
+          }
+          await this.syncLoanToTemplates(id, updates);
+        },
+      );
+      logger.success(`Loan updated successfully: ${id}`);
+    } catch (error) {
+      logger.error('Error updating loan:', error);
+      if (
+        typeof error.message === 'string' &&
+        error.message.startsWith('STALE_WRITE')
+      ) {
+        throw error;
+      }
+      throw new Error('Failed to update loan');
+    }
+  },
+
+  async deleteLoan(id) {
+    try {
+      const ts = nowIso();
+      await db.transaction(
+        'rw',
+        db.loans,
+        db.recurringExpenseTemplates,
+        async () => {
+          // Deactivate any recurring templates that would otherwise keep
+          // manufacturing new expenses against a loan that no longer
+          // exists.
+          const templates = await db.recurringExpenseTemplates.toArray();
+          const linkedActiveTemplates = templates.filter(
+            t => !t.deletedAt && t.isActive && t.targetLoanId === id,
+          );
+          for (const template of linkedActiveTemplates) {
+            await this.updateRecurringExpenseTemplate(template.id, {
+              isActive: false,
+            });
+          }
+
+          await db.loans.update(id, { deletedAt: ts, updatedAt: ts });
+        },
+      );
+      logger.success(`Loan deleted successfully: ${id}`);
+    } catch (error) {
+      logger.error('Error deleting loan:', error);
+      throw new Error('Failed to delete loan');
     }
   },
 
@@ -1694,6 +2211,19 @@ export const dbHelpers = {
       }
     }
 
+    // Same self-heal for a template whose linked loan has since been
+    // (soft-)deleted.
+    const linkedLoanId = template.targetLoanId;
+    if (linkedLoanId) {
+      const linkedLoan = await db.loans.get(linkedLoanId);
+      if (!linkedLoan || linkedLoan.deletedAt) {
+        await this.updateRecurringExpenseTemplate(templateId, {
+          isActive: false,
+        });
+        throw new Error('Linked loan has been deleted; template deactivated');
+      }
+    }
+
     // Check if template has an end date and if we've passed it
     if (template.endDate) {
       const todayString = DateUtils.today();
@@ -1737,6 +2267,7 @@ export const dbHelpers = {
       accountId: normalizedTemplate.accountId || null,
       creditCardId: normalizedTemplate.creditCardId || null,
       targetCreditCardId: normalizedTemplate.targetCreditCardId || null,
+      targetLoanId: normalizedTemplate.targetLoanId || null,
       category: normalizedTemplate.category,
       paidAmount: 0,
       status: 'pending',
@@ -2925,6 +3456,24 @@ export const dbHelpers = {
     }
   },
 
+  async getFundingAccountIdForLoan(loanId) {
+    try {
+      const templates = await db.recurringExpenseTemplates
+        .filter(
+          t =>
+            t.targetLoanId === loanId &&
+            t.category === 'Loan Payment' &&
+            t.isActive &&
+            !t.deletedAt,
+        )
+        .toArray();
+      return templates.length > 0 ? templates[0].accountId : null;
+    } catch (error) {
+      logger.error('Error getting funding account for loan:', error);
+      return null;
+    }
+  },
+
   async ensureDefaultAccount() {
     try {
       // First, clean up any existing placeholder default accounts
@@ -3370,6 +3919,348 @@ export const dbHelpers = {
     }
   },
 
+  async cleanupDuplicateLoanExpenses() {
+    try {
+      // Scoped to Loan Payment expenses only, and keyed to include dueDate
+      // - see cleanupDuplicateCreditCardExpenses for the same reasoning.
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt && e.category === 'Loan Payment',
+      );
+      const duplicates = [];
+
+      const seen = new Map();
+      for (const expense of expenses) {
+        const key = expense.recurringTemplateId
+          ? `${expense.recurringTemplateId}-${expense.dueDate}`
+          : `${expense.name}-${expense.amount}-${expense.dueDate}`;
+        if (seen.has(key)) {
+          duplicates.push(expense);
+        } else {
+          seen.set(key, expense);
+        }
+      }
+
+      const ts = nowIso();
+      for (const duplicate of duplicates) {
+        await db.fixedExpenses.update(duplicate.id, {
+          deletedAt: ts,
+          updatedAt: ts,
+        });
+      }
+
+      logger.success(`Cleaned up ${duplicates.length} duplicate loan expenses`);
+      return duplicates;
+    } catch (error) {
+      logger.error('Error cleaning up duplicate loan expenses:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Deactivate duplicate active Loan Payment templates for the same loan
+   * (e.g. created by a race before createExpenseForLoan's atomic
+   * check-and-create). Keeps the oldest template, deactivates the rest.
+   */
+  async cleanupDuplicateLoanTemplates() {
+    try {
+      const templates = (await db.recurringExpenseTemplates.toArray()).filter(
+        t => !t.deletedAt && t.isActive && t.category === 'Loan Payment',
+      );
+      const byLoan = new Map();
+      for (const template of templates) {
+        const list = byLoan.get(template.targetLoanId) || [];
+        list.push(template);
+        byLoan.set(template.targetLoanId, list);
+      }
+
+      const deactivated = [];
+      for (const list of byLoan.values()) {
+        if (list.length <= 1) continue;
+        list.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        for (const extra of list.slice(1)) {
+          await this.updateRecurringExpenseTemplate(extra.id, {
+            isActive: false,
+          });
+          deactivated.push(extra);
+        }
+      }
+
+      if (deactivated.length > 0) {
+        logger.success(
+          `Deactivated ${deactivated.length} duplicate loan payment template(s)`,
+        );
+      }
+      return deactivated;
+    } catch (error) {
+      logger.error('Error cleaning up duplicate loan templates:', error);
+      return [];
+    }
+  },
+
+  async getOrphanedLoans() {
+    try {
+      const loans = (await db.loans.toArray()).filter(l => !l.deletedAt);
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const templates = (await db.recurringExpenseTemplates.toArray()).filter(
+        t => !t.deletedAt,
+      );
+      return loans.filter(
+        loan =>
+          !expenses.some(
+            e => e.category === 'Loan Payment' && e.targetLoanId === loan.id,
+          ) &&
+          !templates.some(
+            t =>
+              t.category === 'Loan Payment' &&
+              t.targetLoanId === loan.id &&
+              t.isActive,
+          ),
+      );
+    } catch (error) {
+      logger.error('Error getting orphaned loans:', error);
+      return [];
+    }
+  },
+
+  async createExpenseForLoan(loanId, accountId) {
+    try {
+      // Same atomicity/dynamic-import reasoning as createExpenseForCard:
+      // the existence-check and template-insert are atomic to prevent a
+      // race, and materializeCurrentCycle() stays OUTSIDE this transaction
+      // because it calls addFixedExpenseV4(), which does a dynamic
+      // `await import(...)` partway through.
+      const result = await db.transaction(
+        'rw',
+        db.recurringExpenseTemplates,
+        db.loans,
+        db.categories,
+        async () => {
+          const existingTemplates = await db.recurringExpenseTemplates
+            .filter(
+              t =>
+                t.targetLoanId === loanId &&
+                t.category === 'Loan Payment' &&
+                t.isActive,
+            )
+            .toArray();
+
+          if (existingTemplates.length > 0) {
+            return { created: false };
+          }
+
+          const loan = await db.loans.get(loanId);
+          if (!loan) {
+            throw new Error(`Loan not found: ${loanId}`);
+          }
+
+          // Nothing to pay - do not create a template with a $0 baseAmount
+          // (addRecurringExpenseTemplate's required-fields check treats 0
+          // as missing, and a paid-off loan needs no payment bill anyway).
+          if (loan.balance <= 0) {
+            return { created: false };
+          }
+
+          const startDate = loan.dueDate || DateUtils.today();
+          const initial = calculateRequiredLoanPayment(
+            loan.balance,
+            loan.interestRate,
+            startDate,
+            loan.targetPayoffDate,
+          );
+
+          const templateId = await this.addRecurringExpenseTemplate({
+            name: `${loan.name} Payment`,
+            baseAmount: initial.success ? initial.payment : loan.balance,
+            frequency: 'monthly',
+            intervalValue: 1,
+            intervalUnit: 'months',
+            startDate,
+            nextDueDate: startDate,
+            category: 'Loan Payment',
+            accountId,
+            targetLoanId: loan.id,
+            isActive: true,
+            isVariableAmount: true,
+            isAutoCreated: true,
+          });
+
+          return { created: true, templateId, loanName: loan.name };
+        },
+      );
+
+      if (!result.created) {
+        await this.updateFundingAccountForLoan(loanId, accountId);
+        return;
+      }
+
+      // allowFuture: the materialization path - unconditional, no
+      // pay-period gate, same reasoning as createExpenseForCard.
+      await this.materializeCurrentCycle(result.templateId, {
+        allowFuture: true,
+      });
+      logger.success(
+        `Created payment expense for loan "${result.loanName}" (template ${result.templateId})`,
+      );
+    } catch (error) {
+      logger.error('Error creating expense for loan:', error);
+      throw error;
+    }
+  },
+
+  async createMissingLoanExpenses() {
+    try {
+      const loans = await db.loans.toArray();
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => !e.deletedAt,
+      );
+      const templates = await db.recurringExpenseTemplates.toArray();
+      let createdCount = 0;
+
+      let defaultAccount = await this.getDefaultAccount();
+      if (!defaultAccount) {
+        const accounts = await db.accounts.toArray();
+        defaultAccount =
+          accounts.find(acc => acc.type === 'checking') || accounts[0];
+      }
+
+      if (!defaultAccount) {
+        logger.warn(
+          'No checking/savings account found. Cannot create loan payment expenses.',
+        );
+        return 0;
+      }
+
+      for (const loan of loans) {
+        const hasPaymentExpense = expenses.some(
+          e => e.category === 'Loan Payment' && e.targetLoanId === loan.id,
+        );
+        const hasPaymentTemplate = templates.some(
+          t =>
+            t.category === 'Loan Payment' &&
+            t.targetLoanId === loan.id &&
+            t.isActive,
+        );
+
+        if (!hasPaymentExpense && !hasPaymentTemplate) {
+          await this.createExpenseForLoan(loan.id, defaultAccount.id);
+          createdCount++;
+        }
+      }
+
+      logger.success(
+        `Created ${createdCount} recurring loan payment template(s)`,
+      );
+      return createdCount;
+    } catch (error) {
+      logger.error('Error creating missing loan expenses:', error);
+      return 0;
+    }
+  },
+
+  /**
+   * Repair Loan Payment templates and fixed expenses that have missing or
+   * invalid accountId. Sets accountId to the default account so every
+   * payment expense has a funding source.
+   * @returns {{ repairedTemplates: number, repairedExpenses: number }}
+   */
+  async repairLoanPaymentFundingSource() {
+    try {
+      let defaultAccount = await this.getDefaultAccount();
+      if (!defaultAccount) {
+        const accounts = await db.accounts.toArray();
+        defaultAccount =
+          accounts.find(acc => acc.type === 'checking') || accounts[0];
+      }
+      if (!defaultAccount) {
+        logger.warn(
+          'No checking/savings account found. Cannot repair loan payment funding.',
+        );
+        return { repairedTemplates: 0, repairedExpenses: 0 };
+      }
+
+      const accounts = await db.accounts.toArray();
+      const validAccountIds = new Set(accounts.map(a => a.id));
+      let repairedTemplates = 0;
+      let repairedExpenses = 0;
+
+      const templates = await db.recurringExpenseTemplates.toArray();
+      const loanTemplates = templates.filter(
+        t => t.category === 'Loan Payment' && t.isActive,
+      );
+      const ts = nowIso();
+      for (const template of loanTemplates) {
+        if (
+          template.accountId == null ||
+          !validAccountIds.has(template.accountId)
+        ) {
+          await db.recurringExpenseTemplates.update(template.id, {
+            accountId: defaultAccount.id,
+            updatedAt: ts,
+          });
+          repairedTemplates++;
+        }
+      }
+
+      const expenses = await db.fixedExpenses.toArray();
+      const loanExpenses = expenses.filter(
+        e =>
+          e.category === 'Loan Payment' &&
+          !e.deletedAt &&
+          (e.accountId == null || !validAccountIds.has(e.accountId)),
+      );
+      for (const expense of loanExpenses) {
+        await db.fixedExpenses.update(expense.id, {
+          accountId: defaultAccount.id,
+          updatedAt: ts,
+        });
+        repairedExpenses++;
+      }
+
+      if (repairedTemplates > 0 || repairedExpenses > 0) {
+        logger.success(
+          `Repaired funding source: ${repairedTemplates} template(s), ${repairedExpenses} expense(s)`,
+        );
+      }
+      return { repairedTemplates, repairedExpenses };
+    } catch (error) {
+      logger.error('Error repairing loan payment funding:', error);
+      return { repairedTemplates: 0, repairedExpenses: 0 };
+    }
+  },
+
+  /**
+   * Ensure every loan has a payment expense and every payment expense has
+   * a valid funding source. Runs repair first, creates any missing
+   * expenses, then self-heals any duplicate templates/expenses left over
+   * from before createExpenseForLoan's atomic check-and-create.
+   * @returns {{ createdCount: number, repairedTemplates: number,
+   *   repairedExpenses: number, duplicatesRemoved: number }}
+   */
+  async ensureLoanPaymentExpensesLinked() {
+    if (ensureLoanPaymentExpensesLinkedPromise) {
+      return ensureLoanPaymentExpensesLinkedPromise;
+    }
+    ensureLoanPaymentExpensesLinkedPromise = (async () => {
+      const repair = await this.repairLoanPaymentFundingSource();
+      const createdCount = await this.createMissingLoanExpenses();
+      const duplicateTemplates = await this.cleanupDuplicateLoanTemplates();
+      const duplicateExpenses = await this.cleanupDuplicateLoanExpenses();
+      return {
+        createdCount,
+        repairedTemplates: repair.repairedTemplates,
+        repairedExpenses: repair.repairedExpenses,
+        duplicatesRemoved: duplicateTemplates.length + duplicateExpenses.length,
+      };
+    })();
+    try {
+      return await ensureLoanPaymentExpensesLinkedPromise;
+    } finally {
+      ensureLoanPaymentExpensesLinkedPromise = null;
+    }
+  },
+
   // Insights and analytics helpers
   async getBudgetVsActualSummary() {
     try {
@@ -3803,6 +4694,7 @@ export const dbHelpers = {
       const data = {
         accounts: await db.accounts.toArray(),
         creditCards: await db.creditCards.toArray(),
+        loans: await db.loans.toArray(),
         pendingTransactions: await db.pendingTransactions.toArray(),
         fixedExpenses: await db.fixedExpenses.toArray(),
         categories: await db.categories.toArray(),
@@ -3848,6 +4740,7 @@ export const dbHelpers = {
         db.userPreferences,
         db.recurringExpenseTemplates,
         db.creditCards,
+        db.loans,
         db.pendingTransactions,
         db.fixedExpenses,
         db.monthlyExpenseHistory,
@@ -3861,6 +4754,7 @@ export const dbHelpers = {
           await db.fixedExpenses.clear();
           await db.categories.clear();
           await db.creditCards.clear();
+          await db.loans.clear();
           await db.paycheckSettings.clear();
           await db.userPreferences.clear();
           await db.monthlyExpenseHistory.clear();
@@ -3883,6 +4777,7 @@ export const dbHelpers = {
 
           // Import expenses and transactions
           await bulkPutChunked(db.creditCards, data.creditCards);
+          await bulkPutChunked(db.loans, data.loans);
           await bulkPutChunked(
             db.pendingTransactions,
             data.pendingTransactions,
@@ -4054,6 +4949,7 @@ export const dbHelpers = {
         'backups',
         'incomeSources',
         'recurringResolutionLog',
+        'loans',
       ];
       for (const field of optionalArrayFields) {
         if (data[field] !== undefined && data[field] !== null) {
@@ -4085,6 +4981,13 @@ export const dbHelpers = {
           );
         }
       });
+      (data.loans || []).forEach((loan, idx) => {
+        if (!Number.isFinite(loan?.balance)) {
+          errors.push(
+            `loans[${idx}]: balance must be a finite number (got ${loan?.balance})`,
+          );
+        }
+      });
 
       if (errors.length > 0) {
         return { isValid: false, errors };
@@ -4104,6 +5007,9 @@ export const dbHelpers = {
       );
       const creditCardIds = new Set(
         (data.creditCards || []).map(c => toRefId(c?.id)).filter(Boolean),
+      );
+      const loanIds = new Set(
+        (data.loans || []).map(l => toRefId(l?.id)).filter(Boolean),
       );
       const templateIds = new Set(
         (data.recurringExpenseTemplates || [])
@@ -4139,6 +5045,7 @@ export const dbHelpers = {
         const accountId = toRefId(exp?.accountId);
         const creditCardId = toRefId(exp?.creditCardId);
         const targetCreditCardId = toRefId(exp?.targetCreditCardId);
+        const targetLoanId = toRefId(exp?.targetLoanId);
         const recurringTemplateId = toRefId(exp?.recurringTemplateId);
 
         const hasAccount = hasValue(accountId);
@@ -4187,6 +5094,28 @@ export const dbHelpers = {
           );
         }
 
+        if (exp?.category === 'Loan Payment') {
+          if (!hasAccount) {
+            errors.push(
+              `fixedExpenses[${idx}]: Loan Payment must have funding accountId`,
+            );
+          }
+          if (!targetLoanId || !loanIds.has(targetLoanId)) {
+            errors.push(
+              `fixedExpenses[${idx}]: Loan Payment must have valid targetLoanId`,
+            );
+          }
+          if (hasCreditCard) {
+            errors.push(
+              `fixedExpenses[${idx}]: Loan Payment cannot use creditCardId`,
+            );
+          }
+        } else if (hasValue(targetLoanId)) {
+          errors.push(
+            `fixedExpenses[${idx}]: targetLoanId must be null unless category is Loan Payment`,
+          );
+        }
+
         if (
           hasValue(recurringTemplateId) &&
           !templateIds.has(recurringTemplateId)
@@ -4205,6 +5134,7 @@ export const dbHelpers = {
         const accountId = toRefId(tpl?.accountId);
         const creditCardId = toRefId(tpl?.creditCardId);
         const targetCreditCardId = toRefId(tpl?.targetCreditCardId);
+        const targetLoanId = toRefId(tpl?.targetLoanId);
 
         const hasAccount = hasValue(accountId);
         const hasCreditCard = hasValue(creditCardId);
@@ -4249,6 +5179,28 @@ export const dbHelpers = {
         } else if (hasValue(targetCreditCardId)) {
           errors.push(
             `recurringExpenseTemplates[${idx}]: targetCreditCardId must be null unless category is Credit Card Payment`,
+          );
+        }
+
+        if (tpl?.category === 'Loan Payment') {
+          if (!hasAccount) {
+            errors.push(
+              `recurringExpenseTemplates[${idx}]: Loan Payment must have funding accountId`,
+            );
+          }
+          if (!targetLoanId || !loanIds.has(targetLoanId)) {
+            errors.push(
+              `recurringExpenseTemplates[${idx}]: Loan Payment must have valid targetLoanId`,
+            );
+          }
+          if (hasCreditCard) {
+            errors.push(
+              `recurringExpenseTemplates[${idx}]: Loan Payment cannot use creditCardId`,
+            );
+          }
+        } else if (hasValue(targetLoanId)) {
+          errors.push(
+            `recurringExpenseTemplates[${idx}]: targetLoanId must be null unless category is Loan Payment`,
           );
         }
       }
@@ -4391,6 +5343,28 @@ export const dbHelpers = {
     }
   },
 
+  /**
+   * The monthly payment required to pay `balance` down to $0 by
+   * `targetPayoffDate`. Thin wrapper over the module-private
+   * calculateRequiredLoanPayment, exposed so the Add/Edit Loan form can
+   * show the calculated payment live as the user edits balance/rate/date,
+   * and validate a target date at input time (see addLoan).
+   * @returns {{success: true, payment: number} | {success: false, message: string}}
+   */
+  calculateRequiredLoanPayment(
+    balance,
+    interestRate,
+    fromDate,
+    targetPayoffDate,
+  ) {
+    return calculateRequiredLoanPayment(
+      balance,
+      interestRate,
+      fromDate,
+      targetPayoffDate,
+    );
+  },
+
   // Initialize default data
   async initializeDefaultData() {
     try {
@@ -4515,6 +5489,16 @@ export const dbHelpers = {
         });
       }
 
+      // Same sync for a loan payment expense's due date.
+      if (
+        sanitizedUpdates.dueDate !== undefined &&
+        currentExpense.targetLoanId
+      ) {
+        await this.updateLoan(currentExpense.targetLoanId, {
+          dueDate: sanitizedUpdates.dueDate,
+        });
+      }
+
       // Sync funding account to template and linked expenses when CC payment accountId changes
       if (
         sanitizedUpdates.accountId !== undefined &&
@@ -4524,6 +5508,19 @@ export const dbHelpers = {
       ) {
         await this.updateFundingAccountForCard(
           currentExpense.targetCreditCardId,
+          sanitizedUpdates.accountId,
+        );
+      }
+
+      // Same sync for a loan payment expense's funding account.
+      if (
+        sanitizedUpdates.accountId !== undefined &&
+        currentExpense.category === 'Loan Payment' &&
+        currentExpense.recurringTemplateId &&
+        currentExpense.targetLoanId
+      ) {
+        await this.updateFundingAccountForLoan(
+          currentExpense.targetLoanId,
           sanitizedUpdates.accountId,
         );
       }
@@ -4578,6 +5575,7 @@ export const dbHelpers = {
       db.fixedExpenses,
       db.accounts,
       db.creditCards,
+      db.loans,
       db.auditLogs,
       async () => {
         const currentExpense = await db.fixedExpenses.get(expenseId);
@@ -4650,11 +5648,12 @@ export const dbHelpers = {
    * configured) or 'forgiven' (no longer owed at all - no Balance Due is
    * created). A deferred Balance Due is a normal one-off fixedExpenses
    * row that inherits the origin bill's
-   * category/accountId/creditCardId/targetCreditCardId verbatim - this is
-   * what makes a deferred credit-card payment's Balance Due correctly
-   * reduce the card's tracked balance when it's eventually paid, since
-   * only an expense carrying that category/link goes through the
-   * credit-card branch of applyPaymentDelta. Forgiving a shortfall can
+   * category/accountId/creditCardId/targetCreditCardId/targetLoanId
+   * verbatim - this is what makes a deferred credit-card or loan
+   * payment's Balance Due correctly reduce the card's/loan's tracked
+   * balance when it's eventually paid, since only an expense carrying
+   * that category/link goes through the matching branch of
+   * applyPaymentDelta. Forgiving a shortfall can
    * also pause the template atomically (see pauseTemplateOnForgive) - the
    * two are folded into one transaction so a failure never leaves a
    * forgiven cycle with the template still silently active.
@@ -4711,6 +5710,7 @@ export const dbHelpers = {
       db.fixedExpenses,
       db.accounts,
       db.creditCards,
+      db.loans,
       db.auditLogs,
       db.recurringExpenseTemplates,
       db.recurringResolutionLog,
@@ -4814,6 +5814,7 @@ export const dbHelpers = {
               accountId: expense.accountId || null,
               creditCardId: expense.creditCardId || null,
               targetCreditCardId: expense.targetCreditCardId || null,
+              targetLoanId: expense.targetLoanId || null,
               category: expense.category,
               categoryId: expense.categoryId ?? null,
               paidAmount: 0,
@@ -5044,6 +6045,7 @@ export const dbHelpers = {
       db.fixedExpenses,
       db.accounts,
       db.creditCards,
+      db.loans,
       db.auditLogs,
       db.recurringExpenseTemplates,
       db.recurringResolutionLog,

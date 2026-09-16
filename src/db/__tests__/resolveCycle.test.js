@@ -21,6 +21,7 @@ describe('dbHelpers.resolveCycle', () => {
     await Promise.all([
       db.accounts.clear(),
       db.creditCards.clear(),
+      db.loans.clear(),
       db.categories.clear(),
       db.recurringExpenseTemplates.clear(),
       db.fixedExpenses.clear(),
@@ -53,6 +54,20 @@ describe('dbHelpers.resolveCycle', () => {
         dueDate: '2026-09-14',
         statementClosingDate: '2026-09-01',
         minimumPayment: 45,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+
+    await db.loans.bulkPut([
+      {
+        id: 'loan-1',
+        name: 'Car Loan',
+        balance: 10000,
+        interestRate: 6,
+        dueDate: '2026-09-14',
+        targetPayoffDate: '2031-09-14',
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
@@ -136,6 +151,48 @@ describe('dbHelpers.resolveCycle', () => {
         paidAmount: 0,
         status: 'pending',
         recurringTemplateId: 'tpl-card',
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+  }
+
+  async function seedLoanPaymentTemplate() {
+    await db.recurringExpenseTemplates.bulkPut([
+      {
+        id: 'tpl-loan',
+        name: 'Car Loan Payment',
+        baseAmount: 193.33,
+        frequency: 'monthly',
+        intervalValue: 1,
+        intervalUnit: 'months',
+        startDate: '2026-08-14',
+        lastGenerated: '2026-08-14',
+        nextDueDate: '2026-09-14',
+        category: 'Loan Payment',
+        accountId: 'acc-1',
+        targetLoanId: 'loan-1',
+        isActive: true,
+        isVariableAmount: true,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+    await db.fixedExpenses.bulkPut([
+      {
+        id: 'exp-loan',
+        name: 'Car Loan Payment',
+        dueDate: '2026-09-14',
+        amount: 193.33,
+        accountId: 'acc-1',
+        creditCardId: null,
+        targetLoanId: 'loan-1',
+        category: 'Loan Payment',
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: 'tpl-loan',
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
@@ -375,6 +432,60 @@ describe('dbHelpers.resolveCycle', () => {
     });
     const card = await db.creditCards.get('card-1');
     expect(card.balance).toBe(500 - 45);
+  });
+
+  it('Pay Full on a loan payment reduces the loan balance and advances cadence', async () => {
+    await seedLoanPaymentTemplate();
+
+    await dbHelpers.resolveCycle('exp-loan', { paidAmount: 193.33 });
+
+    const expense = await db.fixedExpenses.get('exp-loan');
+    const template = await db.recurringExpenseTemplates.get('tpl-loan');
+    const account = await db.accounts.get('acc-1');
+    const loan = await db.loans.get('loan-1');
+
+    expect(expense.paidAmount).toBe(193.33);
+    expect(expense.status).toBe('paid');
+    expect(template.nextDueDate).toBe('2026-10-14');
+    expect(account.currentBalance).toBe(1000 - 193.33);
+    expect(loan.balance).toBeCloseTo(10000 - 193.33);
+  });
+
+  it('a skipped loan payment spins off a Balance Due that inherits category + targetLoanId, so paying it later still reduces the loan balance', async () => {
+    await seedLoanPaymentTemplate();
+
+    const result = await dbHelpers.resolveCycle('exp-loan', {
+      paidAmount: 0,
+      shortfallOutcome: 'deferred',
+    });
+    const balanceDue = await db.fixedExpenses.get(result.adjustmentExpenseId);
+
+    expect(balanceDue.category).toBe('Loan Payment');
+    expect(balanceDue.targetLoanId).toBe('loan-1');
+    expect(balanceDue.accountId).toBe('acc-1');
+    expect(balanceDue.amount).toBe(193.33);
+
+    // Prove it end to end: paying this Balance Due off later must reduce
+    // the loan's tracked balance, via the ordinary
+    // applyExpensePaymentChangeAtomic path.
+    await dbHelpers.applyExpensePaymentChangeAtomic(balanceDue.id, {
+      paidAmount: 193.33,
+    });
+    const loan = await db.loans.get('loan-1');
+    expect(loan.balance).toBeCloseTo(10000 - 193.33);
+  });
+
+  it('forgiving a loan payment shortfall creates no Balance Due and leaves the loan balance untouched', async () => {
+    await seedLoanPaymentTemplate();
+
+    const result = await dbHelpers.resolveCycle('exp-loan', {
+      paidAmount: 0,
+      shortfallOutcome: 'forgiven',
+    });
+
+    expect(result.adjustmentExpenseId).toBeNull();
+    const loan = await db.loans.get('loan-1');
+    expect(loan.balance).toBe(10000); // untouched - nothing was paid
   });
 
   it('rejects a partial amount on a variable-amount template - only Full (paidAmount === amount) or Skip (0) are legal', async () => {

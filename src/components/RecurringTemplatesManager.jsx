@@ -12,6 +12,7 @@ import {
   useAccounts,
   useCreditCards,
   useFixedExpenses,
+  useLoans,
   useReloadExpenses,
   useRefreshTemplates,
 } from '../stores/useAppStore';
@@ -31,6 +32,7 @@ const RecurringTemplatesManager = () => {
   const fixedExpenses = useFixedExpenses();
   const accounts = useAccounts();
   const creditCards = useCreditCards();
+  const loans = useLoans();
   const reloadExpenses = useReloadExpenses();
   const refreshTemplates = useRefreshTemplates();
 
@@ -177,6 +179,7 @@ const RecurringTemplatesManager = () => {
           accountId: recurringData.paymentSource?.accountId || null,
           creditCardId: recurringData.paymentSource?.creditCardId || null,
           targetCreditCardId: recurringData.targetCreditCardId || null, // For credit card payments
+          targetLoanId: recurringData.targetLoanId || null, // For loan payments
           frequency: recurringData.frequency,
           intervalValue: recurringData.intervalValue || 1,
           intervalUnit: recurringData.intervalUnit || 'months',
@@ -405,6 +408,7 @@ const RecurringTemplatesManager = () => {
           onSave={handleSaveEdit}
           accounts={accounts}
           creditCards={creditCards}
+          loans={loans}
         />
       )}
     </div>

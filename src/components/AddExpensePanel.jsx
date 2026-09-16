@@ -23,6 +23,7 @@ import { DateUtils } from '../utils/dateUtils';
 import {
   validatePaymentSource,
   validateCreditCardPayment,
+  validateLoanPayment,
 } from '../utils/expenseValidation';
 import { logger } from '../utils/logger';
 
@@ -30,6 +31,7 @@ import CreateAccountModal from './CreateAccountModal';
 import PaymentSourceSelector from './PaymentSourceSelector';
 
 const CREDIT_CARD_PAYMENT_CATEGORY = 'Credit Card Payment';
+const LOAN_PAYMENT_CATEGORY = 'Loan Payment';
 const RECENT_CATEGORY_LIMIT = 3;
 
 const emptyFormData = () => ({
@@ -39,6 +41,7 @@ const emptyFormData = () => ({
   paymentSource: null, // { type, accountId, creditCardId }
   category: '',
   targetCreditCardId: '', // For credit card payments only
+  targetLoanId: '', // For loan payments only
 });
 
 const emptyRecurring = () => ({
@@ -56,6 +59,7 @@ const AddExpensePanel = ({
   onClose,
   accounts,
   creditCards = [],
+  loans = [],
   onDataChange,
 }) => {
   // Pay cycle anchor: decides whether a brand-new recurring template's
@@ -65,6 +69,7 @@ const AddExpensePanel = ({
   const paycheckSettings = usePaycheckSettings();
   const [formData, setFormData] = useState(emptyFormData);
   const [isCreditCardPayment, setIsCreditCardPayment] = useState(false);
+  const [isLoanPayment, setIsLoanPayment] = useState(false);
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurring, setRecurring] = useState(emptyRecurring);
   const [showMoreRecurringOptions, setShowMoreRecurringOptions] =
@@ -98,6 +103,7 @@ const AddExpensePanel = ({
       if (
         expense.category &&
         expense.category !== CREDIT_CARD_PAYMENT_CATEGORY &&
+        expense.category !== LOAN_PAYMENT_CATEGORY &&
         !seen.has(expense.category)
       ) {
         seen.add(expense.category);
@@ -176,6 +182,7 @@ const AddExpensePanel = ({
           : null,
       });
       setIsCreditCardPayment(false);
+      setIsLoanPayment(false);
       setIsRecurring(false);
       setRecurring(emptyRecurring());
       setShowMoreRecurringOptions(false);
@@ -191,6 +198,7 @@ const AddExpensePanel = ({
   const handleClose = useCallback(() => {
     setFormData(emptyFormData());
     setIsCreditCardPayment(false);
+    setIsLoanPayment(false);
     setIsRecurring(false);
     setRecurring(emptyRecurring());
     setShowMoreRecurringOptions(false);
@@ -209,9 +217,12 @@ const AddExpensePanel = ({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isOpen, handleClose]);
 
-  const effectiveCategory = isCreditCardPayment
-    ? CREDIT_CARD_PAYMENT_CATEGORY
-    : formData.category;
+  let effectiveCategory = formData.category;
+  if (isCreditCardPayment) {
+    effectiveCategory = CREDIT_CARD_PAYMENT_CATEGORY;
+  } else if (isLoanPayment) {
+    effectiveCategory = LOAN_PAYMENT_CATEGORY;
+  }
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -222,7 +233,12 @@ const AddExpensePanel = ({
 
   const handleCreditCardToggle = next => {
     setIsCreditCardPayment(next);
-    if (!next) {
+    if (next) {
+      // Mutually exclusive with paying down a loan - only one target
+      // payment type applies at a time.
+      setIsLoanPayment(false);
+      setFormData(prev => ({ ...prev, targetLoanId: '' }));
+    } else {
       // Target card only means something in credit-card-payment mode.
       // Payment Source stays as-is: every account in this app is a
       // checking/savings account, so the current selection is still a
@@ -230,7 +246,32 @@ const AddExpensePanel = ({
       // get filtered out of that picker while the toggle is on.
       setFormData(prev => ({ ...prev, targetCreditCardId: '' }));
     }
-    setErrors(prev => ({ ...prev, category: '', targetCreditCardId: '' }));
+    setErrors(prev => ({
+      ...prev,
+      category: '',
+      targetCreditCardId: '',
+      targetLoanId: '',
+    }));
+  };
+
+  const handleLoanPaymentToggle = next => {
+    setIsLoanPayment(next);
+    if (next) {
+      setIsCreditCardPayment(false);
+      setFormData(prev => ({
+        ...prev,
+        targetCreditCardId: '',
+        targetLoanId: prev.targetLoanId,
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, targetLoanId: '' }));
+    }
+    setErrors(prev => ({
+      ...prev,
+      category: '',
+      targetCreditCardId: '',
+      targetLoanId: '',
+    }));
   };
 
   const handleRecurringToggle = next => {
@@ -280,7 +321,7 @@ const AddExpensePanel = ({
       newErrors.paymentSource = 'Payment source is required';
     }
 
-    if (!isCreditCardPayment && !formData.category) {
+    if (!isCreditCardPayment && !isLoanPayment && !formData.category) {
       newErrors.category = 'Category is required';
     }
 
@@ -292,6 +333,17 @@ const AddExpensePanel = ({
       if (formData.paymentSource && formData.paymentSource.type !== 'account') {
         newErrors.paymentSource =
           'Credit card payments must be funded from checking/savings account';
+      }
+    }
+
+    // For loan payments, validate target loan and funding source
+    if (isLoanPayment) {
+      if (!formData.targetLoanId) {
+        newErrors.targetLoanId = 'Target loan is required';
+      }
+      if (formData.paymentSource && formData.paymentSource.type !== 'account') {
+        newErrors.paymentSource =
+          'Loan payments must be funded from checking/savings account';
       }
     }
 
@@ -349,12 +401,16 @@ const AddExpensePanel = ({
         ...(isCreditCardPayment && {
           targetCreditCardId: formData.targetCreditCardId,
         }),
+        ...(isLoanPayment && { targetLoanId: formData.targetLoanId }),
       };
 
       // Validate the expense data with our new validation functions
       validatePaymentSource(expenseData);
       if (isCreditCardPayment) {
         validateCreditCardPayment(expenseData);
+      }
+      if (isLoanPayment) {
+        validateLoanPayment(expenseData);
       }
 
       if (isRecurring) {
@@ -371,6 +427,7 @@ const AddExpensePanel = ({
           accountId: formData.paymentSource?.accountId || null,
           creditCardId: formData.paymentSource?.creditCardId || null,
           targetCreditCardId: formData.targetCreditCardId || null,
+          targetLoanId: formData.targetLoanId || null,
           notes: recurring.notes,
           isVariableAmount: recurring.isVariableAmount,
         };
@@ -452,11 +509,17 @@ const AddExpensePanel = ({
   const selectedAmount = parseFloat(
     formData.amount.toString().replace(/[$,]/g, ''),
   );
+  let previewTarget = formData.category;
+  if (isCreditCardPayment) {
+    previewTarget = formData.targetCreditCardId;
+  } else if (isLoanPayment) {
+    previewTarget = formData.targetLoanId;
+  }
   const canPreview =
     formData.name.trim() &&
     !isNaN(selectedAmount) &&
     selectedAmount > 0 &&
-    (isCreditCardPayment ? formData.targetCreditCardId : formData.category);
+    previewTarget;
   const previewAccountName =
     formData.paymentSource?.type === 'account'
       ? accounts.find(a => a.id === formData.paymentSource.accountId)?.name
@@ -464,6 +527,33 @@ const AddExpensePanel = ({
   const previewCardName = isCreditCardPayment
     ? creditCards.find(c => c.id === formData.targetCreditCardId)?.name
     : null;
+  const previewLoanName = isLoanPayment
+    ? loans.find(l => l.id === formData.targetLoanId)?.name
+    : null;
+
+  // What the preview line says the amount is "for" - a target credit
+  // card, a target loan, or the plain category. Kept as if/else rather
+  // than a nested ternary purely to satisfy no-nested-ternary; the
+  // three branches themselves mirror isCreditCardPayment/isLoanPayment
+  // exactly as everywhere else in this file.
+  let previewTargetNode = (
+    <>
+      for <span className='text-white'>{formData.category}</span>
+    </>
+  );
+  if (isCreditCardPayment) {
+    previewTargetNode = (
+      <>
+        toward <span className='text-white'>{previewCardName}</span>
+      </>
+    );
+  } else if (isLoanPayment) {
+    previewTargetNode = (
+      <>
+        toward <span className='text-white'>{previewLoanName}</span>
+      </>
+    );
+  }
 
   // A one-line description of the repeat cadence, e.g. "Repeats monthly"
   // or "Repeats every 2 weeks until Dec 1, 2026" - mirrors what
@@ -589,7 +679,7 @@ const AddExpensePanel = ({
                   Hidden while paying down a credit card: that toggle sets
                   the category implicitly, so picking one here too would
                   just be a second, conflicting answer to the same question. */}
-              {!isCreditCardPayment && (
+              {!isCreditCardPayment && !isLoanPayment && (
                 <div>
                   <label
                     htmlFor='add-expense-category'
@@ -667,6 +757,35 @@ const AddExpensePanel = ({
                 </span>
               </button>
 
+              {/* Loan payment toggle - same pattern as the credit-card
+                  toggle above, mutually exclusive with it. */}
+              <button
+                type='button'
+                onClick={() => handleLoanPaymentToggle(!isLoanPayment)}
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border transition-colors ${
+                  isLoanPayment
+                    ? 'bg-blue-500/15 border-blue-400/40'
+                    : 'bg-white/5 border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <span
+                  className={`text-sm font-medium ${isLoanPayment ? 'text-blue-200' : 'text-white/80'}`}
+                >
+                  🏦 This pays down a loan
+                </span>
+                <span
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors ${
+                    isLoanPayment ? 'bg-blue-400' : 'bg-white/20'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                      isLoanPayment ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </span>
+              </button>
+
               {/* Due Date + Payment Source - always visible together, not
                   gated behind Category, and pre-filled with today and your
                   default account so the common case needs no input here. */}
@@ -697,8 +816,12 @@ const AddExpensePanel = ({
                     onChange={handlePaymentSourceChange}
                     accounts={accounts}
                     creditCards={creditCards}
-                    isCreditCardPayment={isCreditCardPayment}
-                    label={isCreditCardPayment ? 'Pay From' : 'Payment Source'}
+                    isCreditCardPayment={isCreditCardPayment || isLoanPayment}
+                    label={
+                      isCreditCardPayment || isLoanPayment
+                        ? 'Pay From'
+                        : 'Payment Source'
+                    }
                     error={errors.paymentSource}
                   />
                 </div>
@@ -732,6 +855,39 @@ const AddExpensePanel = ({
                   {errors.targetCreditCardId && (
                     <p className='mt-1 text-sm text-red-400'>
                       {errors.targetCreditCardId}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Target Loan Selector - Only for Loan Payments */}
+              {isLoanPayment && (
+                <div>
+                  <label
+                    htmlFor='add-expense-target-loan'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
+                    Pay TO (Target Loan)
+                  </label>
+                  <select
+                    id='add-expense-target-loan'
+                    value={formData.targetLoanId}
+                    onChange={e =>
+                      handleInputChange('targetLoanId', e.target.value)
+                    }
+                    className='w-full px-5 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
+                  >
+                    <option value=''>Select loan</option>
+                    {loans.map(loan => (
+                      <option key={loan.id} value={loan.id}>
+                        {loan.name} - Balance: $
+                        {loan.balance?.toLocaleString() || '0.00'}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.targetLoanId && (
+                    <p className='mt-1 text-sm text-red-400'>
+                      {errors.targetLoanId}
                     </p>
                   )}
                 </div>
@@ -967,17 +1123,7 @@ const AddExpensePanel = ({
                     <span className='text-white font-medium'>
                       ${selectedAmount.toFixed(2)}
                     </span>{' '}
-                    {isCreditCardPayment ? (
-                      <>
-                        toward{' '}
-                        <span className='text-white'>{previewCardName}</span>
-                      </>
-                    ) : (
-                      <>
-                        for{' '}
-                        <span className='text-white'>{formData.category}</span>
-                      </>
-                    )}
+                    {previewTargetNode}
                     {previewAccountName && (
                       <>
                         {' '}
@@ -1043,6 +1189,7 @@ AddExpensePanel.propTypes = {
   onClose: PropTypes.func.isRequired,
   accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
   creditCards: PropTypes.arrayOf(PropTypes.object),
+  loans: PropTypes.arrayOf(PropTypes.object),
   onDataChange: PropTypes.func.isRequired,
 };
 

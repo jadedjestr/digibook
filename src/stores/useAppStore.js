@@ -15,6 +15,7 @@ export const useAppStore = create(
       // === DATA STATE ===
       accounts: [],
       creditCards: [],
+      loans: [],
       pendingTransactions: [],
       fixedExpenses: [],
       categories: [],
@@ -74,6 +75,7 @@ export const useAppStore = create(
           const [
             accountsData,
             creditCardsData,
+            loansData,
             transactionsData,
             expensesData,
             categoriesData,
@@ -82,6 +84,7 @@ export const useAppStore = create(
           ] = await Promise.all([
             dbHelpers.getAccounts(),
             dbHelpers.getCreditCards(),
+            dbHelpers.getLoans(),
             dbHelpers.getPendingTransactions(),
             dbHelpers.getFixedExpenses(),
             dbHelpers.getCategories(),
@@ -94,6 +97,7 @@ export const useAppStore = create(
           set({
             accounts: accountsData,
             creditCards: creditCardsData,
+            loans: loansData,
             pendingTransactions: transactionsData,
             fixedExpenses: expensesData,
             categories: categoriesData,
@@ -182,6 +186,7 @@ export const useAppStore = create(
             // Set empty arrays on error
             accounts: [],
             creditCards: [],
+            loans: [],
             pendingTransactions: [],
             fixedExpenses: [],
             categories: [],
@@ -198,16 +203,18 @@ export const useAppStore = create(
         try {
           await dbHelpers.ensureDefaultAccount();
 
-          const [accountsData, creditCardsData, defaultAccountData] =
+          const [accountsData, creditCardsData, loansData, defaultAccountData] =
             await Promise.all([
               dbHelpers.getAccounts(),
               dbHelpers.getCreditCards(),
+              dbHelpers.getLoans(),
               dbHelpers.getDefaultAccount(),
             ]);
 
           set({
             accounts: accountsData,
             creditCards: creditCardsData,
+            loans: loansData,
             defaultAccount: defaultAccountData,
           });
 
@@ -455,6 +462,7 @@ export const useAppStore = create(
 // Data selector hooks — each subscribes only to its specific slice
 export const useAccounts = () => useAppStore(state => state.accounts);
 export const useCreditCards = () => useAppStore(state => state.creditCards);
+export const useLoans = () => useAppStore(state => state.loans);
 export const usePendingTransactions = () =>
   useAppStore(state => state.pendingTransactions);
 export const useFixedExpenses = () => useAppStore(state => state.fixedExpenses);

@@ -3,6 +3,7 @@ import {
   Calendar,
   Clock,
   CreditCard,
+  Landmark,
   Settings,
   Wallet,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ import {
   useCreditCards,
   useCurrentPage,
   useLoadData,
+  useLoans,
   usePendingTransactions,
 } from './stores/useAppStore';
 import { securePINStorage } from './utils/crypto';
@@ -35,6 +37,7 @@ const Accounts = lazy(() => import('./pages/Accounts'));
 const PendingTransactions = lazy(() => import('./pages/PendingTransactions'));
 const FixedExpenses = lazy(() => import('./pages/FixedExpenses'));
 const CreditCards = lazy(() => import('./pages/CreditCards'));
+const Loans = lazy(() => import('./pages/Loans'));
 const Insights = lazy(() => import('./pages/Insights'));
 
 function App() {
@@ -46,6 +49,7 @@ function App() {
   // Use Zustand store for global state
   const accounts = useAccounts();
   const creditCards = useCreditCards();
+  const loans = useLoans();
   const currentPage = useCurrentPage();
   const pendingTransactions = usePendingTransactions();
   const loadData = useLoadData();
@@ -150,6 +154,7 @@ function App() {
     { id: 'pending', name: 'Pending Transactions', icon: Clock },
     { id: 'expenses', name: 'Fixed Expenses', icon: Calendar },
     { id: 'creditCards', name: 'Credit Cards', icon: CreditCard },
+    { id: 'loans', name: 'Loans', icon: Landmark },
     { id: 'insights', name: 'Insights', icon: BarChart3 },
     { id: 'settings', name: 'Settings', icon: Settings },
   ];
@@ -176,11 +181,14 @@ function App() {
             onDataChange={loadData}
           />
         );
+      case 'loans':
+        return <Loans accounts={accounts} onDataChange={loadData} />;
       case 'insights':
         return (
           <Insights
             accounts={accounts}
             creditCards={creditCards}
+            loans={loans}
             onDataChange={loadData}
           />
         );

@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import BudgetVsActualDashboard from '../components/BudgetVsActualDashboard';
 import CreditCardDebtTable from '../components/CreditCardDebtTable';
 import DebtPayoffCalculator from '../components/DebtPayoffCalculator';
+import LoanDebtTable from '../components/LoanDebtTable';
+import LoanPayoffCalculator from '../components/LoanPayoffCalculator';
 import MonthlyTrends from '../components/MonthlyTrends';
 import OverpaymentAnalysis from '../components/OverpaymentAnalysis';
 import { dbHelpers } from '../db/database-clean';
@@ -12,6 +14,7 @@ import { logger } from '../utils/logger';
 const Insights = ({
   accounts: _accounts = [],
   creditCards = [],
+  loans = [],
   onDataChange,
 }) => {
   const [budgetSummary, setBudgetSummary] = useState(null);
@@ -104,6 +107,13 @@ const Insights = ({
         <DebtPayoffCalculator creditCards={creditCards} />
       </div>
 
+      {/* Loan Payoff - a separate section from the credit card debt views
+          above; loans have their own table and calculator rather than
+          sharing the credit-card ones, since a loan has no credit limit or
+          utilization concept. */}
+      <LoanDebtTable loans={loans} />
+      <LoanPayoffCalculator loans={loans} />
+
       {/* Row 2: Monthly Trends */}
       <MonthlyTrends history={monthlyHistory} />
     </div>
@@ -113,12 +123,14 @@ const Insights = ({
 Insights.propTypes = {
   accounts: PropTypes.arrayOf(PropTypes.object),
   creditCards: PropTypes.arrayOf(PropTypes.object),
+  loans: PropTypes.arrayOf(PropTypes.object),
   onDataChange: PropTypes.func.isRequired,
 };
 
 Insights.defaultProps = {
   accounts: [],
   creditCards: [],
+  loans: [],
 };
 
 export default Insights;

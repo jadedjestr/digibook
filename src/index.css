@@ -1879,26 +1879,128 @@
     @apply flex justify-between items-center;
   }
 
+  /* ========================================
+     LOANS
+     Mirrors the credit-card block above (same visual language) except
+     where a loan's card/badge/action-button chrome needs its own class -
+     .loan-info-grid/item/label/value name the same shapes .credit-info-*
+     already defines, so a reader isn't left wondering why a loan card
+     carries "credit" in its class names. The shared sections
+     (.utilization-*, .payment-*, .additional-info*) are reused as-is:
+     they're already generically named and purely visual.
+     ======================================== */
+  .loan-card {
+    @apply glass-card;
+    @apply space-y-4;
+    @apply transition-all duration-300 ease-out;
+    @apply hover:transform hover:translate-y-[-2px];
+    @apply hover:border-blue-500/30;
+  }
+
+  .loan-card-header {
+    @apply flex justify-between items-start;
+    @apply mb-4;
+  }
+
+  .loan-card-title {
+    @apply text-xl font-bold text-white;
+    @apply text-shadow;
+  }
+
+  .loan-card-balance {
+    @apply text-2xl font-bold;
+    @apply text-shadow;
+  }
+
+  .loan-card-actions {
+    @apply flex flex-col gap-2;
+    @apply items-end;
+  }
+
+  .loan-card-badges {
+    @apply flex flex-col gap-1.5;
+    @apply items-end;
+  }
+
+  .loan-card-badge {
+    @apply px-2.5 py-1;
+    @apply text-xs font-medium;
+    @apply rounded-xl;
+    @apply transition-all duration-200;
+  }
+
+  .loan-card-badge:hover {
+    @apply transform scale-105;
+  }
+
+  .loan-card-action-btn {
+    @apply px-3 py-1.5;
+    @apply text-xs font-medium;
+    @apply rounded-lg;
+    @apply border border-gray-500/50;
+    @apply bg-transparent;
+    @apply text-white/70;
+    @apply hover:text-white;
+    @apply transition-all duration-200;
+  }
+
+  .loan-card-action-btn.edit:hover {
+    @apply border-blue-500/50;
+    @apply bg-blue-500/10;
+    @apply text-blue-300;
+  }
+
+  .loan-card-action-btn.delete:hover {
+    @apply border-red-500/50;
+    @apply bg-red-500/10;
+    @apply text-red-300;
+  }
+
+  .loan-info-grid {
+    @apply grid grid-cols-2 gap-4;
+    @apply mb-4;
+  }
+
+  .loan-info-item {
+    background: var(--color-secondary-base);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    @apply p-3;
+    @apply rounded-lg;
+  }
+
+  .loan-info-label {
+    @apply text-xs text-gray-400;
+    @apply mb-1;
+  }
+
+  .loan-info-value {
+    @apply text-base font-semibold text-white;
+  }
+
   /* Responsive Design */
   @media (max-width: 768px) {
     .credit-info-grid,
+    .loan-info-grid,
     .payment-section,
     .additional-info {
       @apply grid-cols-1;
     }
 
-    .credit-card-header {
+    .credit-card-header,
+    .loan-card-header {
       @apply flex-col gap-3;
       @apply items-start;
     }
 
-    .credit-card-actions {
+    .credit-card-actions,
+    .loan-card-actions {
       @apply flex-row;
       @apply items-center;
       @apply gap-2;
     }
 
-    .credit-card-badges {
+    .credit-card-badges,
+    .loan-card-badges {
       @apply flex-row;
       @apply gap-2;
     }

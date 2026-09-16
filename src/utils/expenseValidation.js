@@ -82,6 +82,50 @@ export const validateCreditCardPayment = expense => {
 };
 
 /**
+ * Validates loan payment specific requirements
+ *
+ * Loan payments use the same two-field system as credit card payments:
+ * - accountId: funding source (checking/savings account)
+ * - targetLoanId: target loan being paid
+ * - creditCardId: must be null (a loan is never a spendable funding source)
+ *
+ * @param {Object} expense - The expense object to validate
+ * @returns {boolean} True if valid
+ * @throws {Error} If validation fails
+ */
+export const validateLoanPayment = expense => {
+  // Only validate if this is a loan payment
+  if (expense.category !== 'Loan Payment') {
+    return true;
+  }
+
+  // Loan payments must have funding source (accountId)
+  if (!expense.accountId) {
+    const error = `Loan payment "${expense.name || 'Unknown'}" must have a funding account (accountId). This should be a checking or savings account.`;
+    logger.error('Loan payment validation failed:', error);
+    throw new Error(error);
+  }
+
+  // Loan payments must have a target loan (targetLoanId)
+  if (!expense.targetLoanId) {
+    const error = `Loan payment "${expense.name || 'Unknown'}" must have a target loan (targetLoanId). This is the loan being paid.`;
+    logger.error('Loan payment validation failed:', error);
+    throw new Error(error);
+  }
+
+  // Loan payments cannot use creditCardId (for regular expenses only)
+  if (expense.creditCardId) {
+    const error =
+      `Loan payment "${expense.name || 'Unknown'}" cannot have ` +
+      `creditCardId (${expense.creditCardId}).`;
+    logger.error('Loan payment validation failed:', error);
+    throw new Error(error);
+  }
+
+  return true;
+};
+
+/**
  * Validates that account and credit card IDs are non-empty strings
  *
  * @param {Object} expense - The expense object to validate
@@ -121,6 +165,15 @@ export const validatePaymentSourceIds = expense => {
     }
   }
 
+  // Validate targetLoanId if present
+  if (expense.targetLoanId !== null && expense.targetLoanId !== undefined) {
+    if (!isValidId(expense.targetLoanId)) {
+      const error = `Invalid targetLoanId: ${expense.targetLoanId}. Must be a non-empty string.`;
+      logger.error('Payment source ID validation failed:', error);
+      throw new Error(error);
+    }
+  }
+
   return true;
 };
 
@@ -140,6 +193,7 @@ export const validateExpense = (expense, options = {}) => {
     if (!options.skipPaymentSourceValidation) {
       validatePaymentSource(expense);
       validateCreditCardPayment(expense);
+      validateLoanPayment(expense);
     }
 
     logger.debug(`Expense validation passed for: ${expense.name || 'Unknown'}`);
@@ -158,6 +212,16 @@ export const validateExpense = (expense, options = {}) => {
  */
 export const isCreditCardPayment = expense => {
   return expense.category === 'Credit Card Payment';
+};
+
+/**
+ * Utility function to check if expense is a loan payment
+ *
+ * @param {Object} expense - The expense object
+ * @returns {boolean} True if this is a loan payment
+ */
+export const isLoanPayment = expense => {
+  return expense.category === 'Loan Payment';
 };
 
 /**
@@ -182,10 +246,16 @@ export const sanitizeExpenseData = expense => {
     sanitized.targetCreditCardId = null;
   }
 
+  // For non-loan payments, ensure targetLoanId is null
+  if (sanitized.category !== 'Loan Payment') {
+    sanitized.targetLoanId = null;
+  }
+
   // Convert empty strings to null for proper database storage
   if (sanitized.accountId === '') sanitized.accountId = null;
   if (sanitized.creditCardId === '') sanitized.creditCardId = null;
   if (sanitized.targetCreditCardId === '') sanitized.targetCreditCardId = null;
+  if (sanitized.targetLoanId === '') sanitized.targetLoanId = null;
 
   return sanitized;
 };

@@ -25,6 +25,7 @@ const RecurringExpenseModal = ({
   initialData = null,
   accounts = [],
   creditCards = [],
+  loans: _loans = [],
 }) => {
   const [recurringData, setRecurringData] = useState({
     name: '',
@@ -32,6 +33,7 @@ const RecurringExpenseModal = ({
     category: '',
     paymentSource: null,
     targetCreditCardId: '', // For credit card payments
+    targetLoanId: '', // For loan payments
     frequency: 'monthly',
     intervalValue: 1,
     intervalUnit: 'months',
@@ -78,6 +80,7 @@ const RecurringExpenseModal = ({
           category: initialData.category || '',
           paymentSource,
           targetCreditCardId: initialData.targetCreditCardId || '', // For credit card payments
+          targetLoanId: initialData.targetLoanId || '', // For loan payments
           frequency: initialData.frequency || 'monthly',
           intervalValue: initialData.intervalValue || 1,
           intervalUnit: initialData.intervalUnit || 'months',
@@ -361,7 +364,8 @@ const RecurringExpenseModal = ({
                 accounts={accounts}
                 creditCards={creditCards}
                 isCreditCardPayment={
-                  recurringData.category === 'Credit Card Payment'
+                  recurringData.category === 'Credit Card Payment' ||
+                  recurringData.category === 'Loan Payment'
                 }
                 placeholder='Select payment source...'
                 error={errors.paymentSource}
@@ -635,6 +639,7 @@ RecurringExpenseModal.propTypes = {
   initialData: PropTypes.object,
   accounts: PropTypes.array,
   creditCards: PropTypes.array,
+  loans: PropTypes.arrayOf(PropTypes.object),
 };
 
 export default RecurringExpenseModal;

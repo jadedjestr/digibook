@@ -192,6 +192,21 @@ are load-bearing.
 - A PIN locks the app outright.
 - No analytics, no telemetry, no network calls carrying financial data.
 
+### Job I — "Pay off a loan without losing track of the term"
+
+- Track each loan's balance, interest rate and target payoff date.
+- Calculate the required payment automatically from the live balance and the
+  target date — never typed in, and recalculated fresh every cycle, so an
+  extra payment lowers what's required next rather than leaving it stale.
+- Model a loan payment as what it is: money leaving an account *and* debt
+  reducing, together or not at all.
+- Project payoff timelines as a pure what-if that can never alter real data,
+  reusing the same payoff math the cards already use.
+- Reject a target payoff date that can't be reached — too soon, or already
+  past — at input time, with a clear reason, rather than accepting it
+  silently.
+- Deleting a loan must not strand the bills that pointed at it.
+
 ---
 
 ## 5. Success criteria

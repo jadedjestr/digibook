@@ -26,6 +26,24 @@ const StatusBadge = ({ status, className = '', variant = 'default' }) => {
       }
     }
 
+    // Loan specific statuses
+    if (variant === 'loan') {
+      switch (status) {
+        case 'Paid Off':
+          return 'badge-success';
+        case 'Good Standing':
+          return 'badge-success';
+        case 'Due Soon':
+          return 'badge-danger';
+        case 'Overdue':
+          return 'badge-danger';
+        case 'Payment Due':
+          return 'badge-info';
+        default:
+          return 'badge-info';
+      }
+    }
+
     // Original statuses for backward compatibility
     switch (status) {
       case 'Paid':
@@ -49,10 +67,11 @@ const StatusBadge = ({ status, className = '', variant = 'default' }) => {
     }
   };
 
-  const baseClasses =
-    variant === 'credit-card'
-      ? 'credit-card-badge'
-      : 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border status-badge';
+  const baseClasses = (() => {
+    if (variant === 'credit-card') return 'credit-card-badge';
+    if (variant === 'loan') return 'loan-card-badge';
+    return 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border status-badge';
+  })();
 
   return (
     <span

@@ -33,6 +33,7 @@ describe('dbHelpers.materializeCurrentCycle', () => {
     await Promise.all([
       db.accounts.clear(),
       db.creditCards.clear(),
+      db.loans.clear(),
       db.categories.clear(),
       db.recurringExpenseTemplates.clear(),
       db.fixedExpenses.clear(),
@@ -209,5 +210,135 @@ describe('dbHelpers.materializeCurrentCycle', () => {
     const again = await generateNextOccurrence('tpl-1');
     expect(again).toBeNull();
     expect(await db.fixedExpenses.count()).toBe(1);
+  });
+
+  it('still refuses (and deactivates) a template with a deleted linked loan, even with allowFuture', async () => {
+    await db.loans.bulkPut([
+      {
+        id: 'loan-1',
+        name: 'Car Loan',
+        balance: 10000,
+        interestRate: 6,
+        dueDate: '2026-10-01',
+        targetPayoffDate: '2031-10-01',
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: '2026-09-14T00:00:00.000Z',
+      },
+    ]);
+    await db.recurringExpenseTemplates.update('tpl-1', {
+      targetLoanId: 'loan-1',
+    });
+
+    await expect(
+      dbHelpers.materializeCurrentCycle('tpl-1', { allowFuture: true }),
+    ).rejects.toThrow(/loan.*deleted/i);
+    const template = await db.recurringExpenseTemplates.get('tpl-1');
+    expect(template.isActive).toBe(false);
+    expect(await db.fixedExpenses.count()).toBe(0);
+  });
+
+  describe('createExpenseForLoan (materialization path)', () => {
+    beforeEach(async () => {
+      await db.accounts.bulkPut([
+        {
+          id: 'acc-loan',
+          name: 'Savings',
+          type: 'savings',
+          currentBalance: 2000,
+          isDefault: false,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ]);
+      await db.loans.bulkPut([
+        {
+          id: 'loan-1',
+          name: 'Car Loan',
+          balance: 10000,
+          interestRate: 6,
+          dueDate: '2026-12-01', // ahead of pinned "today" (2026-09-15)
+          targetPayoffDate: '2031-12-01',
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ]);
+    });
+
+    it('materializes the first bill immediately, unconditionally ahead of its due date', async () => {
+      await dbHelpers.createExpenseForLoan('loan-1', 'acc-loan');
+
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => e.targetLoanId === 'loan-1',
+      );
+      expect(expenses).toHaveLength(1);
+      expect(expenses[0].dueDate).toBe('2026-12-01'); // months ahead of "today"
+      expect(expenses[0].amount).toBeGreaterThan(0);
+      expect(expenses[0].category).toBe('Loan Payment');
+    });
+
+    it('computes the amount via the dynamic payoff formula, not a static minimum', async () => {
+      await dbHelpers.createExpenseForLoan('loan-1', 'acc-loan');
+
+      const [expense] = (await db.fixedExpenses.toArray()).filter(
+        e => e.targetLoanId === 'loan-1',
+      );
+      const expected = dbHelpers.calculateRequiredLoanPayment(
+        10000,
+        6,
+        '2026-12-01',
+        '2031-12-01',
+      );
+      expect(expected.success).toBe(true);
+      expect(expense.amount).toBeCloseTo(expected.payment, 6);
+    });
+
+    it('a loan that is already paid off (balance 0) gets no payment template or bill', async () => {
+      await db.loans.update('loan-1', { balance: 0 });
+      await dbHelpers.createExpenseForLoan('loan-1', 'acc-loan');
+
+      const templates = (await db.recurringExpenseTemplates.toArray()).filter(
+        t => t.targetLoanId === 'loan-1',
+      );
+      const expenses = (await db.fixedExpenses.toArray()).filter(
+        e => e.targetLoanId === 'loan-1',
+      );
+      expect(templates).toHaveLength(0);
+      expect(expenses).toHaveLength(0);
+    });
+
+    it('an existing template materializes a $0 bill once the loan is paid down to 0 (ongoing, not first-cycle)', async () => {
+      // A loan mid-life: it already has an active template (created back
+      // when balance was positive), and has since been paid down to 0.
+      await db.loans.update('loan-1', { balance: 0 });
+      await db.recurringExpenseTemplates.bulkPut([
+        {
+          id: 'tpl-loan-1',
+          name: 'Car Loan Payment',
+          baseAmount: 180,
+          frequency: 'monthly',
+          intervalValue: 1,
+          intervalUnit: 'months',
+          startDate: '2026-08-01',
+          lastGenerated: '2026-08-01',
+          nextDueDate: '2026-09-01', // due, since pinned "today" is 09-15
+          category: 'Loan Payment',
+          accountId: 'acc-loan',
+          targetLoanId: 'loan-1',
+          isActive: true,
+          isVariableAmount: true,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ]);
+
+      const id = await dbHelpers.materializeCurrentCycle('tpl-loan-1');
+      expect(id).toBeTruthy();
+      const expense = await db.fixedExpenses.get(id);
+      expect(expense.amount).toBe(0);
+    });
   });
 });
