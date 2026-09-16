@@ -75,7 +75,7 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
   if (isVirtual) {
     statusClass = 'expense-badge--virtual';
   } else if (isResolved) {
-    statusClass = `expense-badge--${expense.resolution.type}`; // paid | skipped | partial
+    statusClass = `expense-badge--${expense.resolution.type}`; // paid | skipped | partial | forgiven
   } else {
     statusClass = getStatusClass(status);
   }
@@ -100,15 +100,34 @@ const ExpenseBadge = ({ expense, paycheckService, paycheckDates }) => {
     const shortfall =
       (expense.resolution.committedAmount || 0) -
       (expense.resolution.paidAmount || 0);
+
+    // A deferred shortfall's Balance Due is due at the next paycheck (or
+    // today, for a log entry written before that choice existed - see
+    // resolutionTypeOf in FixedExpenses.jsx).
+    const deferredDueOn = expense.resolution.deferredDueDate
+      ? DateUtils.formatShortDate(expense.resolution.deferredDueDate)
+      : null;
     let statusLine;
     if (expense.resolution.type === 'paid') {
       statusLine = `Paid in Full on ${paidOn}`;
+    } else if (expense.resolution.type === 'forgiven') {
+      statusLine = 'Forgiven — no longer owed';
+      if (expense.resolution.templatePausedOnForgive) {
+        statusLine += ' (future bills paused)';
+      }
     } else if (expense.resolution.type === 'skipped') {
-      statusLine = `Skipped (No Payment) — owed as Balance Due ($${shortfall.toLocaleString()})`;
+      statusLine = `Skipped — owed as Balance Due ($${shortfall.toLocaleString()})${deferredDueOn ? `, due ${deferredDueOn}` : ''}`;
     } else {
-      statusLine = `Partial Paid ($${(expense.resolution.paidAmount || 0).toLocaleString()} paid)`;
+      statusLine = `Partial Paid ($${(expense.resolution.paidAmount || 0).toLocaleString()} paid) — remainder owed as Balance Due${deferredDueOn ? `, due ${deferredDueOn}` : ''}`;
     }
-    title = `${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${statusLine}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : '\n📅 One-time Expense'}`;
+
+    // A forgiven shortfall isn't owed at all - showing "Remaining: $X"
+    // would directly contradict "no longer owed" on the line above it.
+    const remainingLine =
+      expense.resolution.type === 'forgiven'
+        ? ''
+        : `\nRemaining: $${remainingAmount.toLocaleString()}`;
+    title = `${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${statusLine}${remainingLine}${isRecurring ? '\n🔄 Recurring Expense' : '\n📅 One-time Expense'}`;
   } else {
     title = `${expense.name} - $${expense.amount.toLocaleString()}\nStatus: ${status}\nRemaining: $${remainingAmount.toLocaleString()}${isRecurring ? '\n🔄 Recurring Expense' : '\n📅 One-time Expense'}`;
   }
@@ -183,10 +202,13 @@ ExpenseBadge.propTypes = {
     isVariableAmount: PropTypes.bool,
     isVirtual: PropTypes.bool,
     resolution: PropTypes.shape({
-      type: PropTypes.oneOf(['paid', 'skipped', 'partial']).isRequired,
+      type: PropTypes.oneOf(['paid', 'skipped', 'partial', 'forgiven'])
+        .isRequired,
       resolvedAt: PropTypes.string.isRequired,
       paidAmount: PropTypes.number,
       committedAmount: PropTypes.number,
+      deferredDueDate: PropTypes.string,
+      templatePausedOnForgive: PropTypes.bool,
     }),
   }).isRequired,
   paycheckService: PropTypes.shape({

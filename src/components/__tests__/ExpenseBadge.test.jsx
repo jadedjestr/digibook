@@ -62,8 +62,55 @@ describe('ExpenseBadge — resolved cycles (skip double-pay hazard fix)', () => 
     expect(container.querySelector('.expense-badge--skipped')).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
     const title = getByTitle(/Netflix/).getAttribute('title');
-    expect(title).toContain('Skipped (No Payment)');
+    expect(title).toContain('Skipped');
     expect(title).toContain('Balance Due ($15.99)');
+  });
+
+  it('a SKIPPED-and-deferred cycle mentions the Balance Due due date in the tooltip', () => {
+    const { getByTitle } = renderBadge({
+      resolution: {
+        type: 'skipped',
+        resolvedAt: '2026-09-15T14:22:08.000Z',
+        paidAmount: 0,
+        committedAmount: 15.99,
+        deferredDueDate: '2026-09-28',
+      },
+    });
+
+    const title = getByTitle(/Netflix/).getAttribute('title');
+    expect(title).toContain('due Sep 28, 2026');
+  });
+
+  it('a FORGIVEN cycle renders settled-green and inert, with no "Remaining" line', () => {
+    const { container, getByTitle } = renderBadge({
+      resolution: {
+        type: 'forgiven',
+        resolvedAt: '2026-09-15T14:22:08.000Z',
+        paidAmount: 0,
+        committedAmount: 15.99,
+      },
+    });
+
+    expect(container.querySelector('.expense-badge--forgiven')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+    const title = getByTitle(/Netflix/).getAttribute('title');
+    expect(title).toContain('Forgiven — no longer owed');
+    expect(title).not.toContain('Remaining');
+  });
+
+  it('a FORGIVEN cycle that also paused the template mentions the pause in the tooltip', () => {
+    const { getByTitle } = renderBadge({
+      resolution: {
+        type: 'forgiven',
+        resolvedAt: '2026-09-15T14:22:08.000Z',
+        paidAmount: 0,
+        committedAmount: 15.99,
+        templatePausedOnForgive: true,
+      },
+    });
+
+    const title = getByTitle(/Netflix/).getAttribute('title');
+    expect(title).toContain('future bills paused');
   });
 
   it('a PARTIAL cycle renders amber-inert, paid figure in the tooltip, Remaining intact', () => {

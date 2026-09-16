@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+import { calculateNextPayDates } from '../../constants/payFrequency';
 import { DateUtils } from '../../utils/dateUtils';
 import { db, dbHelpers } from '../database-clean';
 
@@ -26,6 +27,7 @@ describe('dbHelpers.resolveCycle', () => {
       db.auditLogs.clear(),
       db.recurringResolutionLog.clear(),
       db.monthlyExpenseHistory.clear(),
+      db.paycheckSettings.clear(),
     ]);
 
     await db.accounts.bulkPut([
@@ -174,7 +176,10 @@ describe('dbHelpers.resolveCycle', () => {
   it('Partial: advances cadence AND spins off a Balance Due for the shortfall', async () => {
     await seedFixedTemplate();
 
-    const result = await dbHelpers.resolveCycle('exp-1', { paidAmount: 40 });
+    const result = await dbHelpers.resolveCycle('exp-1', {
+      paidAmount: 40,
+      shortfallOutcome: 'deferred',
+    });
 
     const template = await db.recurringExpenseTemplates.get('tpl-1');
     const allExpenses = await db.fixedExpenses.toArray();
@@ -186,22 +191,28 @@ describe('dbHelpers.resolveCycle', () => {
     expect(balanceDue).toBeTruthy();
     expect(balanceDue.amount).toBeCloseTo(49.5);
 
-    // Use the app's local-time convention (DateUtils.today()), not UTC -
+    // No paycheckSettings seeded in this test - deferred falls back to
+    // the app's local-time convention (DateUtils.today()), not UTC;
     // toISOString() flips to the next day after 5pm PDT, making this
     // time-of-day flaky.
-    expect(balanceDue.dueDate).toBe(DateUtils.today()); // due today
+    expect(balanceDue.dueDate).toBe(DateUtils.today());
     expect(balanceDue.recurringTemplateId).toBeNull();
     expect(balanceDue.status).toBe('pending');
 
     const logEntries = await db.recurringResolutionLog.toArray();
     expect(logEntries[0].wasSkipped).toBe(false);
     expect(logEntries[0].adjustmentExpenseId).toBe(balanceDue.id);
+    expect(logEntries[0].shortfallOutcome).toBe('deferred');
+    expect(logEntries[0].deferredDueDate).toBe(DateUtils.today());
   });
 
   it('Skip (paidAmount 0): advances cadence and the Balance Due is for the FULL committed amount', async () => {
     await seedFixedTemplate();
 
-    const result = await dbHelpers.resolveCycle('exp-1', { paidAmount: 0 });
+    const result = await dbHelpers.resolveCycle('exp-1', {
+      paidAmount: 0,
+      shortfallOutcome: 'deferred',
+    });
 
     const template = await db.recurringExpenseTemplates.get('tpl-1');
     const balanceDue = await db.fixedExpenses.get(result.adjustmentExpenseId);
@@ -212,10 +223,142 @@ describe('dbHelpers.resolveCycle', () => {
     expect(logEntries[0].wasSkipped).toBe(true);
   });
 
+  it('Skip with shortfallOutcome "forgiven" creates no Balance Due', async () => {
+    await seedFixedTemplate();
+
+    const result = await dbHelpers.resolveCycle('exp-1', {
+      paidAmount: 0,
+      shortfallOutcome: 'forgiven',
+    });
+
+    expect(result.adjustmentExpenseId).toBeNull();
+
+    // Just the original row - no Balance Due was ever created.
+    expect(await db.fixedExpenses.count()).toBe(1);
+
+    const logEntries = await db.recurringResolutionLog.toArray();
+    expect(logEntries[0].shortfallOutcome).toBe('forgiven');
+    expect(logEntries[0].adjustmentExpenseId).toBeNull();
+    expect(logEntries[0].deferredDueDate).toBeNull();
+    expect(logEntries[0].templatePausedOnForgive).toBe(false);
+
+    const template = await db.recurringExpenseTemplates.get('tpl-1');
+    expect(template.isActive).toBe(true);
+    expect(template.nextDueDate).toBe('2026-10-14'); // cadence still advances
+  });
+
+  it('a deferred shortfall with paycheckSettings seeded computes dueDate from calculateNextPayDates, not today', async () => {
+    await seedFixedTemplate();
+
+    // A lastPaycheckDate far enough in the past that "the next payday on
+    // or after today" lands after today no matter when this suite
+    // actually runs - calculateNextPayDates rolls forward from real
+    // wall-clock "today" internally, so the expected value is computed
+    // the exact same way here rather than hardcoded, to avoid a test
+    // that silently goes flaky as time passes.
+    await db.paycheckSettings.bulkPut([
+      {
+        id: 'ps-1',
+        lastPaycheckDate: '2020-01-03', // a Friday, arbitrary anchor
+        frequency: 'biweekly',
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+    const expectedNextPayDate = calculateNextPayDates(
+      '2020-01-03',
+      'biweekly',
+    ).nextPayDate;
+
+    const result = await dbHelpers.resolveCycle('exp-1', {
+      paidAmount: 0,
+      shortfallOutcome: 'deferred',
+    });
+    const balanceDue = await db.fixedExpenses.get(result.adjustmentExpenseId);
+
+    expect(balanceDue.dueDate).toBe(expectedNextPayDate);
+
+    const logEntries = await db.recurringResolutionLog.toArray();
+    expect(logEntries[0].deferredDueDate).toBe(expectedNextPayDate);
+  });
+
+  it('missing shortfallOutcome on a real shortfall throws, and commits nothing', async () => {
+    await seedFixedTemplate();
+
+    await expect(
+      dbHelpers.resolveCycle('exp-1', { paidAmount: 40 }),
+    ).rejects.toThrow(/shortfallOutcome .* is required/i);
+
+    const expense = await db.fixedExpenses.get('exp-1');
+    expect(expense.paidAmount).toBe(0);
+    expect(await db.recurringResolutionLog.count()).toBe(0);
+    expect(await db.fixedExpenses.count()).toBe(1); // no Balance Due either
+  });
+
+  it('shortfallOutcome supplied when there is no shortfall throws', async () => {
+    await seedFixedTemplate();
+
+    await expect(
+      dbHelpers.resolveCycle('exp-1', {
+        paidAmount: 89.5,
+        shortfallOutcome: 'deferred',
+      }),
+    ).rejects.toThrow(/must not be provided when there is no shortfall/i);
+  });
+
+  it('pauseTemplateOnForgive: true pauses the template atomically alongside forgiving', async () => {
+    await seedFixedTemplate();
+
+    await dbHelpers.resolveCycle('exp-1', {
+      paidAmount: 0,
+      shortfallOutcome: 'forgiven',
+      pauseTemplateOnForgive: true,
+    });
+
+    const template = await db.recurringExpenseTemplates.get('tpl-1');
+    expect(template.isActive).toBe(false);
+
+    // Cadence still advances even though the template is now paused - a
+    // future resume should pick up from the correct next cycle.
+    expect(template.nextDueDate).toBe('2026-10-14');
+
+    const logEntries = await db.recurringResolutionLog.toArray();
+    expect(logEntries[0].templatePausedOnForgive).toBe(true);
+  });
+
+  it('pauseTemplateOnForgive: false leaves the template active', async () => {
+    await seedFixedTemplate();
+
+    await dbHelpers.resolveCycle('exp-1', {
+      paidAmount: 0,
+      shortfallOutcome: 'forgiven',
+      pauseTemplateOnForgive: false,
+    });
+
+    const template = await db.recurringExpenseTemplates.get('tpl-1');
+    expect(template.isActive).toBe(true);
+  });
+
+  it('pauseTemplateOnForgive is only legal alongside shortfallOutcome "forgiven"', async () => {
+    await seedFixedTemplate();
+
+    await expect(
+      dbHelpers.resolveCycle('exp-1', {
+        paidAmount: 40,
+        shortfallOutcome: 'deferred',
+        pauseTemplateOnForgive: true,
+      }),
+    ).rejects.toThrow(/only valid alongside shortfallOutcome: "forgiven"/i);
+  });
+
   it('a skipped credit-card payment spins off a Balance Due that inherits category + targetCreditCardId, so paying it later still reduces the card balance', async () => {
     await seedCardPaymentTemplate();
 
-    const result = await dbHelpers.resolveCycle('exp-card', { paidAmount: 0 });
+    const result = await dbHelpers.resolveCycle('exp-card', {
+      paidAmount: 0,
+      shortfallOutcome: 'deferred',
+    });
     const balanceDue = await db.fixedExpenses.get(result.adjustmentExpenseId);
 
     expect(balanceDue.category).toBe('Credit Card Payment');

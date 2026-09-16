@@ -38,13 +38,17 @@ const USE_NUDGE_TOAST = true;
 const EMPTY_ID_SET = new Set();
 const EMPTY_RESOLUTION_MAP = new Map();
 
-// Kind of resolution a log entry represents: Skip is a £0 payment; a full
-// payment covers the committed amount; anything between spun off a
-// Balance Due for the shortfall.
+// Kind of resolution a log entry represents: a full payment covers the
+// committed amount; a forgiven shortfall is no longer owed at all;
+// anything else (Skip, or a Partial that didn't cover it) spun off a
+// Balance Due, whether deferred to the next paycheck or - for a log
+// entry written before that choice existed - due the day it was
+// resolved. shortfallOutcome is absent (not just falsy) on legacy rows,
+// so this stays correct without any data migration.
 const resolutionTypeOf = entry => {
-  if (entry.wasSkipped) return 'skipped';
   if (entry.paidAmount >= entry.committedAmount) return 'paid';
-  return 'partial';
+  if (entry.shortfallOutcome === 'forgiven') return 'forgiven';
+  return entry.wasSkipped ? 'skipped' : 'partial';
 };
 
 const FixedExpenses = () => {
@@ -277,6 +281,8 @@ const FixedExpenses = () => {
               resolvedAt: entry.resolvedAt,
               paidAmount: entry.paidAmount,
               committedAmount: entry.committedAmount,
+              deferredDueDate: entry.deferredDueDate ?? null,
+              templatePausedOnForgive: Boolean(entry.templatePausedOnForgive),
             },
           ]),
         );

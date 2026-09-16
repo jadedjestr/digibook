@@ -169,18 +169,29 @@ export const useExpenseOperations = () => {
   /**
    * Resolve a recurring template's current cycle: Pay Full, Partial, or
    * Skip (paidAmount: 0). Unlike updateExpenseV4, this always advances the
-   * template's cadence immediately and may spin off a Balance Due for any
-   * shortfall - see dbHelpers.resolveCycle. Only call this for an expense
-   * that has a recurringTemplateId; use updateExpenseV4 for one-offs and
-   * Balance Due, which are never resolved through this path.
+   * template's cadence immediately. Any shortfall requires shortfallOutcome
+   * ('deferred' - Balance Due due at the next paycheck, or 'forgiven' - no
+   * Balance Due at all); pauseTemplateOnForgive additionally pauses the
+   * template, only legal alongside 'forgiven' - see dbHelpers.resolveCycle.
+   * Only call this for an expense that has a recurringTemplateId; use
+   * updateExpenseV4 for one-offs and Balance Due, which are never resolved
+   * through this path.
    */
   const resolveCycle = useCallback(
-    async (expenseId, { paidAmount }, showNotification = true) => {
+    async (
+      expenseId,
+      { paidAmount, shortfallOutcome, pauseTemplateOnForgive },
+      showNotification = true,
+    ) => {
       try {
         // Optimistic update
         updateExpenseInStore(expenseId, { paidAmount });
 
-        await dbHelpers.resolveCycle(expenseId, { paidAmount });
+        await dbHelpers.resolveCycle(expenseId, {
+          paidAmount,
+          shortfallOutcome,
+          pauseTemplateOnForgive,
+        });
 
         // The template's cadence just advanced and a Balance Due may have
         // been created - refresh both.

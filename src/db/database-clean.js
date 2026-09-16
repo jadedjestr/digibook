@@ -2,6 +2,7 @@ import Dexie from 'dexie';
 
 import {
   advanceDueDateByFrequency,
+  calculateNextPayDates,
   DEFAULT_PAY_FREQUENCY,
   getMostRecentImpliedPayDate,
   VALID_PAY_FREQUENCIES,
@@ -4640,14 +4641,23 @@ export const dbHelpers = {
    * separate mechanism. Any resolution - full, partial, or skip -
    * advances the template's cadence immediately; it never waits for a
    * full payment the way the old fast path inside
-   * applyExpensePaymentChangeAtomic used to. A shortfall (paidAmount less
-   * than the cycle's committed amount) spins off a Balance Due: a normal
-   * one-off fixedExpenses row, due today, that inherits the origin bill's
+   * applyExpensePaymentChangeAtomic used to.
+   *
+   * A shortfall (paidAmount less than the cycle's committed amount) never
+   * silently assumes what it means - the caller must say whether the
+   * shortfall is 'deferred' (still owed, just later - spins off a Balance
+   * Due due-dated at the user's next paycheck, or today if no paycheck is
+   * configured) or 'forgiven' (no longer owed at all - no Balance Due is
+   * created). A deferred Balance Due is a normal one-off fixedExpenses
+   * row that inherits the origin bill's
    * category/accountId/creditCardId/targetCreditCardId verbatim - this is
-   * what makes a skipped credit-card payment's Balance Due correctly
+   * what makes a deferred credit-card payment's Balance Due correctly
    * reduce the card's tracked balance when it's eventually paid, since
    * only an expense carrying that category/link goes through the
-   * credit-card branch of applyPaymentDelta.
+   * credit-card branch of applyPaymentDelta. Forgiving a shortfall can
+   * also pause the template atomically (see pauseTemplateOnForgive) - the
+   * two are folded into one transaction so a failure never leaves a
+   * forgiven cycle with the template still silently active.
    *
    * Writes a recurringResolutionLog row as a HARD write inside the same
    * transaction as the payment/balance mutation and the cadence advance -
@@ -4659,12 +4669,34 @@ export const dbHelpers = {
    *   template's current cycle
    * @param {Object} params
    * @param {number} params.paidAmount - amount being paid now (0 for Skip)
+   * @param {'deferred'|'forgiven'} [params.shortfallOutcome] - required
+   *   when paidAmount leaves a shortfall; illegal when it doesn't
+   * @param {boolean} [params.pauseTemplateOnForgive] - only legal
+   *   alongside shortfallOutcome: 'forgiven'; pauses the template in the
+   *   same transaction
    * @returns {Promise<{logId: string, adjustmentExpenseId: string|null, templateId: string}>}
    */
-  async resolveCycle(expenseId, { paidAmount }) {
+  async resolveCycle(
+    expenseId,
+    { paidAmount, shortfallOutcome = null, pauseTemplateOnForgive = false },
+  ) {
     const paidAmountCheck = validatePaidAmount(paidAmount);
     if (!paidAmountCheck.isValid) {
       throw new Error(paidAmountCheck.error);
+    }
+    if (
+      shortfallOutcome !== null &&
+      shortfallOutcome !== 'deferred' &&
+      shortfallOutcome !== 'forgiven'
+    ) {
+      throw new Error(
+        'shortfallOutcome must be "deferred", "forgiven", or omitted',
+      );
+    }
+    if (pauseTemplateOnForgive && shortfallOutcome !== 'forgiven') {
+      throw new Error(
+        'pauseTemplateOnForgive is only valid alongside shortfallOutcome: "forgiven"',
+      );
     }
 
     // Hoisted above the transaction for the same reason
@@ -4682,6 +4714,7 @@ export const dbHelpers = {
       db.auditLogs,
       db.recurringExpenseTemplates,
       db.recurringResolutionLog,
+      db.paycheckSettings,
       async () => {
         const expense = await db.fixedExpenses.get(expenseId);
         if (!expense || expense.deletedAt) {
@@ -4748,34 +4781,63 @@ export const dbHelpers = {
           );
         }
 
-        // Shortfall becomes a Balance Due - a normal one-off expense,
-        // inheriting the origin's category/payment-source verbatim.
+        // Shortfall never silently means "owed today" - the caller must
+        // say whether it's deferred (still owed, later) or forgiven (not
+        // owed at all). See resolveCycle's own docstring.
         let adjustmentExpenseId = null;
+        let deferredDueDate = null;
         const shortfall = committedAmount - paidAmount;
         if (shortfall > 0.004) {
-          const balanceDueData = sanitizeExpenseData({
-            name: `${expense.name} (Balance Due)`,
-            dueDate: DateUtils.today(),
-            amount: shortfall,
-            accountId: expense.accountId || null,
-            creditCardId: expense.creditCardId || null,
-            targetCreditCardId: expense.targetCreditCardId || null,
-            category: expense.category,
-            categoryId: expense.categoryId ?? null,
-            paidAmount: 0,
-            status: 'pending',
-            recurringTemplateId: null,
-            isAutoCreated: true,
-          });
-          validateExpense(balanceDueData);
-          adjustmentExpenseId = generateId();
-          await db.fixedExpenses.add({
-            ...balanceDueData,
-            id: adjustmentExpenseId,
-            createdAt: ts,
-            updatedAt: ts,
-            deletedAt: null,
-          });
+          if (shortfallOutcome === null) {
+            throw new Error(
+              'shortfallOutcome ("deferred" or "forgiven") is required when paidAmount leaves a shortfall',
+            );
+          }
+          if (shortfallOutcome === 'deferred') {
+            deferredDueDate = DateUtils.today();
+            const paycheckRows = await db.paycheckSettings.toArray();
+            const settings = paycheckRows.find(s => !s.deletedAt) || null;
+            if (settings?.lastPaycheckDate) {
+              const { nextPayDate } = calculateNextPayDates(
+                settings.lastPaycheckDate,
+                settings.frequency,
+              );
+              if (nextPayDate) {
+                deferredDueDate = nextPayDate;
+              }
+            }
+
+            const balanceDueData = sanitizeExpenseData({
+              name: `${expense.name} (Balance Due)`,
+              dueDate: deferredDueDate,
+              amount: shortfall,
+              accountId: expense.accountId || null,
+              creditCardId: expense.creditCardId || null,
+              targetCreditCardId: expense.targetCreditCardId || null,
+              category: expense.category,
+              categoryId: expense.categoryId ?? null,
+              paidAmount: 0,
+              status: 'pending',
+              recurringTemplateId: null,
+              isAutoCreated: true,
+            });
+            validateExpense(balanceDueData);
+            adjustmentExpenseId = generateId();
+            await db.fixedExpenses.add({
+              ...balanceDueData,
+              id: adjustmentExpenseId,
+              createdAt: ts,
+              updatedAt: ts,
+              deletedAt: null,
+            });
+          }
+
+          // 'forgiven': no Balance Due row at all - adjustmentExpenseId
+          // stays null.
+        } else if (shortfallOutcome !== null) {
+          throw new Error(
+            'shortfallOutcome must not be provided when there is no shortfall',
+          );
         }
 
         // Advance cadence unconditionally - Full, Partial, and Skip all
@@ -4802,10 +4864,19 @@ export const dbHelpers = {
             }
           }
         }
+
+        // Pausing on forgive is folded into this same atomic update and
+        // the same transaction as everything else here - a separate
+        // follow-up call from the UI could fail independently and leave
+        // a forgiven cycle with the template still silently active.
+        const shouldPauseForForgive =
+          shortfallOutcome === 'forgiven' && pauseTemplateOnForgive === true;
         await this.updateRecurringExpenseTemplate(template.id, {
           lastGenerated: previousNextDueDate,
           nextDueDate: nextDueToSet,
-          ...(shouldDeactivate && { isActive: false }),
+          ...((shouldDeactivate || shouldPauseForForgive) && {
+            isActive: false,
+          }),
         });
 
         // HARD write - no try/catch swallow, unlike the audit log below.
@@ -4821,6 +4892,9 @@ export const dbHelpers = {
           paidAmount,
           wasSkipped: paidAmount === 0,
           adjustmentExpenseId,
+          shortfallOutcome,
+          deferredDueDate,
+          templatePausedOnForgive: shouldPauseForForgive,
           previousNextDueDate,
           previousLastGenerated,
           previousExpensePaidAmount: previousPaidAmount,
@@ -4836,6 +4910,8 @@ export const dbHelpers = {
             paidAmount,
             committedAmount,
             adjustmentExpenseId,
+            shortfallOutcome,
+            templatePausedOnForgive: shouldPauseForForgive,
           });
         } catch (auditErr) {
           logger.warn('Audit log (resolve cycle) failed:', auditErr);
@@ -5003,7 +5079,10 @@ export const dbHelpers = {
 
         // Undoing a resolution can only ever un-deactivate a template
         // (resolving a cycle requires it to have been active beforehand),
-        // never deactivate one.
+        // never deactivate one. This also correctly un-pauses a template
+        // that resolveCycle paused via templatePausedOnForgive - no
+        // separate handling needed, since it was active when this
+        // resolution began either way.
         await this.updateRecurringExpenseTemplate(templateId, {
           nextDueDate: candidate.previousNextDueDate,
           lastGenerated: candidate.previousLastGenerated,

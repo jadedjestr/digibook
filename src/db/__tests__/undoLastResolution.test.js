@@ -103,6 +103,7 @@ describe('dbHelpers.undoLastResolution', () => {
   it('deletes the Balance Due a partial resolution created', async () => {
     const { adjustmentExpenseId } = await dbHelpers.resolveCycle('exp-1', {
       paidAmount: 40,
+      shortfallOutcome: 'deferred',
     });
     expect(adjustmentExpenseId).toBeTruthy();
 
@@ -118,6 +119,7 @@ describe('dbHelpers.undoLastResolution', () => {
   it('is blocked when the Balance Due it created already has a payment on it', async () => {
     const { adjustmentExpenseId } = await dbHelpers.resolveCycle('exp-1', {
       paidAmount: 40,
+      shortfallOutcome: 'deferred',
     });
 
     await dbHelpers.applyExpensePaymentChangeAtomic(adjustmentExpenseId, {
@@ -208,5 +210,30 @@ describe('dbHelpers.undoLastResolution', () => {
     await expect(dbHelpers.undoLastResolution('tpl-1')).rejects.toThrow(
       /nothing to undo/i,
     );
+  });
+
+  it('undoing a forgiven-and-paused resolution restores the template to active with no Balance Due to clean up', async () => {
+    await dbHelpers.resolveCycle('exp-1', {
+      paidAmount: 0,
+      shortfallOutcome: 'forgiven',
+      pauseTemplateOnForgive: true,
+    });
+
+    let template = await db.recurringExpenseTemplates.get('tpl-1');
+    expect(template.isActive).toBe(false);
+    expect(await db.fixedExpenses.count()).toBe(1); // no Balance Due
+
+    await dbHelpers.undoLastResolution('tpl-1');
+
+    template = await db.recurringExpenseTemplates.get('tpl-1');
+    expect(template.isActive).toBe(true);
+    expect(template.nextDueDate).toBe('2026-09-14');
+    const expense = await db.fixedExpenses.get('exp-1');
+    expect(expense.paidAmount).toBe(0);
+    const logEntries = await db.recurringResolutionLog
+      .where('templateId')
+      .equals('tpl-1')
+      .toArray();
+    expect(logEntries[0].deletedAt).not.toBeNull();
   });
 });

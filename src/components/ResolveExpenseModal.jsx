@@ -7,6 +7,12 @@ import { formatCurrency } from '../utils/accountUtils';
 import { notify } from '../utils/notifications';
 import { validatePaidAmount } from '../utils/validation';
 
+// Mirrors resolveCycle's own epsilon (database-clean.js) - keeps "does
+// this leave a shortfall" consistent between the UI's pre-check and the
+// DB layer's own validation, so the shortfall-outcome screen only ever
+// appears when resolveCycle would actually require an outcome.
+const SHORTFALL_EPSILON = 0.004;
+
 /**
  * Unified "resolve this bill" modal — replaces MarkAsPaidModal and
  * Calendar/QuickActions, which offered two different, partially
@@ -18,12 +24,20 @@ import { validatePaidAmount } from '../utils/validation';
  * variable-amount template — there's no confirmed total yet to measure a
  * shortfall against) / Skip. Skip is simply Partial with $0 paid — not a
  * separate mechanism. Any of the three immediately advances the
- * template's cadence via resolveCycle; a shortfall spins off a Balance
- * Due automatically.
+ * template's cadence via resolveCycle.
+ *
+ * Whenever Skip or a Partial payment leaves a shortfall, this modal never
+ * assumes what that shortfall means — it asks. A "shortfallOutcome" step
+ * offers "I'll pay this after my next paycheck" (deferred — resolveCycle
+ * spins off a Balance Due due at the next paycheck) or "I don't owe this
+ * anymore" (forgiven — no Balance Due at all), and choosing forgiven
+ * immediately asks a second, explicit question — never silent, never
+ * deferred to later — about also pausing the template.
  *
  * One-off expense (including a Balance Due, which is just a normal
  * one-off): Pay Full / Partial only, via the existing updateExpenseV4
- * path, unchanged.
+ * path, unchanged. A Balance Due has nothing further to defer or forgive,
+ * so it never sees the shortfall-outcome screens.
  */
 const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
   const { updateExpenseV4, resolveCycle } = useExpenseOperations();
@@ -36,8 +50,16 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
   const [paidAmount, setPaidAmount] = useState(
     amountDue > 0 ? String(amountDue) : '0',
   );
-  const [showPartialInput, setShowPartialInput] = useState(false);
+
+  // 'choose' -> Pay Full / Partial / Skip (today's screen)
+  // 'partialInput' -> the amount-to-pay form
+  // 'shortfallOutcome' -> deferred vs forgiven, only reached when the
+  //   chosen amount leaves a real shortfall on a recurring expense
+  // 'forgivenFollowup' -> the explicit "also pause the template?" question
+  const [step, setStep] = useState('choose');
+  const [pendingPaidAmount, setPendingPaidAmount] = useState(0);
   const [isVariableAmount, setIsVariableAmount] = useState(false);
+  const [templateName, setTemplateName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -45,8 +67,10 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
 
     const due = (expense.amount ?? 0) - (expense.paidAmount ?? 0);
     setPaidAmount(due > 0 ? String(due) : '0');
-    setShowPartialInput(false);
+    setStep('choose');
+    setPendingPaidAmount(0);
     setIsVariableAmount(false);
+    setTemplateName('');
 
     if (!expense.recurringTemplateId) return undefined;
 
@@ -56,12 +80,13 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
       .then(template => {
         if (!cancelled) {
           setIsVariableAmount(Boolean(template?.isVariableAmount));
+          setTemplateName(template?.name || expense.name);
         }
       })
       .catch(() => {
-        // Leave isVariableAmount at its default (false) - worst case,
-        // Partial stays offered and resolveCycle's own server-side check
-        // still rejects an illegal partial amount.
+        // Leave isVariableAmount/templateName at their defaults - worst
+        // case, Partial stays offered and resolveCycle's own server-side
+        // check still rejects an illegal partial amount.
       });
 
     return () => {
@@ -71,11 +96,17 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
 
   if (!isOpen || !expense) return null;
 
-  const runResolution = async paidAmountValue => {
+  const hasShortfall = value =>
+    (expense.amount ?? 0) - value > SHORTFALL_EPSILON;
+
+  const runResolution = async (paidAmountValue, outcomeOptions = {}) => {
     setIsSubmitting(true);
     try {
       if (isRecurring) {
-        await resolveCycle(expense.id, { paidAmount: paidAmountValue });
+        await resolveCycle(expense.id, {
+          paidAmount: paidAmountValue,
+          ...outcomeOptions,
+        });
       } else {
         const status =
           paidAmountValue >= (expense.amount ?? 0) ? 'paid' : 'pending';
@@ -96,9 +127,18 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
   };
 
   const handlePayFull = () => runResolution(expense.amount ?? 0);
-  const handleSkip = () => runResolution(0);
 
-  const handlePartialSubmit = async e => {
+  const handleSkip = () => {
+    if (hasShortfall(0)) {
+      setPendingPaidAmount(0);
+      setStep('shortfallOutcome');
+    } else {
+      // A zero-amount bill has nothing to defer or forgive.
+      runResolution(0);
+    }
+  };
+
+  const handlePartialSubmit = e => {
     e.preventDefault();
     const value = parseFloat(paidAmount);
     const check = validatePaidAmount(value);
@@ -107,8 +147,27 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
       return;
     }
     const total = expense.amount ?? 0;
-    await runResolution(value >= total ? total : value);
+    const capped = value >= total ? total : value;
+    if (isRecurring && hasShortfall(capped)) {
+      setPendingPaidAmount(capped);
+      setStep('shortfallOutcome');
+    } else {
+      runResolution(capped);
+    }
   };
+
+  const handleDefer = () =>
+    runResolution(pendingPaidAmount, { shortfallOutcome: 'deferred' });
+
+  const handleChooseForgive = () => setStep('forgivenFollowup');
+
+  const handleForgive = pauseTemplateOnForgive =>
+    runResolution(pendingPaidAmount, {
+      shortfallOutcome: 'forgiven',
+      pauseTemplateOnForgive,
+    });
+
+  const shortfallAmount = (expense.amount ?? 0) - pendingPaidAmount;
 
   return (
     <div
@@ -129,7 +188,7 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
           Amount due: {formatCurrency(amountDue)}
         </p>
 
-        {!showPartialInput ? (
+        {step === 'choose' && (
           <>
             <div className='flex flex-col gap-3 mb-4'>
               <button
@@ -143,7 +202,7 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
               {!isVariableAmount && (
                 <button
                   type='button'
-                  onClick={() => setShowPartialInput(true)}
+                  onClick={() => setStep('partialInput')}
                   disabled={isSubmitting}
                   className='px-4 py-2 glass-button'
                 >
@@ -157,7 +216,7 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
                   disabled={isSubmitting}
                   className='px-4 py-2 glass-button glass-button--sm text-white/70'
                 >
-                  Skip — the rest becomes a Balance Due
+                  Skip
                 </button>
               )}
             </div>
@@ -179,7 +238,9 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
               </button>
             </div>
           </>
-        ) : (
+        )}
+
+        {step === 'partialInput' && (
           <form onSubmit={handlePartialSubmit}>
             <label
               htmlFor='resolve-expense-amount'
@@ -199,14 +260,14 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
             />
             {isRecurring && (
               <p className='text-xs text-white/50 mb-3'>
-                The rest becomes a Balance Due, and next cycle starts right
-                away.
+                If anything&apos;s left over, you&apos;ll be asked how to handle
+                it.
               </p>
             )}
             <div className='flex gap-3'>
               <button
                 type='button'
-                onClick={() => setShowPartialInput(false)}
+                onClick={() => setStep('choose')}
                 disabled={isSubmitting}
                 className='flex-1 px-4 py-2 glass-button'
               >
@@ -221,6 +282,79 @@ const ResolveExpenseModal = ({ expense, isOpen, onClose }) => {
               </button>
             </div>
           </form>
+        )}
+
+        {step === 'shortfallOutcome' && (
+          <>
+            <p className='text-white/80 mb-4'>
+              How do you want to handle the remaining{' '}
+              {formatCurrency(shortfallAmount)}?
+            </p>
+            <div className='flex flex-col gap-3 mb-4'>
+              <button
+                type='button'
+                onClick={handleDefer}
+                disabled={isSubmitting}
+                className='px-4 py-2 glass-button glass-button--primary text-left'
+              >
+                I&apos;ll pay this after my next paycheck
+              </button>
+              <button
+                type='button'
+                onClick={handleChooseForgive}
+                disabled={isSubmitting}
+                className='px-4 py-2 glass-button text-left'
+              >
+                I don&apos;t owe this anymore
+              </button>
+            </div>
+            <div className='flex gap-3'>
+              <button
+                type='button'
+                onClick={() => setStep('choose')}
+                disabled={isSubmitting}
+                className='flex-1 px-4 py-2 glass-button'
+              >
+                Back
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === 'forgivenFollowup' && (
+          <>
+            <p className='text-white/80 mb-4'>
+              Also stop future bills from {templateName || expense.name}?
+            </p>
+            <div className='flex flex-col gap-3 mb-4'>
+              <button
+                type='button'
+                onClick={() => handleForgive(true)}
+                disabled={isSubmitting}
+                className='px-4 py-2 glass-button glass-button--primary'
+              >
+                Yes, pause it
+              </button>
+              <button
+                type='button'
+                onClick={() => handleForgive(false)}
+                disabled={isSubmitting}
+                className='px-4 py-2 glass-button'
+              >
+                No, keep it active
+              </button>
+            </div>
+            <div className='flex gap-3'>
+              <button
+                type='button'
+                onClick={() => setStep('shortfallOutcome')}
+                disabled={isSubmitting}
+                className='flex-1 px-4 py-2 glass-button'
+              >
+                Back
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>

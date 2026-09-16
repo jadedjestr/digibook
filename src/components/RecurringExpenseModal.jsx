@@ -23,8 +23,6 @@ const RecurringExpenseModal = ({
   mode = 'create',
   templateId: _templateId = null,
   initialData = null,
-  onPause = null,
-  onDelete = null,
   accounts = [],
   creditCards = [],
 }) => {
@@ -596,24 +594,6 @@ const RecurringExpenseModal = ({
               >
                 {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
-              <div className='flex gap-3'>
-                {onPause && (
-                  <button
-                    onClick={onPause}
-                    className='flex-1 px-6 py-3 glass-button glass-button--secondary'
-                  >
-                    {initialData?.isActive ? 'Pause' : 'Resume'}
-                  </button>
-                )}
-                {onDelete && (
-                  <button
-                    onClick={onDelete}
-                    className='flex-1 px-6 py-3 glass-button glass-button--danger'
-                  >
-                    Delete Template
-                  </button>
-                )}
-              </div>
               <button
                 onClick={handleClose}
                 className='w-full px-6 py-3 glass-button glass-button--secondary'
@@ -653,8 +633,6 @@ RecurringExpenseModal.propTypes = {
   mode: PropTypes.oneOf(['create', 'edit']),
   templateId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   initialData: PropTypes.object,
-  onPause: PropTypes.func,
-  onDelete: PropTypes.func,
   accounts: PropTypes.array,
   creditCards: PropTypes.array,
 };

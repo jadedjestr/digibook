@@ -459,8 +459,17 @@
   font-style: italic;
 }
 
+/* Forgiven: nothing is owed, so it reads settled like a full payment,
+   not muted like a still-owed shortfall (skipped/partial). */
+.expense-badge--forgiven {
+  @apply bg-green-500/20 text-green-300 border-green-500/30;
+  cursor: default;
+  font-style: italic;
+}
+
 .expense-badge--skipped:hover,
-.expense-badge--partial:hover {
+.expense-badge--partial:hover,
+.expense-badge--forgiven:hover {
   transform: none;
   box-shadow: none;
 }
@@ -473,6 +482,15 @@
 
 .expense-badge--recurring.expense-badge--partial {
   @apply bg-yellow-500/20 text-yellow-300 border-yellow-500/30;
+  box-shadow: none;
+}
+
+/* Every forgiven resolution is by definition recurring (only a
+   recurring-template cycle can be forgiven) - this combined selector's
+   higher specificity keeps the settled green look from being overridden
+   by the amber recurring styling below. */
+.expense-badge--recurring.expense-badge--forgiven {
+  @apply bg-green-500/15 text-green-200 border-green-500/25;
   box-shadow: none;
 }
 
