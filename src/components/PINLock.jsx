@@ -33,17 +33,20 @@ const PINLock = ({ pin, onUnlock, onPINChange }) => {
           return;
         }
 
-        // Store PIN securely
-        const success = await securePINStorage.setPIN(enteredPIN);
-        if (success) {
-          onPINChange(enteredPIN);
-          setIsSettingPIN(false);
-          setEnteredPIN('');
-          setConfirmPIN('');
-          setError('');
-        } else {
+        // Store PIN securely - fail closed: if encrypted storage is
+        // unavailable the PIN is simply not stored, and the user is told
+        // rather than being silently left with a plaintext PIN on disk.
+        try {
+          await securePINStorage.setPIN(enteredPIN);
+        } catch {
           setError('Failed to store PIN securely. Please try again.');
+          return;
         }
+        onPINChange(enteredPIN);
+        setIsSettingPIN(false);
+        setEnteredPIN('');
+        setConfirmPIN('');
+        setError('');
       } else if (enteredPIN === pin) {
         onUnlock();
         setEnteredPIN('');

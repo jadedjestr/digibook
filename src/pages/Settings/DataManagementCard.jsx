@@ -6,6 +6,7 @@ import { dbHelpers } from '../../db/database-clean';
 import { dataManager } from '../../services/dataManager';
 import { exportJSONData } from '../../utils/exportUtils';
 import { logger } from '../../utils/logger';
+import { notify, showConfirmation } from '../../utils/notifications';
 
 const DataManagementCard = ({ onDataChange, globalCategories }) => {
   const [importFile, setImportFile] = useState(null);
@@ -57,11 +58,11 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
       if (result.success) {
         setLastExportDate(new Date().toISOString());
       } else {
-        alert(`Error exporting data: ${result.error}`);
+        notify.error(`Error exporting data: ${result.error}`);
       }
     } catch (error) {
       logger.error('Error exporting JSON:', error);
-      alert(`Error exporting data: ${error.message}`);
+      notify.error(`Error exporting data: ${error.message}`);
     } finally {
       setIsExporting(false);
       setImportProgress('');
@@ -87,7 +88,7 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
       logger.success('CSV data exported successfully');
     } catch (error) {
       logger.error('Error exporting CSV:', error);
-      alert(`Error exporting data: ${error.message}`);
+      notify.error(`Error exporting data: ${error.message}`);
     } finally {
       setIsExporting(false);
       setImportProgress('');
@@ -110,7 +111,7 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
       logger.success('Credit card data exported successfully');
     } catch (error) {
       logger.error('Error exporting credit cards CSV:', error);
-      alert(`Error exporting credit cards: ${error.message}`);
+      notify.error(`Error exporting credit cards: ${error.message}`);
     } finally {
       setIsExporting(false);
       setImportProgress('');
@@ -139,7 +140,7 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
       const confirmMessage = isJson
         ? 'This will overwrite all existing data. A backup will be created automatically. Are you sure?'
         : 'This will merge into the matching table only — your other data will not be affected. A backup will be created automatically. Are you sure?';
-      if (confirm(confirmMessage)) {
+      if (await showConfirmation(confirmMessage)) {
         const result = await dataManager.importData(
           importFile,
           setImportProgress,
@@ -156,18 +157,18 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
             .join('\n');
           const more =
             skipped.length > 10 ? `\n  ...and ${skipped.length - 10} more` : '';
-          alert(
+          notify.warning(
             `Data imported, but ${skipped.length} row(s) were skipped because ` +
               `an amount could not be read:\n\n${detail}${more}\n\n` +
               'Fix those rows and re-import to add them.',
           );
         } else {
-          alert('Data imported successfully');
+          notify.success('Data imported successfully');
         }
       }
     } catch (error) {
       logger.error('Error importing data:', error);
-      alert(`Import failed: ${error.message}`);
+      notify.error(`Import failed: ${error.message}`);
     } finally {
       setIsImporting(false);
     }
@@ -175,7 +176,7 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
 
   const handleClearAllData = async () => {
     if (
-      confirm(
+      await showConfirmation(
         'This will clear all data from all tables. A backup will be created automatically. Are you sure?',
       )
     ) {
@@ -186,12 +187,12 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
         await refreshAfterDbReplace();
         setImportProgress('All data cleared successfully!');
         setTimeout(() => setImportProgress(''), 3000);
-        alert(
+        notify.success(
           'All data cleared successfully. Default categories have been restored.',
         );
       } catch (error) {
         logger.error('Error clearing all data:', error);
-        alert(`Failed to clear data: ${error.message}`);
+        notify.error(`Failed to clear data: ${error.message}`);
         setImportProgress('');
       }
     }
@@ -201,7 +202,7 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
     if (!backup || restoringId) return;
 
     if (
-      confirm(
+      await showConfirmation(
         `This will restore your data from the backup created ${formatBackupTimestamp(backup.timestamp)} (${backup.reason}). A backup of your current data will be made first. Are you sure?`,
       )
     ) {
@@ -215,10 +216,10 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
         setBackupList(list || []);
         setImportProgress('Backup restored successfully!');
         setTimeout(() => setImportProgress(''), 3000);
-        alert('Data restored from backup successfully');
+        notify.success('Data restored from backup successfully');
       } catch (error) {
         logger.error('Error restoring from backup:', error);
-        alert(`Failed to restore backup: ${error.message}`);
+        notify.error(`Failed to restore backup: ${error.message}`);
         setImportProgress('');
       } finally {
         setRestoringId(null);

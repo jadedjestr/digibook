@@ -145,10 +145,10 @@ export const securePINStorage = {
     } catch (error) {
       logger.error('Error storing PIN securely:', error);
 
-      // Fallback to unencrypted storage with warning
-      logger.warn('Falling back to unencrypted PIN storage');
-      localStorage.setItem('digibook_pin', pin);
-      return false;
+      // Fail closed: a PIN lock that falls back to plaintext storage
+      // protects nothing. The PIN is simply not stored; the caller
+      // surfaces the error and the lock stays unset.
+      throw new Error('Could not securely store PIN');
     }
   },
 
@@ -159,7 +159,8 @@ export const securePINStorage = {
     try {
       const encryptedPIN = localStorage.getItem(`${STORAGE_PREFIX}pin`);
       if (!encryptedPIN) {
-        // Check for legacy unencrypted PIN
+        // Check for legacy unencrypted PIN (read-only migration path from
+        // before plaintext writes were removed)
         return localStorage.getItem('digibook_pin') || '';
       }
 
@@ -169,7 +170,7 @@ export const securePINStorage = {
     } catch (error) {
       logger.error('Error retrieving PIN:', error);
 
-      // Fallback to unencrypted storage
+      // Read-only legacy fallback - never a write path
       return localStorage.getItem('digibook_pin') || '';
     }
   },
@@ -220,8 +221,10 @@ export const securePINStorage = {
     } catch (error) {
       logger.error('Error generating device key:', error);
 
-      // Fallback to a simple key
-      return `digibook_fallback_key_${Date.now()}`;
+      // Fail closed: a throwaway time-based key would differ between the
+      // write and read calls, making stored data undecryptable. Let the
+      // caller handle the failure instead.
+      throw new Error('Could not derive the device encryption key');
     }
   },
 };

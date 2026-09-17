@@ -4289,6 +4289,7 @@ export const dbHelpers = {
       'rw',
       db.recurringExpenseTemplates,
       db.fixedExpenses,
+      db.auditLogs,
       async () => {
         const templates = await db.recurringExpenseTemplates
           .filter(
@@ -4309,10 +4310,21 @@ export const dbHelpers = {
             minimumPaymentOverride: paymentAmount,
             updatedAt: ts,
           });
+
+          // Only untouched pending rows get their amount rewritten: a row
+          // that already has money on it must not get its amount pulled
+          // below paidAmount - that would invent a phantom "Paid" state.
+          // Such rows keep their amount; the override still governs every
+          // future cycle.
           const pending = await db.fixedExpenses
             .where('recurringTemplateId')
             .equals(template.id)
-            .filter(e => !e.deletedAt && e.status !== 'paid')
+            .filter(
+              e =>
+                !e.deletedAt &&
+                e.status !== 'paid' &&
+                (e.paidAmount || 0) === 0,
+            )
             .toArray();
           for (const expense of pending) {
             await db.fixedExpenses.update(expense.id, {
@@ -4320,6 +4332,20 @@ export const dbHelpers = {
               updatedAt: ts,
             });
           }
+        }
+
+        try {
+          await addAuditLogEntry(
+            'CALCULATOR_PAYMENT_APPLY',
+            'creditCard',
+            cardId,
+            {
+              paymentAmount,
+              templatesUpdated: templates.map(t => t.id),
+            },
+          );
+        } catch (auditErr) {
+          logger.warn('Audit log (calculator payment apply) failed:', auditErr);
         }
       },
     );

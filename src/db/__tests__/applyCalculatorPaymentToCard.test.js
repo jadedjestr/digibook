@@ -20,6 +20,7 @@ describe('dbHelpers.applyCalculatorPaymentToCard', () => {
       db.creditCards.clear(),
       db.recurringExpenseTemplates.clear(),
       db.fixedExpenses.clear(),
+      db.auditLogs.clear(),
     ]);
 
     await db.creditCards.bulkPut([
@@ -164,5 +165,52 @@ describe('dbHelpers.applyCalculatorPaymentToCard', () => {
 
     const [expense] = await db.fixedExpenses.toArray();
     expect(expense.amount).toBe(25);
+  });
+
+  it('does not overwrite a partially-paid expense; the override still applies to future cycles', async () => {
+    // A row with money already on it must not get its amount pulled below
+    // paidAmount - that would invent a phantom "Paid" state.
+    await db.recurringExpenseTemplates.bulkPut([
+      {
+        id: 'tpl-1',
+        name: 'Visa Payment',
+        baseAmount: 25,
+        frequency: 'monthly',
+        intervalValue: 1,
+        intervalUnit: 'months',
+        startDate: '2026-09-14',
+        nextDueDate: '2026-09-14',
+        category: 'Credit Card Payment',
+        targetCreditCardId: 'card-1',
+        accountId: 'acc-1',
+        isActive: true,
+        isVariableAmount: true,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      },
+    ]);
+    await db.fixedExpenses.bulkPut([
+      {
+        id: 'exp-partial',
+        name: 'Visa Payment',
+        dueDate: '2026-09-14',
+        amount: 100,
+        accountId: 'acc-1',
+        targetCreditCardId: 'card-1',
+        category: 'Credit Card Payment',
+        paidAmount: 40,
+        status: 'pending',
+        recurringTemplateId: 'tpl-1',
+        createdAt: now,
+      },
+    ]);
+
+    await dbHelpers.applyCalculatorPaymentToCard('card-1', 25);
+
+    const expense = await db.fixedExpenses.get('exp-partial');
+    expect(expense.amount).toBe(100);
+    const template = await db.recurringExpenseTemplates.get('tpl-1');
+    expect(template.minimumPaymentOverride).toBe(25);
   });
 });
