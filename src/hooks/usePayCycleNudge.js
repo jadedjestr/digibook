@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { getMostRecentImpliedPayDate } from '../constants/payFrequency';
 import { dbHelpers } from '../db/database-clean';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
@@ -16,6 +17,9 @@ import { getLastMonthKey, getPayCycleNudge } from '../utils/payCycleNudgeLogic';
  * @param {Array} options.currentMonthExpenses
  * @param {Object} options.paycheckDates
  * @param {Object} options.paycheckService
+ * @param {Array} [options.creditCards] - Credit cards, for the promo_ended nudge
+ * @param {Object} [options.paycheckSettings] - Pay anchor + frequency; scopes
+ *   how recently a card's intro APR may have ended to still warrant a nudge
  * @param {Function} [options.onNudgeShown] - (nudge) => {}
  * @param {Function} [options.onNudgeDismissed] - (nudge, action) => {}
  * @param {Function} [options.onNudgeAction] - (nudge, action) => {}
@@ -27,6 +31,8 @@ export function usePayCycleNudge({
   currentMonthExpenses = [],
   paycheckDates = {},
   paycheckService,
+  creditCards = [],
+  paycheckSettings = null,
   onNudgeShown,
   onNudgeDismissed,
   onNudgeAction: _onNudgeAction,
@@ -91,6 +97,17 @@ export function usePayCycleNudge({
   }, [currentMonth]);
 
   const nudge = useMemo(() => {
+    // The start of the current pay cycle (most recent implied payday) -
+    // scopes how recently a card's intro APR may have ended to still
+    // warrant a promo_ended nudge. Null without a pay anchor, which
+    // disables that nudge entirely (same stance as the pay-cycle nudges).
+    const lastCycleStart = paycheckSettings?.lastPaycheckDate
+      ? getMostRecentImpliedPayDate(
+          paycheckSettings.lastPaycheckDate,
+          paycheckSettings.frequency,
+        )
+      : null;
+
     const result = getPayCycleNudge({
       fixedExpenses,
       currentMonth,
@@ -100,6 +117,8 @@ export function usePayCycleNudge({
       today: new Date(),
       dismissed,
       virtualGapCycles,
+      creditCards,
+      lastCycleStart,
     });
     return result.nudge;
   }, [
@@ -110,6 +129,8 @@ export function usePayCycleNudge({
     paycheckService,
     dismissed,
     virtualGapCycles,
+    creditCards,
+    paycheckSettings,
   ]);
 
   useEffect(() => {

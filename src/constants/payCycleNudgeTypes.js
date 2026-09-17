@@ -2,7 +2,7 @@
  * Nudge type registry for pay cycle nudges.
  * Add new types here + branch in payCycleNudgeLogic + copy below.
  */
-export const NUDGE_TYPES = ['past_month', 'catch_up'];
+export const NUDGE_TYPES = ['past_month', 'catch_up', 'promo_ended'];
 
 /** Default copy keyed by type. Placeholders like {unpaidCount} are filled from payload. */
 export const NUDGE_DEFAULT_COPY = {
@@ -21,5 +21,12 @@ export const NUDGE_DEFAULT_COPY = {
     primaryAction: 'Mark as paid',
     secondaryAction: 'Review',
     tertiaryAction: 'Dismiss',
+  },
+  promo_ended: {
+    title: 'Intro APR ended',
+    messageTemplate:
+      'Your intro APR on {cardName} has ended — the rate is now {rateLabel}%, and its payment bill uses that rate.',
+    primaryAction: 'Got it',
+    secondaryAction: 'Dismiss',
   },
 };

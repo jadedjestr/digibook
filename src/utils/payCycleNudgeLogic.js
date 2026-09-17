@@ -74,7 +74,8 @@ export function isNearEndOfMonth(
 }
 
 /**
- * Get the single nudge to show, or null. Priority: past_month -> catch_up.
+ * Get the single nudge to show, or null.
+ * Priority: past_month -> catch_up -> promo_ended.
  *
  * @param {Object} options
  * @param {Array} options.fixedExpenses - All fixed expenses
@@ -90,6 +91,12 @@ export function isNearEndOfMonth(
  *   predates its first materialized cycle. Merged into last month's
  *   unpaid count so the past_month nudge catches gaps a real-row-only
  *   scan structurally cannot.
+ * @param {Array} [options.creditCards] - Credit cards, for the
+ *   promo_ended nudge (a card whose intro APR ended during the current
+ *   pay cycle).
+ * @param {string|null} [options.lastCycleStart] - YYYY-MM-DD start of the
+ *   current pay cycle (the most recent implied payday). Null (no pay
+ *   anchor) disables the promo_ended nudge entirely.
  * @returns {{ nudge: object|null }}
  */
 export function getPayCycleNudge({
@@ -100,6 +107,8 @@ export function getPayCycleNudge({
   dismissed = new Set(),
   config = PAY_CYCLE_NUDGE_CONFIG,
   virtualGapCycles = [],
+  creditCards = [],
+  lastCycleStart = null,
 }) {
   const dismissedSet =
     dismissed instanceof Set ? dismissed : new Set(Object.keys(dismissed));
@@ -160,6 +169,40 @@ export function getPayCycleNudge({
           dismissKey,
         },
       };
+    }
+  }
+
+  // 3. Promo ended: a card's intro APR ended during the current pay cycle.
+  //    "During" = endDate on/after the cycle's start anchor and strictly
+  //    before today - on the end date itself the intro rate still applies
+  //    (getEffectiveCardInterestRate uses today <= endDate), so the nudge
+  //    fires the day after. One card at a time; each card+endDate pair has
+  //    its own dismiss key, so a re-dated promo re-fires exactly once.
+  if (lastCycleStart && Array.isArray(creditCards) && creditCards.length > 0) {
+    const todayStr = DateUtils.formatDate(todayDate);
+    const endedCards = creditCards.filter(
+      card =>
+        card?.hasIntroApr === true &&
+        typeof card.introAprEndDate === 'string' &&
+        card.introAprEndDate >= lastCycleStart &&
+        card.introAprEndDate < todayStr,
+    );
+    for (const card of endedCards) {
+      const dismissKey = `promo_ended_${card.id}_${card.introAprEndDate}`;
+      if (!dismissedSet.has(dismissKey)) {
+        return {
+          nudge: {
+            type: 'promo_ended',
+            payload: {
+              cardId: card.id,
+              cardName: card.name,
+              rateLabel: (card.interestRate ?? 0).toFixed(2),
+              introAprEndDate: card.introAprEndDate,
+            },
+            dismissKey,
+          },
+        };
+      }
     }
   }
 

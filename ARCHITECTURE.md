@@ -917,7 +917,7 @@ Wraps the pure `getPayCycleNudge()` logic (`src/utils/payCycleNudgeLogic.js`) as
 
 Also runs a separate async effect, keyed on `currentMonth`, that fetches last month's `dbHelpers.getVirtualLedger` per active template and keeps only its `virtual` cycles — cadences a template implies but that never became a real row (e.g. its `startDate` predates the first cycle that ever materialized). Fed into `getPayCycleNudge` as `virtualGapCycles`, merged into the `past_month` branch's unpaid count, so the nudge can catch a gap a real-row-only scan structurally cannot.
 
-**Returns:** `{ nudge, dismiss }` — `nudge` is `null` or one of the `past_month` / `catch_up` shapes described in the Fixed Expenses view; `dismiss(dismissKey, dontShowAgainThisMonth)` records the dismissal and fires the optional `onNudgeDismissed` callback.
+**Returns:** `{ nudge, dismiss }` — `nudge` is `null` or one of the `past_month` / `catch_up` / `promo_ended` shapes described in the Fixed Expenses view; `dismiss(dismissKey, dontShowAgainThisMonth)` records the dismissal and fires the optional `onNudgeDismissed` callback.
 
 ### 6.4 `usePersistedState`
 
@@ -1161,7 +1161,7 @@ Pure logic behind the Pay Cycle Nudge feature (the Fixed Expenses view):
 
 | Export | Description |
 |---|---|
-| `getPayCycleNudge(options)` | Priority-ordered decision function: past_month → catch_up, or `{ nudge: null }` |
+| `getPayCycleNudge(options)` | Priority-ordered decision function: past_month → catch_up → promo_ended (a card whose intro APR ended during the current pay cycle, via `creditCards` + `lastCycleStart` options), or `{ nudge: null }` |
 | `getMonthKey` / `getLastMonthKey` | `YYYY-MM` helpers for month comparisons |
 | `getExpensesInMonth(expenses, monthKey)` | Filters expenses due within a given month |
 | `isUnpaidOrPartial(expense)` | `paidAmount < amount` |

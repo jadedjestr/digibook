@@ -237,4 +237,112 @@ describe('payCycleNudgeLogic', () => {
       expect(result.nudge).toBeNull();
     });
   });
+
+  describe('getPayCycleNudge — promo_ended', () => {
+    // Fixed "today": 2025-02-15. Cycle anchor: 2025-02-01. A card whose
+    // intro APR ended 2025-02-10 is five days into expiry - squarely
+    // "ended during the current pay cycle".
+    const endedCard = {
+      id: 'card-1',
+      name: 'Visa',
+      hasIntroApr: true,
+      introApr: 0,
+      interestRate: 24.99,
+      introAprEndDate: '2025-02-10',
+    };
+    const opts = overrides => ({
+      currentMonth: new Date(2025, 1, 15),
+      today: new Date(2025, 1, 15),
+      lastCycleStart: '2025-02-01',
+      creditCards: [endedCard],
+      ...overrides,
+    });
+
+    it('fires when the intro rate ended during the current pay cycle', () => {
+      const { nudge } = getPayCycleNudge(opts());
+      expect(nudge?.type).toBe('promo_ended');
+      expect(nudge.payload.cardName).toBe('Visa');
+      expect(nudge.payload.rateLabel).toBe('24.99');
+      expect(nudge.dismissKey).toBe('promo_ended_card-1_2025-02-10');
+    });
+
+    it('does not fire while the intro rate is still active (end date today or future)', () => {
+      // On the end date itself the intro rate still applies - the nudge
+      // fires the day after, matching getEffectiveCardInterestRate.
+      expect(
+        getPayCycleNudge(
+          opts({
+            creditCards: [{ ...endedCard, introAprEndDate: '2025-02-15' }],
+          }),
+        ).nudge,
+      ).toBeNull();
+      expect(
+        getPayCycleNudge(
+          opts({
+            creditCards: [{ ...endedCard, introAprEndDate: '2025-03-01' }],
+          }),
+        ).nudge,
+      ).toBeNull();
+    });
+
+    it('does not fire when the promo ended before the current cycle', () => {
+      expect(
+        getPayCycleNudge(
+          opts({
+            creditCards: [{ ...endedCard, introAprEndDate: '2025-01-31' }],
+          }),
+        ).nudge,
+      ).toBeNull();
+    });
+
+    it('does not fire without a pay-cycle anchor (no paycheck settings)', () => {
+      expect(getPayCycleNudge(opts({ lastCycleStart: null })).nudge).toBeNull();
+    });
+
+    it('does not fire when that card+endDate pair is dismissed', () => {
+      const { nudge } = getPayCycleNudge(
+        opts({ dismissed: new Set(['promo_ended_card-1_2025-02-10']) }),
+      );
+      expect(nudge).toBeNull();
+    });
+
+    it('moves to the next ended card when the first is dismissed', () => {
+      const { nudge } = getPayCycleNudge(
+        opts({
+          creditCards: [
+            endedCard,
+            {
+              ...endedCard,
+              id: 'card-2',
+              name: 'Amex',
+              introAprEndDate: '2025-02-12',
+            },
+          ],
+          dismissed: new Set(['promo_ended_card-1_2025-02-10']),
+        }),
+      );
+      expect(nudge?.type).toBe('promo_ended');
+      expect(nudge.payload.cardName).toBe('Amex');
+      expect(nudge.dismissKey).toBe('promo_ended_card-2_2025-02-12');
+    });
+
+    it('ignores cards without an intro APR', () => {
+      expect(
+        getPayCycleNudge(
+          opts({ creditCards: [{ ...endedCard, hasIntroApr: false }] }),
+        ).nudge,
+      ).toBeNull();
+    });
+
+    it('past_month outranks promo_ended', () => {
+      const { nudge } = getPayCycleNudge(
+        opts({
+          fixedExpenses: [
+            { id: 1, dueDate: '2025-01-10', amount: 100, paidAmount: 0 },
+          ],
+        }),
+      );
+      expect(nudge?.type).toBe('past_month');
+    });
+  });
 });

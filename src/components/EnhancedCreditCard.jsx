@@ -11,6 +11,7 @@ import {
   getOriginalCardProgress,
   getPayToTargetUtilization,
 } from '../utils/creditCardUtils';
+import { DateUtils } from '../utils/dateUtils';
 
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
@@ -39,6 +40,18 @@ const EnhancedCreditCard = ({
   );
   const effectiveInterestRate = getEffectiveCardInterestRate(card);
   const isIntroAprActive = effectiveInterestRate !== card.interestRate;
+
+  // Quiet reminder: an active intro rate ending within 60 days earns a
+  // one-line hint on the card. Expiry itself is the loud promo_ended
+  // nudge; this is the "it's coming" whisper.
+  const daysToPromoEnd = card.introAprEndDate
+    ? DateUtils.daysBetween(DateUtils.today(), card.introAprEndDate)
+    : null;
+  const introAprEndsSoon =
+    card.hasIntroApr === true &&
+    daysToPromoEnd !== null &&
+    daysToPromoEnd >= 0 &&
+    daysToPromoEnd <= 60;
   const monthlyInterest =
     (Math.max(card.balance, 0) * (effectiveInterestRate / 100)) / 12;
   const daysUntilDue = card.daysUntilDue || 0;
@@ -228,6 +241,11 @@ const EnhancedCreditCard = ({
               )}
             </PrivacyWrapper>
           </div>
+          {introAprEndsSoon && (
+            <p className='text-xs text-blue-300/80 mt-1'>
+              Intro rate ends {formatDate(card.introAprEndDate)}
+            </p>
+          )}
         </div>
         <div className='credit-info-item'>
           <div className='credit-info-label'>Monthly Interest</div>

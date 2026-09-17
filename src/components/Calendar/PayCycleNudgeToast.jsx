@@ -55,6 +55,11 @@ const PayCycleNudgeToast = ({
       } else if (nudge.type === 'catch_up') {
         onMarkCurrentMonthPaid?.();
         onAction?.(nudge, 'mark_paid');
+      } else if (nudge.type === 'promo_ended') {
+        // Acknowledging suppresses for the calendar month - the closest
+        // "once per cycle" the nudge system models.
+        handleDismiss(true);
+        onAction?.(nudge, 'acknowledge');
       }
       toast.dismiss(toastIdRef.current);
     };
@@ -66,6 +71,8 @@ const PayCycleNudgeToast = ({
         onReviewScroll?.();
         onAction?.(nudge, 'review');
         toast.dismiss(toastIdRef.current);
+      } else if (nudge.type === 'promo_ended') {
+        handleDismiss(false);
       }
     };
 
@@ -140,7 +147,7 @@ const PayCycleNudgeToast = ({
 
 PayCycleNudgeToast.propTypes = {
   nudge: PropTypes.shape({
-    type: PropTypes.oneOf(['past_month', 'catch_up']).isRequired,
+    type: PropTypes.oneOf(['past_month', 'catch_up', 'promo_ended']).isRequired,
     payload: PropTypes.object,
     dismissKey: PropTypes.string.isRequired,
   }),

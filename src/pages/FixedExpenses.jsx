@@ -144,6 +144,8 @@ const FixedExpenses = () => {
     currentMonthExpenses,
     paycheckDates,
     paycheckService,
+    creditCards,
+    paycheckSettings,
   });
 
   const handleReviewPastMonth = useCallback(monthKey => {
