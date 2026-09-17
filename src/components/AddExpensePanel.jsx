@@ -28,6 +28,7 @@ import {
 import { logger } from '../utils/logger';
 
 import CreateAccountModal from './CreateAccountModal';
+import DatePicker from './DatePicker';
 import PaymentSourceSelector from './PaymentSourceSelector';
 
 const CREDIT_CARD_PAYMENT_CATEGORY = 'Credit Card Payment';
@@ -797,12 +798,10 @@ const AddExpensePanel = ({
                   >
                     Due Date
                   </label>
-                  <input
+                  <DatePicker
                     id='add-expense-due-date'
-                    type='date'
                     value={formData.dueDate}
-                    onChange={e => handleInputChange('dueDate', e.target.value)}
-                    className='w-full px-4 py-4 glass-input rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-white/40 transition-all duration-200 text-white'
+                    onChange={date => handleInputChange('dueDate', date)}
                   />
                   {errors.dueDate && (
                     <p className='mt-1 text-sm text-red-400'>
@@ -963,14 +962,10 @@ const AddExpensePanel = ({
                         >
                           Starts
                         </label>
-                        <input
+                        <DatePicker
                           id='add-expense-start-date'
-                          type='date'
                           value={recurring.startDate}
-                          onChange={e =>
-                            updateRecurring('startDate', e.target.value)
-                          }
-                          className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                          onChange={date => updateRecurring('startDate', date)}
                         />
                         {errors.startDate && (
                           <p className='mt-1 text-sm text-red-400'>
@@ -1046,15 +1041,11 @@ const AddExpensePanel = ({
                               (optional)
                             </span>
                           </label>
-                          <input
+                          <DatePicker
                             id='add-expense-end-date'
-                            type='date'
                             value={recurring.endDate}
-                            onChange={e =>
-                              updateRecurring('endDate', e.target.value)
-                            }
+                            onChange={date => updateRecurring('endDate', date)}
                             min={recurring.startDate || undefined}
-                            className='w-full px-4 py-3 glass-input rounded-xl text-white'
                           />
                           {errors.endDate && (
                             <p className='mt-1 text-sm text-red-400'>

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 
 import ChooseFundingAccountModal from '../components/ChooseFundingAccountModal';
 import CreateAccountModal from '../components/CreateAccountModal';
+import DatePicker from '../components/DatePicker';
 import EmptyState from '../components/EmptyState';
 import EnhancedLoanCard from '../components/EnhancedLoanCard';
 import LoansEmptyIllustration from '../components/illustrations/LoansEmptyIllustration';
@@ -31,11 +32,18 @@ const emptyFormData = {
   name: '',
   lender: '',
   balance: '',
-  principalAmount: '',
+  originalLoanAmount: '',
   interestRate: '',
   dueDate: '',
   targetPayoffDate: '',
   fundingAccountId: '',
+
+  // Original loan terms - the contract actually signed, distinct from
+  // targetPayoffDate (the goal driving the live payment calculation).
+  // Required on every new loan; see validateForm/handleSave below.
+  originalTermMonths: '',
+  originalScheduledPayment: '',
+  originalMaturityDate: '',
 
   // Real-interest tracking opt-in (see PRD/TIP §3): both blank means "not
   // tracked" - nothing about the existing flow changes. Filling in an "as
@@ -206,11 +214,11 @@ const Loans = ({ onDataChange, accounts = [] }) => {
       newErrors.interestRate = 'Interest rate must be a positive number';
     }
     if (
-      formData.principalAmount !== '' &&
-      parseMoneyInput(formData.principalAmount).value < 0
+      formData.originalLoanAmount === '' ||
+      parseMoneyInput(formData.originalLoanAmount).value <= 0
     ) {
-      newErrors.principalAmount =
-        'Original principal must be a positive number';
+      newErrors.originalLoanAmount =
+        'Original loan amount must be greater than 0';
     }
     if (!formData.dueDate) {
       newErrors.dueDate = 'Due date is required';
@@ -219,6 +227,26 @@ const Loans = ({ onDataChange, accounts = [] }) => {
       newErrors.targetPayoffDate = 'Target payoff date is required';
     } else if (paymentPreview && !paymentPreview.success) {
       newErrors.targetPayoffDate = paymentPreview.message;
+    }
+
+    const originalTermMonths = parseInt(formData.originalTermMonths, 10);
+    if (
+      formData.originalTermMonths === '' ||
+      !Number.isInteger(originalTermMonths) ||
+      originalTermMonths <= 0
+    ) {
+      newErrors.originalTermMonths =
+        'Original term length must be a whole number of months';
+    }
+    if (
+      formData.originalScheduledPayment === '' ||
+      parseMoneyInput(formData.originalScheduledPayment).value <= 0
+    ) {
+      newErrors.originalScheduledPayment =
+        'Original scheduled payment must be greater than 0';
+    }
+    if (!formData.originalMaturityDate) {
+      newErrors.originalMaturityDate = 'Original maturity date is required';
     }
 
     const preservingFinancialState =
@@ -275,13 +303,15 @@ const Loans = ({ onDataChange, accounts = [] }) => {
         name: formData.name,
         lender: formData.lender || '',
         balance: parseMoneyInput(formData.balance).value,
-        principalAmount:
-          formData.principalAmount !== ''
-            ? parseMoneyInput(formData.principalAmount).value
-            : null,
+        originalLoanAmount: parseMoneyInput(formData.originalLoanAmount).value,
         interestRate: parseMoneyInput(formData.interestRate).value,
         dueDate: formData.dueDate,
         targetPayoffDate: formData.targetPayoffDate,
+        originalTermMonths: parseInt(formData.originalTermMonths, 10),
+        originalScheduledPayment: parseMoneyInput(
+          formData.originalScheduledPayment,
+        ).value,
+        originalMaturityDate: formData.originalMaturityDate,
       };
 
       if (
@@ -523,13 +553,24 @@ const Loans = ({ onDataChange, accounts = [] }) => {
       name: loan.name,
       lender: loan.lender || '',
       balance: loan.balance.toString(),
-      principalAmount:
-        loan.principalAmount != null ? loan.principalAmount.toString() : '',
+      originalLoanAmount:
+        loan.originalLoanAmount != null
+          ? loan.originalLoanAmount.toString()
+          : '',
       interestRate: loan.interestRate.toString(),
       dueDate: loan.dueDate,
       targetPayoffDate: loan.targetPayoffDate,
       fundingAccountId:
         fundingAccountId != null ? String(fundingAccountId) : '',
+      originalTermMonths:
+        loan.originalTermMonths != null
+          ? loan.originalTermMonths.toString()
+          : '',
+      originalScheduledPayment:
+        loan.originalScheduledPayment != null
+          ? loan.originalScheduledPayment.toString()
+          : '',
+      originalMaturityDate: loan.originalMaturityDate || '',
       unpaidInterest:
         loan.interestAccruedThrough != null
           ? Math.max(0, loan.unpaidInterest ?? 0).toFixed(2)
@@ -575,7 +616,7 @@ const Loans = ({ onDataChange, accounts = [] }) => {
       0,
     );
     const totalOriginalPrincipal = loans.reduce(
-      (sum, loan) => sum + (loan.principalAmount || 0),
+      (sum, loan) => sum + (loan.originalLoanAmount || 0),
       0,
     );
     const totalPaidOff = Math.max(0, totalOriginalPrincipal - totalDebt);
@@ -847,24 +888,18 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   >
                     As Of Date
                   </label>
-                  <div style={{ overflow: 'hidden', width: '100%' }}>
-                    <input
-                      id='loan-interest-as-of'
-                      disabled={
-                        Boolean(editingLoan?.interestAccruedThrough) &&
-                        !formData.correctFinancialSnapshot
-                      }
-                      type='date'
-                      value={formData.interestAccruedThrough}
-                      onChange={e =>
-                        handleInputChange(
-                          'interestAccruedThrough',
-                          e.target.value,
-                        )
-                      }
-                      className='w-full px-4 py-3 glass-input rounded-xl text-white'
-                    />
-                  </div>
+                  <DatePicker
+                    id='loan-interest-as-of'
+                    disabled={
+                      Boolean(editingLoan?.interestAccruedThrough) &&
+                      !formData.correctFinancialSnapshot
+                    }
+                    value={formData.interestAccruedThrough}
+                    max={DateUtils.today()}
+                    onChange={date =>
+                      handleInputChange('interestAccruedThrough', date)
+                    }
+                  />
                   {errors.interestAccruedThrough && (
                     <p className='text-red-400 text-sm mt-1'>
                       {errors.interestAccruedThrough}
@@ -897,32 +932,123 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   )}
                 </div>
 
-                <div>
+                <div className='glass-panel p-4'>
+                  <p className='text-sm font-medium text-white mb-1'>
+                    Original loan terms
+                  </p>
+                  <p className='text-white/50 text-xs mb-3'>
+                    What your lender&apos;s paperwork actually says — separate
+                    from the balance/rate above (which may reflect a later
+                    correction) and from the target payoff date below (which is
+                    a goal you&apos;re setting, not your original contract).
+                  </p>
+
                   <label
-                    htmlFor='loan-principal'
+                    htmlFor='loan-original-amount'
                     className='block text-sm font-medium text-white mb-2'
                   >
-                    Original Principal (Optional)
+                    Original Loan Amount
                   </label>
                   <input
-                    id='loan-principal'
+                    id='loan-original-amount'
                     type='number'
                     inputMode='decimal'
                     step='0.01'
-                    value={formData.principalAmount}
+                    min='0'
+                    value={formData.originalLoanAmount}
                     onChange={e =>
-                      handleInputChange('principalAmount', e.target.value)
+                      handleInputChange('originalLoanAmount', e.target.value)
                     }
-                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white mb-1'
                     placeholder='0.00'
                   />
-                  <p className='text-white/50 text-xs mt-1'>
-                    Used to show payoff progress. Defaults to the current
-                    balance if left blank.
+                  <p className='text-white/50 text-xs mb-2'>
+                    The amount you actually borrowed at origination. Also powers
+                    the payoff-progress bar.
                   </p>
-                  {errors.principalAmount && (
+                  {errors.originalLoanAmount && (
+                    <p className='text-red-400 text-sm mb-2'>
+                      {errors.originalLoanAmount}
+                    </p>
+                  )}
+
+                  <label
+                    htmlFor='loan-original-term'
+                    className='block text-sm font-medium text-white mb-2 mt-3'
+                  >
+                    Original Term (months)
+                  </label>
+                  <input
+                    id='loan-original-term'
+                    type='number'
+                    inputMode='numeric'
+                    step='1'
+                    min='1'
+                    value={formData.originalTermMonths}
+                    onChange={e =>
+                      handleInputChange('originalTermMonths', e.target.value)
+                    }
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white mb-1'
+                    placeholder='e.g. 60'
+                  />
+                  {errors.originalTermMonths && (
+                    <p className='text-red-400 text-sm mb-2'>
+                      {errors.originalTermMonths}
+                    </p>
+                  )}
+
+                  <label
+                    htmlFor='loan-original-payment'
+                    className='block text-sm font-medium text-white mb-2 mt-3'
+                  >
+                    Original Scheduled Payment
+                  </label>
+                  <input
+                    id='loan-original-payment'
+                    type='number'
+                    inputMode='decimal'
+                    step='0.01'
+                    min='0'
+                    value={formData.originalScheduledPayment}
+                    onChange={e =>
+                      handleInputChange(
+                        'originalScheduledPayment',
+                        e.target.value,
+                      )
+                    }
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white mb-1'
+                    placeholder='0.00'
+                  />
+                  <p className='text-white/50 text-xs mb-2'>
+                    The fixed payment your lender&apos;s own amortization calls
+                    for — compared against the calculated payment below.
+                  </p>
+                  {errors.originalScheduledPayment && (
+                    <p className='text-red-400 text-sm mb-2'>
+                      {errors.originalScheduledPayment}
+                    </p>
+                  )}
+
+                  <label
+                    htmlFor='loan-original-maturity'
+                    className='block text-sm font-medium text-white mb-2 mt-3'
+                  >
+                    Original Maturity Date
+                  </label>
+                  <DatePicker
+                    id='loan-original-maturity'
+                    value={formData.originalMaturityDate}
+                    onChange={date =>
+                      handleInputChange('originalMaturityDate', date)
+                    }
+                  />
+                  <p className='text-white/50 text-xs mt-1'>
+                    The date your lender&apos;s original schedule pays this off
+                    by — compared against your target payoff date below.
+                  </p>
+                  {errors.originalMaturityDate && (
                     <p className='text-red-400 text-sm mt-1'>
-                      {errors.principalAmount}
+                      {errors.originalMaturityDate}
                     </p>
                   )}
                 </div>
@@ -964,17 +1090,11 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   >
                     Due Date
                   </label>
-                  <div style={{ overflow: 'hidden', width: '100%' }}>
-                    <input
-                      id='loan-due-date'
-                      type='date'
-                      value={formData.dueDate}
-                      onChange={e =>
-                        handleInputChange('dueDate', e.target.value)
-                      }
-                      className='w-full px-4 py-3 glass-input rounded-xl text-white'
-                    />
-                  </div>
+                  <DatePicker
+                    id='loan-due-date'
+                    value={formData.dueDate}
+                    onChange={date => handleInputChange('dueDate', date)}
+                  />
                   {errors.dueDate && (
                     <p className='text-red-400 text-sm mt-1'>
                       {errors.dueDate}
@@ -989,17 +1109,14 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   >
                     Target Payoff Date
                   </label>
-                  <div style={{ overflow: 'hidden', width: '100%' }}>
-                    <input
-                      id='loan-target-payoff-date'
-                      type='date'
-                      value={formData.targetPayoffDate}
-                      onChange={e =>
-                        handleInputChange('targetPayoffDate', e.target.value)
-                      }
-                      className='w-full px-4 py-3 glass-input rounded-xl text-white'
-                    />
-                  </div>
+                  <DatePicker
+                    id='loan-target-payoff-date'
+                    value={formData.targetPayoffDate}
+                    min={formData.dueDate || undefined}
+                    onChange={date =>
+                      handleInputChange('targetPayoffDate', date)
+                    }
+                  />
                   <p className='text-white/50 text-xs mt-1'>
                     The monthly payment is calculated automatically to pay off
                     the balance by this date.

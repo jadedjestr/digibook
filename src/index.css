@@ -1650,6 +1650,246 @@
     outline-offset: 2px;
   }
 
+  /* Date Picker - replaces every native <input type="date"> in the app.
+     The trigger reuses .glass-input's own look (see above) rather than
+     redeclaring it, so it drifts with that component automatically; only
+     the popover calendar is new. */
+  .date-picker-field {
+    position: relative;
+    width: 100%;
+  }
+
+  .date-picker-trigger {
+    @apply glass-input;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    text-align: left;
+  }
+  .date-picker-trigger:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .date-picker-trigger .placeholder {
+    color: rgba(255, 255, 255, 0.4);
+  }
+  .date-picker-trigger .cal-icon {
+    display: inline-flex;
+    color: rgba(255, 255, 255, 0.45);
+    flex-shrink: 0;
+    transition: color var(--duration-normal) var(--easing-standard);
+  }
+  .date-picker-trigger.is-open .cal-icon {
+    color: var(--color-accent);
+  }
+  .date-picker-trigger.is-open {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-light);
+  }
+
+  .date-picker-pop {
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
+    width: 296px;
+    max-width: calc(100vw - 32px);
+    background: var(--color-dominant-variant);
+    border: 1px solid var(--glass-border-hover);
+    border-radius: var(--radius-lg);
+    box-shadow:
+      0 16px 40px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    padding: var(--space-md);
+    /* Must beat every modal in the app - the highest existing one is
+       z-[10001] (AddPendingTransactionModal). */
+    z-index: 10500;
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+    pointer-events: none;
+    transform-origin: top left;
+    transition:
+      opacity var(--duration-fast) var(--easing-standard),
+      transform var(--duration-fast) var(--easing-standard);
+  }
+  .date-picker-pop.is-open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .date-picker-pop {
+      transition: opacity 1ms;
+      transform: none;
+    }
+  }
+
+  .date-picker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-sm);
+  }
+  .date-picker-nav-btn {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.72);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--easing-standard);
+  }
+  .date-picker-nav-btn:hover {
+    background: var(--glass-surface-secondary);
+    border-color: var(--glass-border-primary);
+    color: white;
+  }
+  .date-picker-title-btn {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 14px;
+    color: white;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 6px var(--space-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .date-picker-title-btn:hover {
+    background: var(--glass-surface-secondary);
+  }
+  .date-picker-title-btn svg {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .date-picker-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    margin-bottom: 4px;
+  }
+  .date-picker-weekdays span {
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.03em;
+    color: rgba(255, 255, 255, 0.28);
+    padding-block: 4px;
+  }
+
+  .date-picker-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+  }
+  .date-picker-day {
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: white;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--easing-standard);
+  }
+  .date-picker-day:hover:not(:disabled) {
+    background: var(--glass-surface-secondary);
+  }
+  .date-picker-day:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+  .date-picker-day.is-muted {
+    color: rgba(255, 255, 255, 0.28);
+  }
+  .date-picker-day.is-today {
+    border-color: var(--glass-border-hover);
+    font-weight: 600;
+  }
+  .date-picker-day.is-selected {
+    background: var(--color-accent);
+    color: #241207;
+    font-weight: 600;
+    border-color: var(--color-accent);
+  }
+  .date-picker-day:disabled {
+    color: rgba(255, 255, 255, 0.22);
+    opacity: 0.6;
+    cursor: not-allowed;
+    text-decoration: line-through;
+  }
+
+  .date-picker-months {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .date-picker-month {
+    padding-block: 12px;
+    text-align: center;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
+    color: white;
+    background: var(--glass-surface-primary);
+    border: 1px solid var(--glass-border-primary);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--easing-standard);
+  }
+  .date-picker-month:hover:not(:disabled) {
+    background: var(--glass-surface-secondary);
+    border-color: var(--glass-border-hover);
+  }
+  .date-picker-month.is-selected {
+    background: var(--color-accent-light);
+    border-color: var(--color-accent-border);
+    color: var(--color-accent-text);
+  }
+  .date-picker-month:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .date-picker-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--glass-border-primary);
+  }
+  .date-picker-today-btn {
+    font-family: var(--font-body);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--color-accent-text);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+  }
+  .date-picker-today-btn:hover {
+    background: var(--color-accent-light);
+  }
+  .date-picker-hint {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: rgba(255, 255, 255, 0.28);
+  }
+
   /* Touch Device Optimizations */
   @media (hover: none) and (pointer: coarse) {
     .glass-surface--interactive:hover {

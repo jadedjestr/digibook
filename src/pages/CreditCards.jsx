@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import ChooseFundingAccountModal from '../components/ChooseFundingAccountModal';
 import CreateAccountModal from '../components/CreateAccountModal';
 import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
+import DatePicker from '../components/DatePicker';
 import EmptyState from '../components/EmptyState';
 import EnhancedCreditCard from '../components/EnhancedCreditCard';
 import CreditCardsEmptyIllustration from '../components/illustrations/CreditCardsEmptyIllustration';
@@ -867,17 +868,11 @@ const CreditCards = ({
                   >
                     Due Date
                   </label>
-                  <div style={{ overflow: 'hidden', width: '100%' }}>
-                    <input
-                      id='credit-card-due-date'
-                      type='date'
-                      value={formData.dueDate}
-                      onChange={e =>
-                        handleInputChange('dueDate', e.target.value)
-                      }
-                      className='w-full px-4 py-3 glass-input rounded-xl text-white'
-                    />
-                  </div>
+                  <DatePicker
+                    id='credit-card-due-date'
+                    value={formData.dueDate}
+                    onChange={date => handleInputChange('dueDate', date)}
+                  />
                   {errors.dueDate && (
                     <p className='text-red-400 text-sm mt-1'>
                       {errors.dueDate}
@@ -892,20 +887,13 @@ const CreditCards = ({
                   >
                     Statement Closing Date (Optional)
                   </label>
-                  <div style={{ overflow: 'hidden', width: '100%' }}>
-                    <input
-                      id='credit-card-statement-closing-date'
-                      type='date'
-                      value={formData.statementClosingDate}
-                      onChange={e =>
-                        handleInputChange(
-                          'statementClosingDate',
-                          e.target.value,
-                        )
-                      }
-                      className='w-full px-4 py-3 glass-input rounded-xl text-white'
-                    />
-                  </div>
+                  <DatePicker
+                    id='credit-card-statement-closing-date'
+                    value={formData.statementClosingDate}
+                    onChange={date =>
+                      handleInputChange('statementClosingDate', date)
+                    }
+                  />
                 </div>
 
                 <div>

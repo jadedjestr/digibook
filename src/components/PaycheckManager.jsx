@@ -13,6 +13,8 @@ import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 
+import DatePicker from './DatePicker';
+
 const PaycheckManager = ({ onDataChange }) => {
   const [paycheckSettings, setPaycheckSettings] = useState({
     lastPaycheckDate: '',
@@ -200,17 +202,15 @@ const PaycheckManager = ({ onDataChange }) => {
           >
             Last Paycheck Date
           </label>
-          <input
+          <DatePicker
             id='paycheck-last-date'
-            type='date'
             value={paycheckSettings.lastPaycheckDate}
-            onChange={e =>
+            onChange={date =>
               setPaycheckSettings({
                 ...paycheckSettings,
-                lastPaycheckDate: e.target.value,
+                lastPaycheckDate: date,
               })
             }
-            className='glass-input w-full'
           />
           <p className='text-secondary text-sm mt-1'>
             This date is used to calculate your future pay dates

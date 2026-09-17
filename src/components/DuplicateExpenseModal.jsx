@@ -5,6 +5,8 @@ import { useState, useEffect, useMemo, memo } from 'react';
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
 
+import DatePicker from './DatePicker';
+
 const ExpensePreview = memo(({ formData, numCopies }) => {
   return (
     <div className='glass-card bg-white/5'>
@@ -215,15 +217,11 @@ const DuplicateExpenseModal = ({ expense, onClose, onDuplicate }) => {
                 >
                   Due Date
                 </label>
-                <input
+                <DatePicker
                   id='duplicate-modal-due-date'
-                  type='date'
                   value={formData.dueDate?.split('T')[0]}
-                  onChange={e =>
-                    setFormData({ ...formData, dueDate: e.target.value })
-                  }
-                  className='glass-input mt-1 w-full'
-                  required
+                  onChange={date => setFormData({ ...formData, dueDate: date })}
+                  className='mt-1'
                 />
               </div>
             </div>

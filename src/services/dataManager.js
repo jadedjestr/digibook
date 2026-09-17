@@ -16,7 +16,12 @@ const CSV_MONEY_FIELDS = {
   fixedExpenses: ['amount', 'paidAmount'],
   recurringExpenseTemplates: ['baseAmount'],
   incomeSources: ['expectedAmount'],
-  loans: ['balance', 'unpaidInterest'],
+  loans: [
+    'balance',
+    'unpaidInterest',
+    'originalLoanAmount',
+    'originalScheduledPayment',
+  ],
   creditCards: ['balance', 'creditLimit', 'minimumPayment'],
 };
 
@@ -39,7 +44,13 @@ const CSV_MONEY_FIELDS = {
 // is additive and optional: a version 9 file imports fine and its loans
 // simply stay untracked (interestAccruedThrough absent/null).
 // 11 versions safe loan undo receipts; older clients must not rewrite them.
-const CURRENT_DATA_VERSION = 11;
+// 12 adds original-loan-terms fields to `loans` (originalLoanAmount,
+// originalTermMonths, originalScheduledPayment, originalMaturityDate) - the
+// contract actually signed, distinct from targetPayoffDate (a goal). It is
+// additive and optional on import: a version 11 file's loans simply import
+// without these fields, though the app requires them going forward for any
+// *new* loan created after this version.
+const CURRENT_DATA_VERSION = 12;
 
 /**
  * Normalize version to number for comparison

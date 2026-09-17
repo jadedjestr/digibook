@@ -1975,6 +1975,43 @@ export const dbHelpers = {
         }
       }
 
+      // Original loan terms - the contract you actually signed, distinct
+      // from targetPayoffDate (a goal you set, which may pay the loan off
+      // faster or slower than this). Required on every new loan; there is
+      // no partial-credit path the way interest tracking has one, since
+      // these are static facts about the loan's origin, not a live
+      // financial state that could reasonably start out blank.
+      if (
+        !Number.isFinite(loan.originalLoanAmount) ||
+        loan.originalLoanAmount <= 0
+      ) {
+        throw new Error(
+          'Original loan amount must be a finite number greater than 0',
+        );
+      }
+      if (
+        !Number.isInteger(loan.originalTermMonths) ||
+        loan.originalTermMonths <= 0
+      ) {
+        throw new Error(
+          'Original term length must be a whole number of months greater than 0',
+        );
+      }
+      if (
+        !Number.isFinite(loan.originalScheduledPayment) ||
+        loan.originalScheduledPayment <= 0
+      ) {
+        throw new Error(
+          'Original scheduled payment must be a finite number greater than 0',
+        );
+      }
+      if (
+        !loan.originalMaturityDate ||
+        !DateUtils.isValidDate(loan.originalMaturityDate)
+      ) {
+        throw new Error('Original maturity date is required');
+      }
+
       const loanData = {
         unpaidInterest: 0,
         interestAccruedThrough: null,
@@ -2214,6 +2251,46 @@ export const dbHelpers = {
             throw new Error(
               'STALE_WRITE: This loan was changed elsewhere. Close and reopen the edit form to see the latest values.',
             );
+          }
+
+          // Original loan terms are static facts about the loan's origin,
+          // not part of the live interest-state machine - editable to fix
+          // a typo, but never clearable once recorded, and never gated
+          // behind correctFinancialSnapshot the way balance/rate/interest
+          // are.
+          if (
+            'originalLoanAmount' in updates &&
+            (!Number.isFinite(updates.originalLoanAmount) ||
+              updates.originalLoanAmount <= 0)
+          ) {
+            throw new Error(
+              'Original loan amount must be a finite number greater than 0',
+            );
+          }
+          if (
+            'originalTermMonths' in updates &&
+            (!Number.isInteger(updates.originalTermMonths) ||
+              updates.originalTermMonths <= 0)
+          ) {
+            throw new Error(
+              'Original term length must be a whole number of months greater than 0',
+            );
+          }
+          if (
+            'originalScheduledPayment' in updates &&
+            (!Number.isFinite(updates.originalScheduledPayment) ||
+              updates.originalScheduledPayment <= 0)
+          ) {
+            throw new Error(
+              'Original scheduled payment must be a finite number greater than 0',
+            );
+          }
+          if (
+            'originalMaturityDate' in updates &&
+            (!updates.originalMaturityDate ||
+              !DateUtils.isValidDate(updates.originalMaturityDate))
+          ) {
+            throw new Error('Original maturity date must be a valid date');
           }
 
           const financialKeys = [

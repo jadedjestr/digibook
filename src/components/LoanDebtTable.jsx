@@ -54,8 +54,9 @@ const LoanDebtTable = ({ loans = [] }) => {
           comparison = (a.balance || 0) - (b.balance || 0);
           break;
 
-        case 'principalAmount':
-          comparison = (a.principalAmount || 0) - (b.principalAmount || 0);
+        case 'originalLoanAmount':
+          comparison =
+            (a.originalLoanAmount || 0) - (b.originalLoanAmount || 0);
           break;
 
         case 'interestRate':
@@ -109,7 +110,7 @@ const LoanDebtTable = ({ loans = [] }) => {
       0,
     );
     const totalOriginalPrincipal = loans.reduce(
-      (sum, loan) => sum + (loan.principalAmount || 0),
+      (sum, loan) => sum + (loan.originalLoanAmount || 0),
       0,
     );
     const totalPaidOff = Math.max(0, totalOriginalPrincipal - totalDebt);
@@ -176,7 +177,7 @@ const LoanDebtTable = ({ loans = [] }) => {
             </PrivacyWrapper>
           </div>
           <div>
-            <p className='text-white/70 mb-1'>Original Principal</p>
+            <p className='text-white/70 mb-1'>Original Loan Amount</p>
             <PrivacyWrapper>
               <p className='text-lg font-bold text-white'>
                 {formatCurrency(summary.totalOriginalPrincipal)}
@@ -223,11 +224,11 @@ const LoanDebtTable = ({ loans = [] }) => {
               </th>
               <th
                 className='text-right py-2 px-3 text-sm font-medium text-white/70 cursor-pointer hover:bg-white/5 transition-colors select-none'
-                onClick={() => handleSort('principalAmount')}
+                onClick={() => handleSort('originalLoanAmount')}
               >
                 <div className='flex items-center justify-end'>
-                  Original Principal
-                  {renderSortIndicator('principalAmount')}
+                  Original Loan Amount
+                  {renderSortIndicator('originalLoanAmount')}
                 </div>
               </th>
               <th
@@ -287,8 +288,8 @@ const LoanDebtTable = ({ loans = [] }) => {
                   </td>
                   <td className='py-3 px-3 text-right text-white/70'>
                     <PrivacyWrapper>
-                      {loan.principalAmount
-                        ? formatCurrency(loan.principalAmount)
+                      {loan.originalLoanAmount
+                        ? formatCurrency(loan.originalLoanAmount)
                         : 'N/A'}
                     </PrivacyWrapper>
                   </td>
@@ -348,7 +349,7 @@ LoanDebtTable.propTypes = {
       name: PropTypes.string,
       lender: PropTypes.string,
       balance: PropTypes.number,
-      principalAmount: PropTypes.number,
+      originalLoanAmount: PropTypes.number,
       interestRate: PropTypes.number,
       dueDate: PropTypes.string,
       targetPayoffDate: PropTypes.string,

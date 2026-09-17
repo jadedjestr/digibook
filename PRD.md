@@ -195,6 +195,12 @@ are load-bearing.
 ### Job I — "Pay off a loan without losing track of the term"
 
 - Track each loan's balance, interest rate and target payoff date.
+- Keep the target payoff date honest against the actual contract: record the
+  original loan amount, term, scheduled payment and maturity date, required
+  on every loan, and show how the live target-driven numbers compare — ahead
+  or behind the original schedule, more or less than the original payment.
+  A goal is not the same thing as the deal that was signed, and the app
+  should never conflate the two.
 - Calculate the required payment automatically from the live balance and the
   target date — never typed in, and recalculated fresh every cycle, so an
   extra payment lowers what's required next rather than leaving it stale.

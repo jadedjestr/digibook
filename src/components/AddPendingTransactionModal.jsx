@@ -9,6 +9,8 @@ import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
 
+import DatePicker from './DatePicker';
+
 const emptyTransaction = () => ({
   accountId: '',
   amount: '',
@@ -244,14 +246,10 @@ const AddPendingTransactionModal = ({
                 <label htmlFor='pending-tx-date' className='sr-only'>
                   Date
                 </label>
-                <input
+                <DatePicker
                   id='pending-tx-date'
-                  type='date'
                   value={transaction.date}
-                  onChange={e =>
-                    setTransaction({ ...transaction, date: e.target.value })
-                  }
-                  className='glass-input w-full'
+                  onChange={date => setTransaction({ ...transaction, date })}
                 />
               </div>
               <div>

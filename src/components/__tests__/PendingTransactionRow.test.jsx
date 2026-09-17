@@ -222,9 +222,16 @@ describe('PendingTransactionRow', () => {
     const onUpdateTransaction = vi.fn();
     const { container } = renderRow({}, { onUpdateTransaction });
 
+    // Starts on 2026-02-15; open the date picker, advance to March, and
+    // pick the 1st via its full-date accessible name (not just "1" - the
+    // grid also shows trailing/leading days from adjacent months). The
+    // trigger itself is opened via a class selector rather than
+    // getByRole, since its own "Feb 15, 2026" text collides with a
+    // same-named (but closed, off-screen) day cell's aria-label.
     fireEvent.click(screen.getAllByTitle('Click to edit')[3]);
-    const dateInput = container.querySelector('input[type="date"]');
-    fireEvent.change(dateInput, { target: { value: '2026-03-01' } });
+    fireEvent.click(container.querySelector('.date-picker-trigger'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+    fireEvent.click(screen.getByRole('button', { name: /Mar 1, 2026/ }));
     fireEvent.click(screen.getByTitle('Save (Enter)'));
 
     expect(onUpdateTransaction).toHaveBeenCalledWith('tx-1', {

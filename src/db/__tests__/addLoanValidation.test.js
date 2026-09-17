@@ -99,6 +99,10 @@ describe('dbHelpers.addLoan (validation)', () => {
       interestRate: 5,
       dueDate: '2026-03-01',
       targetPayoffDate: '2030-03-01',
+      originalLoanAmount: 10000,
+      originalTermMonths: 60,
+      originalScheduledPayment: 193.33,
+      originalMaturityDate: '2031-03-01',
     });
     expect(id).toBeTruthy();
     expect(await db.loans.count()).toBe(1);
@@ -110,7 +114,83 @@ describe('dbHelpers.addLoan (validation)', () => {
       balance: 5000,
       interestRate: 8,
       targetPayoffDate: '2030-01-01',
+      originalLoanAmount: 5000,
+      originalTermMonths: 36,
+      originalScheduledPayment: 156.68,
+      originalMaturityDate: '2029-01-01',
     });
     expect(id).toBeTruthy();
+  });
+
+  describe('original loan terms (required, distinct from targetPayoffDate)', () => {
+    const validBase = {
+      name: 'Car Loan',
+      balance: 10000,
+      interestRate: 5,
+      dueDate: '2026-03-01',
+      targetPayoffDate: '2030-03-01',
+      originalLoanAmount: 10000,
+      originalTermMonths: 60,
+      originalScheduledPayment: 193.33,
+      originalMaturityDate: '2031-03-01',
+    };
+
+    it('rejects a missing original loan amount', async () => {
+      const { originalLoanAmount: _omit, ...rest } = validBase;
+      await expect(dbHelpers.addLoan(rest)).rejects.toThrow(
+        /Original loan amount/,
+      );
+      expect(await db.loans.count()).toBe(0);
+    });
+
+    it('rejects a zero or negative original loan amount', async () => {
+      await expect(
+        dbHelpers.addLoan({ ...validBase, originalLoanAmount: 0 }),
+      ).rejects.toThrow(/Original loan amount/);
+    });
+
+    it('rejects a non-integer original term', async () => {
+      await expect(
+        dbHelpers.addLoan({ ...validBase, originalTermMonths: 60.5 }),
+      ).rejects.toThrow(/Original term length/);
+    });
+
+    it('rejects a missing original term', async () => {
+      const { originalTermMonths: _omit, ...rest } = validBase;
+      await expect(dbHelpers.addLoan(rest)).rejects.toThrow(
+        /Original term length/,
+      );
+    });
+
+    it('rejects a zero or negative original scheduled payment', async () => {
+      await expect(
+        dbHelpers.addLoan({ ...validBase, originalScheduledPayment: -5 }),
+      ).rejects.toThrow(/Original scheduled payment/);
+    });
+
+    it('rejects a missing original maturity date', async () => {
+      const { originalMaturityDate: _omit, ...rest } = validBase;
+      await expect(dbHelpers.addLoan(rest)).rejects.toThrow(
+        /Original maturity date/,
+      );
+    });
+
+    it('rejects an invalid original maturity date string', async () => {
+      await expect(
+        dbHelpers.addLoan({
+          ...validBase,
+          originalMaturityDate: 'not-a-date',
+        }),
+      ).rejects.toThrow(/Original maturity date/);
+    });
+
+    it('accepts valid original loan terms', async () => {
+      const id = await dbHelpers.addLoan(validBase);
+      const loan = await db.loans.get(id);
+      expect(loan.originalLoanAmount).toBe(10000);
+      expect(loan.originalTermMonths).toBe(60);
+      expect(loan.originalScheduledPayment).toBe(193.33);
+      expect(loan.originalMaturityDate).toBe('2031-03-01');
+    });
   });
 });

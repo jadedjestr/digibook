@@ -5,7 +5,11 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { dbHelpers } from '../db/database-clean';
 import { DateUtils } from '../utils/dateUtils';
 import { generateId } from '../utils/generateId';
-import { formatLoanBalance, getLoanPayoffProgress } from '../utils/loanUtils';
+import {
+  formatLoanBalance,
+  getLoanPayoffProgress,
+  getOriginalScheduleComparison,
+} from '../utils/loanUtils';
 import { notify } from '../utils/notifications';
 import { parseMoneyInput } from '../utils/validation';
 
@@ -131,6 +135,14 @@ const EnhancedLoanCard = ({
     loan.targetPayoffDate,
   );
 
+  // Reconciles the target-driven payment above against the loan's actual
+  // original contract terms - purely informational, never fed back into
+  // paymentResult itself.
+  const scheduleComparison = getOriginalScheduleComparison(
+    loan,
+    paymentResult.success ? paymentResult.payment : null,
+  );
+
   useEffect(() => {
     const baseDelay = index * 100;
     const visibilityTimer = setTimeout(() => setIsVisible(true), baseDelay);
@@ -237,11 +249,11 @@ const EnhancedLoanCard = ({
       {/* Financial Overview Grid */}
       <div className='loan-info-grid'>
         <div className='loan-info-item'>
-          <div className='loan-info-label'>Original Principal</div>
+          <div className='loan-info-label'>Original Loan Amount</div>
           <div className='loan-info-value'>
             <PrivacyWrapper>
-              {loan.principalAmount
-                ? formatCurrency(loan.principalAmount)
+              {loan.originalLoanAmount
+                ? formatCurrency(loan.originalLoanAmount)
                 : 'N/A'}
             </PrivacyWrapper>
           </div>
@@ -339,6 +351,49 @@ const EnhancedLoanCard = ({
           <span>Target Payoff</span>
           <span>{formatDate(loan.targetPayoffDate)}</span>
         </div>
+        {loan.originalMaturityDate && (
+          <div className='additional-info-item'>
+            <span>Original Maturity</span>
+            <span>{formatDate(loan.originalMaturityDate)}</span>
+          </div>
+        )}
+        {scheduleComparison.monthsAheadOfSchedule !== null &&
+          scheduleComparison.monthsAheadOfSchedule !== 0 && (
+            <div className='additional-info-item'>
+              <span>Vs. Original Schedule</span>
+              <span
+                className={
+                  scheduleComparison.monthsAheadOfSchedule > 0
+                    ? 'text-green-400'
+                    : 'text-yellow-400'
+                }
+              >
+                {Math.abs(scheduleComparison.monthsAheadOfSchedule)} mo{' '}
+                {scheduleComparison.monthsAheadOfSchedule > 0
+                  ? 'ahead'
+                  : 'behind'}
+              </span>
+            </div>
+          )}
+        {scheduleComparison.paymentDelta !== null &&
+          Math.abs(scheduleComparison.paymentDelta) >= 0.01 && (
+            <div className='additional-info-item'>
+              <span>Vs. Original Payment</span>
+              <PrivacyWrapper>
+                <span
+                  className={
+                    scheduleComparison.paymentDelta < 0
+                      ? 'text-green-400'
+                      : 'text-yellow-400'
+                  }
+                >
+                  {scheduleComparison.paymentDelta < 0 ? '-' : '+'}
+                  {formatCurrency(Math.abs(scheduleComparison.paymentDelta))}
+                  /mo
+                </span>
+              </PrivacyWrapper>
+            </div>
+          )}
         {isTracked && interestToday && (
           <>
             <div className='additional-info-item'>
@@ -462,7 +517,10 @@ EnhancedLoanCard.propTypes = {
     name: PropTypes.string,
     lender: PropTypes.string,
     balance: PropTypes.number,
-    principalAmount: PropTypes.number,
+    originalLoanAmount: PropTypes.number,
+    originalTermMonths: PropTypes.number,
+    originalScheduledPayment: PropTypes.number,
+    originalMaturityDate: PropTypes.string,
     interestRate: PropTypes.number,
     daysUntilDue: PropTypes.number,
     dueDate: PropTypes.string,

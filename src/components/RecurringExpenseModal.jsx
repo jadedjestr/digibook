@@ -1,4 +1,4 @@
-import { X, Clock, Calendar, DollarSign } from 'lucide-react';
+import { X, Clock, DollarSign } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -9,6 +9,7 @@ import { createPaymentSource } from '../types/paymentSource';
 import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 
+import DatePicker from './DatePicker';
 import PaymentSourceSelector from './PaymentSourceSelector';
 
 /**
@@ -489,19 +490,11 @@ const RecurringExpenseModal = ({
             >
               Start Date
             </label>
-            <div className='relative'>
-              <Calendar
-                size={18}
-                className='absolute left-3 top-1/2 -translate-y-1/2 text-white/40'
-              />
-              <input
-                id='recurring-modal-start-date'
-                type='date'
-                value={recurringData.startDate}
-                onChange={e => updateRecurringData('startDate', e.target.value)}
-                className='w-full pl-10 pr-4 py-3 glass-input'
-              />
-            </div>
+            <DatePicker
+              id='recurring-modal-start-date'
+              value={recurringData.startDate}
+              onChange={date => updateRecurringData('startDate', date)}
+            />
             {errors.startDate && (
               <p className='mt-1 text-sm text-red-400'>{errors.startDate}</p>
             )}
@@ -515,21 +508,13 @@ const RecurringExpenseModal = ({
             >
               End Date <span className='text-white/60 text-xs'>(optional)</span>
             </label>
-            <div className='relative'>
-              <Calendar
-                size={18}
-                className='absolute left-3 top-1/2 -translate-y-1/2 text-white/40'
-              />
-              <input
-                id='recurring-modal-end-date'
-                type='date'
-                value={recurringData.endDate}
-                onChange={e => updateRecurringData('endDate', e.target.value)}
-                min={recurringData.startDate || undefined}
-                className='w-full pl-10 pr-4 py-3 glass-input'
-                placeholder='Leave empty for no end date'
-              />
-            </div>
+            <DatePicker
+              id='recurring-modal-end-date'
+              value={recurringData.endDate}
+              onChange={date => updateRecurringData('endDate', date)}
+              min={recurringData.startDate || undefined}
+              placeholder='Leave empty for no end date'
+            />
             {errors.endDate && (
               <p className='mt-1 text-sm text-red-400'>{errors.endDate}</p>
             )}

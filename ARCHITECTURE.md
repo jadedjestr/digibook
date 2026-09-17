@@ -231,6 +231,19 @@ structurally mirroring `creditCards`. Unlike a credit card, a loan has no
 stored minimum payment; see the "Dynamic loan payment amount" note in
 [§5.3](#53-recurringexpenseservice) for how its payment is priced instead.
 
+`targetPayoffDate` is a goal the user sets, driving that live payment
+calculation — it is deliberately independent of the loan's actual
+contract. The four `original*` columns below (added post-V11, no Dexie
+bump - same unindexed-field rule as interest tracking) record that
+contract as-is, so the two can be reconciled rather than conflated: a
+loan card shows both the calculated payment (toward the target) and how
+that compares to what the lender's own schedule actually calls for
+(`getOriginalScheduleComparison`, [§9](#9-utilities)). These four fields
+are required on every new loan - unlike interest tracking, there is no
+partial-credit opt-in, since they're static facts about the loan's
+origin rather than a live financial state that could reasonably start
+blank.
+
 | Column | Type | Indexed | Description |
 |---|---|---|---|
 | `id` | UUID string | PK | Unique identifier |
@@ -241,7 +254,10 @@ stored minimum payment; see the "Dynamic loan payment amount" note in
 | `targetPayoffDate` | string | Yes | Date the loan must reach $0 by (YYYY-MM-DD). Required at creation — `addLoan` rejects a date less than one billing cycle away. Drives the amortized payment calculation ([§5.3](#53-recurringexpenseservice)) |
 | `dueDate` | string | Yes | Next payment due date (YYYY-MM-DD); also the amortization `fromDate` used to price a payment before any cycle-specific date exists |
 | `minimumPaymentOverride` | number \| null | Yes | Present in the schema, mirroring the override field recurring templates already carry (see `recurringExpenseTemplates` below) — but unlike that field, nothing in the app currently reads or writes this column on the loan record itself; only the same-named field on the *template* is consulted |
-| `principalAmount` | number | — | Original loan amount, optional (not part of the Dexie index string, same as `notes` on `recurringExpenseTemplates`). Powers `getLoanPayoffProgress`'s percent-paid-off bar ([Section 9](#9-utilities)); when absent, progress can't be computed, though the paid-off state still can be |
+| `originalLoanAmount` | number | — | The amount actually borrowed at origination. Required on every new loan (`addLoan` rejects a missing/non-positive value) — not part of the Dexie index string, same as `notes` on `recurringExpenseTemplates`. Powers `getLoanPayoffProgress`'s percent-paid-off bar ([Section 9](#9-utilities)) |
+| `originalTermMonths` | number | — | Original loan terms. Whole months the lender's schedule was to run — descriptive only, never used to derive a date. Required on every new loan |
+| `originalScheduledPayment` | number | — | Original loan terms. The lender's own fixed required payment, independent of the live target-date-driven calculation ([§5.3](#53-recurringexpenseservice)). Required on every new loan; compared against the calculated payment for the "vs. original payment" display ([§9](#9-utilities)) |
+| `originalMaturityDate` | string | — | Original loan terms. The date the lender's own schedule reaches $0 by (YYYY-MM-DD) — the contractual counterpart to `targetPayoffDate`. Required on every new loan; compared against `targetPayoffDate` for the "vs. original schedule" display |
 | `unpaidInterest` | number | — | Real-interest-tracking. Interest owed but not yet paid, dollars, unrounded while accruing. ≥ 0 for direct user input; may briefly hold a small negative rounding credit (~-$0.005) internally. See [§5.3.1](#531-real-interest-tracking) |
 | `interestAccruedThrough` | string \| null | — | Real-interest-tracking. The date `unpaidInterest` is accurate as of. **This is the tracking-enabled gate** — `null` means untracked (default, no change from V11 behavior); any valid date means tracked, regardless of the interest amount |
 | `interestStateVersion` | number | — | Real-interest-tracking. Starts at 0, increments on every payment/undo/correction. Guards undo against acting on a stale loan state |
@@ -994,7 +1010,7 @@ and inline "create an account" fallback are shared rather than duplicated —
 
 | Component | Path | Description |
 |---|---|---|
-| `EnhancedLoanCard` | `src/components/EnhancedLoanCard.jsx` | Visual loan card mirroring `EnhancedCreditCard`: balance, payoff-progress bar, and the required payment shown live via `dbHelpers.calculateRequiredLoanPayment` rather than read from a stored field; exposes a "change funding account" action alongside edit/delete. For a tracked loan (§5.3.1), also shows live Unpaid Interest / Total Owed Today stats via `dbHelpers.computeLoanInterest`, and, whenever the loan has an active `lastInterestOperation`, "Undo last payment" / "Correct latest payment" actions calling `undoLastLoanInterestOperation`/`correctLatestLoanPayment` |
+| `EnhancedLoanCard` | `src/components/EnhancedLoanCard.jsx` | Visual loan card mirroring `EnhancedCreditCard`: balance, payoff-progress bar, and the required payment shown live via `dbHelpers.calculateRequiredLoanPayment` rather than read from a stored field; exposes a "change funding account" action alongside edit/delete. For a tracked loan (§5.3.1), also shows live Unpaid Interest / Total Owed Today stats via `dbHelpers.computeLoanInterest`, and, whenever the loan has an active `lastInterestOperation`, "Undo last payment" / "Correct latest payment" actions calling `undoLastLoanInterestOperation`/`correctLatestLoanPayment`. Also shows the original-terms reconciliation via `getOriginalScheduleComparison` — original maturity date, and "N mo ahead/behind" / a "±$X/mo vs. original payment" line whenever the target-driven numbers diverge from what the loan actually calls for |
 | `LoanDeletionModal` | `src/components/LoanDeletionModal.jsx` | Deletion flow offering only two options — Unlink or Delete Anyway — not the three `CreditCardDeletionModal` offers, since a loan is never a spendable funding source and "reassign to another loan" isn't a meaningful default |
 
 ### Category System
@@ -1023,7 +1039,7 @@ and inline "create an account" fallback are shared rather than duplicated —
 | `DebtPayoffCalculator` | `src/components/DebtPayoffCalculator.jsx` | Snowball/Avalanche calculator |
 | `OverpaymentAnalysis` | `src/components/OverpaymentAnalysis.jsx` | Where spending exceeds budget |
 | `CreditCardDebtTable` | `src/components/CreditCardDebtTable.jsx` | Credit card debt overview table |
-| `LoanDebtTable` | `src/components/LoanDebtTable.jsx` | Sortable loan overview table mirroring `CreditCardDebtTable` |
+| `LoanDebtTable` | `src/components/LoanDebtTable.jsx` | Sortable loan overview table mirroring `CreditCardDebtTable`, sortable by `originalLoanAmount` among other columns |
 | `LoanPayoffCalculator` | `src/components/LoanPayoffCalculator.jsx` | Payoff calculator mirroring `DebtPayoffCalculator`; seeds its payment field from the loan's own calculated payment (`dbHelpers.calculateRequiredLoanPayment`) rather than a rough estimate, when that formula succeeds. The projection amortizes principal alone and is labeled "results may differ from your lender" (daily-simple, fixed 365-day year); for a tracked loan (§5.3.1) it also notes `unpaidInterest` as due before payments land fully on the shown schedule |
 
 Both are rendered on the Insights page in their own section, separate from
@@ -1051,6 +1067,7 @@ the same way it already threads `creditCards`.
 | Component | Path | Description |
 |---|---|---|
 | `InlineEdit` | `src/components/InlineEdit.jsx` | Click-to-edit text/number/date/select |
+| `DatePicker` | `src/components/DatePicker.jsx` | Calendar-popover date field matching the app's glass-surface look — replaces every native `<input type="date">` in the app (their browser-default styling and per-browser calendar UI were the thing this exists to fix). Controlled: `value`/`onChange(dateString)`, plus `min`/`max` to disable out-of-range days directly in the calendar (unlike the native input's `min`/`max`, which only affected its own picker UI and never stopped a typed-in out-of-range date). The popover portals to `document.body` (a `position:fixed` popover positioned via the trigger's own rect would otherwise be broken by any ancestor with a CSS `transform`/`filter`/`backdrop-filter` — which most of this app's glass panels have) and sits at a z-index above every modal in the app; it stays mounted for the open/close transition but is marked `inert` while closed so it's out of tab order and the accessibility tree rather than leaving dozens of invisible, keyboard-reachable day buttons behind. Forwards a ref exposing `focus()`/`blur()` so `InlineEdit`'s focus-on-edit-start still works |
 | `AccountRow` | `src/components/AccountRow.jsx` | One row in the Accounts page's checking/savings list: name, a "Default" badge, current/projected balance, set-default/delete actions |
 | `PendingTransactionRow` | `src/components/PendingTransactionRow.jsx` | One row in the Pending Transactions list: description, an Account/Category/Date meta line, amount/projected balance, complete/delete actions |
 | `CollapsibleCard` | `src/components/CollapsibleCard.jsx` | Expandable/collapsible card |
@@ -1217,7 +1234,8 @@ stored minimum, so the display framing is genuinely different.
 | Function | Description |
 |---|---|
 | `formatLoanBalance(balance)` | Display format (formatted amount, paid-off state, status text/class) |
-| `getLoanPayoffProgress(loan)` | `{ paidAmount, percent, isPaidOff }` — principal paid off so far, from `loan.principalAmount` and `loan.balance`. Unlike credit-card utilization, more progress here is always "success" — there is no danger/warning tier |
+| `getLoanPayoffProgress(loan)` | `{ paidAmount, percent, isPaidOff }` — principal paid off so far, from `loan.originalLoanAmount` and `loan.balance`. Unlike credit-card utilization, more progress here is always "success" — there is no danger/warning tier |
+| `getOriginalScheduleComparison(loan, calculatedPayment)` | `{ monthsAheadOfSchedule, paymentDelta }` — reconciles the live target-date-driven payment against the loan's actual original contract terms (`originalMaturityDate`, `originalScheduledPayment`). Purely informational: never feeds back into the calculated payment itself. `monthsAheadOfSchedule > 0` means the target beats the original maturity date; `paymentDelta < 0` means the calculated payment is less than the original scheduled payment. Either is `null` when the relevant original-terms field is absent (e.g. a pre-V12 loan) |
 
 ### `crypto.js`
 
@@ -1564,11 +1582,12 @@ decoratively stops carrying meaning where it matters.
 
 `CURRENT_DATA_VERSION` in `src/services/dataManager.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **11**
+looks like, the other what the database looks like — and it is currently **12**
 (5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was; 7 → 8 when
 `recurringResolutionLog` was added; 8 → 9 when `loans` was added; 9 → 10 when
 `loans` gained real-interest-tracking fields; 10 → 11 for safe version-2
-undo receipts and lossless snapshot backups — see §5.3.1).
+undo receipts and lossless snapshot backups — see §5.3.1; 11 → 12 when
+`loans` gained required original-loan-terms fields).
 
 Because transfer between devices is by file rather than sync, this is a
 product-level compatibility requirement, not an implementation detail: a file

@@ -16,6 +16,7 @@ import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 
+import DatePicker from './DatePicker';
 import RecurringExpenseModal from './RecurringExpenseModal';
 import StatusBadge from './StatusBadge';
 
@@ -508,12 +509,10 @@ const OneOffExpensesView = ({
                 >
                   New Due Date
                 </label>
-                <input
+                <DatePicker
                   id='bulk-due-date'
-                  type='date'
                   value={bulkDateValue}
-                  onChange={e => setBulkDateValue(e.target.value)}
-                  className='w-full glass-input'
+                  onChange={setBulkDateValue}
                 />
               </div>
               <div className='flex gap-3'>

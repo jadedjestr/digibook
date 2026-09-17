@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import { parseMoneyInput, moneyInputErrorMessage } from '../utils/validation';
 
 import CreditCardPaymentInput from './CreditCardPaymentInput';
+import DatePicker from './DatePicker';
 import PrivacyWrapper from './PrivacyWrapper';
 
 const InlineEdit = ({
@@ -191,16 +192,14 @@ const InlineEdit = ({
       }
       if (type === 'date') {
         return (
-          <input
+          <DatePicker
             ref={inputRef}
-            type='date'
             value={editValue}
-            onChange={e => {
-              logger.debug('Date input changed:', e.target.value);
-              setEditValue(e.target.value);
+            onChange={date => {
+              logger.debug('Date input changed:', date);
+              setEditValue(date);
             }}
-            onKeyDown={handleKeyDown}
-            className='glass-input text-sm w-32'
+            className='text-sm'
           />
         );
       }

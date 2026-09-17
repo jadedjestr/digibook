@@ -146,7 +146,7 @@ export function computeLoanInterest(loan, asOfIso, payment) {
 
 /** Validate portable loan state before a replace-import clears any tables. */
 export function validatePortableLoans(data) {
-  if (data.version !== undefined && Number(data.version) > 11)
+  if (data.version !== undefined && Number(data.version) > 12)
     throw new Error('Unsupported backup version');
   if (data.loans != null && !Array.isArray(data.loans))
     throw new Error('Invalid loans array');
