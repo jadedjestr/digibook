@@ -2,10 +2,14 @@ import { Edit, Trash2, AlertTriangle, Plus, Minus } from 'lucide-react';
 import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 
+import { dbHelpers } from '../db/database-clean';
 import {
   formatCreditCardBalance,
   calculateAvailableCredit,
   getMinimumPaymentStatus,
+  getEffectiveCardInterestRate,
+  getOriginalCardProgress,
+  getPayToTargetUtilization,
 } from '../utils/creditCardUtils';
 
 import PrivacyWrapper from './PrivacyWrapper';
@@ -13,6 +17,7 @@ import StatusBadge from './StatusBadge';
 
 const EnhancedCreditCard = ({
   card,
+  template = null,
   fundingSourceName = null,
   onChangeFundingSource,
   onEdit,
@@ -22,6 +27,8 @@ const EnhancedCreditCard = ({
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [utilizationWidth, setUtilizationWidth] = useState(0);
+  const [progressWidth, setProgressWidth] = useState(0);
+  const [behindPaceWarning, setBehindPaceWarning] = useState(null);
 
   // Calculate derived values using new utilities
   const balanceInfo = formatCreditCardBalance(card.balance);
@@ -30,9 +37,13 @@ const EnhancedCreditCard = ({
     card.balance,
     card.minimumPayment || 0,
   );
+  const effectiveInterestRate = getEffectiveCardInterestRate(card);
+  const isIntroAprActive = effectiveInterestRate !== card.interestRate;
   const monthlyInterest =
-    (Math.max(card.balance, 0) * (card.interestRate / 100)) / 12;
+    (Math.max(card.balance, 0) * (effectiveInterestRate / 100)) / 12;
   const daysUntilDue = card.daysUntilDue || 0;
+  const progress = getOriginalCardProgress(card);
+  const payToTargetUtilization = getPayToTargetUtilization(card);
 
   // Use creditInfo.utilization instead of undefined utilization variable
   const utilization = creditInfo.utilization;
@@ -40,16 +51,26 @@ const EnhancedCreditCard = ({
   useEffect(() => {
     const baseDelay = index * 100;
     const visibilityTimer = setTimeout(() => setIsVisible(true), baseDelay);
-    const barTimer = setTimeout(
-      () => setUtilizationWidth(creditInfo.utilization),
-      baseDelay + 500,
-    );
+    const barTimer = setTimeout(() => {
+      setUtilizationWidth(creditInfo.utilization);
+      setProgressWidth(progress.percent);
+    }, baseDelay + 500);
 
     return () => {
       clearTimeout(visibilityTimer);
       clearTimeout(barTimer);
     };
-  }, [index, creditInfo.utilization]);
+  }, [index, creditInfo.utilization, progress.percent]);
+
+  useEffect(() => {
+    let cancelled = false;
+    dbHelpers.getCardBehindPaceWarning(card, template).then(result => {
+      if (!cancelled) setBehindPaceWarning(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [card, template]);
 
   // Status badge logic
   const getUtilizationStatus = percentage => {
@@ -201,7 +222,10 @@ const EnhancedCreditCard = ({
           <div className='credit-info-label'>Interest Rate</div>
           <div className='credit-info-value'>
             <PrivacyWrapper>
-              {formatInterestRate(card.interestRate)}
+              {formatInterestRate(effectiveInterestRate)}
+              {isIntroAprActive && (
+                <span className='text-xs text-blue-400 ml-1'>(intro)</span>
+              )}
             </PrivacyWrapper>
           </div>
         </div>
@@ -234,6 +258,32 @@ const EnhancedCreditCard = ({
           />
         </div>
       </div>
+
+      {/* Payoff Progress Section - always "success": more progress is
+          never a bad thing, unlike credit-card utilization. Hidden for a
+          legacy card with no originalBalance on record. */}
+      {progress.hasData && (
+        <div className='utilization-section'>
+          <div className='utilization-header'>
+            <span className='utilization-label'>Original Balance Paid Off</span>
+            <span className='utilization-percentage success'>
+              <PrivacyWrapper>
+                {formatPercentage(progress.percent)}
+              </PrivacyWrapper>
+            </span>
+          </div>
+          <div className='utilization-bar'>
+            <div
+              className='utilization-fill success'
+              style={{
+                transform: `scaleX(${progressWidth / 100})`,
+                transformOrigin: 'left',
+              }}
+              aria-label={`Original balance paid off: ${formatPercentage(progress.percent)}`}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Payment Section */}
       <div className='payment-section'>
@@ -293,6 +343,26 @@ const EnhancedCreditCard = ({
             </PrivacyWrapper>
           </span>
         </div>
+        {utilization > 30 && payToTargetUtilization > 0 && (
+          <div className='additional-info-item'>
+            <span>Pay to Reach 30%</span>
+            <PrivacyWrapper>
+              <span className='text-yellow-400'>
+                {formatCurrency(payToTargetUtilization)}
+              </span>
+            </PrivacyWrapper>
+          </div>
+        )}
+        {behindPaceWarning?.isBehindPace && (
+          <div className='additional-info-item'>
+            <span>Vs. Target Payoff</span>
+            <span className='text-yellow-400'>
+              {behindPaceWarning.projectedPayoffDate
+                ? `Projected: ${formatDate(behindPaceWarning.projectedPayoffDate.slice(0, 10))}`
+                : 'Payment too low to pay off'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Visual Alerts */}
@@ -317,7 +387,16 @@ EnhancedCreditCard.propTypes = {
     daysUntilDue: PropTypes.number,
     dueDate: PropTypes.string,
     statementClosingDate: PropTypes.string,
+    originalBalance: PropTypes.number,
+    targetPayoffDate: PropTypes.string,
+    hasIntroApr: PropTypes.bool,
+    introApr: PropTypes.number,
+    introAprEndDate: PropTypes.string,
   }).isRequired,
+  template: PropTypes.shape({
+    nextDueDate: PropTypes.string,
+    minimumPaymentOverride: PropTypes.number,
+  }),
   fundingSourceName: PropTypes.string,
   onChangeFundingSource: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
@@ -327,6 +406,7 @@ EnhancedCreditCard.propTypes = {
 };
 
 EnhancedCreditCard.defaultProps = {
+  template: null,
   fundingSourceName: null,
   onChangeFundingSource: undefined,
   index: 0,

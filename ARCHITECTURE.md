@@ -192,6 +192,12 @@ only read off a loan row already fetched by `id`, the same rule that let
 `recurringResolutionLog` gain its Skip/Defer/Forgive fields without one. See
 [§5.3.1](#531-real-interest-tracking) for what they mean.
 
+Also post-V11, `creditCards` gained five fields the same way: `originalBalance`,
+`targetPayoffDate`, `hasIntroApr`, `introApr`, `introAprEndDate` — the
+credit-card equivalent of loans' `targetPayoffDate`/original-terms fields,
+bringing the same amortized-minimum-payment and intro-APR machinery to
+credit cards. See the `creditCards` table below for details.
+
 ### Tables
 
 #### `accounts`
@@ -211,16 +217,35 @@ Bank accounts (checking and savings).
 #### `creditCards`
 Credit card accounts.
 
+`targetPayoffDate` is an optional payment-calculation input, mirroring
+`loans.targetPayoffDate`: when set, the card's minimum payment is priced by
+the same amortization formula (`computeTemplateCycleAmount`,
+[§5.3](#53-recurringexpenseservice)) instead of the flat 2%-of-balance
+heuristic (`getDefaultMinimumPaymentAmount`). `originalBalance` and
+`targetPayoffDate` are required on every new card going forward (no
+grandfathering); a card created before this was added simply falls back to
+the flat heuristic and shows no payoff-progress bar. Intro/promotional APR
+is a required *choice*, not a required rate — `hasIntroApr` must always be
+`true` or `false`, and `introApr`/`introAprEndDate` are required together
+only when it's `true`, `null` together when it's `false`. None of these five
+fields is in the Dexie index string — same unindexed-field rule as loans'
+`original*` columns, since nothing queries `creditCards` by them.
+
 | Column | Type | Indexed | Description |
 |---|---|---|---|
 | `id` | UUID string | PK | Unique identifier (V8: migrated from auto-increment integer) |
 | `name` | string | Yes | Card display name |
 | `balance` | number | Yes | Current outstanding balance |
 | `creditLimit` | number | Yes | Credit limit |
-| `interestRate` | number | Yes | Annual interest rate (%) |
+| `interestRate` | number | Yes | Annual interest rate (%) — the standard rate; see `hasIntroApr` for when an intro rate applies instead |
 | `dueDate` | string | Yes | Next payment due date (YYYY-MM-DD) |
 | `statementClosingDate` | string | Yes | Statement closing date (YYYY-MM-DD) |
-| `minimumPayment` | number | Yes | Minimum monthly payment |
+| `minimumPayment` | number | Yes | Stored flat minimum payment, used by `getDefaultMinimumPaymentAmount` when `targetPayoffDate` is absent or unreachable |
+| `originalBalance` | number | — | The balance when the card was added. Required on every new card. Powers `getOriginalCardProgress`'s percent-paid-off bar ([§9](#9-utilities)) |
+| `targetPayoffDate` | string \| null | — | Date the card should reach $0 by (YYYY-MM-DD). Required on every new card; `addCreditCard`/`updateCreditCard` reject a date less than one billing cycle away. Drives the amortized minimum payment |
+| `hasIntroApr` | boolean | — | Required on every new card — never left undefined. Gates whether `introApr`/`introAprEndDate` apply |
+| `introApr` | number \| null | — | Promotional APR (%), required when `hasIntroApr` is `true`, must be `null` when `false`. Applies through and including `introAprEndDate` (`getEffectiveCardInterestRate`, [§9](#9-utilities)) |
+| `introAprEndDate` | string \| null | — | Last day the intro rate applies (YYYY-MM-DD), required when `hasIntroApr` is `true`, must be `null` when `false` |
 | `createdAt` | ISO string | Yes | Creation timestamp |
 | `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
@@ -638,30 +663,38 @@ The interval math itself (weekly/biweekly day-count advance, monthly calendar ad
 
 **Responsibility:** Manage recurring expense templates. Each template's current cycle is materialized as a real expense lazily, one at a time — see `dbHelpers.materializeCurrentCycle`/`materializeDueTemplates` in `src/db/database-clean.js`, which own creation; this service no longer pre-generates rows in bulk. A cycle's cadence only ever advances when it's resolved (`dbHelpers.resolveCycle`), never on materialization. Exception: a template's *first* occurrence can be materialized immediately at creation via `materializeCurrentCycle`'s `allowFuture` option, so it is actionable in the priority list and hero totals rather than existing only as a virtual calendar forecast — but the three callers gate this differently. `AddExpensePanel` only does so when the first occurrence falls within the *current pay period* (through the next paycheck); a bill whose first due date lands later is not force-materialized and waits for the normal due-date rule. `createExpenseForCard` (auto-creating a credit card's payment bill) and `createExpenseForLoan` (its loan equivalent) have no such gate — both force-materialize unconditionally regardless of how far away the due date is, since a card's or loan's due date is often weeks out and the payment still needs to be actionable immediately. This is why a newly-linked credit card's or loan's payment bill can appear in `PriorityExpenseList`'s Later section well before a manually-added recurring bill due just as far out.
 
-**Dynamic loan payment amount.** A credit-card-payment template falls back on
-a *stored* number when uncalculated — `creditCards.minimumPayment`, a real
-column on the card, read via `getDefaultMinimumPaymentAmount`. A loan has no
-equivalent stored payment column. Instead, every cycle's amount is
-recomputed fresh from the loan's live `balance`, `interestRate`, and
-required `targetPayoffDate` via the module-private
-`calculateRequiredLoanPayment(balance, interestRate, fromDate,
+**Dynamic amortized payment amount.** Both a loan and a credit card can have
+their minimum payment priced fresh every cycle from the live balance,
+interest rate, and a required-or-optional `targetPayoffDate`, via the
+module-private `calculateRequiredLoanPayment(balance, interestRate, fromDate,
 targetPayoffDate)` in `src/db/database-clean.js` — a standard amortization
 formula solving for the level monthly payment that zeroes `balance` by
 `targetPayoffDate`, priced forward from `fromDate` (the cycle being priced).
 It's exposed read-only as `dbHelpers.calculateRequiredLoanPayment` so the
-Add/Edit Loan form can preview the payment live as balance/rate/date are
-edited, and so `EnhancedLoanCard` can display it without storing a copy.
-Because it is recomputed from the *current* balance every cycle rather than
-following a schedule fixed once at loan creation, it self-corrects after an
+Add/Edit Loan and Add/Edit Credit Card forms can preview the payment live as
+balance/rate/date are edited, and so `EnhancedLoanCard`/`EnhancedCreditCard`
+can display it without storing a copy. For loans, `targetPayoffDate` is
+required and this is the only pricing path. For credit cards, it's optional:
+when set, `computeTemplateCycleAmount()` calls the same formula (using the
+card's *effective* rate — `getEffectiveCardInterestRate`, [§9](#9-utilities),
+which substitutes `introApr` in place of `interestRate` while an intro period
+is active); when absent or unreachable, it falls back to the flat
+`creditCards.minimumPayment`/2%-of-balance heuristic
+(`getDefaultMinimumPaymentAmount`) exactly as it always has. Because the
+amortized path is recomputed from the *current* balance every cycle rather
+than following a schedule fixed once at creation, it self-corrects after an
 overpayment or a skipped cycle with no separate "final month rounding" logic
 needed — next cycle's payment is just whatever amortizes the balance that is
 actually left. The one place this computation lives is
-`computeTemplateCycleAmount()` — the same function a credit card's variable
-minimum goes through — so a lazily-materialized real expense row and a
-not-yet-real virtual ledger entry (`dbHelpers.getVirtualLedger`, described
-below) always agree on what the amount would be. A `minimumPaymentOverride` set on the *recurring
-template* (not on the loan record) takes precedence over the calculation
-when present, the same as it does for credit cards. The `loans` table also
+`computeTemplateCycleAmount()`, so a lazily-materialized real expense row and
+a not-yet-real virtual ledger entry (`dbHelpers.getVirtualLedger`, described
+below) always agree on what the amount would be for either debt type. A
+`minimumPaymentOverride` set on the *recurring template* (not on the loan or
+card record) takes precedence over either calculation when present — this is
+also the mechanism `DebtPayoffCalculator`'s "Apply to my card" action writes
+to ([§9](#9-utilities), `applyCalculatorPaymentToCard`), and what
+`getCardBehindPaceWarning` compares against the calculated minimum to flag
+an override that won't hit `targetPayoffDate` in time. The `loans` table also
 carries a same-named `minimumPaymentOverride` column (see the table above),
 but nothing in the app currently reads or writes it — only the
 template-level field is ever consulted.
@@ -996,7 +1029,7 @@ re-deriving urgency itself.
 
 | Component | Path | Description |
 |---|---|---|
-| `EnhancedCreditCard` | `src/components/EnhancedCreditCard.jsx` | Visual credit card component with stats; exposes a "change funding account" action alongside edit/delete |
+| `EnhancedCreditCard` | `src/components/EnhancedCreditCard.jsx` | Visual credit card component with stats; exposes a "change funding account" action alongside edit/delete. Shows the effective interest rate (with an "(intro)" label while a promotional rate is active), an original-balance payoff-progress bar (`getOriginalCardProgress`, hidden for a legacy card with no data), a "Pay to Reach 30%" utilization suggestion, and a "Vs. Target Payoff" behind-pace warning (`dbHelpers.getCardBehindPaceWarning`) when the linked template's payment override won't hit `targetPayoffDate` in time |
 | `CreditCardPaymentInput` | `src/components/CreditCardPaymentInput.jsx` | Specialized input for CC payment amounts |
 | `ChooseFundingAccountModal` | `src/components/ChooseFundingAccountModal.jsx` | Picks which account funds a card's payment expense — used both when auto-creating a new card's payment (with a "use default" shortcut) and when changing an existing card's funding source |
 | `CreateAccountModal` | `src/components/CreateAccountModal.jsx` | Inline "create an account" fallback inside the credit-card funding flow when no accounts exist yet |
@@ -1036,7 +1069,7 @@ and inline "create an account" fallback are shared rather than duplicated —
 | `ProjectedBalanceCard` | `src/components/ProjectedBalanceCard.jsx` | Discretionary balance after bills |
 | `BudgetVsActualDashboard` | `src/components/BudgetVsActualDashboard.jsx` | Budget vs. actual comparison |
 | `MonthlyTrends` | `src/components/MonthlyTrends.jsx` | 12-month trend visualization |
-| `DebtPayoffCalculator` | `src/components/DebtPayoffCalculator.jsx` | Snowball/Avalanche calculator |
+| `DebtPayoffCalculator` | `src/components/DebtPayoffCalculator.jsx` | What-if payoff calculator for a selected credit card (balance/rate/limit/payment are local preview state, not read back from the real card until applied). An "Apply to my card" action, shown when the previewed payment differs from the card's current minimum, writes it as a real `minimumPaymentOverride` via `dbHelpers.applyCalculatorPaymentToCard` behind an inline confirm — the only field the calculator can write back; balance/rate/limit stay preview-only |
 | `OverpaymentAnalysis` | `src/components/OverpaymentAnalysis.jsx` | Where spending exceeds budget |
 | `CreditCardDebtTable` | `src/components/CreditCardDebtTable.jsx` | Credit card debt overview table |
 | `LoanDebtTable` | `src/components/LoanDebtTable.jsx` | Sortable loan overview table mirroring `CreditCardDebtTable`, sortable by `originalLoanAmount` among other columns |
@@ -1222,7 +1255,16 @@ Credit card calculation helpers.
 | `calculateAvailableCredit(card)` | `creditLimit - balance` |
 | `getDefaultMinimumPaymentAmount(card)` | Returns `minimumPayment` or 2% of balance |
 | `getMinimumPaymentStatus(card)` | Status based on how payment compares to minimum |
-| `calculateInterestSavings(card, extraPayment)` | Calculate interest saved by paying extra |
+| `getEffectiveCardInterestRate(card)` | The rate actually accruing right now — `introApr` while `hasIntroApr` is true and today is on or before `introAprEndDate`, else `interestRate`. Local copy of the same logic `database-clean.js` uses to price a payment, for display-only reads (`EnhancedCreditCard`, `CreditCardDebtTable`, `DebtPayoffCalculator`) |
+| `getOriginalCardProgress(card)` | `{ paidAmount, percent, isPaidOff, hasData }` — balance paid off so far, from `card.originalBalance` and `card.balance`. Mirrors `getLoanPayoffProgress` below; always "success" styling, no danger tier. `hasData: false` for a legacy card with no `originalBalance` — callers hide the progress bar rather than show a false 0% |
+| `getPayToTargetUtilization(card, targetPercent = 30)` | Dollar amount the balance would need to drop by to reach `targetPercent` utilization; `0` when already at or under it |
+
+`getCardBehindPaceWarning(card, template)` — whether a card's active
+`minimumPaymentOverride` falls short of the amortized minimum needed to hit
+`targetPayoffDate`, and the date the override actually projects to if so —
+lives in `database-clean.js` as a `dbHelpers` method, not here, since it
+needs `calculateDebtPayoff` (a DB-layer function); same reasoning as
+`calculateRequiredLoanPayment` living there despite being pure math ([§5.3](#53-recurringexpenseservice)).
 
 ### `loanUtils.js`
 
@@ -1582,12 +1624,13 @@ decoratively stops carrying meaning where it matters.
 
 `CURRENT_DATA_VERSION` in `src/services/dataManager.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **12**
+looks like, the other what the database looks like — and it is currently **13**
 (5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was; 7 → 8 when
 `recurringResolutionLog` was added; 8 → 9 when `loans` was added; 9 → 10 when
 `loans` gained real-interest-tracking fields; 10 → 11 for safe version-2
 undo receipts and lossless snapshot backups — see §5.3.1; 11 → 12 when
-`loans` gained required original-loan-terms fields).
+`loans` gained required original-loan-terms fields; 12 → 13 when `creditCards`
+gained the equivalent `originalBalance`/`targetPayoffDate`/intro-APR fields).
 
 Because transfer between devices is by file rather than sync, this is a
 product-level compatibility requirement, not an implementation detail: a file

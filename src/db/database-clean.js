@@ -951,6 +951,26 @@ function calculateRequiredLoanPayment(
 }
 
 /**
+ * A credit card's interest rate for billing purposes right now - the
+ * intro/promotional rate while one is active (through and including its
+ * end date, matching how issuers bill an intro period), otherwise the
+ * card's standard rate. The single source of truth every intro-APR-aware
+ * read site calls, so display and billing math never disagree.
+ * @param {Object} card
+ * @returns {number}
+ */
+function getEffectiveCardInterestRate(card) {
+  if (
+    card.hasIntroApr &&
+    card.introAprEndDate &&
+    DateUtils.today() <= card.introAprEndDate
+  ) {
+    return card.introApr;
+  }
+  return card.interestRate;
+}
+
+/**
  * Compute what a recurring template's current cycle amount actually is
  * right now - the fixed baseAmount for most templates, or (for a
  * credit-card-payment template, isVariableAmount) the card's current
@@ -984,7 +1004,15 @@ async function computeTemplateCycleAmount(template) {
   if (template.minimumPaymentOverride != null) {
     return template.minimumPaymentOverride;
   }
-  return getDefaultMinimumPaymentAmount(card);
+  if (!card.targetPayoffDate) return getDefaultMinimumPaymentAmount(card);
+  const effectiveRate = getEffectiveCardInterestRate(card);
+  const result = calculateRequiredLoanPayment(
+    card.balance,
+    effectiveRate,
+    template.nextDueDate,
+    card.targetPayoffDate,
+  );
+  return result.success ? result.payment : getDefaultMinimumPaymentAmount(card);
 }
 
 /**
@@ -1634,6 +1662,60 @@ export const dbHelpers = {
       if (!Number.isFinite(creditCard.balance)) {
         throw new Error('Credit card balance must be a finite number');
       }
+      if (
+        !Number.isFinite(creditCard.originalBalance) ||
+        creditCard.originalBalance <= 0
+      ) {
+        throw new Error(
+          'Original balance must be a finite number greater than 0',
+        );
+      }
+      if (
+        !creditCard.targetPayoffDate ||
+        !DateUtils.isValidDate(creditCard.targetPayoffDate)
+      ) {
+        throw new Error('Target payoff date is required');
+      }
+      const startDate = creditCard.dueDate || DateUtils.today();
+      const payoffCheck = calculateRequiredLoanPayment(
+        creditCard.balance,
+        creditCard.interestRate,
+        startDate,
+        creditCard.targetPayoffDate,
+      );
+      if (!payoffCheck.success) {
+        throw new Error(payoffCheck.message);
+      }
+      if (typeof creditCard.hasIntroApr !== 'boolean') {
+        throw new Error(
+          'You must specify whether this card has an intro/promotional APR',
+        );
+      }
+      if (creditCard.hasIntroApr) {
+        if (!Number.isFinite(creditCard.introApr) || creditCard.introApr < 0) {
+          throw new Error(
+            'Intro APR must be a finite number >= 0 when this card has one',
+          );
+        }
+        if (
+          !creditCard.introAprEndDate ||
+          !DateUtils.isValidDate(creditCard.introAprEndDate)
+        ) {
+          throw new Error(
+            'Intro APR end date is required when this card has an intro APR',
+          );
+        }
+        if (creditCard.introAprEndDate <= DateUtils.today()) {
+          throw new Error('Intro APR end date must be in the future');
+        }
+      } else if (
+        creditCard.introApr != null ||
+        creditCard.introAprEndDate != null
+      ) {
+        throw new Error(
+          'Intro APR rate/end date must be empty when this card has no intro APR',
+        );
+      }
 
       const creditCardData = {
         ...creditCard,
@@ -1851,6 +1933,80 @@ export const dbHelpers = {
             );
           }
 
+          if (
+            'originalBalance' in updates &&
+            (!Number.isFinite(updates.originalBalance) ||
+              updates.originalBalance <= 0)
+          ) {
+            throw new Error(
+              'Original balance must be a finite number greater than 0',
+            );
+          }
+          if (
+            'targetPayoffDate' in updates &&
+            (!updates.targetPayoffDate ||
+              !DateUtils.isValidDate(updates.targetPayoffDate))
+          ) {
+            throw new Error('Target payoff date must be a valid date');
+          }
+
+          const merged = { ...current, ...updates };
+
+          if (
+            'hasIntroApr' in updates ||
+            'introApr' in updates ||
+            'introAprEndDate' in updates
+          ) {
+            if (typeof merged.hasIntroApr !== 'boolean') {
+              throw new Error(
+                'You must specify whether this card has an intro/promotional APR',
+              );
+            }
+            if (merged.hasIntroApr) {
+              if (!Number.isFinite(merged.introApr) || merged.introApr < 0) {
+                throw new Error(
+                  'Intro APR must be a finite number >= 0 when this card has one',
+                );
+              }
+              if (
+                !merged.introAprEndDate ||
+                !DateUtils.isValidDate(merged.introAprEndDate)
+              ) {
+                throw new Error(
+                  'Intro APR end date is required when this card has an intro APR',
+                );
+              }
+            } else if (
+              merged.introApr != null ||
+              merged.introAprEndDate != null
+            ) {
+              throw new Error(
+                'Intro APR rate/end date must be empty when this card has no intro APR',
+              );
+            }
+          }
+
+          const payoffKeys = [
+            'balance',
+            'interestRate',
+            'targetPayoffDate',
+            'dueDate',
+          ];
+          if (
+            payoffKeys.some(key => key in updates) &&
+            merged.targetPayoffDate
+          ) {
+            const payoffCheck = calculateRequiredLoanPayment(
+              merged.balance,
+              merged.interestRate,
+              merged.dueDate || DateUtils.today(),
+              merged.targetPayoffDate,
+            );
+            if (!payoffCheck.success) {
+              throw new Error(payoffCheck.message);
+            }
+          }
+
           const ts = nowIso();
           await db.creditCards.update(id, { ...updates, updatedAt: ts });
 
@@ -1869,13 +2025,7 @@ export const dbHelpers = {
       logger.success(`Credit card updated successfully: ${id}`);
     } catch (error) {
       logger.error('Error updating credit card:', error);
-      if (
-        typeof error.message === 'string' &&
-        error.message.startsWith('STALE_WRITE')
-      ) {
-        throw error;
-      }
-      throw new Error('Failed to update credit card');
+      throw error;
     }
   },
 
@@ -4103,6 +4253,60 @@ export const dbHelpers = {
     }
   },
 
+  /**
+   * Sets a card's active payment template(s) minimumPaymentOverride to
+   * `paymentAmount` - the "Apply to my card" action in DebtPayoffCalculator.
+   * Of the calculator's fields, only the payment represents an actionable
+   * decision; balance/rate/limit stay pure what-if inputs and are never
+   * written here. Mirrors syncCreditCardAmountToExpenses's never-touch-a-
+   * paid-expense rule for the pending linked expense it also updates.
+   * @param {string} cardId
+   * @param {number} paymentAmount
+   */
+  async applyCalculatorPaymentToCard(cardId, paymentAmount) {
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+      throw new Error('Payment amount must be a finite number greater than 0');
+    }
+    await db.transaction(
+      'rw',
+      db.recurringExpenseTemplates,
+      db.fixedExpenses,
+      async () => {
+        const templates = await db.recurringExpenseTemplates
+          .filter(
+            t =>
+              t.targetCreditCardId === cardId &&
+              t.category === 'Credit Card Payment' &&
+              t.isActive &&
+              !t.deletedAt,
+          )
+          .toArray();
+        if (templates.length === 0) {
+          throw new Error('This card has no linked payment bill to apply to');
+        }
+
+        const ts = nowIso();
+        for (const template of templates) {
+          await db.recurringExpenseTemplates.update(template.id, {
+            minimumPaymentOverride: paymentAmount,
+            updatedAt: ts,
+          });
+          const pending = await db.fixedExpenses
+            .where('recurringTemplateId')
+            .equals(template.id)
+            .filter(e => !e.deletedAt && e.status !== 'paid')
+            .toArray();
+          for (const expense of pending) {
+            await db.fixedExpenses.update(expense.id, {
+              amount: paymentAmount,
+              updatedAt: ts,
+            });
+          }
+        }
+      },
+    );
+  },
+
   async getFundingAccountIdForLoan(loanId) {
     try {
       const templates = await db.recurringExpenseTemplates
@@ -6037,6 +6241,48 @@ export const dbHelpers = {
       logger.error('Error calculating debt payoff:', error);
       throw new Error('Failed to calculate debt payoff');
     }
+  },
+
+  /**
+   * Whether a credit card's active payment override falls short of what's
+   * needed to hit its target payoff date - and if so, what date the
+   * override actually projects to. Uses the same calculateRequiredLoanPayment
+   * call computeTemplateCycleAmount makes, so "the calculated minimum" this
+   * warning compares against can never drift from what's actually billed.
+   *
+   * Returns null (no warning) when there's no calculated minimum to compare
+   * against (a legacy card with no targetPayoffDate, or one whose target has
+   * become unreachable), when no override is set, or when the override
+   * meets or exceeds the calculated minimum.
+   *
+   * @param {Object} card
+   * @param {Object} template - the card's active payment template
+   * @returns {Promise<{isBehindPace: true, projectedPayoffDate: string|null} | null>}
+   */
+  async getCardBehindPaceWarning(card, template) {
+    if (!card?.targetPayoffDate || !template) return null;
+
+    const effectiveRate = getEffectiveCardInterestRate(card);
+    const calculatedCheck = calculateRequiredLoanPayment(
+      card.balance,
+      effectiveRate,
+      template.nextDueDate,
+      card.targetPayoffDate,
+    );
+    if (!calculatedCheck.success) return null;
+
+    const override = template.minimumPaymentOverride;
+    if (override == null || override >= calculatedCheck.payment) return null;
+
+    const projection = await this.calculateDebtPayoff(
+      card.balance,
+      override,
+      effectiveRate,
+    );
+    return {
+      isBehindPace: true,
+      projectedPayoffDate: projection.success ? projection.payoffDate : null,
+    };
   },
 
   /**

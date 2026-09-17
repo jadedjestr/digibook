@@ -198,4 +198,61 @@ describe('dbHelpers.updateCreditCard (concurrency check + amount sync)', () => {
     const [expense] = await db.fixedExpenses.toArray();
     expect(expense.amount).toBe(99);
   });
+
+  describe('original terms and intro APR (Phase 1 field validation)', () => {
+    it('rejects a non-positive originalBalance', async () => {
+      await expect(
+        dbHelpers.updateCreditCard('1', { originalBalance: 0 }),
+      ).rejects.toThrow(/Original balance/);
+    });
+
+    it('accepts a valid originalBalance', async () => {
+      await dbHelpers.updateCreditCard('1', { originalBalance: 2000 });
+      const [card] = await db.creditCards.toArray();
+      expect(card.originalBalance).toBe(2000);
+    });
+
+    it('rejects an invalid targetPayoffDate', async () => {
+      await expect(
+        dbHelpers.updateCreditCard('1', { targetPayoffDate: 'not-a-date' }),
+      ).rejects.toThrow(/Target payoff date/);
+    });
+
+    it('rejects a targetPayoffDate too close to reach given the balance/rate', async () => {
+      await expect(
+        dbHelpers.updateCreditCard('1', { targetPayoffDate: '2026-02-16' }),
+      ).rejects.toThrow(/at least one billing cycle away/);
+    });
+
+    it('rejects setting hasIntroApr: true without introApr/introAprEndDate', async () => {
+      await expect(
+        dbHelpers.updateCreditCard('1', { hasIntroApr: true }),
+      ).rejects.toThrow(/Intro APR must be a finite number/);
+    });
+
+    it('accepts a fully-specified intro APR update', async () => {
+      await dbHelpers.updateCreditCard('1', {
+        hasIntroApr: true,
+        introApr: 0,
+        introAprEndDate: '2027-01-01',
+      });
+      const [card] = await db.creditCards.toArray();
+      expect(card.hasIntroApr).toBe(true);
+      expect(card.introApr).toBe(0);
+    });
+
+    it('rejects leaving a stray introApr when hasIntroApr is set false', async () => {
+      await db.creditCards.update('1', {
+        hasIntroApr: true,
+        introApr: 5,
+        introAprEndDate: '2027-01-01',
+      });
+      await expect(
+        dbHelpers.updateCreditCard('1', {
+          hasIntroApr: false,
+          introApr: 5,
+        }),
+      ).rejects.toThrow(/must be empty when this card has no intro APR/);
+    });
+  });
 });

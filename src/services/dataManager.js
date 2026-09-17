@@ -22,7 +22,7 @@ const CSV_MONEY_FIELDS = {
     'originalLoanAmount',
     'originalScheduledPayment',
   ],
-  creditCards: ['balance', 'creditLimit', 'minimumPayment'],
+  creditCards: ['balance', 'creditLimit', 'minimumPayment', 'originalBalance'],
 };
 
 // Export/import data-format version - distinct from the Dexie schema version
@@ -50,7 +50,14 @@ const CSV_MONEY_FIELDS = {
 // additive and optional on import: a version 11 file's loans simply import
 // without these fields, though the app requires them going forward for any
 // *new* loan created after this version.
-const CURRENT_DATA_VERSION = 12;
+// 13 adds the credit-card equivalent to `creditCards`: `originalBalance`,
+// `targetPayoffDate`, and intro-APR fields (`hasIntroApr`, `introApr`,
+// `introAprEndDate`), driving a real amortized minimum payment the same way
+// loans' targetPayoffDate does. Additive and optional on import: a version
+// 12 file's credit cards simply import without these fields, though the app
+// requires `originalBalance`/`targetPayoffDate`/`hasIntroApr` going forward
+// for any *new* card created after this version.
+const CURRENT_DATA_VERSION = 13;
 
 /**
  * Normalize version to number for comparison

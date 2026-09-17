@@ -51,6 +51,7 @@ const CreditCards = ({
   creditCards: _creditCardsProp = [],
 }) => {
   const [creditCards, setCreditCards] = useState([]);
+  const [cardTemplates, setCardTemplates] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCard, setEditingCard] = useState(null);
@@ -66,6 +67,11 @@ const CreditCards = ({
     dueDate: '',
     statementClosingDate: '',
     minimumPayment: '',
+    originalBalance: '',
+    targetPayoffDate: '',
+    hasIntroApr: false,
+    introApr: '',
+    introAprEndDate: '',
     fundingAccountId: '',
   });
   const [initialFundingAccountId, setInitialFundingAccountId] = useState(null);
@@ -95,6 +101,21 @@ const CreditCards = ({
     () => accounts.filter(a => a.type === 'checking' || a.type === 'savings'),
     [accounts],
   );
+
+  const templateByCardId = useMemo(() => {
+    const map = new Map();
+    for (const template of cardTemplates) {
+      if (
+        template.category !== 'Credit Card Payment' ||
+        template.targetCreditCardId == null ||
+        map.has(template.targetCreditCardId)
+      ) {
+        continue;
+      }
+      map.set(template.targetCreditCardId, template);
+    }
+    return map;
+  }, [cardTemplates]);
 
   const fundingByCardId = useMemo(() => {
     const map = new Map();
@@ -158,8 +179,12 @@ const CreditCards = ({
   const loadCreditCards = useCallback(async () => {
     try {
       setIsLoading(true);
-      const cards = await dbHelpers.getCreditCards();
+      const [cards, templates] = await Promise.all([
+        dbHelpers.getCreditCards(),
+        dbHelpers.getRecurringExpenseTemplates(),
+      ]);
       setCreditCards(cards);
+      setCardTemplates(templates);
     } catch (error) {
       logger.error('Error loading credit cards:', error);
       notify.error('Failed to load credit cards');
@@ -181,6 +206,38 @@ const CreditCards = ({
     },
     [errors],
   );
+
+  // Live preview of the payment required to hit the target payoff date -
+  // the same formula the billing path uses (computeTemplateCycleAmount), so
+  // what the user sees while filling out the form matches what actually
+  // gets billed. Mirrors Loans.jsx's identical pattern.
+  const paymentPreview = useMemo(() => {
+    const balance = parseFloat(formData.balance);
+    const interestRate = formData.hasIntroApr
+      ? parseFloat(formData.introApr)
+      : parseFloat(formData.interestRate);
+    if (
+      !Number.isFinite(balance) ||
+      !Number.isFinite(interestRate) ||
+      !formData.dueDate ||
+      !formData.targetPayoffDate
+    ) {
+      return null;
+    }
+    return dbHelpers.calculateRequiredLoanPayment(
+      balance,
+      interestRate,
+      formData.dueDate,
+      formData.targetPayoffDate,
+    );
+  }, [
+    formData.balance,
+    formData.interestRate,
+    formData.hasIntroApr,
+    formData.introApr,
+    formData.dueDate,
+    formData.targetPayoffDate,
+  ]);
 
   const validateForm = useCallback(() => {
     const newErrors = {};
@@ -209,9 +266,31 @@ const CreditCards = ({
       newErrors.minimumPayment = 'Minimum payment must be a positive number';
     }
 
+    if (
+      !formData.originalBalance ||
+      parseFloat(formData.originalBalance) <= 0
+    ) {
+      newErrors.originalBalance = 'Original balance must be greater than 0';
+    }
+
+    if (!formData.targetPayoffDate) {
+      newErrors.targetPayoffDate = 'Target payoff date is required';
+    } else if (paymentPreview && !paymentPreview.success) {
+      newErrors.targetPayoffDate = paymentPreview.message;
+    }
+
+    if (formData.hasIntroApr) {
+      if (formData.introApr === '' || parseFloat(formData.introApr) < 0) {
+        newErrors.introApr = 'Intro APR must be a positive number';
+      }
+      if (!formData.introAprEndDate) {
+        newErrors.introAprEndDate = 'Intro APR end date is required';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData]);
+  }, [formData, paymentPreview]);
 
   const closeAddModalAndReset = useCallback(() => {
     setIsAddModalOpen(false);
@@ -224,6 +303,11 @@ const CreditCards = ({
       dueDate: '',
       statementClosingDate: '',
       minimumPayment: '',
+      originalBalance: '',
+      targetPayoffDate: '',
+      hasIntroApr: false,
+      introApr: '',
+      introAprEndDate: '',
       fundingAccountId: '',
     });
     setInitialFundingAccountId(null);
@@ -245,6 +329,11 @@ const CreditCards = ({
         dueDate: formData.dueDate,
         statementClosingDate: formData.statementClosingDate || '',
         minimumPayment: parseFloat(formData.minimumPayment),
+        originalBalance: parseFloat(formData.originalBalance),
+        targetPayoffDate: formData.targetPayoffDate,
+        hasIntroApr: formData.hasIntroApr,
+        introApr: formData.hasIntroApr ? parseFloat(formData.introApr) : null,
+        introAprEndDate: formData.hasIntroApr ? formData.introAprEndDate : null,
       };
 
       if (editingCard) {
@@ -476,6 +565,11 @@ const CreditCards = ({
       dueDate: '',
       statementClosingDate: '',
       minimumPayment: '',
+      originalBalance: '',
+      targetPayoffDate: '',
+      hasIntroApr: false,
+      introApr: '',
+      introAprEndDate: '',
     });
     setErrors({});
   }, []);
@@ -493,6 +587,12 @@ const CreditCards = ({
       dueDate: card.dueDate,
       statementClosingDate: card.statementClosingDate || '',
       minimumPayment: card.minimumPayment.toString(),
+      originalBalance:
+        card.originalBalance != null ? card.originalBalance.toString() : '',
+      targetPayoffDate: card.targetPayoffDate || '',
+      hasIntroApr: card.hasIntroApr === true,
+      introApr: card.introApr != null ? card.introApr.toString() : '',
+      introAprEndDate: card.introAprEndDate || '',
       fundingAccountId:
         fundingAccountId != null ? String(fundingAccountId) : '',
     });
@@ -717,6 +817,7 @@ const CreditCards = ({
               <EnhancedCreditCard
                 key={card.id}
                 card={card}
+                template={templateByCardId.get(card.id) ?? null}
                 fundingSourceName={funding?.fundingSourceName ?? null}
                 onChangeFundingSource={
                   fundableAccounts.length > 0
@@ -921,6 +1022,149 @@ const CreditCards = ({
                     </p>
                   )}
                 </div>
+
+                <div>
+                  <label
+                    htmlFor='credit-card-original-balance'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
+                    Original Balance
+                  </label>
+                  <input
+                    id='credit-card-original-balance'
+                    type='number'
+                    inputMode='decimal'
+                    step='0.01'
+                    value={formData.originalBalance}
+                    onChange={e =>
+                      handleInputChange('originalBalance', e.target.value)
+                    }
+                    className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                    placeholder='0.00'
+                  />
+                  {errors.originalBalance && (
+                    <p className='text-red-400 text-sm mt-1'>
+                      {errors.originalBalance}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor='credit-card-target-payoff-date'
+                    className='block text-sm font-medium text-white mb-2'
+                  >
+                    Target Payoff Date
+                  </label>
+                  <DatePicker
+                    id='credit-card-target-payoff-date'
+                    value={formData.targetPayoffDate}
+                    min={formData.dueDate || undefined}
+                    onChange={date =>
+                      handleInputChange('targetPayoffDate', date)
+                    }
+                  />
+                  <p className='text-white/50 text-xs mt-1'>
+                    The minimum payment is calculated automatically to pay off
+                    the balance by this date.
+                  </p>
+                  {errors.targetPayoffDate ? (
+                    <p className='text-red-400 text-sm mt-1'>
+                      {errors.targetPayoffDate}
+                    </p>
+                  ) : (
+                    paymentPreview?.success && (
+                      <p className='text-green-400 text-sm mt-1'>
+                        Calculated payment:{' '}
+                        {formatCurrency(paymentPreview.payment)}
+                        /month
+                      </p>
+                    )
+                  )}
+                </div>
+
+                <div>
+                  <span className='block text-sm font-medium text-white mb-2'>
+                    Does this card have an intro/promotional APR?
+                  </span>
+                  <div className='flex gap-2'>
+                    <button
+                      type='button'
+                      onClick={() => {
+                        handleInputChange('hasIntroApr', true);
+                      }}
+                      className={`glass-button glass-button--filter text-sm ${
+                        formData.hasIntroApr ? 'active' : ''
+                      }`}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type='button'
+                      onClick={() => {
+                        handleInputChange('hasIntroApr', false);
+                        handleInputChange('introApr', '');
+                        handleInputChange('introAprEndDate', '');
+                      }}
+                      className={`glass-button glass-button--filter text-sm ${
+                        !formData.hasIntroApr ? 'active' : ''
+                      }`}
+                    >
+                      No
+                    </button>
+                  </div>
+                </div>
+
+                {formData.hasIntroApr && (
+                  <>
+                    <div>
+                      <label
+                        htmlFor='credit-card-intro-apr'
+                        className='block text-sm font-medium text-white mb-2'
+                      >
+                        Intro APR (%)
+                      </label>
+                      <input
+                        id='credit-card-intro-apr'
+                        type='number'
+                        inputMode='decimal'
+                        step='0.01'
+                        value={formData.introApr}
+                        onChange={e =>
+                          handleInputChange('introApr', e.target.value)
+                        }
+                        className='w-full px-4 py-3 glass-input rounded-xl text-white'
+                        placeholder='0.00'
+                      />
+                      {errors.introApr && (
+                        <p className='text-red-400 text-sm mt-1'>
+                          {errors.introApr}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor='credit-card-intro-apr-end-date'
+                        className='block text-sm font-medium text-white mb-2'
+                      >
+                        Intro APR End Date
+                      </label>
+                      <DatePicker
+                        id='credit-card-intro-apr-end-date'
+                        value={formData.introAprEndDate}
+                        onChange={date =>
+                          handleInputChange('introAprEndDate', date)
+                        }
+                      />
+                      {errors.introAprEndDate && (
+                        <p className='text-red-400 text-sm mt-1'>
+                          {errors.introAprEndDate}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
 
                 {editingCard && (
                   <div>

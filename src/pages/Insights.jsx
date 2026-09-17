@@ -104,7 +104,10 @@ const Insights = ({
       {/* Row 1: Overpayment Analysis and Debt Calculator */}
       <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
         <OverpaymentAnalysis data={overpaymentData} />
-        <DebtPayoffCalculator creditCards={creditCards} />
+        <DebtPayoffCalculator
+          creditCards={creditCards}
+          onDataChange={handleDataRefresh}
+        />
       </div>
 
       {/* Loan Payoff - a separate section from the credit card debt views

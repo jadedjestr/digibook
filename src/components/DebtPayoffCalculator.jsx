@@ -9,15 +9,19 @@ import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
-import { getDefaultMinimumPaymentAmount } from '../utils/creditCardUtils';
+import {
+  getDefaultMinimumPaymentAmount,
+  getEffectiveCardInterestRate,
+} from '../utils/creditCardUtils';
 import { logger } from '../utils/logger';
+import { notify } from '../utils/notifications';
 import { parseMoneyInput } from '../utils/validation';
 
 import EmptyState from './EmptyState';
 import DebtPayoffEmptyIllustration from './illustrations/DebtPayoffEmptyIllustration';
 import PrivacyWrapper from './PrivacyWrapper';
 
-const DebtPayoffCalculator = ({ creditCards = [] }) => {
+const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
   const [selectedCard, setSelectedCard] = useState(null);
   const [calculatorData, setCalculatorData] = useState({
     balance: 0,
@@ -28,6 +32,8 @@ const DebtPayoffCalculator = ({ creditCards = [] }) => {
   });
   const [payoffResult, setPayoffResult] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isConfirmingApply, setIsConfirmingApply] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
 
   useEffect(() => {
     if (creditCards.length > 0 && !selectedCard) {
@@ -41,12 +47,33 @@ const DebtPayoffCalculator = ({ creditCards = [] }) => {
       setCalculatorData({
         balance: selectedCard.balance || 0,
         payment: defaultMin,
-        interestRate: selectedCard.interestRate || 18.99,
+        interestRate: getEffectiveCardInterestRate(selectedCard) || 18.99,
         creditLimit: selectedCard.creditLimit || 0,
         minimumPayment: defaultMin,
       });
+      setIsConfirmingApply(false);
     }
   }, [selectedCard]);
+
+  const handleApplyToCard = async () => {
+    setIsApplying(true);
+    try {
+      await dbHelpers.applyCalculatorPaymentToCard(
+        selectedCard.id,
+        calculatorData.payment,
+      );
+      notify.success(
+        `Applied ${formatCurrency(calculatorData.payment)}/month to ${selectedCard.name}`,
+      );
+      setIsConfirmingApply(false);
+      if (onDataChange) onDataChange();
+    } catch (error) {
+      logger.error('Error applying calculator payment to card:', error);
+      notify.error(error.message || 'Failed to apply payment');
+    } finally {
+      setIsApplying(false);
+    }
+  };
 
   useEffect(() => {
     const calculatePayoff = async () => {
@@ -309,6 +336,43 @@ const DebtPayoffCalculator = ({ creditCards = [] }) => {
               <p className='text-sm text-white/50 mt-1'>
                 Minimum: {formatCurrency(calculatorData.minimumPayment)}
               </p>
+              {calculatorData.payment !== calculatorData.minimumPayment &&
+                calculatorData.payment > 0 &&
+                (isConfirmingApply ? (
+                  <div className='mt-2 space-y-2'>
+                    <p className='text-sm text-yellow-400'>
+                      Apply {formatCurrency(calculatorData.payment)}/month to{' '}
+                      {selectedCard.name}? (was{' '}
+                      {formatCurrency(calculatorData.minimumPayment)}/month)
+                    </p>
+                    <div className='flex gap-2'>
+                      <button
+                        type='button'
+                        onClick={handleApplyToCard}
+                        disabled={isApplying}
+                        className='glass-button glass-button--primary text-sm px-3 py-1.5'
+                      >
+                        {isApplying ? 'Applying…' : 'Confirm'}
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => setIsConfirmingApply(false)}
+                        disabled={isApplying}
+                        className='glass-button text-sm px-3 py-1.5'
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type='button'
+                    onClick={() => setIsConfirmingApply(true)}
+                    className='text-sm text-blue-400 hover:text-blue-300 underline focus:outline-none focus:ring-0 mt-1'
+                  >
+                    Apply to my card
+                  </button>
+                ))}
             </div>
           </div>
 
@@ -454,10 +518,12 @@ const DebtPayoffCalculator = ({ creditCards = [] }) => {
 
 DebtPayoffCalculator.propTypes = {
   creditCards: PropTypes.arrayOf(PropTypes.object),
+  onDataChange: PropTypes.func,
 };
 
 DebtPayoffCalculator.defaultProps = {
   creditCards: [],
+  onDataChange: undefined,
 };
 
 export default DebtPayoffCalculator;

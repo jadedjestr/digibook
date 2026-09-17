@@ -142,12 +142,26 @@ question cannot be answered.
 ### Job D — "Pay down the cards without tipping into an overdraft"
 
 - Track each card's balance, limit, rate, due date and minimum payment.
-- Show utilisation per card and overall, with severity visible at a glance.
+- Track each card's original balance, required on every new card, so
+  progress paid down is visible, not just the current number.
+- Optionally set a target payoff date; when set, calculate the required
+  minimum payment automatically from the live balance and that date — the
+  same amortization the loans job uses — recalculated fresh every cycle, so
+  an extra payment lowers what's required next rather than leaving it stale.
+  A card with no target date keeps working exactly as before.
+- Support an intro/promotional APR as a required yes-or-no choice, never a
+  silently-assumed rate: when set, use it in place of the standard rate
+  through its stated end date.
+- Warn when a manually-set payment won't reach the target date in time,
+  showing the date it actually projects to instead.
+- Show utilisation per card and overall, with severity visible at a glance,
+  and how much paying down would take to reach a healthier utilisation.
 - Model a card payment as what it is: money leaving an account *and* debt
   reducing, together or not at all.
 - Keep each card's payment bill in step with its balance automatically.
 - Project payoff timelines under different strategies and extra-payment
-  amounts, as a pure what-if that can never alter real data.
+  amounts, as a pure what-if that can never alter real data — except through
+  one explicit, confirmed action that applies a previewed payment for real.
 - Deleting a card must not strand the bills that pointed at it.
 
 ### Job E — "Record what happened in seconds, on my phone"

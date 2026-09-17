@@ -6,6 +6,7 @@ import { formatCurrency } from '../utils/accountUtils';
 import {
   calculateAvailableCredit,
   formatCreditCardBalance,
+  getEffectiveCardInterestRate,
 } from '../utils/creditCardUtils';
 
 import CollapsibleCard from './CollapsibleCard';
@@ -82,7 +83,9 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
         }
 
         case 'interestRate':
-          comparison = (a.interestRate || 0) - (b.interestRate || 0);
+          comparison =
+            (getEffectiveCardInterestRate(a) || 0) -
+            (getEffectiveCardInterestRate(b) || 0);
           break;
 
         case 'dueDate': {
@@ -352,10 +355,13 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
                     </span>
                   </td>
                   <td className='py-3 px-3 text-right text-white/70'>
-                    {card.interestRate !== null &&
-                    card.interestRate !== undefined
-                      ? `${(card.interestRate || 0).toFixed(2)}%`
-                      : 'N/A'}
+                    {(() => {
+                      const effectiveRate = getEffectiveCardInterestRate(card);
+                      return effectiveRate !== null &&
+                        effectiveRate !== undefined
+                        ? `${effectiveRate.toFixed(2)}%`
+                        : 'N/A';
+                    })()}
                   </td>
                   <td className='py-3 px-3 text-center text-white/70'>
                     {formatDate(card.dueDate)}
