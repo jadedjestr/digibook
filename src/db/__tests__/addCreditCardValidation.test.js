@@ -52,6 +52,17 @@ describe('dbHelpers.addCreditCard (validation)', () => {
     );
   });
 
+  it('rejects a non-finite or negative interest rate', async () => {
+    // An undefined rate used to flow NaN into materialized bill amounts.
+    await expect(
+      dbHelpers.addCreditCard({ ...validCard(), interestRate: undefined }),
+    ).rejects.toThrow(/interest rate/i);
+    await expect(
+      dbHelpers.addCreditCard({ ...validCard(), interestRate: -5 }),
+    ).rejects.toThrow(/interest rate/i);
+    expect(await db.creditCards.count()).toBe(0);
+  });
+
   it('accepts valid input', async () => {
     const id = await dbHelpers.addCreditCard(validCard());
     expect(id).toBeTruthy();

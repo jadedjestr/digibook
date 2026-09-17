@@ -54,7 +54,13 @@ const EnhancedCreditCard = ({
     daysToPromoEnd <= 60;
   const monthlyInterest =
     (Math.max(card.balance, 0) * (effectiveInterestRate / 100)) / 12;
-  const daysUntilDue = card.daysUntilDue || 0;
+
+  // Derived from the card's real due date. This was previously read from
+  // card.daysUntilDue - a field that does not exist on creditCards - so
+  // every card permanently read as "Due today!" with urgent styling.
+  const daysUntilDue = card.dueDate
+    ? DateUtils.daysBetween(DateUtils.today(), card.dueDate)
+    : null;
   const progress = getOriginalCardProgress(card);
   const payToTargetUtilization = getPayToTargetUtilization(card);
 
@@ -135,7 +141,8 @@ const EnhancedCreditCard = ({
     return `${days} days until due`;
   };
 
-  const isPaymentUrgent = daysUntilDue <= 7 && daysUntilDue >= 0;
+  const isPaymentUrgent =
+    daysUntilDue !== null && daysUntilDue <= 7 && daysUntilDue >= 0;
 
   return (
     <div
@@ -190,7 +197,7 @@ const EnhancedCreditCard = ({
                 variant='credit-card'
               />
             )}
-            {getDueDateStatus(daysUntilDue) && (
+            {daysUntilDue !== null && getDueDateStatus(daysUntilDue) && (
               <StatusBadge
                 status={getDueDateStatus(daysUntilDue)}
                 variant='credit-card'
@@ -308,11 +315,13 @@ const EnhancedCreditCard = ({
         <div className={`payment-item ${isPaymentUrgent ? 'urgent' : ''}`}>
           <div className='credit-info-label'>Due Date</div>
           <div className='payment-date'>{formatDate(card.dueDate)}</div>
-          <div
-            className={`payment-countdown ${isPaymentUrgent ? 'urgent' : ''}`}
-          >
-            {getCountdownText(daysUntilDue)}
-          </div>
+          {daysUntilDue !== null && (
+            <div
+              className={`payment-countdown ${isPaymentUrgent ? 'urgent' : ''}`}
+            >
+              {getCountdownText(daysUntilDue)}
+            </div>
+          )}
         </div>
         <div className='payment-item'>
           <div className='credit-info-label'>Minimum Payment</div>

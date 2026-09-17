@@ -99,6 +99,17 @@ describe('computeTemplateCycleAmount (credit card branch)', () => {
     expect(amount).toBe(Math.max(1200 * 0.02, 25)); // 24
   });
 
+  it('falls back to the heuristic when the card has no interestRate at all (imported/legacy)', async () => {
+    // An undefined rate previously flowed NaN into the materialized bill
+    // amount and crashed the card view's rate formatting.
+    await db.creditCards.bulkPut([{ ...baseCard, interestRate: undefined }]);
+    await db.recurringExpenseTemplates.bulkPut([baseTemplate]);
+
+    const amount = await estimate();
+    expect(Number.isFinite(amount)).toBe(true);
+    expect(amount).toBe(Math.max(1200 * 0.02, 25));
+  });
+
   it('falls back to the flat heuristic when targetPayoffDate is unreachable', async () => {
     await db.creditCards.bulkPut([
       { ...baseCard, targetPayoffDate: '2026-09-20' }, // < 1 month away

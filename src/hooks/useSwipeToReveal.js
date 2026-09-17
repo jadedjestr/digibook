@@ -66,7 +66,6 @@ export function useSwipeToReveal({ railWidth = 72, disabled = false } = {}) {
     if (globalActiveId !== rowId) {
       setOffset(0);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalActiveId, rowId]);
 
   const onTouchStart = useCallback(

@@ -965,9 +965,13 @@ function getEffectiveCardInterestRate(card) {
     card.introAprEndDate &&
     DateUtils.today() <= card.introAprEndDate
   ) {
-    return card.introApr;
+    return Number(card.introApr) || 0;
   }
-  return card.interestRate;
+
+  // Number()||0 guards against an imported/legacy card with no rate - an
+  // undefined interestRate here would otherwise flow NaN into a real bill
+  // amount and crash formatInterestRate() on the card view.
+  return Number(card?.interestRate) || 0;
 }
 
 /**
@@ -1663,6 +1667,14 @@ export const dbHelpers = {
         throw new Error('Credit card balance must be a finite number');
       }
       if (
+        !Number.isFinite(creditCard.interestRate) ||
+        creditCard.interestRate < 0
+      ) {
+        throw new Error(
+          'Credit card interest rate must be a finite number >= 0',
+        );
+      }
+      if (
         !Number.isFinite(creditCard.originalBalance) ||
         creditCard.originalBalance <= 0
       ) {
@@ -1948,6 +1960,12 @@ export const dbHelpers = {
               !DateUtils.isValidDate(updates.targetPayoffDate))
           ) {
             throw new Error('Target payoff date must be a valid date');
+          }
+          if (
+            'interestRate' in updates &&
+            (!Number.isFinite(updates.interestRate) || updates.interestRate < 0)
+          ) {
+            throw new Error('Interest rate must be a finite number >= 0');
           }
 
           const merged = { ...current, ...updates };

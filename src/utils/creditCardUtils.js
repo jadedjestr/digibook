@@ -164,9 +164,9 @@ export const getEffectiveCardInterestRate = card => {
     card?.introAprEndDate &&
     DateUtils.today() <= card.introAprEndDate
   ) {
-    return card.introApr;
+    return Number(card.introApr) || 0;
   }
-  return card?.interestRate;
+  return Number(card?.interestRate) || 0;
 };
 
 /**
