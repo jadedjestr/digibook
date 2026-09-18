@@ -8,7 +8,6 @@ import PrivacyWrapper from './PrivacyWrapper';
 
 const ProjectedBalanceCard = ({
   accounts = [],
-  creditCards: _creditCards = [],
   pendingTransactions = [],
   summaryTotals = {},
   showAccountName = true,
@@ -88,7 +87,6 @@ const ProjectedBalanceCard = ({
 
 ProjectedBalanceCard.propTypes = {
   accounts: PropTypes.arrayOf(PropTypes.object),
-  creditCards: PropTypes.arrayOf(PropTypes.object),
   pendingTransactions: PropTypes.arrayOf(PropTypes.object),
   summaryTotals: PropTypes.object,
   showAccountName: PropTypes.bool,

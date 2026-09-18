@@ -169,34 +169,3 @@ export const validateAccount = account => {
     errors,
   };
 };
-
-/**
- * Validates credit card data structure
- * @param {Object} creditCard - The credit card object to validate
- * @returns {Object} Validation result with isValid and errors
- */
-export const validateCreditCard = creditCard => {
-  const errors = [];
-
-  if (!creditCard) {
-    errors.push('Credit card is required');
-    return { isValid: false, errors };
-  }
-
-  if (!creditCard.id && creditCard.id !== 0) {
-    errors.push('Credit card ID is required');
-  }
-
-  if (!creditCard.name || typeof creditCard.name !== 'string') {
-    errors.push('Credit card name is required and must be a string');
-  }
-
-  if (typeof creditCard.balance !== 'number') {
-    errors.push('Credit card balance must be a number');
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors,
-  };
-};

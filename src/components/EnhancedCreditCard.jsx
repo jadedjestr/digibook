@@ -6,7 +6,6 @@ import { dbHelpers } from '../db/database-clean';
 import {
   formatCreditCardBalance,
   calculateAvailableCredit,
-  getMinimumPaymentStatus,
   getEffectiveCardInterestRate,
   getOriginalCardProgress,
   getPayToTargetUtilization,
@@ -34,10 +33,6 @@ const EnhancedCreditCard = ({
   // Calculate derived values using new utilities
   const balanceInfo = formatCreditCardBalance(card.balance);
   const creditInfo = calculateAvailableCredit(card.balance, card.creditLimit);
-  const _minimumPaymentInfo = getMinimumPaymentStatus(
-    card.balance,
-    card.minimumPayment || 0,
-  );
   const effectiveInterestRate = getEffectiveCardInterestRate(card);
   const isIntroAprActive = effectiveInterestRate !== card.interestRate;
 
@@ -255,7 +250,7 @@ const EnhancedCreditCard = ({
           )}
         </div>
         <div className='credit-info-item'>
-          <div className='credit-info-label'>Monthly Interest</div>
+          <div className='credit-info-label'>Est. Monthly Interest</div>
           <div className='credit-info-value'>
             <PrivacyWrapper>{formatCurrency(monthlyInterest)}</PrivacyWrapper>
           </div>

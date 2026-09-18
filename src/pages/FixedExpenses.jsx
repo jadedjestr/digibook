@@ -440,7 +440,6 @@ const FixedExpenses = () => {
               />
               <ProjectedBalanceCard
                 accounts={accounts}
-                creditCards={creditCards}
                 pendingTransactions={pendingTransactions}
                 summaryTotals={summaryTotals}
                 showAccountName={false}

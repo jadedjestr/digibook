@@ -311,61 +311,6 @@ export const validateCategoryName = (
 };
 
 /**
- * Validate credit card data
- */
-export const validateCreditCard = cardData => {
-  const errors = {};
-
-  // Validate name
-  const nameValidation = validateAccountName(cardData.name);
-  if (!nameValidation.isValid) {
-    errors.name = nameValidation.error;
-  }
-
-  // Validate credit limit
-  const limitValidation = validateAmount(cardData.creditLimit);
-  if (!limitValidation.isValid) {
-    errors.creditLimit = limitValidation.error;
-  }
-
-  // Validate interest rate (0-100%)
-  const rate = parseFloat(cardData.interestRate);
-  if (isNaN(rate) || rate < 0 || rate > 100) {
-    errors.interestRate = 'Interest rate must be between 0 and 100%';
-  }
-
-  // Validate due date
-  const dueDateValidation = validateDate(cardData.dueDate);
-  if (!dueDateValidation.isValid) {
-    errors.dueDate = dueDateValidation.error;
-  }
-
-  // Validate minimum payment
-  const minPaymentValidation = validateAmount(cardData.minimumPayment);
-  if (!minPaymentValidation.isValid) {
-    errors.minimumPayment = minPaymentValidation.error;
-  }
-
-  return {
-    isValid: Object.keys(errors).length === 0,
-    errors,
-    sanitizedData: {
-      name: nameValidation.isValid ? nameValidation.value : cardData.name,
-      creditLimit: limitValidation.isValid
-        ? limitValidation.value
-        : cardData.creditLimit,
-      interestRate: rate,
-      dueDate: dueDateValidation.isValid
-        ? dueDateValidation.value
-        : cardData.dueDate,
-      minimumPayment: minPaymentValidation.isValid
-        ? minPaymentValidation.value
-        : cardData.minimumPayment,
-    },
-  };
-};
-
-/**
  * Validate form data generically
  */
 export const validateForm = (data, rules) => {

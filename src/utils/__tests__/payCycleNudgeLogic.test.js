@@ -190,7 +190,7 @@ describe('payCycleNudgeLogic', () => {
         paycheckDates: {},
         paycheckService: null,
         today,
-        config: { daysNearEndOfMonth: 7, pastMonthScope: 'last_only' },
+        config: { daysNearEndOfMonth: 7 },
       });
       expect(result.nudge).not.toBeNull();
       expect(result.nudge.type).toBe('catch_up');
@@ -214,7 +214,7 @@ describe('payCycleNudgeLogic', () => {
         paycheckDates: {},
         paycheckService: null,
         today,
-        config: { daysNearEndOfMonth: 7, pastMonthScope: 'last_only' },
+        config: { daysNearEndOfMonth: 7 },
       });
       expect(result.nudge.type).toBe('past_month');
     });
