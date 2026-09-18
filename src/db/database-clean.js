@@ -1886,7 +1886,8 @@ export const dbHelpers = {
         e =>
           e.category === 'Credit Card Payment' &&
           !e.deletedAt &&
-          e.status !== 'paid',
+          e.status !== 'paid' &&
+          (e.paidAmount || 0) === 0,
       )
       .toArray();
     if (linked.length === 0) return;
@@ -1909,10 +1910,25 @@ export const dbHelpers = {
             override = template.minimumPaymentOverride;
           }
         }
-        newAmount =
-          override != null
-            ? override
+
+        // Use amortized formula (same as computeTemplateCycleAmount) instead
+        // of flat heuristic - ensures consistency with what next cycle charges
+        if (override != null) {
+          newAmount = override;
+        } else if (updatedCard.targetPayoffDate) {
+          const effectiveRate = getEffectiveCardInterestRate(updatedCard);
+          const result = calculateRequiredLoanPayment(
+            updatedCard.balance,
+            effectiveRate,
+            expense.dueDate,
+            updatedCard.targetPayoffDate,
+          );
+          newAmount = result.success
+            ? result.payment
             : getDefaultMinimumPaymentAmount(updatedCard);
+        } else {
+          newAmount = getDefaultMinimumPaymentAmount(updatedCard);
+        }
       }
       await db.fixedExpenses.update(expense.id, {
         amount: newAmount,
