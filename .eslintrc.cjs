@@ -254,6 +254,13 @@ module.exports = {
     },
     {
       files: ['src/test/**', '**/*.test.js', '**/*.test.jsx'],
+      // Test-only helper components (mount scaffolding for hooks) are
+      // throwaway plumbing whose props are documented by the test itself;
+      // PropTypes there is busywork, so the rule is test-scoped off while
+      // production components keep full enforcement.
+      rules: {
+        'react/prop-types': 'off',
+      },
       globals: {
         beforeEach: 'readonly',
         afterEach: 'readonly',
