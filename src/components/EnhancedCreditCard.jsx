@@ -78,9 +78,14 @@ const EnhancedCreditCard = ({
 
   useEffect(() => {
     let cancelled = false;
-    dbHelpers.getCardBehindPaceWarning(card, template).then(result => {
-      if (!cancelled) setBehindPaceWarning(result);
-    });
+    dbHelpers
+      .getCardBehindPaceWarning(card, template)
+      .then(result => {
+        if (!cancelled) setBehindPaceWarning(result);
+      })
+      .catch(() => {
+        if (!cancelled) setBehindPaceWarning(null);
+      });
     return () => {
       cancelled = true;
     };

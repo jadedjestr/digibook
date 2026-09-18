@@ -1,98 +1,93 @@
+```
 # Dependencies
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# Build outputs
+# Build artifacts
 dist/
 build/
+target/
 
-# Environment variables
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+*.env.*
 
-# IDE files
+# Editors
+.vscode/
 .idea/
-*.swp
 
-# Agent tooling local config — how to launch a dev server is already in
-# package.json scripts, so nothing project-level is lost by ignoring this.
-.claude/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# VS Code: ignore personal editor settings, but share the extension
-# recommendations, which are project-level. Note this must be `.vscode/*`
-# rather than `.vscode/` — git will not descend into an ignored directory,
-# so the negation below would never be reached.
-.vscode/*
-!.vscode/extensions.json
-*.swo
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.hprof
+hs_err_pid*
 
-# OS files
+# C/C++
+*.o
+*.obj
+*.so
+*.a
+*.lib
+*.dll
+*.dylib
+*.exe
+*.out
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Testing
+.mypy_cache/
+.pytest_cache/
+.nyc_output/
+coverage/
+
+# OS generated files
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
 
-# Local scratch scripts
-test_net.js
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-
-# nyc test coverage
-.nyc_output
-
-# Dependency directories
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
-
-# next.js build output
-.next
-
-# nuxt.js build output
-.nuxt
-
-# vuepress build output
-.vuepress/dist
-
-# Serverless directories
-.serverless
-
-# FuseBox cache
-.fusebox/
-
-# DynamoDB Local files
-.dynamodb/
-
-# TernJS port file
-.tern-port 
-node_modules
-
-*storybook.log
-storybook-static
+# IDE specific
+*.swp
+*.swo
+```
