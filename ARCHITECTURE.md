@@ -688,7 +688,25 @@ needed — next cycle's payment is just whatever amortizes the balance that is
 actually left. The one place this computation lives is
 `computeTemplateCycleAmount()`, so a lazily-materialized real expense row and
 a not-yet-real virtual ledger entry (`dbHelpers.getVirtualLedger`, described
-below) always agree on what the amount would be for either debt type. A
+below) always agree on what the amount would be for either debt type. For
+credit-card *bills* specifically, the single source of truth is the
+module-private pricing oracle
+`calculateCardPaymentBillAmount(card, template, { dueDate })` in
+`src/db/database-clean.js`: decision order — zero/negative balance → 0; an
+explicit `minimumPaymentOverride` wins; otherwise the amortized payment
+toward `targetPayoffDate` at the effective (intro-aware) rate; heuristic
+fallback for a legacy card without a goal or an unreachable target. Its
+amortization anchor is `template.nextDueDate` (the cadence position) — a
+row's manually shifted due date does not change the priced amount. Three
+consumers call the oracle so they can never disagree:
+`computeTemplateCycleAmount` (the cycle estimate above),
+`syncCreditCardAmountToExpenses` (rewrites pending card-payment bills after
+a card edit, skipping paid and partially-paid rows), and the shared
+`syncPendingCardPaymentRows` row-rewriter that both the sync and
+`applyCalculatorPaymentToCard`'s confirmed "Apply" write-back use. The
+oracle is pure (no DB I/O, no dynamic imports, no non-Dexie awaits), so it
+is safe to call inside any caller's open transaction — the same contract
+`applyPaymentDelta` documents below. A
 `minimumPaymentOverride` set on the *recurring template* (not on the loan or
 card record) takes precedence over either calculation when present — this is
 also the mechanism `DebtPayoffCalculator`'s "Apply to my card" action writes
@@ -1161,7 +1179,7 @@ Pure logic behind the Pay Cycle Nudge feature (the Fixed Expenses view):
 
 | Export | Description |
 |---|---|
-| `getPayCycleNudge(options)` | Priority-ordered decision function: past_month → catch_up → promo_ended (a card whose intro APR ended during the current pay cycle, via `creditCards` + `lastCycleStart` options), or `{ nudge: null }` |
+| `getPayCycleNudge(options)` | Priority-ordered decision function: past_month → catch_up → promo_ended (a card whose intro APR ended during the current pay cycle, via `creditCards` + `lastCycleStart` options), or `{ nudge: null }`. The `resolvedExpenseIds` option (from the recurring-resolution log) excludes resolved recurring cycles from the unpaid counts — their shortfall lives in a spun-off Balance Due row |
 | `getMonthKey` / `getLastMonthKey` | `YYYY-MM` helpers for month comparisons |
 | `getExpensesInMonth(expenses, monthKey)` | Filters expenses due within a given month |
 | `isUnpaidOrPartial(expense)` | `paidAmount < amount` |

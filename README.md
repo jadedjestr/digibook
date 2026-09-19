@@ -14,7 +14,11 @@ A modern, privacy-focused finance tracker built with React and IndexedDB for loc
 - **Credit Card Tracking**: Monitor balances, limits, and utilization
 - **Automatic Payment Creation**: Auto-creates payment expenses when adding new credit cards
 - **Two-Field Payment System**: Explicit "Pay FROM" (funding account) and "Pay TO" (credit card) fields
-- **Debt Payoff Calculator**: Calculate payoff time and total interest
+- **Debt Payoff Goals**: Set an original balance and a target payoff date — DigiBook calculates the exact monthly payment needed and shows a payoff progress bar on the card
+- **Behind-Pace Warnings**: Know immediately when your current payment won't hit your target date
+- **Intro APR Awareness**: Flag promotional rates, see when they apply and when they end — the payment bill recalculates automatically when a promo expires
+- **Utilization Coaching**: See exactly how much to pay to drop under the 30% credit-score threshold
+- **Debt Payoff Calculator**: Pure what-if projections, plus a confirmed "Apply to my card" action that updates your real payment bill
 - **Smart Payment Logic**: Distinguishes between credit card payments and regular expenses charged to cards
 
 ### 📊 **Expense Management**
@@ -88,7 +92,7 @@ npm run dev
 
 ### Live app
 
-**https://digibook-rose.vercel.app**
+**https://digibook-rose.vercel.app** — current release: **v1.0.0**
 
 Deployed from `main` on every push. Each device keeps its own database — data
 lives in the browser and is never uploaded — so moving between machines is done
@@ -110,22 +114,24 @@ npm run build
 
 1. **Set PIN**: Create a PIN to secure your financial data
 2. **Add Accounts**: Create your first account (checking, savings, etc.)
-3. **Add Credit Cards**: Track credit card balances and limits
+3. **Add Credit Cards**: Enter balances and limits, then set a payoff goal and target date — DigiBook calculates the required monthly payment for you
 4. **Set Paycheck Schedule**: Configure your pay frequency for expense planning
 5. **Add Fixed Expenses**: Set up recurring bills and payments
 
 ### Key Workflows
 
 #### 💳 **Credit Card Management**
-1. **Add Credit Card**: Enter card details, balance, and credit limit
-2. **Debt Payoff Calculator**: Calculate payoff time and total interest
-3. **Payment Tracking**: Mark payments as paid to update balances
+1. **Add Credit Card**: Enter card details, balance, credit limit, original balance, and a target payoff date — the required monthly payment is calculated live as you edit
+2. **Payment Tracking**: Payment bills stay in step with your balance automatically; mark payments as paid to update balances
+3. **Progress at a Glance**: Each card shows payoff progress, intro-APR status, and utilization coaching
+4. **Debt Payoff Calculator**: Project different strategies as a pure what-if — then "Apply to my card" when a payment amount is the one you want
 
 #### 📊 **Expense Management**
-1. **Add Fixed Expenses**: Create recurring bills with due dates
-2. **Category Organization**: Use categories to organize your expenses
-3. **Payment Status**: Track paid, pending, and overdue expenses
-4. **Account Selection**: Choose funding accounts for each expense
+1. **Add Fixed Expenses**: Create recurring bills with due dates — recurring bills with a payoff goal are priced automatically
+2. **All Future One-Offs**: One-off expenses get their own view, grouped by month
+3. **Category Organization**: Use categories to organize your expenses
+4. **Payment Status**: Track paid, pending, and overdue expenses; skipped bills show clearly as "Balance Due" and are counted exactly once
+5. **Account Selection**: Choose funding accounts for each expense
 
 #### 💰 **Financial Planning**
 1. **Projected Balance**: View your discretionary spending amount after bills
@@ -172,7 +178,7 @@ src/
 ### Database Schema
 
 - **Accounts**: Name, type, current balance, default status, creation date
-- **Credit Cards**: Name, balance, credit limit, interest rate, due date, minimum payment
+- **Credit Cards**: Name, balance, credit limit, interest rate, due date, minimum payment, original balance, target payoff date, and intro-APR fields for payoff planning
 - **Fixed Expenses**: Name, due date, amount, account, category, payment status, overpayment tracking
 - **Categories**: Name, color, icon, default status for expense organization
 - **Pending Transactions**: Account, amount, category, description, creation date
