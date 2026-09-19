@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+import { PaycheckService } from '../../services/paycheckService';
 import { db, dbHelpers } from '../database-clean';
 
 vi.mock('../../utils/logger', () => ({
@@ -49,6 +50,83 @@ describe('dbHelpers.updateLoan (concurrency check + amount sync)', () => {
         deletedAt: null,
       },
     ]);
+  });
+
+  // Defensive safeguard for imported, legacy, or otherwise pre-existing
+  // data: the normal UI flow cannot create a partially-paid loan bill
+  // (auto-created loan payment templates are variable-amount, and
+  // resolveCycle rejects partials on those), but the update path must
+  // never corrupt one either.
+  describe('partially-paid linked bill protection', () => {
+    const PARTIAL_BILL = {
+      id: 'exp-partial',
+      name: 'Pay Loan',
+      dueDate: '2026-03-05',
+      amount: 200,
+      accountId: '1',
+      targetLoanId: '1',
+      category: 'Loan Payment',
+      paidAmount: 180,
+      status: 'pending',
+      recurringTemplateId: null,
+      createdAt: now,
+    };
+
+    beforeEach(async () => {
+      // Rate 0 and a 6-month window keep the recalculated payment
+      // deterministic: 1000/6 ≈ 166.67 — clearly below the 180 already
+      // recorded, which is exactly what the old filter would have written.
+      await db.loans.bulkPut([
+        {
+          id: '1',
+          name: 'Car Loan',
+          balance: 10000,
+          interestRate: 0,
+          dueDate: '2026-03-05',
+          targetPayoffDate: '2026-09-05',
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ]);
+      await db.fixedExpenses.bulkPut([
+        PARTIAL_BILL,
+        {
+          id: 'exp-untouched',
+          name: 'Pay Loan',
+          dueDate: '2026-03-05',
+          amount: 200,
+          accountId: '1',
+          targetLoanId: '1',
+          category: 'Loan Payment',
+          paidAmount: 0,
+          status: 'pending',
+          recurringTemplateId: null,
+          createdAt: now,
+        },
+      ]);
+    });
+
+    it('keeps a partially-paid linked bill unchanged when a loan update would rewrite it below the recorded payment', async () => {
+      await dbHelpers.updateLoan('1', { balance: 1000 });
+
+      const expense = await db.fixedExpenses.get('exp-partial');
+      expect(expense.amount).toBe(200);
+      expect(expense.paidAmount).toBe(180);
+      expect(expense.status).toBe('pending');
+
+      // User-visible outcome: the bill is still classified as Partial —
+      // owed and actionable — not hidden as "Paid".
+      expect(new PaycheckService().getPaymentProgress(expense)).toBe('Partial');
+    });
+
+    it('still recalculates an untouched pending linked bill in the same update', async () => {
+      await dbHelpers.updateLoan('1', { balance: 1000 });
+
+      const expense = await db.fixedExpenses.get('exp-untouched');
+      expect(expense.amount).toBeCloseTo(1000 / 6, 2);
+      expect(expense.paidAmount).toBe(0);
+    });
   });
 
   it('rejects a stale write and makes no changes', async () => {

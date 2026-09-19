@@ -2414,7 +2414,11 @@ export const dbHelpers = {
    * expenses for this loan after balance/interestRate/targetPayoffDate
    * changes, mirroring the same calculation computeTemplateCycleAmount()
    * uses. Never touches already-paid expenses, so settled payment history
-   * is never rewritten.
+   * is never rewritten — and never touches partially-paid ones either
+   * (paidAmount > 0): rewriting their amount below what's already recorded
+   * would invent a phantom "Paid" state and hide the remaining debt. Such
+   * bills keep their amount; the recalculated payment still governs every
+   * future cycle.
    */
   async syncLoanAmountToExpenses(loanId, updates) {
     if (
@@ -2430,7 +2434,10 @@ export const dbHelpers = {
       .equals(loanId)
       .filter(
         e =>
-          e.category === 'Loan Payment' && !e.deletedAt && e.status !== 'paid',
+          e.category === 'Loan Payment' &&
+          !e.deletedAt &&
+          e.status !== 'paid' &&
+          (e.paidAmount || 0) === 0,
       )
       .toArray();
     if (linked.length === 0) return;
