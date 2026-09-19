@@ -975,6 +975,96 @@ function getEffectiveCardInterestRate(card) {
 }
 
 /**
+ * THE one answer to "what should this card's payment bill be right now?"
+ * Used by cycle materialization (computeTemplateCycleAmount), post-edit
+ * sync (syncCreditCardAmountToExpenses), and the calculator's Apply action
+ * — the three paths that must never disagree, so display, forecast, and
+ * the actual bill are always the same number.
+ *
+ * Pure and transaction-agnostic by design: no DB I/O, no dynamic imports,
+ * no non-Dexie awaits — safe to call inside any caller's open transaction
+ * (see the applyPaymentDelta contract precedent).
+ *
+ * Decision order: zero/negative balance → 0 (nothing to pay); an explicit
+ * minimumPaymentOverride always wins; otherwise the amortized payment
+ * toward targetPayoffDate priced at the effective (intro-aware) rate;
+ * heuristic fallback for a legacy card without a goal or an unreachable
+ * target.
+ *
+ * Anchor ruling: the amortization anchor is template.nextDueDate (the
+ * cadence position, i.e. the source of truth), NOT a row's manually
+ * shifted dueDate. A user dragging a bill's date expresses "pay later",
+ * not "my payoff plan has fewer months" — and materialization (path A)
+ * already anchors on nextDueDate, so this keeps all three paths
+ * predictably equal. Drift self-corrects each cycle because the payment
+ * re-derives from the current balance.
+ *
+ * @param {Object|null} card - the creditCards row
+ * @param {Object|null} template - the card's payment template (override +
+ *   nextDueDate source); null for a template-less card-payment expense
+ * @param {Object} [options]
+ * @param {string} [options.dueDate] - explicit anchor override (YYYY-MM-DD);
+ *   defaults to template.nextDueDate, then today
+ * @returns {number|null} the bill amount, or null when the card row itself
+ *   is missing (callers coalesce to their own fallback)
+ */
+function calculateCardPaymentBillAmount(card, template, { dueDate } = {}) {
+  if (!card) return null;
+  if (Number(card.balance) <= 0) return 0;
+
+  if (template?.minimumPaymentOverride != null) {
+    return template.minimumPaymentOverride;
+  }
+
+  if (!card.targetPayoffDate) {
+    return getDefaultMinimumPaymentAmount(card);
+  }
+
+  const result = calculateRequiredLoanPayment(
+    Number(card.balance),
+    getEffectiveCardInterestRate(card),
+    dueDate ?? template?.nextDueDate ?? DateUtils.today(),
+    card.targetPayoffDate,
+  );
+  return result.success ? result.payment : getDefaultMinimumPaymentAmount(card);
+}
+
+/**
+ * Rewrite `amount` on untouched pending Credit Card Payment rows linked to
+ * a template. "Untouched" = not paid AND no paidAmount: settled money is
+ * never re-described, and a row with money on it must not get its amount
+ * pulled below paidAmount (that would invent a phantom "Paid" state). The
+ * override/amount still governs every future cycle.
+ *
+ * Transaction contract (worded like applyPaymentDelta's): caller must
+ * invoke from inside an open 'rw' transaction whose table list includes
+ * db.fixedExpenses. The helper performs only plain Dexie reads/writes so
+ * it joins the ambient transaction — it never opens one, never awaits a
+ * non-Dexie promise, and never dynamically imports.
+ *
+ * @param {Object} template - the payment template whose rows to sync
+ * @param {number} amount - the amount to write
+ * @param {string} ts - ISO timestamp shared with the caller's writes
+ * @returns {Promise<number>} count of rows updated
+ */
+async function syncPendingCardPaymentRows(template, amount, ts) {
+  const pending = await db.fixedExpenses
+    .where('recurringTemplateId')
+    .equals(template.id)
+    .filter(
+      e => !e.deletedAt && e.status !== 'paid' && (e.paidAmount || 0) === 0,
+    )
+    .toArray();
+  for (const expense of pending) {
+    await db.fixedExpenses.update(expense.id, {
+      amount,
+      updatedAt: ts,
+    });
+  }
+  return pending.length;
+}
+
+/**
  * Compute what a recurring template's current cycle amount actually is
  * right now - the fixed baseAmount for most templates, or (for a
  * credit-card-payment template, isVariableAmount) the card's current
@@ -1004,19 +1094,9 @@ async function computeTemplateCycleAmount(template) {
   if (!template.targetCreditCardId) return template.baseAmount;
   const card = await db.creditCards.get(template.targetCreditCardId);
   if (!card) return template.baseAmount;
-  if (card.balance <= 0) return 0;
-  if (template.minimumPaymentOverride != null) {
-    return template.minimumPaymentOverride;
-  }
-  if (!card.targetPayoffDate) return getDefaultMinimumPaymentAmount(card);
-  const effectiveRate = getEffectiveCardInterestRate(card);
-  const result = calculateRequiredLoanPayment(
-    card.balance,
-    effectiveRate,
-    template.nextDueDate,
-    card.targetPayoffDate,
-  );
-  return result.success ? result.payment : getDefaultMinimumPaymentAmount(card);
+  return calculateCardPaymentBillAmount(card, template, {
+    dueDate: template.nextDueDate,
+  });
 }
 
 /**
@@ -1869,15 +1949,19 @@ export const dbHelpers = {
 
   /**
    * Recompute `amount` on pending (unpaid), template-linked Credit Card
-   * Payment expenses for this card after balance/minimumPayment changes,
-   * mirroring the same calculation computeTemplateCycleAmount() uses. Never
-   * touches already-paid expenses, so settled payment history is never
-   * rewritten.
+   * Payment expenses for this card after balance/minimumPayment changes.
+   * Prices through calculateCardPaymentBillAmount — the same oracle
+   * computeTemplateCycleAmount uses — so the bill the user sees after an
+   * edit matches what the next cycle will charge. Never touches paid or
+   * partially-paid expenses, so settled payment history is never rewritten.
    */
   async syncCreditCardAmountToExpenses(cardId, updates) {
     if (updates.balance === undefined && updates.minimumPayment === undefined) {
       return;
     }
+
+    const updatedCard = await db.creditCards.get(cardId);
+    if (!updatedCard) return;
 
     const linked = await db.fixedExpenses
       .where('targetCreditCardId')
@@ -1892,44 +1976,20 @@ export const dbHelpers = {
       .toArray();
     if (linked.length === 0) return;
 
-    const updatedCard = await db.creditCards.get(cardId);
-    if (!updatedCard) return;
-
     const ts = nowIso();
     for (const expense of linked) {
-      let newAmount;
-      if (Number(updatedCard.balance) <= 0) {
-        newAmount = 0;
-      } else {
-        let override = null;
-        if (expense.recurringTemplateId) {
-          const template = await db.recurringExpenseTemplates.get(
-            expense.recurringTemplateId,
-          );
-          if (template && template.minimumPaymentOverride != null) {
-            override = template.minimumPaymentOverride;
-          }
-        }
-
-        // Use amortized formula (same as computeTemplateCycleAmount) instead
-        // of flat heuristic - ensures consistency with what next cycle charges
-        if (override != null) {
-          newAmount = override;
-        } else if (updatedCard.targetPayoffDate) {
-          const effectiveRate = getEffectiveCardInterestRate(updatedCard);
-          const result = calculateRequiredLoanPayment(
-            updatedCard.balance,
-            effectiveRate,
-            expense.dueDate,
-            updatedCard.targetPayoffDate,
-          );
-          newAmount = result.success
-            ? result.payment
-            : getDefaultMinimumPaymentAmount(updatedCard);
-        } else {
-          newAmount = getDefaultMinimumPaymentAmount(updatedCard);
-        }
+      let template = null;
+      if (expense.recurringTemplateId) {
+        template = await db.recurringExpenseTemplates.get(
+          expense.recurringTemplateId,
+        );
       }
+
+      // Anchor ruling: template.nextDueDate (the cadence position) — not
+      // the row's manually shiftable dueDate. See the oracle's docstring.
+      const newAmount = calculateCardPaymentBillAmount(updatedCard, template, {
+        dueDate: template?.nextDueDate ?? expense.dueDate,
+      });
       await db.fixedExpenses.update(expense.id, {
         amount: newAmount,
         updatedAt: ts,
@@ -4327,27 +4387,9 @@ export const dbHelpers = {
             updatedAt: ts,
           });
 
-          // Only untouched pending rows get their amount rewritten: a row
-          // that already has money on it must not get its amount pulled
-          // below paidAmount - that would invent a phantom "Paid" state.
-          // Such rows keep their amount; the override still governs every
-          // future cycle.
-          const pending = await db.fixedExpenses
-            .where('recurringTemplateId')
-            .equals(template.id)
-            .filter(
-              e =>
-                !e.deletedAt &&
-                e.status !== 'paid' &&
-                (e.paidAmount || 0) === 0,
-            )
-            .toArray();
-          for (const expense of pending) {
-            await db.fixedExpenses.update(expense.id, {
-              amount: paymentAmount,
-              updatedAt: ts,
-            });
-          }
+          // Shared pending-row rewrite (same helper syncCreditCardAmountToExpenses
+          // uses) — one rule set for paid/partially-paid protection.
+          await syncPendingCardPaymentRows(template, paymentAmount, ts);
         }
 
         try {

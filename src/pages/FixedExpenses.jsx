@@ -146,6 +146,7 @@ const FixedExpenses = () => {
     paycheckService,
     creditCards,
     paycheckSettings,
+    resolvedExpenseIds: resolutionLinkage.resolvedExpenseIds,
   });
 
   const handleReviewPastMonth = useCallback(monthKey => {

@@ -20,6 +20,9 @@ import { getLastMonthKey, getPayCycleNudge } from '../utils/payCycleNudgeLogic';
  * @param {Array} [options.creditCards] - Credit cards, for the promo_ended nudge
  * @param {Object} [options.paycheckSettings] - Pay anchor + frequency; scopes
  *   how recently a card's intro APR may have ended to still warrant a nudge
+ * @param {Set<string>} [options.resolvedExpenseIds] - Resolved recurring
+ *   cycle ids (see getPayCycleNudge); keeps nudges from nagging about
+ *   bills the user has already resolved
  * @param {Function} [options.onNudgeShown] - (nudge) => {}
  * @param {Function} [options.onNudgeDismissed] - (nudge, action) => {}
  * @param {Function} [options.onNudgeAction] - (nudge, action) => {}
@@ -33,6 +36,7 @@ export function usePayCycleNudge({
   paycheckService,
   creditCards = [],
   paycheckSettings = null,
+  resolvedExpenseIds,
   onNudgeShown,
   onNudgeDismissed,
   onNudgeAction: _onNudgeAction,
@@ -119,6 +123,7 @@ export function usePayCycleNudge({
       virtualGapCycles,
       creditCards,
       lastCycleStart,
+      resolvedExpenseIds,
     });
     return result.nudge;
   }, [
@@ -131,6 +136,7 @@ export function usePayCycleNudge({
     virtualGapCycles,
     creditCards,
     paycheckSettings,
+    resolvedExpenseIds,
   ]);
 
   useEffect(() => {

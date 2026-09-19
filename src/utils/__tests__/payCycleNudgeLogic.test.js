@@ -345,4 +345,44 @@ describe('payCycleNudgeLogic', () => {
       expect(nudge?.type).toBe('past_month');
     });
   });
+
+  describe('getPayCycleNudge — resolvedExpenseIds (no nags about resolved cycles)', () => {
+    const resolvedExpense = {
+      id: 7,
+      dueDate: '2025-01-10',
+      amount: 100,
+      paidAmount: 0, // unpaid on its face — but resolved in the log
+    };
+
+    it('a resolved expense no longer counts toward the past_month nudge', () => {
+      const result = getPayCycleNudge({
+        fixedExpenses: [resolvedExpense],
+        currentMonth: new Date(2025, 1, 15),
+        today: new Date(2025, 1, 15),
+        resolvedExpenseIds: new Set(['7']),
+      });
+      expect(result.nudge).toBeNull();
+    });
+
+    it('without the resolved set, the same expense still counts (back-compat)', () => {
+      const result = getPayCycleNudge({
+        fixedExpenses: [resolvedExpense],
+        currentMonth: new Date(2025, 1, 15),
+        today: new Date(2025, 1, 15),
+      });
+      expect(result.nudge?.type).toBe('past_month');
+      expect(result.nudge.payload.unpaidCount).toBe(1);
+    });
+
+    it('a resolved expense no longer counts toward the catch_up nudge', () => {
+      const result = getPayCycleNudge({
+        fixedExpenses: [resolvedExpense],
+        currentMonthExpenses: [resolvedExpense],
+        currentMonth: new Date(2025, 1, 15),
+        today: new Date(2025, 1, 20), // near end of month
+        resolvedExpenseIds: new Set(['7']),
+      });
+      expect(result.nudge).toBeNull();
+    });
+  });
 });

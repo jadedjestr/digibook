@@ -97,6 +97,12 @@ export function isNearEndOfMonth(
  * @param {string|null} [options.lastCycleStart] - YYYY-MM-DD start of the
  *   current pay cycle (the most recent implied payday). Null (no pay
  *   anchor) disables the promo_ended nudge entirely.
+ * @param {Set<string>} [options.resolvedExpenseIds] - Expense ids with a
+ *   non-deleted recurringResolutionLog entry. A resolved recurring cycle
+ *   (Skip / short Partial / full resolution) is settled: its shortfall
+ *   lives in a spun-off Balance Due, so counting the original row would
+ *   nag the user about a bill they've already dealt with. Excluded from
+ *   both the past_month and catch_up unpaid counts.
  * @returns {{ nudge: object|null }}
  */
 export function getPayCycleNudge({
@@ -109,6 +115,7 @@ export function getPayCycleNudge({
   virtualGapCycles = [],
   creditCards = [],
   lastCycleStart = null,
+  resolvedExpenseIds = new Set(),
 }) {
   const dismissedSet =
     dismissed instanceof Set ? dismissed : new Set(Object.keys(dismissed));
@@ -123,7 +130,10 @@ export function getPayCycleNudge({
   if (lastMonthKey && todayKey && todayKey > lastMonthKey) {
     const pastMonthExpenses = getExpensesInMonth(fixedExpenses, lastMonthKey);
     const unpaid = [
-      ...pastMonthExpenses.filter(isUnpaidOrPartial),
+      ...pastMonthExpenses.filter(
+        exp =>
+          isUnpaidOrPartial(exp) && !resolvedExpenseIds.has(String(exp.id)),
+      ),
       ...(virtualGapCycles || []),
     ];
     const dismissKey = `past_month_${lastMonthKey}`;
@@ -155,7 +165,7 @@ export function getPayCycleNudge({
     isNearEndOfMonth(todayDate, currentMonth, config);
   if (isCatchUpMonth) {
     const unpaidInCurrent = (currentMonthExpenses || []).filter(
-      isUnpaidOrPartial,
+      exp => isUnpaidOrPartial(exp) && !resolvedExpenseIds.has(String(exp.id)),
     );
     const dismissKey = `catch_up_${currentMonthKey}`;
     if (unpaidInCurrent.length > 0 && !dismissedSet.has(dismissKey)) {
