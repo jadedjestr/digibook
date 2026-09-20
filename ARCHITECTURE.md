@@ -717,6 +717,16 @@ carries a same-named `minimumPaymentOverride` column (see the table above),
 but nothing in the app currently reads or writes it — only the
 template-level field is ever consulted.
 
+**Loan schedule anchor.** Loan bill rewrites deliberately ignore a bill row's
+displayed `dueDate`: an existing template-linked bill is priced from
+`updates.dueDate ?? template.nextDueDate`, while a template-less bill (and a
+legacy bill whose template reference is missing) is priced from the loan's
+official due date. The forecast continues to use `template.nextDueDate` as
+its canonical cycle date. A loan due-date edit is therefore both a schedule
+move and an amount-recalculation trigger. `updateLoan` validates supplied
+dates and payoff reachability inside its transaction before writing anything;
+invalid dates or an unreachable target reject the entire edit atomically.
+
 A future cycle that hasn't materialized yet (and a past cycle that never did) can still be reasoned about without creating anything, via `dbHelpers.getVirtualLedger(templateId, rangeStart, rangeEnd)` — a thin DB-fetching wrapper around the pure `computeCycleStates` in `src/utils/virtualLedger.js` that classifies each cycle in range as `resolved`/`pending`/`virtual`. The Calendar's forecast (§6.2) and the past-month nudge's gap detection (§6.3) are both just filters over this same function's output.
 
 **Key Functions:**

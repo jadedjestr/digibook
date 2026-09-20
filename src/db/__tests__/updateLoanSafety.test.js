@@ -293,4 +293,196 @@ describe('dbHelpers.updateLoan (concurrency check + amount sync)', () => {
     const [expense] = await db.fixedExpenses.toArray();
     expect(expense.amount).toBe(500);
   });
+
+  describe('scheduled-date loan pricing and atomic validation', () => {
+    const loan = {
+      id: '1',
+      name: 'Car Loan',
+      balance: 1200,
+      interestRate: 0,
+      dueDate: '2026-03-05',
+      targetPayoffDate: '2027-03-10',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+    const template = {
+      id: 'tpl-a',
+      name: 'Loan Schedule',
+      baseAmount: 1,
+      frequency: 'monthly',
+      intervalValue: 1,
+      intervalUnit: 'months',
+      startDate: '2026-03-20',
+      nextDueDate: '2026-03-20',
+      category: 'Loan Payment',
+      targetLoanId: '1',
+      accountId: '1',
+      isActive: true,
+      isVariableAmount: true,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+    const bill = (id, overrides = {}) => ({
+      id,
+      name: 'Loan Payment',
+      dueDate: '2026-06-20',
+      amount: 1,
+      accountId: '1',
+      targetLoanId: '1',
+      category: 'Loan Payment',
+      paidAmount: 0,
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+      ...overrides,
+    });
+
+    beforeEach(async () => {
+      await db.loans.put(loan);
+      await db.recurringExpenseTemplates.put(template);
+      await db.fixedExpenses.bulkPut([
+        bill('linked-shifted', { recurringTemplateId: 'tpl-a' }),
+        bill('template-less'),
+      ]);
+    });
+
+    it('prices linked and template-less bills from their respective scheduled dates', async () => {
+      await dbHelpers.updateLoan('1', { balance: 1200 });
+
+      expect((await db.fixedExpenses.get('linked-shifted')).amount).toBeCloseTo(
+        1200 / 11,
+        2,
+      );
+      expect((await db.fixedExpenses.get('template-less')).amount).toBe(100);
+      expect((await db.fixedExpenses.get('linked-shifted')).dueDate).toBe(
+        '2026-06-20',
+      );
+    });
+
+    it('uses a due-date-only edit for bill and template recalculation', async () => {
+      await dbHelpers.updateLoan('1', { dueDate: '2026-04-20' });
+
+      expect((await db.fixedExpenses.get('linked-shifted')).amount).toBe(120);
+      expect((await db.fixedExpenses.get('template-less')).amount).toBe(120);
+      const updatedTemplate = await db.recurringExpenseTemplates.get('tpl-a');
+      expect(updatedTemplate.nextDueDate).toBe('2026-04-20');
+      expect(updatedTemplate.baseAmount).toBe(120);
+    });
+
+    it('settles override-priced bills and template state to zero without reachability validation', async () => {
+      await db.recurringExpenseTemplates.update('tpl-a', {
+        minimumPaymentOverride: 500,
+      });
+      await db.loans.update('1', { targetPayoffDate: '2026-03-06' });
+
+      await dbHelpers.updateLoan('1', { balance: 0 });
+
+      expect((await db.fixedExpenses.get('linked-shifted')).amount).toBe(0);
+      expect((await db.recurringExpenseTemplates.get('tpl-a')).baseAmount).toBe(
+        0,
+      );
+    });
+
+    it('rejects an unreachable later template without changing any record', async () => {
+      await db.recurringExpenseTemplates.put({
+        ...template,
+        id: 'tpl-b',
+        name: 'Later Schedule',
+        nextDueDate: '2026-04-20',
+      });
+      const before = await Promise.all([
+        db.loans.get('1'),
+        db.recurringExpenseTemplates.get('tpl-a'),
+        db.recurringExpenseTemplates.get('tpl-b'),
+        db.fixedExpenses.toArray(),
+      ]);
+
+      await expect(
+        dbHelpers.updateLoan('1', { targetPayoffDate: '2026-05-05' }),
+      ).rejects.toThrow(/billing cycle/);
+
+      await expect(
+        Promise.all([
+          db.loans.get('1'),
+          db.recurringExpenseTemplates.get('tpl-a'),
+          db.recurringExpenseTemplates.get('tpl-b'),
+          db.fixedExpenses.toArray(),
+        ]),
+      ).resolves.toEqual(before);
+    });
+
+    it('rejects invalid dates before changing any record', async () => {
+      const before = await Promise.all([
+        db.loans.get('1'),
+        db.recurringExpenseTemplates.get('tpl-a'),
+        db.fixedExpenses.toArray(),
+      ]);
+
+      await expect(dbHelpers.updateLoan('1', { dueDate: '' })).rejects.toThrow(
+        /valid date/,
+      );
+      await expect(
+        Promise.all([
+          db.loans.get('1'),
+          db.recurringExpenseTemplates.get('tpl-a'),
+          db.fixedExpenses.toArray(),
+        ]),
+      ).resolves.toEqual(before);
+    });
+
+    it('uses an inactive template schedule for an eligible linked bill', async () => {
+      await db.recurringExpenseTemplates.update('tpl-a', { isActive: false });
+
+      await dbHelpers.updateLoan('1', { balance: 1200 });
+
+      expect((await db.fixedExpenses.get('linked-shifted')).amount).toBeCloseTo(
+        1200 / 11,
+        2,
+      );
+    });
+
+    it('falls back to the loan due date when a bill references a missing template', async () => {
+      await db.fixedExpenses.update('linked-shifted', {
+        recurringTemplateId: 'missing-template',
+      });
+
+      await dbHelpers.updateLoan('1', { balance: 1200 });
+
+      expect((await db.fixedExpenses.get('linked-shifted')).amount).toBe(100);
+    });
+
+    it('keeps a virtual estimate and its materialized row aligned for the same cycle', async () => {
+      await db.fixedExpenses.clear();
+      const before = await dbHelpers.getVirtualLedger(
+        'tpl-a',
+        '2026-03-01',
+        '2026-03-31',
+      );
+      const virtual = before.find(
+        cycle =>
+          cycle.cycleDueDate === '2026-03-20' && cycle.state === 'virtual',
+      );
+      expect(virtual).toBeDefined();
+
+      await db.fixedExpenses.put(
+        bill('same-cycle', {
+          dueDate: '2026-03-20',
+          recurringTemplateId: 'tpl-a',
+          amount: virtual.estimatedAmount,
+        }),
+      );
+      const after = await dbHelpers.getVirtualLedger(
+        'tpl-a',
+        '2026-03-01',
+        '2026-03-31',
+      );
+      const pending = after.find(
+        cycle =>
+          cycle.cycleDueDate === '2026-03-20' && cycle.state === 'pending',
+      );
+      expect(pending.estimatedAmount).toBe(virtual.estimatedAmount);
+    });
+  });
 });

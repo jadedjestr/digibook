@@ -408,6 +408,10 @@ const Loans = ({ onDataChange, accounts = [] }) => {
         notify.error(
           'This loan was changed elsewhere. Please close and reopen the edit form.',
         );
+      } else if (
+        new RegExp('valid date|billing cycle').test(error.message ?? '')
+      ) {
+        notify.error(error.message);
       } else {
         notify.error('Failed to save loan');
       }

@@ -951,6 +951,43 @@ function calculateRequiredLoanPayment(
 }
 
 /**
+ * True when a Loan Payment bill can be safely re-priced. Settled money is
+ * never re-described: paid and partially-paid bills retain their amount.
+ */
+function isEligibleLoanBill(expense) {
+  return (
+    expense.category === 'Loan Payment' &&
+    !expense.deletedAt &&
+    expense.status !== 'paid' &&
+    (expense.paidAmount || 0) === 0
+  );
+}
+
+/**
+ * Resolve the amount-pricing inputs for one linked loan bill. A bill's
+ * displayed dueDate is deliberately not consulted: a template supplies the
+ * cadence date, while a template-less (or legacy orphaned) bill uses the
+ * loan's official due date.
+ */
+async function resolveLoanBillPricing(expense, updates, loanDueDate) {
+  let template = null;
+  if (expense.recurringTemplateId) {
+    template = await db.recurringExpenseTemplates.get(
+      expense.recurringTemplateId,
+    );
+  }
+
+  return {
+    template,
+    missingTemplate: Boolean(expense.recurringTemplateId) && !template,
+    override: template?.minimumPaymentOverride ?? null,
+    anchor: template
+      ? (updates.dueDate ?? template.nextDueDate)
+      : (updates.dueDate ?? loanDueDate),
+  };
+}
+
+/**
  * A credit card's interest rate for billing purposes right now - the
  * intro/promotional rate while one is active (through and including its
  * end date, matching how issuers bill an intro period), otherwise the
@@ -2311,7 +2348,8 @@ export const dbHelpers = {
           t =>
             t.targetLoanId === loanId &&
             t.category === 'Loan Payment' &&
-            t.isActive,
+            t.isActive &&
+            !t.deletedAt,
         )
         .toArray();
 
@@ -2326,7 +2364,8 @@ export const dbHelpers = {
         if (
           updates.balance !== undefined ||
           updates.interestRate !== undefined ||
-          updates.targetPayoffDate !== undefined
+          updates.targetPayoffDate !== undefined ||
+          updates.dueDate !== undefined
         ) {
           if (loan.balance <= 0) {
             templateUpdates.baseAmount = 0;
@@ -2334,7 +2373,7 @@ export const dbHelpers = {
             const result = calculateRequiredLoanPayment(
               loan.balance,
               loan.interestRate,
-              template.nextDueDate,
+              updates.dueDate ?? template.nextDueDate,
               loan.targetPayoffDate,
             );
             if (result.success) {
@@ -2410,7 +2449,7 @@ export const dbHelpers = {
   },
 
   /**
-   * Recompute `amount` on pending (unpaid), template-linked Loan Payment
+   * Recompute `amount` on pending (unpaid) Loan Payment
    * expenses for this loan after balance/interestRate/targetPayoffDate
    * changes, mirroring the same calculation computeTemplateCycleAmount()
    * uses. Never touches already-paid expenses, so settled payment history
@@ -2424,7 +2463,8 @@ export const dbHelpers = {
     if (
       updates.balance === undefined &&
       updates.interestRate === undefined &&
-      updates.targetPayoffDate === undefined
+      updates.targetPayoffDate === undefined &&
+      updates.dueDate === undefined
     ) {
       return;
     }
@@ -2432,13 +2472,7 @@ export const dbHelpers = {
     const linked = await db.fixedExpenses
       .where('targetLoanId')
       .equals(loanId)
-      .filter(
-        e =>
-          e.category === 'Loan Payment' &&
-          !e.deletedAt &&
-          e.status !== 'paid' &&
-          (e.paidAmount || 0) === 0,
-      )
+      .filter(isEligibleLoanBill)
       .toArray();
     if (linked.length === 0) return;
 
@@ -2447,31 +2481,28 @@ export const dbHelpers = {
 
     const ts = nowIso();
     for (const expense of linked) {
+      const { override, anchor, missingTemplate } =
+        await resolveLoanBillPricing(expense, updates, updatedLoan.dueDate);
+      if (missingTemplate) {
+        logger.warn(
+          `Loan bill ${expense.id} references missing template ${expense.recurringTemplateId}; using the loan due date for pricing`,
+        );
+      }
+
       let newAmount;
       if (Number(updatedLoan.balance) <= 0) {
         newAmount = 0;
+      } else if (override != null) {
+        newAmount = override;
       } else {
-        let override = null;
-        if (expense.recurringTemplateId) {
-          const template = await db.recurringExpenseTemplates.get(
-            expense.recurringTemplateId,
-          );
-          if (template && template.minimumPaymentOverride != null) {
-            override = template.minimumPaymentOverride;
-          }
-        }
-        if (override != null) {
-          newAmount = override;
-        } else {
-          const result = calculateRequiredLoanPayment(
-            updatedLoan.balance,
-            updatedLoan.interestRate,
-            expense.dueDate,
-            updatedLoan.targetPayoffDate,
-          );
-          if (!result.success) continue; // leave a stale-but-valid amount alone
-          newAmount = result.payment;
-        }
+        const result = calculateRequiredLoanPayment(
+          updatedLoan.balance,
+          updatedLoan.interestRate,
+          anchor,
+          updatedLoan.targetPayoffDate,
+        );
+        if (!result.success) continue; // defensive: updateLoan validates first
+        newAmount = result.payment;
       }
       await db.fixedExpenses.update(expense.id, {
         amount: newAmount,
@@ -2544,6 +2575,22 @@ export const dbHelpers = {
             throw new Error('Original maturity date must be a valid date');
           }
 
+          if (
+            'dueDate' in updates &&
+            (!updates.dueDate || !DateUtils.isValidDate(updates.dueDate))
+          ) {
+            throw new Error('Loan due date must be a valid date (YYYY-MM-DD)');
+          }
+          if (
+            'targetPayoffDate' in updates &&
+            (!updates.targetPayoffDate ||
+              !DateUtils.isValidDate(updates.targetPayoffDate))
+          ) {
+            throw new Error(
+              'Target payoff date must be a valid date (YYYY-MM-DD)',
+            );
+          }
+
           const financialKeys = [
             'balance',
             'interestRate',
@@ -2554,6 +2601,74 @@ export const dbHelpers = {
             key => updates[key] !== undefined && updates[key] !== current[key],
           );
           const merged = { ...current, ...updates };
+          const payoffKeys = [
+            'balance',
+            'interestRate',
+            'targetPayoffDate',
+            'dueDate',
+          ];
+          if (
+            payoffKeys.some(key => key in updates) &&
+            Number(merged.balance) > 0
+          ) {
+            if (
+              !merged.targetPayoffDate ||
+              !DateUtils.isValidDate(merged.targetPayoffDate)
+            ) {
+              throw new Error(
+                'Target payoff date must be a valid date (YYYY-MM-DD)',
+              );
+            }
+
+            const validateReachable = (anchor, label) => {
+              const result = calculateRequiredLoanPayment(
+                merged.balance,
+                merged.interestRate,
+                anchor,
+                merged.targetPayoffDate,
+              );
+              if (!result.success) {
+                throw new Error(`${result.message} (for ${label})`);
+              }
+            };
+
+            validateReachable(
+              updates.dueDate ?? merged.dueDate,
+              'the loan due date',
+            );
+
+            const activeTemplates = await db.recurringExpenseTemplates
+              .filter(
+                template =>
+                  template.targetLoanId === id &&
+                  template.category === 'Loan Payment' &&
+                  template.isActive &&
+                  !template.deletedAt,
+              )
+              .toArray();
+            for (const template of activeTemplates) {
+              validateReachable(
+                updates.dueDate ?? template.nextDueDate,
+                `the scheduled cycle of "${template.name}"`,
+              );
+            }
+
+            const eligibleBills = await db.fixedExpenses
+              .where('targetLoanId')
+              .equals(id)
+              .filter(isEligibleLoanBill)
+              .toArray();
+            for (const expense of eligibleBills) {
+              const { override, anchor } = await resolveLoanBillPricing(
+                expense,
+                updates,
+                updates.dueDate ?? merged.dueDate,
+              );
+              if (override == null) {
+                validateReachable(anchor, `linked loan bill "${expense.name}"`);
+              }
+            }
+          }
           if (current.interestAccruedThrough && !merged.interestAccruedThrough)
             throw new Error('Disabling interest tracking is not supported');
           if (merged.interestAccruedThrough) {
@@ -2585,7 +2700,8 @@ export const dbHelpers = {
           if (
             updates.balance !== undefined ||
             updates.interestRate !== undefined ||
-            updates.targetPayoffDate !== undefined
+            updates.targetPayoffDate !== undefined ||
+            updates.dueDate !== undefined
           ) {
             await this.syncLoanAmountToExpenses(id, updates);
           }
