@@ -1993,7 +1993,16 @@ export const dbHelpers = {
    * partially-paid expenses, so settled payment history is never rewritten.
    */
   async syncCreditCardAmountToExpenses(cardId, updates) {
-    if (updates.balance === undefined && updates.minimumPayment === undefined) {
+    if (
+      updates.balance === undefined &&
+      updates.minimumPayment === undefined &&
+      updates.interestRate === undefined &&
+      updates.targetPayoffDate === undefined &&
+      updates.dueDate === undefined &&
+      updates.hasIntroApr === undefined &&
+      updates.introApr === undefined &&
+      updates.introAprEndDate === undefined
+    ) {
       return;
     }
 
@@ -2146,7 +2155,13 @@ export const dbHelpers = {
           }
           if (
             updates.balance !== undefined ||
-            updates.minimumPayment !== undefined
+            updates.minimumPayment !== undefined ||
+            updates.interestRate !== undefined ||
+            updates.targetPayoffDate !== undefined ||
+            updates.dueDate !== undefined ||
+            updates.hasIntroApr !== undefined ||
+            updates.introApr !== undefined ||
+            updates.introAprEndDate !== undefined
           ) {
             await this.syncCreditCardAmountToExpenses(id, updates);
           }
