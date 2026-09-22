@@ -178,11 +178,22 @@ describe('ExpenseBadge — resolved cycles (skip double-pay hazard fix)', () => 
   });
 
   it('an unresolved due-this-week badge is STILL interactive and reads Pay This Week', () => {
-    const { container } = renderBadge({ dueDate: '2026-09-20', amount: 100 });
-    expect(
-      container.querySelector('.expense-badge--pay-this-week'),
-    ).toBeTruthy();
-    expect(screen.getByRole('button')).toBeTruthy();
+    // "Today" is pinned to this file's original authoring date (2026-09-15)
+    // so the fixture dueDate below stays inside "this week" regardless of
+    // the real calendar date the suite runs on.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 15) });
+    try {
+      const { container } = renderBadge({
+        dueDate: '2026-09-20',
+        amount: 100,
+      });
+      expect(
+        container.querySelector('.expense-badge--pay-this-week'),
+      ).toBeTruthy();
+      expect(screen.getByRole('button')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('clicking an unresolved badge DOES open the resolve modal (one-off path)', () => {

@@ -154,15 +154,23 @@ describe('PriorityExpenseList — section placement', () => {
   });
 
   test('sections sort ascending by due date', () => {
-    renderList([
-      expense({ id: 'a', name: 'Later Bill', dueDate: '2026-09-22' }),
-      expense({ id: 'b', name: 'Sooner Bill', dueDate: '2026-09-21' }),
-    ]);
-    const section = screen.getByText('This week').closest('section');
-    const names = within(section)
-      .getAllByText(/Bill$/)
-      .map(el => el.textContent);
-    expect(names).toEqual(['Sooner Bill', 'Later Bill']);
+    // "Today" is pinned to this file's original authoring date (2026-09-13)
+    // so both fixture dates below stay inside "This week" regardless of the
+    // real calendar date the suite runs on.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 13) });
+    try {
+      renderList([
+        expense({ id: 'a', name: 'Later Bill', dueDate: '2026-09-22' }),
+        expense({ id: 'b', name: 'Sooner Bill', dueDate: '2026-09-21' }),
+      ]);
+      const section = screen.getByText('This week').closest('section');
+      const names = within(section)
+        .getAllByText(/Bill$/)
+        .map(el => el.textContent);
+      expect(names).toEqual(['Sooner Bill', 'Later Bill']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
