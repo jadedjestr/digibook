@@ -5,14 +5,15 @@ import { formatCurrency } from '../utils/accountUtils';
 import { formatRelativeDueDate } from '../utils/dueDateLabel';
 import { findPaymentSource } from '../utils/expenseUtils';
 
+import { CategoryChip, CategoryTag } from './CategoryIndicator';
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
 
 /**
- * One row in the priority list — name, payment source, remaining amount,
- * relative due date, and Pay Now / Edit actions. Pay Now stays the primary
- * action; Edit is a quiet icon button, shown only when the parent supplies
- * `onEdit`.
+ * One row in the priority list — category chip and tag, name, payment
+ * source, remaining amount, relative due date, and Pay Now / Edit actions.
+ * Pay Now stays the primary action; Edit is a quiet icon button, shown only
+ * when the parent supplies `onEdit`.
  *
  * No local paid/overdue logic. `PriorityExpenseList` already ran the
  * classification that decided which section this row lives in; the section
@@ -36,13 +37,13 @@ const PriorityExpenseRow = ({
 
   return (
     <div className='priority-list-item'>
+      <CategoryChip expense={expense} />
       <div className='priority-list-item-main'>
-        <p className='priority-list-item-name'>
-          {expense.name}
-          {isBalanceDue && (
-            <StatusBadge status='Balance Due' className='ml-2 align-middle' />
-          )}
-        </p>
+        <div className='priority-list-item-title'>
+          <p className='priority-list-item-name'>{expense.name}</p>
+          <CategoryTag expense={expense} />
+          {isBalanceDue && <StatusBadge status='Balance Due' />}
+        </div>
         <p className='priority-list-item-meta'>
           {source?.name || 'No source set'} ·{' '}
           {formatRelativeDueDate(expense.dueDate)}

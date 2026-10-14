@@ -1,8 +1,9 @@
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { act, render, screen, within, fireEvent } from '@testing-library/react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { PrivacyProvider } from '../../contexts/PrivacyContext';
 import { PaycheckService } from '../../services/paycheckService';
+import { useAppStore } from '../../stores/useAppStore';
 import PriorityExpenseList from '../PriorityExpenseList';
 
 vi.mock('../../utils/logger', () => ({
@@ -274,5 +275,48 @@ describe('PriorityExpenseList — edit action', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit Rent' }));
     expect(onPayNow).not.toHaveBeenCalled();
+  });
+});
+
+describe('PriorityExpenseList — category', () => {
+  const withCategories = categories => {
+    act(() => useAppStore.setState({ categories }));
+  };
+
+  afterEach(() => withCategories([]));
+
+  test('each row shows its category as a chip and a tag', () => {
+    withCategories([
+      { id: 'c1', name: 'Subscriptions', icon: '📱', color: '#EC4899' },
+    ]);
+    renderList([
+      expense({
+        id: 'a',
+        name: 'Netflix',
+        dueDate: '2026-09-20',
+        category: 'Subscriptions',
+      }),
+    ]);
+
+    expect(
+      screen.getByRole('img', { name: 'Category: Subscriptions' }),
+    ).toHaveTextContent('📱');
+    expect(screen.getByText('Subscriptions')).toBeInTheDocument();
+    expect(screen.getByText('Netflix')).toBeInTheDocument();
+  });
+
+  test('a card payment bill gets the built-in card look, not a blank', () => {
+    renderList([
+      expense({
+        id: 'a',
+        name: 'Apple Card Payment',
+        dueDate: '2026-09-20',
+        category: 'Credit Card Payment',
+      }),
+    ]);
+
+    expect(
+      screen.getByRole('img', { name: 'Category: Card payment' }),
+    ).toHaveTextContent('💳');
   });
 });

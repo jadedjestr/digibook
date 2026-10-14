@@ -1058,9 +1058,69 @@
   font-weight: 600;
   color: var(--color-ink);
   margin: 0;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Name, category tag and any badge on one line. The name shrinks (with an
+   ellipsis) before the tag does, so the category stays readable. */
+.priority-list-item-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* The category's picture and word. --category-rgb is the category's own
+   color (user data, set inline as "r, g, b"); neutral when it has none.
+   Only a faint tint: the picture is what carries the meaning, so a red or
+   orange category can't pass for an overdue or actionable signal. */
+.category-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.125rem;
+  height: 2.125rem;
+  border-radius: var(--radius-md);
+  font-size: 1.125rem;
+  line-height: 1;
+  background: rgba(var(--category-rgb), 0.18);
+  border: 1px solid rgba(var(--category-rgb), 0.3);
+}
+
+.category-tag {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 9rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  color: var(--color-ink-soft);
+  background: rgba(var(--category-rgb), 0.16);
+  border: 1px solid rgba(var(--category-rgb), 0.3);
+}
+
+/* On a phone the row has no room for the word: with the tag the bill's name
+   was squeezed to a few pixels ("Gym" became "G…"). The chip stays (it
+   carries the category's name for screen readers), a little smaller. */
+@media (max-width: 480px) {
+  .category-tag {
+    display: none;
+  }
+
+  .category-chip {
+    width: 1.75rem;
+    height: 1.75rem;
+    font-size: 0.95rem;
+  }
 }
 
 .priority-list-item-meta {

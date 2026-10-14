@@ -1055,7 +1055,8 @@ re-deriving urgency itself.
 |---|---|---|
 | `FixedExpensesHero` | `src/components/FixedExpensesHero.jsx` | The page's one hero number: what's due this week, with an overdue sub-line and a next-check context line |
 | `PriorityExpenseList` | `src/components/PriorityExpenseList.jsx` | Buckets every unpaid/partially-paid expense into Overdue/This week/Later via `getPaymentProgress()`/`getTimingBucket()`. Reads only materialized `fixedExpenses` rows — unlike the Calendar, it does **not** fall back to `virtualLedger.js`'s forecasted cycles, so a recurring bill's second-and-later occurrences are invisible here until `materializeDueTemplates` actually materializes them (see `allowFuture` note above) |
-| `PriorityExpenseRow` | `src/components/PriorityExpenseRow.jsx` | One list row: name, payment source, remaining amount, relative due date, Pay Now, and — when the parent supplies `onEdit` — a quiet icon Edit button |
+| `PriorityExpenseRow` | `src/components/PriorityExpenseRow.jsx` | One list row: category chip and tag, name, payment source, remaining amount, relative due date, Pay Now, and — when the parent supplies `onEdit` — a quiet icon Edit button |
+| `CategoryIndicator` | `src/components/CategoryIndicator.jsx` | `CategoryChip` (the category's emoji on a tinted square, named for screen readers) and `CategoryTag` (the category word as a small tag, hidden from screen readers since the chip already names it) for a bill. Read the categories from the store themselves (`useCategories`), so a list drops them in without threading them through. The tag's words keep the normal text color: a user-picked color can be unreadable as text. On phones (≤480px) the tag is hidden and the chip shrinks, because the row has no room for it (the bill's name was squeezed to a few pixels). Used by `PriorityExpenseRow` and `OneOffExpensesView` |
 | `OneOffExpensesView` | `src/components/OneOffExpensesView.jsx` | Future one-off expenses list. Edit opens `EditExpenseModal`. Delete follows `getExpenseEditPolicy`: the per-bill button appears only when removal is allowed and opens the modal on its confirm step (`initialStep='confirmDelete'`), and Delete Selected skips (and says so) any bill with a payment recorded or tied to a card/loan. Deleting is a bare soft-delete that reverses no balances, so the policy is what keeps paid money from being orphaned |
 | `EditExpenseModal` | `src/components/EditExpenseModal.jsx` | Edit one bill (name, amount, due date, payment source) or remove it. Presentational: the page owns the writes. Which fields are editable comes entirely from `getExpenseEditPolicy`. The amount input is seeded from the bill's **total** (`expense.amount`), not the remaining balance the row shows, and `onSave` receives only the keys the user changed. Opened from the priority row and from `OneOffExpensesView`; one instance lives in `FixedExpenses.jsx` |
 
@@ -1290,6 +1291,15 @@ Account-related display and lookup helpers.
 | Function | Description |
 |---|---|
 | `findPaymentSource(expense, accounts, creditCards)` | Resolves an expense's funding source under the V4 dual foreign key format |
+
+### `categoryDisplay.js`
+
+| Function | Description |
+|---|---|
+| `getCategoryDisplay(expense, categories)` | What to show for a bill's category: `{ name, icon, rgb, kind }`, `kind` one of `'category'`, `'built-in'`, `'unlisted'`, `'none'` |
+| `hexToRgb(hex)` | `'#EC4899'` to `'236, 72, 153'`; neutral for anything that isn't a six-digit hex color |
+
+A bill points at its category two ways, and neither is always usable, so this is more than a lookup. `categoryId` is null on older bills, on a bill whose category name had no match when it was created, and always on a recurring bill materialized from a template. The auto-created card and loan payment bills are labeled `'Credit Card Payment'` / `'Loan Payment'`, which are not rows in `categories`. A bill can also name a category that was deleted or never existed. Order: the id, then the name (ignoring case and spaces; a deleted category never matches), then the two built-ins (💳 *Card payment*, 🏦 *Loan payment*, neutral), then the bill's own text as an uncolored tag, then *No category*. A category's stored color is user data, so it is validated before use.
 
 ### `expenseEditPolicy.js`
 

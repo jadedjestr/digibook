@@ -17,6 +17,7 @@ import { getExpenseEditPolicy } from '../utils/expenseEditPolicy';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 
+import { CategoryChip, CategoryTag } from './CategoryIndicator';
 import DatePicker from './DatePicker';
 import RecurringExpenseModal from './RecurringExpenseModal';
 import StatusBadge from './StatusBadge';
@@ -419,12 +420,14 @@ const OneOffExpensesView = ({
                               }
                               className='w-4 h-4 rounded border-white/20 bg-white/5 text-blue-500 focus:ring-blue-500/50'
                             />
+                            <CategoryChip expense={expense} />
                             <div className='flex-1'>
                               <div className='flex items-center space-x-2 mb-1'>
                                 <h4 className='text-primary font-semibold'>
                                   {expense.name}
                                 </h4>
-                                <span className='text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full border border-purple-500/30'>
+                                <CategoryTag expense={expense} />
+                                <span className='text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full border border-purple-500/30 whitespace-nowrap flex-shrink-0'>
                                   One-time
                                 </span>
                                 {balanceDueExpenseIds.has(expense.id) && (
