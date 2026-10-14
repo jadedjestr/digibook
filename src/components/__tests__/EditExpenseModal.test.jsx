@@ -193,7 +193,7 @@ describe('EditExpenseModal — locked fields', () => {
   it('disables the amount of a card payment and explains where to change it', () => {
     setup(cardBill);
     expect(screen.getByLabelText('Amount')).toBeDisabled();
-    expect(screen.getByText(/Priced from your card/)).toBeInTheDocument();
+    expect(screen.getByText(/Priced by your card/)).toBeInTheDocument();
     expect(screen.getByLabelText('Due date')).toBeDisabled();
   });
 

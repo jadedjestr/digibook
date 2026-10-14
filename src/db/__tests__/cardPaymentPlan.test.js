@@ -313,6 +313,21 @@ describe('card payment plan (database)', () => {
       expect(atMinimum.belowIssuerMinimum).toBe(false);
     });
 
+    it('flags a custom payment too small to ever pay the card off', async () => {
+      // $1,200 at 20% costs $20 a month in interest.
+      const tooSmall = await dbHelpers.getCardPaymentPlan(
+        { ...baseCard, customPaymentAmount: 10 },
+        baseTemplate,
+      );
+      const enough = await dbHelpers.getCardPaymentPlan(
+        { ...baseCard, customPaymentAmount: 99 },
+        baseTemplate,
+      );
+      expect(tooSmall.neverPaysOff).toBe(true);
+      expect(tooSmall.projectedPayoffDate).toBeNull();
+      expect(enough.neverPaysOff).toBe(false);
+    });
+
     it('can preview an unsaved draft with no template', async () => {
       const plan = await dbHelpers.getCardPaymentPlan(
         { ...baseCard, customPaymentAmount: 99 },

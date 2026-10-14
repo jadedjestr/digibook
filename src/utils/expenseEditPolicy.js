@@ -66,7 +66,7 @@ export const getExpenseEditPolicy = (
   if (amountLocked) {
     amountReason = isLoanBill
       ? 'Priced from your loan’s schedule. Change it on the Loans page.'
-      : 'Priced from your card’s balance and payoff goal. Change it on the Credit Cards page.';
+      : 'Priced by your card’s payment setting. Change it on the Credit Cards page.';
   }
 
   const dueDateLocked = isDebtBill || isRecurring;

@@ -4646,6 +4646,7 @@ export const dbHelpers = {
    *   customAmount: number|null,
    *   paysOffCard: boolean,
    *   belowIssuerMinimum: boolean,
+   *   neverPaysOff: boolean,
    *   projectedPayoffDate: string|null,
    * }>}
    */
@@ -4656,6 +4657,7 @@ export const dbHelpers = {
     const issuerMinimum = Number(card.minimumPayment);
 
     let projectedPayoffDate = null;
+    let neverPaysOff = false;
     if (customAmount != null && balance > 0) {
       const projection = await this.calculateDebtPayoff(
         balance,
@@ -4663,6 +4665,7 @@ export const dbHelpers = {
         getEffectiveCardInterestRate(card),
       );
       projectedPayoffDate = projection.success ? projection.payoffDate : null;
+      neverPaysOff = !projection.success;
     }
 
     return {
@@ -4680,6 +4683,7 @@ export const dbHelpers = {
         customAmount != null &&
         issuerMinimum > 0 &&
         customAmount < issuerMinimum,
+      neverPaysOff,
       projectedPayoffDate,
     };
   },

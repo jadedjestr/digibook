@@ -35,6 +35,10 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
   const [isConfirmingApply, setIsConfirmingApply] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
 
+  // What the card is paying now: its custom amount, else the default minimum.
+  const currentPayment =
+    selectedCard?.customPaymentAmount ?? calculatorData.minimumPayment;
+
   useEffect(() => {
     if (creditCards.length > 0 && !selectedCard) {
       setSelectedCard(creditCards[0]);
@@ -46,7 +50,10 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
       const defaultMin = getDefaultMinimumPaymentAmount(selectedCard);
       setCalculatorData({
         balance: selectedCard.balance || 0,
-        payment: defaultMin,
+
+        // Start from the payment the card is on now: its custom amount when it
+        // has one, otherwise the default minimum.
+        payment: selectedCard.customPaymentAmount ?? defaultMin,
         interestRate: getEffectiveCardInterestRate(selectedCard) || 18.99,
         creditLimit: selectedCard.creditLimit || 0,
         minimumPayment: defaultMin,
@@ -63,8 +70,15 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
         calculatorData.payment,
       );
       notify.success(
-        `Applied ${formatCurrency(calculatorData.payment)}/month to ${selectedCard.name}`,
+        `${selectedCard.name} now has a custom payment of ${formatCurrency(calculatorData.payment)}/month`,
       );
+
+      // Keep the picked card current so "was" and the Apply link reflect the
+      // payment that was just saved (this also re-seeds the calculator).
+      setSelectedCard(prev => ({
+        ...prev,
+        customPaymentAmount: calculatorData.payment,
+      }));
       setIsConfirmingApply(false);
       if (onDataChange) onDataChange();
     } catch (error) {
@@ -336,14 +350,18 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
               <p className='text-sm text-white/50 mt-1'>
                 Minimum: {formatCurrency(calculatorData.minimumPayment)}
               </p>
-              {calculatorData.payment !== calculatorData.minimumPayment &&
+              {calculatorData.payment !== currentPayment &&
                 calculatorData.payment > 0 &&
                 (isConfirmingApply ? (
                   <div className='mt-2 space-y-2'>
                     <p className='text-sm text-yellow-400'>
-                      Apply {formatCurrency(calculatorData.payment)}/month to{' '}
-                      {selectedCard.name}? (was{' '}
-                      {formatCurrency(calculatorData.minimumPayment)}/month)
+                      Switch {selectedCard.name} to a custom payment of{' '}
+                      {formatCurrency(calculatorData.payment)}/month? (now{' '}
+                      {formatCurrency(currentPayment)}/month)
+                    </p>
+                    <p className='text-xs text-white/50'>
+                      You can switch back to the calculated payment any time in
+                      the card’s settings.
                     </p>
                     <div className='flex gap-2'>
                       <button

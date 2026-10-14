@@ -3,6 +3,9 @@ import PropTypes from 'prop-types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
+import CardPaymentModeField, {
+  resolveCustomPayment,
+} from '../components/CardPaymentModeField';
 import ChooseFundingAccountModal from '../components/ChooseFundingAccountModal';
 import CreateAccountModal from '../components/CreateAccountModal';
 import CreditCardDeletionModal from '../components/CreditCardDeletionModal';
@@ -17,6 +20,7 @@ import { useFixedExpenses } from '../stores/useAppStore';
 import { formatCurrency } from '../utils/accountUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
+import { parseMoneyInput } from '../utils/validation';
 
 const calculateUtilization = (balance, limit) => {
   if (!limit || limit === 0) return 0;
@@ -45,6 +49,29 @@ const getUtilizationColor = utilization => {
   return 'text-green-400';
 };
 
+// One empty form for the initial state and both resets, so a new field can't
+// be added to one and forgotten in another.
+const EMPTY_CARD_FORM = {
+  name: '',
+  balance: '',
+  creditLimit: '',
+  interestRate: '',
+  dueDate: '',
+  statementClosingDate: '',
+  minimumPayment: '',
+  originalBalance: '',
+  targetPayoffDate: '',
+  hasIntroApr: false,
+  introApr: '',
+  introAprEndDate: '',
+  fundingAccountId: '',
+
+  // 'calculated' = priced from balance and payoff goal; 'custom' = the
+  // dollar amount typed in customPayment.
+  paymentMode: 'calculated',
+  customPayment: '',
+};
+
 const CreditCards = ({
   onDataChange,
   accounts = [],
@@ -59,21 +86,7 @@ const CreditCards = ({
     isOpen: false,
     card: null,
   });
-  const [formData, setFormData] = useState({
-    name: '',
-    balance: '',
-    creditLimit: '',
-    interestRate: '',
-    dueDate: '',
-    statementClosingDate: '',
-    minimumPayment: '',
-    originalBalance: '',
-    targetPayoffDate: '',
-    hasIntroApr: false,
-    introApr: '',
-    introAprEndDate: '',
-    fundingAccountId: '',
-  });
+  const [formData, setFormData] = useState(EMPTY_CARD_FORM);
   const [initialFundingAccountId, setInitialFundingAccountId] = useState(null);
   const [errors, setErrors] = useState({});
   const [sortBy, setSortBy] = useState('name');
@@ -239,6 +252,63 @@ const CreditCards = ({
     formData.targetPayoffDate,
   ]);
 
+  // Live preview of a typed custom payment (below-minimum, pays-off-the-card,
+  // projected payoff date). Built on the same read the card tile and the bills
+  // use, fed the unsaved form values, so what's promised here is what's billed.
+  const [customPlan, setCustomPlan] = useState(null);
+  useEffect(() => {
+    if (formData.paymentMode !== 'custom') {
+      setCustomPlan(null);
+      return undefined;
+    }
+    const amount = parseMoneyInput(formData.customPayment);
+    const balance = parseMoneyInput(formData.balance);
+    const rate = parseMoneyInput(formData.interestRate);
+    if (!amount.ok || amount.value <= 0 || !balance.ok || !rate.ok) {
+      setCustomPlan(null);
+      return undefined;
+    }
+    const introRate = parseMoneyInput(formData.introApr);
+    const minimum = parseMoneyInput(formData.minimumPayment, {
+      allowEmpty: true,
+    });
+    const hasIntro =
+      formData.hasIntroApr && introRate.ok && !!formData.introAprEndDate;
+    let cancelled = false;
+    dbHelpers
+      .getCardPaymentPlan({
+        balance: balance.value,
+        interestRate: rate.value,
+        minimumPayment: minimum.ok ? minimum.value : 0,
+        dueDate: formData.dueDate || undefined,
+        targetPayoffDate: formData.targetPayoffDate || undefined,
+        hasIntroApr: hasIntro,
+        introApr: hasIntro ? introRate.value : null,
+        introAprEndDate: hasIntro ? formData.introAprEndDate : null,
+        customPaymentAmount: amount.value,
+      })
+      .then(plan => {
+        if (!cancelled) setCustomPlan(plan);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomPlan(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    formData.paymentMode,
+    formData.customPayment,
+    formData.balance,
+    formData.interestRate,
+    formData.hasIntroApr,
+    formData.introApr,
+    formData.introAprEndDate,
+    formData.minimumPayment,
+    formData.dueDate,
+    formData.targetPayoffDate,
+  ]);
+
   const validateForm = useCallback(() => {
     const newErrors = {};
 
@@ -279,6 +349,12 @@ const CreditCards = ({
       newErrors.targetPayoffDate = paymentPreview.message;
     }
 
+    const customPaymentError = resolveCustomPayment(
+      formData.paymentMode,
+      formData.customPayment,
+    ).error;
+    if (customPaymentError) newErrors.customPayment = customPaymentError;
+
     if (formData.hasIntroApr) {
       if (formData.introApr === '' || parseFloat(formData.introApr) < 0) {
         newErrors.introApr = 'Intro APR must be a positive number';
@@ -295,21 +371,7 @@ const CreditCards = ({
   const closeAddModalAndReset = useCallback(() => {
     setIsAddModalOpen(false);
     setEditingCard(null);
-    setFormData({
-      name: '',
-      balance: '',
-      creditLimit: '',
-      interestRate: '',
-      dueDate: '',
-      statementClosingDate: '',
-      minimumPayment: '',
-      originalBalance: '',
-      targetPayoffDate: '',
-      hasIntroApr: false,
-      introApr: '',
-      introAprEndDate: '',
-      fundingAccountId: '',
-    });
+    setFormData(EMPTY_CARD_FORM);
     setInitialFundingAccountId(null);
     setErrors({});
   }, []);
@@ -321,6 +383,11 @@ const CreditCards = ({
     }
 
     try {
+      // validateForm has already accepted this. null = the calculated payment.
+      const { amount: customPaymentAmount } = resolveCustomPayment(
+        formData.paymentMode,
+        formData.customPayment,
+      );
       const cardData = {
         name: formData.name,
         balance: parseFloat(formData.balance),
@@ -334,6 +401,7 @@ const CreditCards = ({
         hasIntroApr: formData.hasIntroApr,
         introApr: formData.hasIntroApr ? parseFloat(formData.introApr) : null,
         introAprEndDate: formData.hasIntroApr ? formData.introAprEndDate : null,
+        customPaymentAmount,
       };
 
       if (editingCard) {
@@ -557,20 +625,7 @@ const CreditCards = ({
   const resetAddEditModal = useCallback(() => {
     setIsAddModalOpen(false);
     setEditingCard(null);
-    setFormData({
-      name: '',
-      balance: '',
-      creditLimit: '',
-      interestRate: '',
-      dueDate: '',
-      statementClosingDate: '',
-      minimumPayment: '',
-      originalBalance: '',
-      targetPayoffDate: '',
-      hasIntroApr: false,
-      introApr: '',
-      introAprEndDate: '',
-    });
+    setFormData(EMPTY_CARD_FORM);
     setErrors({});
   }, []);
 
@@ -595,6 +650,11 @@ const CreditCards = ({
       introAprEndDate: card.introAprEndDate || '',
       fundingAccountId:
         fundingAccountId != null ? String(fundingAccountId) : '',
+      paymentMode: card.customPaymentAmount != null ? 'custom' : 'calculated',
+      customPayment:
+        card.customPaymentAmount != null
+          ? String(card.customPaymentAmount)
+          : '',
     });
     setInitialFundingAccountId(fundingAccountId ?? null);
     setIsAddModalOpen(true);
@@ -1082,6 +1142,18 @@ const CreditCards = ({
                     )
                   )}
                 </div>
+
+                <CardPaymentModeField
+                  mode={formData.paymentMode}
+                  customPayment={formData.customPayment}
+                  error={errors.customPayment}
+                  plan={customPlan}
+                  issuerMinimum={Number(formData.minimumPayment)}
+                  calculatedPayment={
+                    paymentPreview?.success ? paymentPreview.payment : undefined
+                  }
+                  onChange={handleInputChange}
+                />
 
                 <div>
                   <span className='block text-sm font-medium text-white mb-2'>
