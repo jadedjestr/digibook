@@ -28,6 +28,7 @@ const PriorityExpenseList = ({
   accounts,
   creditCards,
   onPayNow,
+  onEdit,
   resolvedExpenseIds,
   balanceDueExpenseIds,
 }) => {
@@ -84,6 +85,7 @@ const PriorityExpenseList = ({
       accounts={accounts}
       creditCards={creditCards}
       onPayNow={onPayNow}
+      onEdit={onEdit}
       isBalanceDue={balanceDueExpenseIds.has(expense.id)}
     />
   );
@@ -136,11 +138,13 @@ PriorityExpenseList.propTypes = {
   accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
   creditCards: PropTypes.arrayOf(PropTypes.object).isRequired,
   onPayNow: PropTypes.func.isRequired,
+  onEdit: PropTypes.func,
   resolvedExpenseIds: PropTypes.instanceOf(Set),
   balanceDueExpenseIds: PropTypes.instanceOf(Set),
 };
 
 PriorityExpenseList.defaultProps = {
+  onEdit: undefined,
   resolvedExpenseIds: new Set(),
   balanceDueExpenseIds: new Set(),
 };

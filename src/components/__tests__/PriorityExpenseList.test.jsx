@@ -211,3 +211,56 @@ describe('PriorityExpenseList — privacy masking', () => {
     expect(screen.getByText('••••••')).toBeInTheDocument();
   });
 });
+
+describe('PriorityExpenseList — edit action', () => {
+  const renderWithEdit = (expenses, onEdit) =>
+    render(
+      <PrivacyProvider>
+        <PriorityExpenseList
+          expenses={expenses}
+          paycheckService={paycheckService}
+          paycheckDates={paycheckDates}
+          accounts={accounts}
+          creditCards={creditCards}
+          onPayNow={vi.fn()}
+          onEdit={onEdit}
+        />
+      </PrivacyProvider>,
+    );
+
+  test('each row has an edit button that passes the expense up', () => {
+    const onEdit = vi.fn();
+    const rent = expense({ id: 'a', name: 'Rent', dueDate: '2026-09-20' });
+    renderWithEdit([rent], onEdit);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    expect(onEdit).toHaveBeenCalledWith(rent);
+  });
+
+  test('no edit button renders when the parent does not supply onEdit', () => {
+    renderList([expense({ id: 'a', name: 'Rent', dueDate: '2026-09-20' })]);
+    expect(
+      screen.queryByRole('button', { name: 'Edit Rent' }),
+    ).not.toBeInTheDocument();
+  });
+
+  test('editing does not trigger Pay now', () => {
+    const onPayNow = vi.fn();
+    const onEdit = vi.fn();
+    render(
+      <PrivacyProvider>
+        <PriorityExpenseList
+          expenses={[expense({ id: 'a', name: 'Rent', dueDate: '2026-09-20' })]}
+          paycheckService={paycheckService}
+          paycheckDates={paycheckDates}
+          accounts={accounts}
+          creditCards={creditCards}
+          onPayNow={onPayNow}
+          onEdit={onEdit}
+        />
+      </PrivacyProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    expect(onPayNow).not.toHaveBeenCalled();
+  });
+});

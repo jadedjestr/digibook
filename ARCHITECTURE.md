@@ -1042,8 +1042,9 @@ re-deriving urgency itself.
 |---|---|---|
 | `FixedExpensesHero` | `src/components/FixedExpensesHero.jsx` | The page's one hero number: what's due this week, with an overdue sub-line and a next-check context line |
 | `PriorityExpenseList` | `src/components/PriorityExpenseList.jsx` | Buckets every unpaid/partially-paid expense into Overdue/This week/Later via `getPaymentProgress()`/`getTimingBucket()`. Reads only materialized `fixedExpenses` rows — unlike the Calendar, it does **not** fall back to `virtualLedger.js`'s forecasted cycles, so a recurring bill's second-and-later occurrences are invisible here until `materializeDueTemplates` actually materializes them (see `allowFuture` note above) |
-| `PriorityExpenseRow` | `src/components/PriorityExpenseRow.jsx` | One list row: name, payment source, remaining amount, relative due date, Pay Now |
+| `PriorityExpenseRow` | `src/components/PriorityExpenseRow.jsx` | One list row: name, payment source, remaining amount, relative due date, Pay Now, and — when the parent supplies `onEdit` — a quiet icon Edit button |
 | `OneOffExpensesView` | `src/components/OneOffExpensesView.jsx` | Future one-off expenses list |
+| `EditExpenseModal` | `src/components/EditExpenseModal.jsx` | Edit one bill (name, amount, due date, payment source) or remove it. Presentational: the page owns the writes. Which fields are editable comes entirely from `getExpenseEditPolicy`. The amount input is seeded from the bill's **total** (`expense.amount`), not the remaining balance the row shows, and `onSave` receives only the keys the user changed. Opened from the priority row and from `OneOffExpensesView`; one instance lives in `FixedExpenses.jsx` |
 
 ### Expense Modals & Panels
 
@@ -1275,6 +1276,33 @@ Account-related display and lookup helpers.
 | Function | Description |
 |---|---|
 | `findPaymentSource(expense, accounts, creditCards)` | Resolves an expense's funding source under the V4 dual foreign key format |
+
+### `expenseEditPolicy.js`
+
+| Function | Description |
+|---|---|
+| `getExpenseEditPolicy(expense, { isBalanceDue })` | What the Edit modal may change on a bill and what it says about each field: `{ kindLabel, fields: { name, amount, dueDate, paymentSource }, removal }`, each field `{ locked, reason }` (amount also `mustExceed`), `removal.action` one of `'delete'`, `'skipOrStop'`, `'none'` |
+
+The locks exist because a value has an owner other than the bill, or because
+the database layer cannot catch the problem itself:
+
+- A **card or loan payment's amount** is re-priced from the card/loan whenever
+  it changes, so a typed amount would be silently reverted (a template-less
+  card bill and a Balance Due are not re-priced and stay editable). Its **due
+  date and funding account** are written back to the card/loan and fanned out
+  to every payment bill for it, paid history included — so they are edited on
+  the Credit Cards / Loans page instead.
+- A **recurring bill's due date** is locked. A bill is matched to its cycle by
+  exact `dueDate` (`materializeCurrentCycle`, `computeCycleStates`), so moving
+  it makes the next materialization create a second bill for the same cycle.
+  "Pay later" is Pay now's "after my next paycheck" choice. Unlocking this
+  needs the cycle identity stored separately from the displayed date.
+- The **amount must stay above what is already paid**. The database accepts an
+  amount at or below it, leaving a bill that is neither owed nor paid.
+- A **repeating bill can't be deleted**: its cadence only advances on
+  resolution, so a deleted bill would be re-materialized. Its removal action is
+  "skip or stop", which opens the Pay now flow. A bill with a payment recorded
+  has no removal action.
 
 ### `creditCardUtils.js`
 

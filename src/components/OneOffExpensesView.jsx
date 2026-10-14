@@ -31,6 +31,7 @@ const OneOffExpensesView = ({
   onDelete,
   onUpdateExpense,
   onReloadExpenses,
+  onEdit,
   balanceDueExpenseIds,
 }) => {
   const [expandedMonths, setExpandedMonths] = useState(new Set());
@@ -429,6 +430,14 @@ const OneOffExpensesView = ({
                           >
                             Mark Paid
                           </button>
+                          {onEdit && (
+                            <button
+                              onClick={() => onEdit(expense)}
+                              className='px-3 py-1 text-sm glass-button'
+                            >
+                              Edit
+                            </button>
+                          )}
                           <button
                             onClick={async () => {
                               try {
@@ -565,10 +574,12 @@ OneOffExpensesView.propTypes = {
   onDelete: PropTypes.func.isRequired,
   onUpdateExpense: PropTypes.func.isRequired,
   onReloadExpenses: PropTypes.func.isRequired,
+  onEdit: PropTypes.func,
   balanceDueExpenseIds: PropTypes.instanceOf(Set),
 };
 
 OneOffExpensesView.defaultProps = {
+  onEdit: undefined,
   balanceDueExpenseIds: new Set(),
 };
 
