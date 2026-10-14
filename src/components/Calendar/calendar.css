@@ -1104,6 +1104,35 @@
   color: var(--color-ink);
 }
 
+/* Quiet second action beside Pay now: neutral on purpose, because ochre is
+   reserved for the action most people come here to take. */
+.priority-list-item-edit {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-ink-soft);
+  transition: all var(--duration-fast) var(--easing-standard);
+}
+
+.priority-list-item-edit:hover {
+  background: var(--color-secondary-base);
+  border-color: var(--color-rule);
+  color: var(--color-ink);
+}
+
+@media (pointer: coarse) {
+  .priority-list-item-edit {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+}
+
 /* ============================================================
    FIXED EXPENSES PAGE LAYOUT
 

@@ -1,3 +1,4 @@
+import { Pencil } from 'lucide-react';
 import PropTypes from 'prop-types';
 
 import { formatCurrency } from '../utils/accountUtils';
@@ -9,7 +10,9 @@ import StatusBadge from './StatusBadge';
 
 /**
  * One row in the priority list — name, payment source, remaining amount,
- * relative due date, and a Pay Now action.
+ * relative due date, and Pay Now / Edit actions. Pay Now stays the primary
+ * action; Edit is a quiet icon button, shown only when the parent supplies
+ * `onEdit`.
  *
  * No local paid/overdue logic. `PriorityExpenseList` already ran the
  * classification that decided which section this row lives in; the section
@@ -25,6 +28,7 @@ const PriorityExpenseRow = ({
   accounts,
   creditCards,
   onPayNow,
+  onEdit,
   isBalanceDue,
 }) => {
   const source = findPaymentSource(expense, accounts, creditCards);
@@ -48,6 +52,17 @@ const PriorityExpenseRow = ({
         <span className='priority-list-item-amount'>
           <PrivacyWrapper>{formatCurrency(remaining)}</PrivacyWrapper>
         </span>
+        {onEdit && (
+          <button
+            type='button'
+            className='priority-list-item-edit'
+            onClick={() => onEdit(expense)}
+            aria-label={`Edit ${expense.name}`}
+            title='Edit bill'
+          >
+            <Pencil size={16} aria-hidden='true' />
+          </button>
+        )}
         <button
           type='button'
           className='priority-list-item-pay-now'
@@ -73,10 +88,12 @@ PriorityExpenseRow.propTypes = {
   accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
   creditCards: PropTypes.arrayOf(PropTypes.object).isRequired,
   onPayNow: PropTypes.func.isRequired,
+  onEdit: PropTypes.func,
   isBalanceDue: PropTypes.bool,
 };
 
 PriorityExpenseRow.defaultProps = {
+  onEdit: undefined,
   isBalanceDue: false,
 };
 

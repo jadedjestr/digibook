@@ -13,6 +13,7 @@ import { dbHelpers } from '../db/database-clean';
 import { createTemplate } from '../services/recurringExpenseService';
 import { formatCurrency } from '../utils/accountUtils';
 import { DateUtils } from '../utils/dateUtils';
+import { getExpenseEditPolicy } from '../utils/expenseEditPolicy';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 
@@ -31,6 +32,8 @@ const OneOffExpensesView = ({
   onDelete,
   onUpdateExpense,
   onReloadExpenses,
+  onEdit,
+  onRequestDelete,
   balanceDueExpenseIds,
 }) => {
   const [expandedMonths, setExpandedMonths] = useState(new Set());
@@ -130,23 +133,45 @@ const OneOffExpensesView = ({
     setSelectedExpenses(new Set());
   };
 
+  // Deleting is a bare soft-delete that reverses no balances, so only a bill
+  // nothing has been paid on may go. Same rule the Edit modal applies.
+  const canDelete = expense =>
+    getExpenseEditPolicy(expense, {
+      isBalanceDue: balanceDueExpenseIds.has(expense.id),
+    }).removal.action === 'delete';
+
   // Bulk delete
   const handleBulkDelete = async () => {
     if (selectedExpenses.size === 0) return;
 
+    const deletableIds = Array.from(selectedExpenses).filter(id => {
+      const expense = futureOneOffs.find(e => e.id === id);
+      return expense && canDelete(expense);
+    });
+    const keptCount = selectedExpenses.size - deletableIds.length;
+
+    if (deletableIds.length === 0) {
+      notify.error(
+        'None of the selected bills can be deleted. They have a payment recorded or belong to a card or loan.',
+      );
+      return;
+    }
+
+    const keptNote =
+      keptCount > 0
+        ? ` ${keptCount} will be kept because they have a payment recorded or belong to a card or loan.`
+        : '';
     if (
       !window.confirm(
-        `Are you sure you want to delete ${selectedExpenses.size} expense(s)?`,
+        `Are you sure you want to delete ${deletableIds.length} expense(s)?${keptNote}`,
       )
     ) {
       return;
     }
 
     try {
-      const deletePromises = Array.from(selectedExpenses).map(id =>
-        onDelete(id),
-      );
-      const deleteCount = selectedExpenses.size;
+      const deletePromises = deletableIds.map(id => onDelete(id));
+      const deleteCount = deletableIds.length;
       await Promise.all(deletePromises);
       setSelectedExpenses(new Set());
       notify.success(`Deleted ${deleteCount} expense(s)`);
@@ -429,6 +454,14 @@ const OneOffExpensesView = ({
                           >
                             Mark Paid
                           </button>
+                          {onEdit && (
+                            <button
+                              onClick={() => onEdit(expense)}
+                              className='px-3 py-1 text-sm glass-button'
+                            >
+                              Edit
+                            </button>
+                          )}
                           <button
                             onClick={async () => {
                               try {
@@ -477,12 +510,14 @@ const OneOffExpensesView = ({
                             <RefreshCw size={14} />
                             <span>Convert to Recurring</span>
                           </button>
-                          <button
-                            onClick={() => onDelete(expense.id)}
-                            className='px-3 py-1 text-sm bg-red-500/20 text-red-300 rounded hover:bg-red-500/30 transition-colors'
-                          >
-                            Delete
-                          </button>
+                          {onRequestDelete && canDelete(expense) && (
+                            <button
+                              onClick={() => onRequestDelete(expense)}
+                              className='px-3 py-1 text-sm bg-red-500/20 text-red-300 rounded hover:bg-red-500/30 transition-colors'
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -565,10 +600,14 @@ OneOffExpensesView.propTypes = {
   onDelete: PropTypes.func.isRequired,
   onUpdateExpense: PropTypes.func.isRequired,
   onReloadExpenses: PropTypes.func.isRequired,
+  onEdit: PropTypes.func,
+  onRequestDelete: PropTypes.func,
   balanceDueExpenseIds: PropTypes.instanceOf(Set),
 };
 
 OneOffExpensesView.defaultProps = {
+  onEdit: undefined,
+  onRequestDelete: undefined,
   balanceDueExpenseIds: new Set(),
 };
 

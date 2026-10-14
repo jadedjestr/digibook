@@ -5,6 +5,7 @@ import AddExpensePanel from '../components/AddExpensePanel.jsx';
 import Calendar from '../components/Calendar/Calendar.jsx';
 import PayCycleNudgeBanner from '../components/Calendar/PayCycleNudgeBanner.jsx';
 import PayCycleNudgeToast from '../components/Calendar/PayCycleNudgeToast.jsx';
+import EditExpenseModal from '../components/EditExpenseModal.jsx';
 import FixedExpensesHero from '../components/FixedExpensesHero.jsx';
 import OneOffExpensesView from '../components/OneOffExpensesView.jsx';
 import PayDateCountdownCard from '../components/PayDateCountdownCard.jsx';
@@ -54,6 +55,11 @@ const resolutionTypeOf = entry => {
 
 const FixedExpenses = () => {
   const [payNowExpense, setPayNowExpense] = useState(null);
+  const [editExpense, setEditExpense] = useState(null);
+
+  // 'confirmDelete' when the one-offs list's Delete button opened the modal
+  // straight onto its delete confirm, so there is one confirm UI, not two.
+  const [editStep, setEditStep] = useState('edit');
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'oneoffs'
   const expensesTableRef = useRef(null);
@@ -189,6 +195,39 @@ const FixedExpenses = () => {
   }, []);
 
   const handlePayNow = useCallback(expense => {
+    setPayNowExpense(expense);
+  }, []);
+
+  const handleEdit = useCallback(expense => {
+    setEditStep('edit');
+    setEditExpense(expense);
+  }, []);
+
+  const handleRequestDelete = useCallback(expense => {
+    setEditStep('confirmDelete');
+    setEditExpense(expense);
+  }, []);
+
+  const handleCloseEdit = useCallback(() => {
+    setEditExpense(null);
+  }, []);
+
+  // updateExpenseV4 skips its own store update for a tracked-loan bill and
+  // only reloads accounts in some branches, so reload explicitly: whatever
+  // the bill type, the list must show what was actually saved.
+  const handleSaveEdit = useCallback(
+    async (expenseId, updates) => {
+      await updateExpenseV4(expenseId, updates);
+      await reloadExpenses();
+    },
+    [updateExpenseV4, reloadExpenses],
+  );
+
+  // A repeating bill can't simply be deleted: its schedule only advances when
+  // it is resolved, so a deleted bill would reappear. Hand off to the
+  // Pay now flow, which already offers skip and stop-future-bills.
+  const handleSkipOrStop = useCallback(expense => {
+    setEditExpense(null);
     setPayNowExpense(expense);
   }, []);
 
@@ -479,6 +518,7 @@ const FixedExpenses = () => {
                 accounts={accounts}
                 creditCards={creditCards}
                 onPayNow={handlePayNow}
+                onEdit={handleEdit}
                 resolvedExpenseIds={resolutionLinkage.resolvedExpenseIds}
                 balanceDueExpenseIds={resolutionLinkage.balanceDueExpenseIds}
               />
@@ -529,9 +569,29 @@ const FixedExpenses = () => {
           onDelete={deleteExpense}
           onUpdateExpense={updateExpenseV4}
           onReloadExpenses={reloadExpenses}
+          onEdit={handleEdit}
+          onRequestDelete={handleRequestDelete}
           balanceDueExpenseIds={resolutionLinkage.balanceDueExpenseIds}
         />
       )}
+
+      {/* Outside the view switch so both the priority list and the one-offs
+          list open the same modal. */}
+      <EditExpenseModal
+        expense={editExpense}
+        isOpen={!!editExpense}
+        isBalanceDue={
+          !!editExpense &&
+          resolutionLinkage.balanceDueExpenseIds.has(editExpense.id)
+        }
+        initialStep={editStep}
+        accounts={accounts}
+        creditCards={creditCards}
+        onClose={handleCloseEdit}
+        onSave={handleSaveEdit}
+        onDelete={deleteExpense}
+        onSkipOrStop={handleSkipOrStop}
+      />
     </div>
   );
 };
