@@ -11,6 +11,15 @@ import CreditCardPaymentInput from './CreditCardPaymentInput';
 import DatePicker from './DatePicker';
 import PrivacyWrapper from './PrivacyWrapper';
 
+// A money box that grows with what is typed. A fixed width clipped anything
+// past four digits ("901.64" lost its last digit), and no fixed width fits
+// every balance. Never narrower than 7 characters, so a short amount keeps
+// roughly the size it always had; the extra room is the box's own padding
+// (--space-md each side), its border, and a little slack for the caret.
+const MIN_NUMBER_CHARS = 7;
+export const getNumberInputWidth = text =>
+  `calc(${Math.max(String(text ?? '').length, MIN_NUMBER_CHARS)}ch + 2 * var(--space-md) + 6px)`;
+
 const InlineEdit = ({
   value,
   onSave,
@@ -184,7 +193,8 @@ const InlineEdit = ({
               }
             }}
             onKeyDown={handleKeyDown}
-            className='glass-input text-sm w-20'
+            className='glass-input inline-edit-number text-sm'
+            style={{ width: getNumberInputWidth(editValue) }}
             step='0.01'
             min='0'
           />

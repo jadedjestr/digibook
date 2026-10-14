@@ -2,7 +2,7 @@ import { render, fireEvent } from '@testing-library/react';
 import { describe, test, expect, vi } from 'vitest';
 
 import { PrivacyProvider } from '../../contexts/PrivacyContext';
-import InlineEdit from '../InlineEdit';
+import InlineEdit, { getNumberInputWidth } from '../InlineEdit';
 
 vi.mock('../../utils/logger', () => ({
   logger: {
@@ -94,5 +94,57 @@ describe('InlineEdit (type="number")', () => {
 
     fireEvent.click(getByTitle('Save (Enter)'));
     expect(onSave).toHaveBeenCalledWith(300);
+  });
+});
+
+describe('InlineEdit (type="number") — box size', () => {
+  const chars = width => Number(width.match(/calc\((\d+)ch/)[1]);
+
+  test('a short amount keeps the minimum size', () => {
+    expect(chars(getNumberInputWidth(''))).toBe(7);
+    expect(chars(getNumberInputWidth('960'))).toBe(7);
+    expect(chars(getNumberInputWidth('1234.56'))).toBe(7);
+  });
+
+  test('a longer amount gets room for every character', () => {
+    // A fixed width used to cut "901.64" off at its last digit.
+    expect(chars(getNumberInputWidth('12345.67'))).toBe(8);
+    expect(chars(getNumberInputWidth('1234567.89'))).toBe(10);
+    expect(chars(getNumberInputWidth('123456789012.34'))).toBe(15);
+  });
+
+  test('accepts the number the box starts with, and nothing', () => {
+    expect(chars(getNumberInputWidth(901.64))).toBe(7);
+    expect(chars(getNumberInputWidth(null))).toBe(7);
+    expect(chars(getNumberInputWidth(undefined))).toBe(7);
+  });
+
+  test('leaves room for the box’s own padding and border', () => {
+    expect(getNumberInputWidth('960')).toContain('2 * var(--space-md)');
+  });
+
+  test('the editing box is no longer a fixed 80px and has no arrows', () => {
+    const { getByTitle, getByRole } = renderWithPrivacy(
+      <InlineEdit value={901.64} onSave={vi.fn()} type='number' showEditIcon />,
+    );
+
+    fireEvent.click(getByTitle('Click to edit'));
+    const input = getByRole('spinbutton');
+    expect(input).not.toHaveClass('w-20');
+    expect(input).toHaveClass('inline-edit-number');
+    expect(input.getAttribute('style')).toContain('calc(7ch');
+  });
+
+  test('the box grows as more is typed', () => {
+    const { getByTitle, getByRole } = renderWithPrivacy(
+      <InlineEdit value={100} onSave={vi.fn()} type='number' showEditIcon />,
+    );
+
+    fireEvent.click(getByTitle('Click to edit'));
+    const input = getByRole('spinbutton');
+    expect(input.getAttribute('style')).toContain('calc(7ch');
+
+    fireEvent.change(input, { target: { value: '1234567.89' } });
+    expect(input.getAttribute('style')).toContain('calc(10ch');
   });
 });

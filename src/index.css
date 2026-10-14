@@ -948,6 +948,22 @@
     font-size: 1.125rem;
   }
 
+  /* The inline money editor (InlineEdit type='number'). Its width is set
+     from what's typed (getNumberInputWidth). The browser's up/down arrows
+     are hidden because they sit on top of the last digits; ArrowUp and
+     ArrowDown on the keyboard still step the value. */
+  .inline-edit-number {
+    max-width: 100%;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  .inline-edit-number::-webkit-inner-spin-button,
+  .inline-edit-number::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
   /* Enhanced Glass Table System */
   .glass-table {
     @apply glass-surface;
@@ -1519,8 +1535,13 @@
       flex: 1 1 100%;
     }
 
+    /* flex-wrap: a wide value (an amount being edited, or a long balance)
+       drops the rest of the stats onto a second line instead of pushing the
+       trash icon off-screen. Rows that already fit are unaffected. */
     .glass-row-list-stats {
       flex: 1 1 100%;
+      flex-wrap: wrap;
+      row-gap: var(--space-sm);
       justify-content: space-between;
     }
   }
