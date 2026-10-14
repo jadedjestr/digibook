@@ -162,6 +162,7 @@ const CreateAccountModal = ({
               id='acct-balance'
               type='number'
               inputMode='decimal'
+              step='0.01'
               value={formData.currentBalance}
               onChange={e =>
                 setFormData({
