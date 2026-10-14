@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { DateUtils } from '../../utils/dateUtils';
 import { PaycheckService } from '../paycheckService';
@@ -35,6 +35,21 @@ const expense = overrides => ({
   ...overrides,
 });
 
+// The fixtures above only classify the way they read (09-01 overdue, 09-20
+// and 09-24 not yet) while "today" sits inside early-to-mid September 2026.
+// Left on the real clock they drift into Overdue as the calendar moves on, so
+// every describe that buckets against today calls this to pin it to the
+// file's authoring date. Only Date is faked: Dexie and other timers keep
+// running on the real clock.
+const pinToday = () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 16) });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+};
+
 describe('getPaymentProgress', () => {
   test('fully paid', () => {
     expect(service.getPaymentProgress(expense({ paidAmount: 100 }))).toBe(
@@ -62,6 +77,8 @@ describe('getPaymentProgress', () => {
 });
 
 describe('getTimingBucket', () => {
+  pinToday();
+
   test('before today is overdue', () => {
     expect(
       service.getTimingBucket(
@@ -118,6 +135,8 @@ describe('getTimingBucket', () => {
 });
 
 describe('calculateExpenseStatus — unchanged cases', () => {
+  pinToday();
+
   test('fully paid', () => {
     expect(
       service.calculateExpenseStatus(
@@ -239,6 +258,8 @@ describe('calculateExpenseStatus — resolvedExpenseIds (resolveCycle)', () => {
 });
 
 describe('calculateSummaryTotals — the actual fix', () => {
+  pinToday();
+
   test('a partially-paid expense contributes its remaining amount, not zero', () => {
     const totals = service.calculateSummaryTotals(
       [expense({ paidAmount: 40, dueDate: '2026-09-24' })], // due this week
@@ -281,20 +302,28 @@ describe('calculateSummaryTotals — the actual fix', () => {
   });
 
   test('mixed expenses land in their correct, independent buckets', () => {
-    const totals = service.calculateSummaryTotals(
-      [
-        expense({ id: 'a', paidAmount: 0, dueDate: '2026-09-01' }), // overdue, unpaid
-        expense({ id: 'b', paidAmount: 40, dueDate: '2026-09-20' }), // this week, partial — the reported bug
-        expense({ id: 'c', paidAmount: 0, dueDate: '2026-09-25' }), // next check
-        expense({ id: 'd', paidAmount: 100, dueDate: '2026-09-01' }), // paid, excluded
-      ],
-      paycheckDates,
-    );
-    expect(totals).toEqual({
-      overdueTotal: 100,
-      payThisWeekTotal: 60,
-      payNextCheckTotal: 100,
-    });
+    // "Today" is pinned to this file's original authoring date (2026-09-16)
+    // so the fixed dueDates above keep classifying the way they read at a
+    // glance, regardless of the real calendar date the suite runs on.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 16) });
+    try {
+      const totals = service.calculateSummaryTotals(
+        [
+          expense({ id: 'a', paidAmount: 0, dueDate: '2026-09-01' }), // overdue, unpaid
+          expense({ id: 'b', paidAmount: 40, dueDate: '2026-09-20' }), // this week, partial — the reported bug
+          expense({ id: 'c', paidAmount: 0, dueDate: '2026-09-25' }), // next check
+          expense({ id: 'd', paidAmount: 100, dueDate: '2026-09-01' }), // paid, excluded
+        ],
+        paycheckDates,
+      );
+      expect(totals).toEqual({
+        overdueTotal: 100,
+        payThisWeekTotal: 60,
+        payNextCheckTotal: 100,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -354,8 +383,13 @@ describe('calculateSummaryTotals — resolvedExpenseIds (the skip double-count f
   });
 
   test('omitting resolvedExpenseIds entirely behaves exactly as before', () => {
-    const row = expense({ id: 'e-resolved', dueDate: '2026-09-20' });
-    const totals = service.calculateSummaryTotals([row], paycheckDates);
-    expect(totals.payThisWeekTotal).toBe(100);
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 16) });
+    try {
+      const row = expense({ id: 'e-resolved', dueDate: '2026-09-20' });
+      const totals = service.calculateSummaryTotals([row], paycheckDates);
+      expect(totals.payThisWeekTotal).toBe(100);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

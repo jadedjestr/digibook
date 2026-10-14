@@ -255,4 +255,110 @@ describe('dbHelpers.updateCreditCard (concurrency check + amount sync)', () => {
       ).rejects.toThrow(/must be empty when this card has no intro APR/);
     });
   });
+
+  describe('amount sync trigger fields (Gap 1 fix)', () => {
+    // The seeded card (beforeEach) has a targetPayoffDate so the amortized
+    // pricing path is exercised, not the flat heuristic - a change in
+    // interestRate/targetPayoffDate/dueDate/intro-APR only moves the
+    // number under the amortized path.
+    beforeEach(async () => {
+      await db.creditCards.update('1', { targetPayoffDate: '2027-02-15' });
+      await db.fixedExpenses.bulkPut([
+        {
+          id: 'exp-1',
+          name: 'Card Payment',
+          dueDate: '2026-02-15',
+          amount: 25,
+          accountId: '1',
+          creditCardId: null,
+          targetCreditCardId: '1',
+          category: 'Credit Card Payment',
+          paidAmount: 0,
+          status: 'pending',
+          recurringTemplateId: null,
+          createdAt: now,
+        },
+      ]);
+    });
+
+    it('recomputes a pending linked expense amount when interestRate changes alone', async () => {
+      await dbHelpers.updateCreditCard('1', { interestRate: 30 });
+      const expense = await db.fixedExpenses.get('exp-1');
+      expect(expense.amount).not.toBe(25);
+      expect(expense.amount).toBeGreaterThan(0);
+    });
+
+    it('recomputes a pending linked expense amount when targetPayoffDate changes alone', async () => {
+      await dbHelpers.updateCreditCard('1', {
+        targetPayoffDate: '2026-08-15',
+      });
+      const expense = await db.fixedExpenses.get('exp-1');
+      expect(expense.amount).not.toBe(25);
+      expect(expense.amount).toBeGreaterThan(0);
+    });
+
+    it('recomputes a pending linked expense amount when dueDate changes alone', async () => {
+      await dbHelpers.updateCreditCard('1', { dueDate: '2026-06-15' });
+      const expense = await db.fixedExpenses.get('exp-1');
+      expect(expense.amount).not.toBe(25);
+      expect(expense.amount).toBeGreaterThan(0);
+    });
+
+    it('recomputes a pending linked expense amount when intro APR fields change', async () => {
+      await dbHelpers.updateCreditCard('1', {
+        hasIntroApr: true,
+        introApr: 0,
+        introAprEndDate: '2099-01-01',
+      });
+      const expense = await db.fixedExpenses.get('exp-1');
+
+      // 0% APR over 12 months is a flat balance/months split: 1000/12.
+      expect(expense.amount).toBeCloseTo(1000 / 12, 1);
+    });
+
+    it('does not overwrite a partially-paid expense when interestRate changes', async () => {
+      await db.fixedExpenses.update('exp-1', { amount: 100, paidAmount: 40 });
+      await dbHelpers.updateCreditCard('1', { interestRate: 30 });
+      const expense = await db.fixedExpenses.get('exp-1');
+      expect(expense.amount).toBe(100);
+    });
+
+    it('respects a template minimumPaymentOverride when targetPayoffDate changes', async () => {
+      await db.recurringExpenseTemplates.bulkPut([
+        {
+          id: 'tpl-1',
+          name: 'Card Payment',
+          baseAmount: 25,
+          frequency: 'monthly',
+          intervalValue: 1,
+          intervalUnit: 'months',
+          startDate: '2026-02-01',
+          nextDueDate: '2026-02-15',
+          category: 'Credit Card Payment',
+          accountId: '1',
+          creditCardId: null,
+          targetCreditCardId: '1',
+          isActive: true,
+          isVariableAmount: true,
+          minimumPaymentOverride: 77,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ]);
+      await db.fixedExpenses.update('exp-1', {
+        amount: 77,
+        recurringTemplateId: 'tpl-1',
+      });
+
+      await dbHelpers.updateCreditCard('1', {
+        targetPayoffDate: '2026-09-15',
+      });
+
+      const expense = await db.fixedExpenses.get('exp-1');
+      expect(expense.amount).toBe(77);
+      const [card] = await db.creditCards.toArray();
+      expect(card.targetPayoffDate).toBe('2026-09-15');
+    });
+  });
 });

@@ -701,7 +701,10 @@ row's manually shifted due date does not change the priced amount. Three
 consumers call the oracle so they can never disagree:
 `computeTemplateCycleAmount` (the cycle estimate above),
 `syncCreditCardAmountToExpenses` (rewrites pending card-payment bills after
-a card edit, skipping paid and partially-paid rows), and the shared
+a card edit — triggered by a change to `balance`, `minimumPayment`,
+`interestRate`, `targetPayoffDate`, `dueDate`, `hasIntroApr`, `introApr`,
+or `introAprEndDate`, since all eight feed the oracle's decision, skipping
+paid and partially-paid rows), and the shared
 `syncPendingCardPaymentRows` row-rewriter that both the sync and
 `applyCalculatorPaymentToCard`'s confirmed "Apply" write-back use. The
 oracle is pure (no DB I/O, no dynamic imports, no non-Dexie awaits), so it

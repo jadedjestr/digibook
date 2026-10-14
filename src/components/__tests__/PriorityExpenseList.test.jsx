@@ -1,5 +1,5 @@
 import { render, screen, within, fireEvent } from '@testing-library/react';
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { PrivacyProvider } from '../../contexts/PrivacyContext';
 import { PaycheckService } from '../../services/paycheckService';
@@ -54,6 +54,18 @@ const renderList = (expenses, onPayNow = vi.fn()) =>
   );
 
 describe('PriorityExpenseList — section placement', () => {
+  // The fixture dates below only land in their intended sections while
+  // "today" sits inside early-to-mid September 2026 (09-01 overdue, 09-20 and
+  // 09-24 not yet). Pinned to this file's authoring date so the suite doesn't
+  // drift as the real calendar moves on. Only Date is faked: Dexie and other
+  // timers keep running on the real clock.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 13) });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   test('an overdue, unpaid expense lands in Overdue', () => {
     renderList([
       expense({ id: 'a', name: 'Overdue Unpaid', dueDate: '2026-09-01' }),
@@ -154,15 +166,23 @@ describe('PriorityExpenseList — section placement', () => {
   });
 
   test('sections sort ascending by due date', () => {
-    renderList([
-      expense({ id: 'a', name: 'Later Bill', dueDate: '2026-09-22' }),
-      expense({ id: 'b', name: 'Sooner Bill', dueDate: '2026-09-21' }),
-    ]);
-    const section = screen.getByText('This week').closest('section');
-    const names = within(section)
-      .getAllByText(/Bill$/)
-      .map(el => el.textContent);
-    expect(names).toEqual(['Sooner Bill', 'Later Bill']);
+    // "Today" is pinned to this file's original authoring date (2026-09-13)
+    // so both fixture dates below stay inside "This week" regardless of the
+    // real calendar date the suite runs on.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 13) });
+    try {
+      renderList([
+        expense({ id: 'a', name: 'Later Bill', dueDate: '2026-09-22' }),
+        expense({ id: 'b', name: 'Sooner Bill', dueDate: '2026-09-21' }),
+      ]);
+      const section = screen.getByText('This week').closest('section');
+      const names = within(section)
+        .getAllByText(/Bill$/)
+        .map(el => el.textContent);
+      expect(names).toEqual(['Sooner Bill', 'Later Bill']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
