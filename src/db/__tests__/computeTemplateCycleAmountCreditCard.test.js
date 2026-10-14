@@ -120,7 +120,31 @@ describe('computeTemplateCycleAmount (credit card branch)', () => {
     expect(amount).toBe(Math.max(1200 * 0.02, 25));
   });
 
-  it('respects minimumPaymentOverride ahead of the amortized calculation', async () => {
+  it('respects the card’s custom payment ahead of the amortized calculation', async () => {
+    await db.creditCards.bulkPut([
+      { ...baseCard, targetPayoffDate: '2027-09-14', customPaymentAmount: 99 },
+    ]);
+    await db.recurringExpenseTemplates.bulkPut([baseTemplate]);
+
+    expect(await estimate()).toBe(99);
+  });
+
+  it('never prices a custom payment above what is owed', async () => {
+    // A $500 custom payment on a $120 balance would overpay the card by $380.
+    await db.creditCards.bulkPut([
+      {
+        ...baseCard,
+        balance: 120,
+        targetPayoffDate: '2027-09-14',
+        customPaymentAmount: 500,
+      },
+    ]);
+    await db.recurringExpenseTemplates.bulkPut([baseTemplate]);
+
+    expect(await estimate()).toBe(120);
+  });
+
+  it('ignores a leftover template override: the card is the only home for a custom payment', async () => {
     await db.creditCards.bulkPut([
       { ...baseCard, targetPayoffDate: '2027-09-14' },
     ]);
@@ -128,7 +152,7 @@ describe('computeTemplateCycleAmount (credit card branch)', () => {
       { ...baseTemplate, minimumPaymentOverride: 99 },
     ]);
 
-    expect(await estimate()).toBe(99);
+    expect(await estimate()).not.toBe(99);
   });
 
   it('returns 0 once the balance is paid off', async () => {
@@ -205,7 +229,6 @@ describe('dbHelpers.getCardBehindPaceWarning', () => {
   const template = {
     id: 'tpl-card',
     nextDueDate: '2026-09-14',
-    minimumPaymentOverride: null,
   };
 
   beforeEach(() => {
@@ -219,8 +242,8 @@ describe('dbHelpers.getCardBehindPaceWarning', () => {
   it('returns null for a legacy card with no targetPayoffDate', async () => {
     expect(
       await dbHelpers.getCardBehindPaceWarning(
-        { ...card, targetPayoffDate: undefined },
-        { ...template, minimumPaymentOverride: 10 },
+        { ...card, targetPayoffDate: undefined, customPaymentAmount: 10 },
+        template,
       ),
     ).toBeNull();
   });
@@ -228,30 +251,30 @@ describe('dbHelpers.getCardBehindPaceWarning', () => {
   it('returns null when the target payoff date has become unreachable', async () => {
     expect(
       await dbHelpers.getCardBehindPaceWarning(
-        { ...card, targetPayoffDate: '2026-09-20' },
-        { ...template, minimumPaymentOverride: 10 },
+        { ...card, targetPayoffDate: '2026-09-20', customPaymentAmount: 10 },
+        template,
       ),
     ).toBeNull();
   });
 
-  it('returns null when no override is set', async () => {
+  it('returns null when no custom payment is set', async () => {
     expect(await dbHelpers.getCardBehindPaceWarning(card, template)).toBeNull();
   });
 
-  it('returns null when the override meets or exceeds the calculated minimum', async () => {
+  it('returns null when the custom payment meets or exceeds the calculated minimum', async () => {
     expect(
-      await dbHelpers.getCardBehindPaceWarning(card, {
-        ...template,
-        minimumPaymentOverride: 1000, // far above the amortized minimum
-      }),
+      await dbHelpers.getCardBehindPaceWarning(
+        { ...card, customPaymentAmount: 1000 }, // far above the amortized minimum
+        template,
+      ),
     ).toBeNull();
   });
 
-  it('warns with a projected payoff date when the override falls short', async () => {
-    const result = await dbHelpers.getCardBehindPaceWarning(card, {
-      ...template,
-      minimumPaymentOverride: 30, // below the amortized minimum for this card
-    });
+  it('warns with a projected payoff date when the custom payment falls short', async () => {
+    const result = await dbHelpers.getCardBehindPaceWarning(
+      { ...card, customPaymentAmount: 30 }, // below the amortized minimum
+      template,
+    );
     expect(result.isBehindPace).toBe(true);
     expect(result.projectedPayoffDate).toBeTruthy();
   });
