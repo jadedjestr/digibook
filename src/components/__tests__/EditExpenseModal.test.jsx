@@ -267,6 +267,32 @@ describe('EditExpenseModal — removing a bill', () => {
   });
 });
 
+describe('EditExpenseModal — opened straight to the delete confirm', () => {
+  it('starts on the confirm step', () => {
+    setup(oneOff(), { initialStep: 'confirmDelete' });
+    expect(screen.getByText('Delete this bill?')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+  });
+
+  it('Cancel closes the modal instead of dropping into the edit form', () => {
+    const { onClose, onDelete } = setup(oneOff(), {
+      initialStep: 'confirmDelete',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onClose).toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('confirming deletes the bill', async () => {
+    const { onDelete, onClose } = setup(oneOff(), {
+      initialStep: 'confirmDelete',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete bill' }));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith('e1'));
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
 describe('EditExpenseModal — keyboard', () => {
   it('closes on Escape', () => {
     const { onClose } = setup(oneOff());

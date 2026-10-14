@@ -81,6 +81,7 @@ const EditExpenseModal = ({
   expense,
   isOpen,
   isBalanceDue,
+  initialStep,
   accounts,
   creditCards,
   onClose,
@@ -113,7 +114,7 @@ const EditExpenseModal = ({
     setDueDate(expense.dueDate ?? '');
     setSource(createPaymentSource.fromExpense(expense));
     setErrors({});
-    setStep('edit');
+    setStep(initialStep);
     setIsSubmitting(false);
     nameRef.current?.focus();
   }, [isOpen, expense?.id]);
@@ -280,7 +281,9 @@ const EditExpenseModal = ({
             <div className='flex justify-end gap-3'>
               <button
                 type='button'
-                onClick={() => setStep('edit')}
+                onClick={() =>
+                  initialStep === 'confirmDelete' ? onClose() : setStep('edit')
+                }
                 disabled={isSubmitting}
                 className='text-sm text-ink-soft hover:text-ink px-3'
               >
@@ -407,6 +410,7 @@ EditExpenseModal.propTypes = {
   }),
   isOpen: PropTypes.bool.isRequired,
   isBalanceDue: PropTypes.bool,
+  initialStep: PropTypes.oneOf(['edit', 'confirmDelete']),
   accounts: PropTypes.arrayOf(PropTypes.object).isRequired,
   creditCards: PropTypes.arrayOf(PropTypes.object).isRequired,
   onClose: PropTypes.func.isRequired,
@@ -418,6 +422,7 @@ EditExpenseModal.propTypes = {
 EditExpenseModal.defaultProps = {
   expense: null,
   isBalanceDue: false,
+  initialStep: 'edit',
 };
 
 export default EditExpenseModal;

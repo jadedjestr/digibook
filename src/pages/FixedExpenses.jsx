@@ -56,6 +56,10 @@ const resolutionTypeOf = entry => {
 const FixedExpenses = () => {
   const [payNowExpense, setPayNowExpense] = useState(null);
   const [editExpense, setEditExpense] = useState(null);
+
+  // 'confirmDelete' when the one-offs list's Delete button opened the modal
+  // straight onto its delete confirm, so there is one confirm UI, not two.
+  const [editStep, setEditStep] = useState('edit');
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'oneoffs'
   const expensesTableRef = useRef(null);
@@ -195,6 +199,12 @@ const FixedExpenses = () => {
   }, []);
 
   const handleEdit = useCallback(expense => {
+    setEditStep('edit');
+    setEditExpense(expense);
+  }, []);
+
+  const handleRequestDelete = useCallback(expense => {
+    setEditStep('confirmDelete');
     setEditExpense(expense);
   }, []);
 
@@ -560,6 +570,7 @@ const FixedExpenses = () => {
           onUpdateExpense={updateExpenseV4}
           onReloadExpenses={reloadExpenses}
           onEdit={handleEdit}
+          onRequestDelete={handleRequestDelete}
           balanceDueExpenseIds={resolutionLinkage.balanceDueExpenseIds}
         />
       )}
@@ -573,6 +584,7 @@ const FixedExpenses = () => {
           !!editExpense &&
           resolutionLinkage.balanceDueExpenseIds.has(editExpense.id)
         }
+        initialStep={editStep}
         accounts={accounts}
         creditCards={creditCards}
         onClose={handleCloseEdit}
