@@ -153,7 +153,7 @@ describe('dbHelpers.updateCreditCard (concurrency check + amount sync)', () => {
     expect(expense.amount).toBe(0);
   });
 
-  it('respects a template minimumPaymentOverride instead of the default calculation', async () => {
+  it('respects the card’s custom payment instead of the default calculation', async () => {
     await db.recurringExpenseTemplates.bulkPut([
       {
         id: 'tpl-1',
@@ -170,12 +170,12 @@ describe('dbHelpers.updateCreditCard (concurrency check + amount sync)', () => {
         targetCreditCardId: '1',
         isActive: true,
         isVariableAmount: true,
-        minimumPaymentOverride: 99,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
       },
     ]);
+    await db.creditCards.update('1', { customPaymentAmount: 99 });
     await db.fixedExpenses.bulkPut([
       {
         id: 'exp-1',
@@ -323,7 +323,7 @@ describe('dbHelpers.updateCreditCard (concurrency check + amount sync)', () => {
       expect(expense.amount).toBe(100);
     });
 
-    it('respects a template minimumPaymentOverride when targetPayoffDate changes', async () => {
+    it('respects the card’s custom payment when targetPayoffDate changes', async () => {
       await db.recurringExpenseTemplates.bulkPut([
         {
           id: 'tpl-1',
@@ -340,12 +340,12 @@ describe('dbHelpers.updateCreditCard (concurrency check + amount sync)', () => {
           targetCreditCardId: '1',
           isActive: true,
           isVariableAmount: true,
-          minimumPaymentOverride: 77,
           createdAt: now,
           updatedAt: now,
           deletedAt: null,
         },
       ]);
+      await db.creditCards.update('1', { customPaymentAmount: 77 });
       await db.fixedExpenses.update('exp-1', {
         amount: 77,
         recurringTemplateId: 'tpl-1',

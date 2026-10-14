@@ -244,6 +244,7 @@ fields is in the Dexie index string — same unindexed-field rule as loans'
 | `originalBalance` | number | — | The balance when the card was added. Required on every new card. Powers `getOriginalCardProgress`'s percent-paid-off bar ([§9](#9-utilities)) |
 | `targetPayoffDate` | string \| null | — | Date the card should reach $0 by (YYYY-MM-DD). Required on every new card; `addCreditCard`/`updateCreditCard` reject a date less than one billing cycle away. Drives the amortized minimum payment |
 | `hasIntroApr` | boolean | — | Required on every new card — never left undefined. Gates whether `introApr`/`introAprEndDate` apply |
+| `customPaymentAmount` | number \| null | — | The user's chosen fixed monthly payment, or `null`/absent for the calculated payment (balance, rate and payoff goal). Unindexed (no index bump). One field, so the mode and the amount can't disagree. Kept on the **card**, not its payment template: a template can be recreated (`createMissingCreditCardExpenses`) or de-duplicated (the oldest survives), which used to take the choice with it. Database version 12 moved existing template overrides here; `importData` does the same for older backups (`foldCardOverridesIntoCards`) |
 | `introApr` | number \| null | — | Promotional APR (%), required when `hasIntroApr` is `true`, must be `null` when `false`. Applies through and including `introAprEndDate` (`getEffectiveCardInterestRate`, [§9](#9-utilities)) |
 | `introAprEndDate` | string \| null | — | Last day the intro rate applies (YYYY-MM-DD), required when `hasIntroApr` is `true`, must be `null` when `false` |
 | `createdAt` | ISO string | Yes | Creation timestamp |
@@ -693,32 +694,44 @@ credit-card *bills* specifically, the single source of truth is the
 module-private pricing oracle
 `calculateCardPaymentBillAmount(card, template, { dueDate })` in
 `src/db/database-clean.js`: decision order — zero/negative balance → 0; an
-explicit `minimumPaymentOverride` wins; otherwise the amortized payment
-toward `targetPayoffDate` at the effective (intro-aware) rate; heuristic
-fallback for a legacy card without a goal or an unreachable target. Its
+custom payment (`card.customPaymentAmount`) wins, but never more than the
+balance, so a custom payment can't overpay the card; otherwise the amortized
+payment toward `targetPayoffDate` at the effective (intro-aware) rate;
+heuristic fallback for a legacy card without a goal or an unreachable
+target. Its
 amortization anchor is `template.nextDueDate` (the cadence position) — a
 row's manually shifted due date does not change the priced amount. Three
 consumers call the oracle so they can never disagree:
 `computeTemplateCycleAmount` (the cycle estimate above),
 `syncCreditCardAmountToExpenses` (rewrites pending card-payment bills after
-a card edit — triggered by a change to `balance`, `minimumPayment`,
-`interestRate`, `targetPayoffDate`, `dueDate`, `hasIntroApr`, `introApr`,
-or `introAprEndDate`, since all eight feed the oracle's decision, skipping
-paid and partially-paid rows), and the shared
-`syncPendingCardPaymentRows` row-rewriter that both the sync and
-`applyCalculatorPaymentToCard`'s confirmed "Apply" write-back use. The
-oracle is pure (no DB I/O, no dynamic imports, no non-Dexie awaits), so it
+a card edit — triggered by a change to any field in the shared
+`CARD_PRICING_FIELDS` list: `balance`, `minimumPayment`, `interestRate`,
+`targetPayoffDate`, `dueDate`, `hasIntroApr`, `introApr`, `introAprEndDate`
+and `customPaymentAmount`, since all nine feed the oracle's decision.
+`updateCreditCard` and the sync read the same list, so a new pricing field
+can't be added to one and forgotten in the other. It skips paid and
+partially-paid rows, and also a deferred **Balance Due**, which inherits the
+origin bill's category and card link but is a fixed leftover, not a price),
+and `setCardPaymentPlan` (the user's choice of calculated or custom, an
+ordinary card update, so the card write and the re-pricing happen together).
+The oracle is pure (no DB I/O, no dynamic imports, no non-Dexie awaits), so it
 is safe to call inside any caller's open transaction — the same contract
-`applyPaymentDelta` documents below. A
-`minimumPaymentOverride` set on the *recurring template* (not on the loan or
-card record) takes precedence over either calculation when present — this is
-also the mechanism `DebtPayoffCalculator`'s "Apply to my card" action writes
-to ([§9](#9-utilities), `applyCalculatorPaymentToCard`), and what
-`getCardBehindPaceWarning` compares against the calculated minimum to flag
-an override that won't hit `targetPayoffDate` in time. The `loans` table also
-carries a same-named `minimumPaymentOverride` column (see the table above),
-but nothing in the app currently reads or writes it — only the
-template-level field is ever consulted.
+`applyPaymentDelta` documents below.
+
+**Card payment mode.** Each card is either *calculated* or *custom*.
+`dbHelpers.setCardPaymentPlan(cardId, amount | null)` is the one write path
+(the card form and `DebtPayoffCalculator`'s "Apply to my card" both use it);
+`dbHelpers.getCardPaymentPlan(card, template)` is the one read path, returning
+`{ mode, billAmount, calculatedAmount, customAmount, paysOffCard,
+belowIssuerMinimum, neverPaysOff, projectedPayoffDate }` from the same oracle, so the card
+tile, the form preview and the bill can't disagree (pass a draft card to
+preview unsaved values). A custom amount below the card's own `minimumPayment`
+is allowed, with a warning. `getCardBehindPaceWarning` compares a custom
+payment against the calculated one to flag one that won't hit
+`targetPayoffDate` in time. **Loans are different:** a loan's override still
+lives on its recurring template (`template.minimumPaymentOverride`, read by
+`computeTemplateCycleAmount` and the loan sync); the `loans` table's
+same-named column is unused.
 
 **Loan schedule anchor.** Loan bill rewrites deliberately ignore a bill row's
 displayed `dueDate`: an existing template-linked bill is priced from
@@ -1061,7 +1074,7 @@ re-deriving urgency itself.
 
 | Component | Path | Description |
 |---|---|---|
-| `EnhancedCreditCard` | `src/components/EnhancedCreditCard.jsx` | Visual credit card component with stats; exposes a "change funding account" action alongside edit/delete. Shows the effective interest rate (with an "(intro)" label while a promotional rate is active), an original-balance payoff-progress bar (`getOriginalCardProgress`, hidden for a legacy card with no data), a "Pay to Reach 30%" utilization suggestion, and a "Vs. Target Payoff" behind-pace warning (`dbHelpers.getCardBehindPaceWarning`) when the linked template's payment override won't hit `targetPayoffDate` in time |
+| `EnhancedCreditCard` | `src/components/EnhancedCreditCard.jsx` | Visual credit card component with stats; exposes a "change funding account" action alongside edit/delete. Shows the effective interest rate (with an "(intro)" label while a promotional rate is active), an original-balance payoff-progress bar (`getOriginalCardProgress`, hidden for a legacy card with no data), a "Pay to Reach 30%" utilization suggestion, and a "Monthly payment" line (`dbHelpers.getCardPaymentPlan`) with a Custom / From payoff goal badge, kept separate from the issuer's "Minimum Payment", and a "Vs. Target Payoff" behind-pace warning (`dbHelpers.getCardBehindPaceWarning`) when a custom payment won't hit `targetPayoffDate` in time |
 | `CreditCardPaymentInput` | `src/components/CreditCardPaymentInput.jsx` | Specialized input for CC payment amounts |
 | `ChooseFundingAccountModal` | `src/components/ChooseFundingAccountModal.jsx` | Picks which account funds a card's payment expense — used both when auto-creating a new card's payment (with a "use default" shortcut) and when changing an existing card's funding source |
 | `CreateAccountModal` | `src/components/CreateAccountModal.jsx` | Inline "create an account" fallback inside the credit-card funding flow when no accounts exist yet |
@@ -1101,7 +1114,8 @@ and inline "create an account" fallback are shared rather than duplicated —
 | `ProjectedBalanceCard` | `src/components/ProjectedBalanceCard.jsx` | Discretionary balance after bills |
 | `BudgetVsActualDashboard` | `src/components/BudgetVsActualDashboard.jsx` | Budget vs. actual comparison |
 | `MonthlyTrends` | `src/components/MonthlyTrends.jsx` | 12-month trend visualization |
-| `DebtPayoffCalculator` | `src/components/DebtPayoffCalculator.jsx` | What-if payoff calculator for a selected credit card (balance/rate/limit/payment are local preview state, not read back from the real card until applied). An "Apply to my card" action, shown when the previewed payment differs from the card's current minimum, writes it as a real `minimumPaymentOverride` via `dbHelpers.applyCalculatorPaymentToCard` behind an inline confirm — the only field the calculator can write back; balance/rate/limit stay preview-only |
+| `CardPaymentModeField` | `src/components/CardPaymentModeField.jsx` | The card form's "how should the monthly payment be set?" choice: Calculated for me, or a typed Custom amount, with a live below-minimum warning, "pays off the card" note and projected payoff date (fed by `getCardPaymentPlan` on the unsaved form values). Exports `resolveCustomPayment(mode, text)`, the one place typed text becomes a custom amount (whole cents, `parseMoneyInput`, 0 and negatives rejected), used by both validation and save |
+| `DebtPayoffCalculator` | `src/components/DebtPayoffCalculator.jsx` | What-if payoff calculator for a selected credit card (balance/rate/limit/payment are local preview state, not read back from the real card until applied). An "Apply to my card" action, shown when the previewed payment differs from the card's current minimum, switches the card to that custom payment (`customPaymentAmount`) via `dbHelpers.applyCalculatorPaymentToCard` → `setCardPaymentPlan` behind an inline confirm that says it can be switched back in the card's settings — the only field the calculator can write back; balance/rate/limit stay preview-only |
 | `OverpaymentAnalysis` | `src/components/OverpaymentAnalysis.jsx` | Where spending exceeds budget |
 | `CreditCardDebtTable` | `src/components/CreditCardDebtTable.jsx` | Credit card debt overview table |
 | `LoanDebtTable` | `src/components/LoanDebtTable.jsx` | Sortable loan overview table mirroring `CreditCardDebtTable`, sortable by `originalLoanAmount` among other columns |
@@ -1318,9 +1332,9 @@ Credit card calculation helpers.
 | `getOriginalCardProgress(card)` | `{ paidAmount, percent, isPaidOff, hasData }` — balance paid off so far, from `card.originalBalance` and `card.balance`. Mirrors `getLoanPayoffProgress` below; always "success" styling, no danger tier. `hasData: false` for a legacy card with no `originalBalance` — callers hide the progress bar rather than show a false 0% |
 | `getPayToTargetUtilization(card, targetPercent = 30)` | Dollar amount the balance would need to drop by to reach `targetPercent` utilization; `0` when already at or under it |
 
-`getCardBehindPaceWarning(card, template)` — whether a card's active
-`minimumPaymentOverride` falls short of the amortized minimum needed to hit
-`targetPayoffDate`, and the date the override actually projects to if so —
+`getCardBehindPaceWarning(card, template)` — whether a card's
+`customPaymentAmount` falls short of the amortized minimum needed to hit
+`targetPayoffDate`, and the date it actually projects to if so —
 lives in `database-clean.js` as a `dbHelpers` method, not here, since it
 needs `calculateDebtPayoff` (a DB-layer function); same reasoning as
 `calculateRequiredLoanPayment` living there despite being pure math ([§5.3](#53-recurringexpenseservice)).

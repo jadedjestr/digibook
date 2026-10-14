@@ -29,6 +29,7 @@ const EnhancedCreditCard = ({
   const [utilizationWidth, setUtilizationWidth] = useState(0);
   const [progressWidth, setProgressWidth] = useState(0);
   const [behindPaceWarning, setBehindPaceWarning] = useState(null);
+  const [paymentPlan, setPaymentPlan] = useState(null);
 
   // Calculate derived values using new utilities
   const balanceInfo = formatCreditCardBalance(card.balance);
@@ -85,6 +86,23 @@ const EnhancedCreditCard = ({
       })
       .catch(() => {
         if (!cancelled) setBehindPaceWarning(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [card, template]);
+
+  // What the card will actually bill each month and why. The line below the
+  // issuer's minimum answers "what am I paying?", which that figure does not.
+  useEffect(() => {
+    let cancelled = false;
+    dbHelpers
+      .getCardPaymentPlan(card, template)
+      .then(result => {
+        if (!cancelled) setPaymentPlan(result);
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentPlan(null);
       });
     return () => {
       cancelled = true;
@@ -331,6 +349,21 @@ const EnhancedCreditCard = ({
             </PrivacyWrapper>
           </div>
         </div>
+        {paymentPlan && (
+          <div className='payment-item'>
+            <div className='credit-info-label'>Monthly payment</div>
+            <div className='payment-amount flex items-center gap-2'>
+              <PrivacyWrapper>
+                {formatCurrency(paymentPlan.billAmount)}
+              </PrivacyWrapper>
+              <StatusBadge
+                status={
+                  paymentPlan.mode === 'custom' ? 'Custom' : 'From payoff goal'
+                }
+              />
+            </div>
+          </div>
+        )}
         <div className='payment-item'>
           <div className='credit-info-label'>Paid from</div>
           <div className='payment-amount flex items-center gap-2'>
@@ -419,10 +452,10 @@ EnhancedCreditCard.propTypes = {
     hasIntroApr: PropTypes.bool,
     introApr: PropTypes.number,
     introAprEndDate: PropTypes.string,
+    customPaymentAmount: PropTypes.number,
   }).isRequired,
   template: PropTypes.shape({
     nextDueDate: PropTypes.string,
-    minimumPaymentOverride: PropTypes.number,
   }),
   fundingSourceName: PropTypes.string,
   onChangeFundingSource: PropTypes.func,

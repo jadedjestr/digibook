@@ -47,13 +47,16 @@ describe('dbHelpers.applyCalculatorPaymentToCard', () => {
     ).rejects.toThrow(/finite number greater than 0/);
   });
 
-  it('throws a clear error when the card has no linked payment bill', async () => {
-    await expect(
-      dbHelpers.applyCalculatorPaymentToCard('card-1', 100),
-    ).rejects.toThrow(/no linked payment bill/);
+  it('works with no linked payment bill: the choice is kept on the card', async () => {
+    // The amount used to live on the payment template, so a card without one
+    // couldn't be given a custom payment. It lives on the card now.
+    await dbHelpers.applyCalculatorPaymentToCard('card-1', 100);
+
+    const card = await db.creditCards.get('card-1');
+    expect(card.customPaymentAmount).toBe(100);
   });
 
-  it('sets minimumPaymentOverride on the active template', async () => {
+  it('saves the amount on the card, not the template', async () => {
     await db.recurringExpenseTemplates.bulkPut([
       {
         id: 'tpl-1',
@@ -77,8 +80,10 @@ describe('dbHelpers.applyCalculatorPaymentToCard', () => {
 
     await dbHelpers.applyCalculatorPaymentToCard('card-1', 150);
 
+    const card = await db.creditCards.get('card-1');
+    expect(card.customPaymentAmount).toBe(150);
     const [template] = await db.recurringExpenseTemplates.toArray();
-    expect(template.minimumPaymentOverride).toBe(150);
+    expect(template.minimumPaymentOverride ?? null).toBeNull();
   });
 
   it('updates the amount on a pending linked expense immediately', async () => {
@@ -167,7 +172,7 @@ describe('dbHelpers.applyCalculatorPaymentToCard', () => {
     expect(expense.amount).toBe(25);
   });
 
-  it('does not overwrite a partially-paid expense; the override still applies to future cycles', async () => {
+  it('does not overwrite a partially-paid expense; the custom payment still applies to future cycles', async () => {
     // A row with money already on it must not get its amount pulled below
     // paidAmount - that would invent a phantom "Paid" state.
     await db.recurringExpenseTemplates.bulkPut([
@@ -210,7 +215,7 @@ describe('dbHelpers.applyCalculatorPaymentToCard', () => {
 
     const expense = await db.fixedExpenses.get('exp-partial');
     expect(expense.amount).toBe(100);
-    const template = await db.recurringExpenseTemplates.get('tpl-1');
-    expect(template.minimumPaymentOverride).toBe(25);
+    const card = await db.creditCards.get('card-1');
+    expect(card.customPaymentAmount).toBe(25);
   });
 });

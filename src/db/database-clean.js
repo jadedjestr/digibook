@@ -332,6 +332,30 @@ export class DigibookDBClean extends Dexie {
           'id, templateId, expenseId, adjustmentExpenseId, cycleDueDate, resolvedAt, createdAt, updatedAt, deletedAt',
       })
       .upgrade(() => {});
+
+    // Version 12: a card's custom payment moves from its payment template
+    // (minimumPaymentOverride) onto the card itself (customPaymentAmount, not
+    // indexed). No schema change - tables not listed keep their v11 stores -
+    // so this is a data move only. See foldCardOverridesIntoCards.
+    this.version(12)
+      .stores({})
+      .upgrade(async tx => {
+        const cardsTable = tx.table('creditCards');
+        const templatesTable = tx.table('recurringExpenseTemplates');
+        const [cards, templates] = await Promise.all([
+          cardsTable.toArray(),
+          templatesTable.toArray(),
+        ]);
+        const folded = foldCardOverridesIntoCards(cards, templates);
+        const changedCards = folded.cards.filter((c, i) => c !== cards[i]);
+        const changedTemplates = folded.templates.filter(
+          (t, i) => t !== templates[i],
+        );
+        if (changedCards.length > 0) await cardsTable.bulkPut(changedCards);
+        if (changedTemplates.length > 0) {
+          await templatesTable.bulkPut(changedTemplates);
+        }
+      });
   }
 }
 
@@ -403,6 +427,86 @@ export async function initializeDatabase() {
       );
     }
   }
+}
+
+/**
+ * A card's custom payment used to live on its payment template
+ * (minimumPaymentOverride). It now lives on the card (customPaymentAmount),
+ * because a template can be recreated, or deduplicated with the oldest one
+ * surviving, and would take the user's choice with it.
+ *
+ * Pure: returns new arrays that share references with the input for rows that
+ * didn't change, so a caller can write only `next !== prev`. The oldest
+ * active payment template with a usable override supplies the card's amount
+ * (an inactive one only if no active template has one); a card that already
+ * has a custom amount keeps it. Every card payment template's override is
+ * then cleared, so the value has exactly one home.
+ *
+ * @param {Array} cards
+ * @param {Array} templates
+ * @returns {{ cards: Array, templates: Array }}
+ */
+export function foldCardOverridesIntoCards(cards = [], templates = []) {
+  const isUsableAmount = value =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0;
+  const isCardPaymentTemplate = template =>
+    !template.deletedAt &&
+    template.category === 'Credit Card Payment' &&
+    Boolean(template.targetCreditCardId);
+
+  const templatesByCard = new Map();
+  for (const template of templates) {
+    if (!isCardPaymentTemplate(template)) continue;
+    const list = templatesByCard.get(template.targetCreditCardId) ?? [];
+    list.push(template);
+    templatesByCard.set(template.targetCreditCardId, list);
+  }
+
+  const amountByCard = new Map();
+  for (const [cardId, list] of templatesByCard) {
+    const preferred = [...list].sort(
+      (a, b) =>
+        Number(Boolean(b.isActive)) - Number(Boolean(a.isActive)) ||
+        new Date(a.createdAt) - new Date(b.createdAt),
+    );
+    const source = preferred.find(t =>
+      isUsableAmount(t.minimumPaymentOverride),
+    );
+    if (source) amountByCard.set(cardId, source.minimumPaymentOverride);
+  }
+
+  return {
+    cards: cards.map(card =>
+      card.customPaymentAmount != null || !amountByCard.has(card.id)
+        ? card
+        : { ...card, customPaymentAmount: amountByCard.get(card.id) },
+    ),
+    templates: templates.map(template =>
+      isCardPaymentTemplate(template) && template.minimumPaymentOverride != null
+        ? { ...template, minimumPaymentOverride: null }
+        : template,
+    ),
+  };
+}
+
+/**
+ * Apply foldCardOverridesIntoCards to an import payload so a backup taken
+ * before customPaymentAmount existed doesn't silently lose its custom
+ * payments on restore. Mutates data.creditCards / data.recurringExpenseTemplates.
+ */
+function normalizeCardPaymentOverrides(data) {
+  if (
+    !Array.isArray(data.creditCards) ||
+    !Array.isArray(data.recurringExpenseTemplates)
+  ) {
+    return;
+  }
+  const folded = foldCardOverridesIntoCards(
+    data.creditCards,
+    data.recurringExpenseTemplates,
+  );
+  data.creditCards = folded.cards;
+  data.recurringExpenseTemplates = folded.templates;
 }
 
 /**
@@ -1011,6 +1115,28 @@ function getEffectiveCardInterestRate(card) {
   return Number(card?.interestRate) || 0;
 }
 
+const roundToCents = value => Math.round(value * 100) / 100;
+
+/**
+ * Every card field the pricing oracle reads. A change to any of them must
+ * re-price the card's unpaid payment bills, so updateCreditCard and
+ * syncCreditCardAmountToExpenses both consult this one list rather than each
+ * keeping a copy that a new field can be left out of.
+ */
+const CARD_PRICING_FIELDS = [
+  'balance',
+  'minimumPayment',
+  'interestRate',
+  'targetPayoffDate',
+  'dueDate',
+  'hasIntroApr',
+  'introApr',
+  'introAprEndDate',
+  'customPaymentAmount',
+];
+const touchesCardPricing = updates =>
+  CARD_PRICING_FIELDS.some(key => updates[key] !== undefined);
+
 /**
  * THE one answer to "what should this card's payment bill be right now?"
  * Used by cycle materialization (computeTemplateCycleAmount), post-edit
@@ -1022,11 +1148,12 @@ function getEffectiveCardInterestRate(card) {
  * no non-Dexie awaits — safe to call inside any caller's open transaction
  * (see the applyPaymentDelta contract precedent).
  *
- * Decision order: zero/negative balance → 0 (nothing to pay); an explicit
- * minimumPaymentOverride always wins; otherwise the amortized payment
- * toward targetPayoffDate priced at the effective (intro-aware) rate;
- * heuristic fallback for a legacy card without a goal or an unreachable
- * target.
+ * Decision order: zero/negative balance → 0 (nothing to pay); a custom
+ * amount the user chose (card.customPaymentAmount), but never more than the
+ * balance, so a custom payment can't overpay the card; otherwise the
+ * amortized payment toward targetPayoffDate priced at the effective
+ * (intro-aware) rate; heuristic fallback for a legacy card without a goal or
+ * an unreachable target.
  *
  * Anchor ruling: the amortization anchor is template.nextDueDate (the
  * cadence position, i.e. the source of truth), NOT a row's manually
@@ -1037,8 +1164,8 @@ function getEffectiveCardInterestRate(card) {
  * re-derives from the current balance.
  *
  * @param {Object|null} card - the creditCards row
- * @param {Object|null} template - the card's payment template (override +
- *   nextDueDate source); null for a template-less card-payment expense
+ * @param {Object|null} template - the card's payment template (nextDueDate
+ *   source); null for a template-less card-payment expense
  * @param {Object} [options]
  * @param {string} [options.dueDate] - explicit anchor override (YYYY-MM-DD);
  *   defaults to template.nextDueDate, then today
@@ -1049,8 +1176,10 @@ function calculateCardPaymentBillAmount(card, template, { dueDate } = {}) {
   if (!card) return null;
   if (Number(card.balance) <= 0) return 0;
 
-  if (template?.minimumPaymentOverride != null) {
-    return template.minimumPaymentOverride;
+  if (card.customPaymentAmount != null) {
+    return roundToCents(
+      Math.min(Number(card.customPaymentAmount), Number(card.balance)),
+    );
   }
 
   if (!card.targetPayoffDate) {
@@ -1064,41 +1193,6 @@ function calculateCardPaymentBillAmount(card, template, { dueDate } = {}) {
     card.targetPayoffDate,
   );
   return result.success ? result.payment : getDefaultMinimumPaymentAmount(card);
-}
-
-/**
- * Rewrite `amount` on untouched pending Credit Card Payment rows linked to
- * a template. "Untouched" = not paid AND no paidAmount: settled money is
- * never re-described, and a row with money on it must not get its amount
- * pulled below paidAmount (that would invent a phantom "Paid" state). The
- * override/amount still governs every future cycle.
- *
- * Transaction contract (worded like applyPaymentDelta's): caller must
- * invoke from inside an open 'rw' transaction whose table list includes
- * db.fixedExpenses. The helper performs only plain Dexie reads/writes so
- * it joins the ambient transaction — it never opens one, never awaits a
- * non-Dexie promise, and never dynamically imports.
- *
- * @param {Object} template - the payment template whose rows to sync
- * @param {number} amount - the amount to write
- * @param {string} ts - ISO timestamp shared with the caller's writes
- * @returns {Promise<number>} count of rows updated
- */
-async function syncPendingCardPaymentRows(template, amount, ts) {
-  const pending = await db.fixedExpenses
-    .where('recurringTemplateId')
-    .equals(template.id)
-    .filter(
-      e => !e.deletedAt && e.status !== 'paid' && (e.paidAmount || 0) === 0,
-    )
-    .toArray();
-  for (const expense of pending) {
-    await db.fixedExpenses.update(expense.id, {
-      amount,
-      updatedAt: ts,
-    });
-  }
-  return pending.length;
 }
 
 /**
@@ -1815,6 +1909,13 @@ export const dbHelpers = {
       if (!payoffCheck.success) {
         throw new Error(payoffCheck.message);
       }
+      if (
+        creditCard.customPaymentAmount != null &&
+        (!Number.isFinite(creditCard.customPaymentAmount) ||
+          creditCard.customPaymentAmount <= 0)
+      ) {
+        throw new Error('Custom payment must be a number greater than 0');
+      }
       if (typeof creditCard.hasIntroApr !== 'boolean') {
         throw new Error(
           'You must specify whether this card has an intro/promotional APR',
@@ -1993,21 +2094,22 @@ export const dbHelpers = {
    * partially-paid expenses, so settled payment history is never rewritten.
    */
   async syncCreditCardAmountToExpenses(cardId, updates) {
-    if (
-      updates.balance === undefined &&
-      updates.minimumPayment === undefined &&
-      updates.interestRate === undefined &&
-      updates.targetPayoffDate === undefined &&
-      updates.dueDate === undefined &&
-      updates.hasIntroApr === undefined &&
-      updates.introApr === undefined &&
-      updates.introAprEndDate === undefined
-    ) {
-      return;
-    }
+    if (!touchesCardPricing(updates)) return;
 
     const updatedCard = await db.creditCards.get(cardId);
     if (!updatedCard) return;
+
+    // A Balance Due is what was left over when the user deferred a shortfall:
+    // a fixed fact, not something the card's pricing governs. It inherits the
+    // origin bill's category and card link, so it would otherwise match here
+    // and be overwritten with the card's calculated payment.
+    const balanceDueIds = new Set(
+      (
+        await db.recurringResolutionLog
+          .filter(entry => !entry.deletedAt && entry.adjustmentExpenseId)
+          .toArray()
+      ).map(entry => entry.adjustmentExpenseId),
+    );
 
     const linked = await db.fixedExpenses
       .where('targetCreditCardId')
@@ -2017,7 +2119,8 @@ export const dbHelpers = {
           e.category === 'Credit Card Payment' &&
           !e.deletedAt &&
           e.status !== 'paid' &&
-          (e.paidAmount || 0) === 0,
+          (e.paidAmount || 0) === 0 &&
+          !balanceDueIds.has(e.id),
       )
       .toArray();
     if (linked.length === 0) return;
@@ -2053,6 +2156,7 @@ export const dbHelpers = {
         db.creditCards,
         db.fixedExpenses,
         db.recurringExpenseTemplates,
+        db.recurringResolutionLog,
         async () => {
           const current = await db.creditCards.get(id);
           if (!current || current.deletedAt) {
@@ -2088,6 +2192,16 @@ export const dbHelpers = {
             (!Number.isFinite(updates.interestRate) || updates.interestRate < 0)
           ) {
             throw new Error('Interest rate must be a finite number >= 0');
+          }
+          if (
+            'customPaymentAmount' in updates &&
+            updates.customPaymentAmount !== null &&
+            (!Number.isFinite(updates.customPaymentAmount) ||
+              updates.customPaymentAmount <= 0)
+          ) {
+            throw new Error(
+              'Custom payment must be a number greater than 0, or null to use the calculated payment',
+            );
           }
 
           const merged = { ...current, ...updates };
@@ -2153,16 +2267,7 @@ export const dbHelpers = {
           if (updates.dueDate !== undefined) {
             await this.syncCreditCardDueDateToExpenses(id, updates.dueDate);
           }
-          if (
-            updates.balance !== undefined ||
-            updates.minimumPayment !== undefined ||
-            updates.interestRate !== undefined ||
-            updates.targetPayoffDate !== undefined ||
-            updates.dueDate !== undefined ||
-            updates.hasIntroApr !== undefined ||
-            updates.introApr !== undefined ||
-            updates.introAprEndDate !== undefined
-          ) {
+          if (touchesCardPricing(updates)) {
             await this.syncCreditCardAmountToExpenses(id, updates);
           }
           await this.syncCreditCardToTemplates(id, updates);
@@ -4486,12 +4591,10 @@ export const dbHelpers = {
   },
 
   /**
-   * Sets a card's active payment template(s) minimumPaymentOverride to
-   * `paymentAmount` - the "Apply to my card" action in DebtPayoffCalculator.
-   * Of the calculator's fields, only the payment represents an actionable
-   * decision; balance/rate/limit stay pure what-if inputs and are never
-   * written here. Mirrors syncCreditCardAmountToExpenses's never-touch-a-
-   * paid-expense rule for the pending linked expense it also updates.
+   * Switches a card to a custom monthly payment - the "Apply to my card"
+   * action in DebtPayoffCalculator. Of the calculator's fields, only the
+   * payment represents an actionable decision; balance/rate/limit stay pure
+   * what-if inputs and are never written here.
    * @param {string} cardId
    * @param {number} paymentAmount
    */
@@ -4499,52 +4602,90 @@ export const dbHelpers = {
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
       throw new Error('Payment amount must be a finite number greater than 0');
     }
-    await db.transaction(
-      'rw',
-      db.recurringExpenseTemplates,
-      db.fixedExpenses,
-      db.auditLogs,
-      async () => {
-        const templates = await db.recurringExpenseTemplates
-          .filter(
-            t =>
-              t.targetCreditCardId === cardId &&
-              t.category === 'Credit Card Payment' &&
-              t.isActive &&
-              !t.deletedAt,
-          )
-          .toArray();
-        if (templates.length === 0) {
-          throw new Error('This card has no linked payment bill to apply to');
-        }
+    await this.setCardPaymentPlan(cardId, paymentAmount);
 
-        const ts = nowIso();
-        for (const template of templates) {
-          await db.recurringExpenseTemplates.update(template.id, {
-            minimumPaymentOverride: paymentAmount,
-            updatedAt: ts,
-          });
+    try {
+      await addAuditLogEntry('CALCULATOR_PAYMENT_APPLY', 'creditCard', cardId, {
+        paymentAmount,
+      });
+    } catch (auditErr) {
+      logger.warn('Audit log (calculator payment apply) failed:', auditErr);
+    }
+  },
 
-          // Shared pending-row rewrite (same helper syncCreditCardAmountToExpenses
-          // uses) — one rule set for paid/partially-paid protection.
-          await syncPendingCardPaymentRows(template, paymentAmount, ts);
-        }
-
-        try {
-          await addAuditLogEntry(
-            'CALCULATOR_PAYMENT_APPLY',
-            'creditCard',
-            cardId,
-            {
-              paymentAmount,
-              templatesUpdated: templates.map(t => t.id),
-            },
-          );
-        } catch (auditErr) {
-          logger.warn('Audit log (calculator payment apply) failed:', auditErr);
-        }
-      },
+  /**
+   * Choose how a card's monthly payment is set: a custom dollar amount, or
+   * null for the calculated payment (balance, rate and payoff goal). One path
+   * for every caller (the card form, the calculator): it is an ordinary card
+   * update, so the card write and the re-pricing of its unpaid bills happen
+   * together, under the same stale-write guard and the same rule that never
+   * touches a paid or part-paid bill.
+   * @param {string} cardId
+   * @param {number|null} customAmount - null restores the calculated payment
+   * @param {string} [expectedUpdatedAt] - stale-write guard, as updateCreditCard
+   */
+  async setCardPaymentPlan(cardId, customAmount, expectedUpdatedAt) {
+    await this.updateCreditCard(
+      cardId,
+      { customPaymentAmount: customAmount },
+      expectedUpdatedAt,
     );
+  },
+
+  /**
+   * Read-only: what a card's payment will be and why, for every screen that
+   * shows it. Built on the same pricing function the bills use, so the card
+   * tile, the form preview and the bill can never disagree. Pass a draft card
+   * (unsaved form values) to preview a choice before saving it.
+   * @param {Object} card
+   * @param {Object|null} template - the card's payment template, if any
+   * @returns {Promise<{
+   *   mode: 'custom'|'calculated',
+   *   billAmount: number,
+   *   calculatedAmount: number,
+   *   customAmount: number|null,
+   *   paysOffCard: boolean,
+   *   belowIssuerMinimum: boolean,
+   *   neverPaysOff: boolean,
+   *   projectedPayoffDate: string|null,
+   * }>}
+   */
+  async getCardPaymentPlan(card, template = null) {
+    const dueDate = template?.nextDueDate ?? card.dueDate ?? undefined;
+    const customAmount = card.customPaymentAmount ?? null;
+    const balance = Number(card.balance);
+    const issuerMinimum = Number(card.minimumPayment);
+
+    let projectedPayoffDate = null;
+    let neverPaysOff = false;
+    if (customAmount != null && balance > 0) {
+      const projection = await this.calculateDebtPayoff(
+        balance,
+        customAmount,
+        getEffectiveCardInterestRate(card),
+      );
+      projectedPayoffDate = projection.success ? projection.payoffDate : null;
+      neverPaysOff = !projection.success;
+    }
+
+    return {
+      mode: customAmount != null ? 'custom' : 'calculated',
+      billAmount: calculateCardPaymentBillAmount(card, template, { dueDate }),
+      calculatedAmount: calculateCardPaymentBillAmount(
+        { ...card, customPaymentAmount: null },
+        template,
+        { dueDate },
+      ),
+      customAmount,
+      paysOffCard:
+        customAmount != null && balance > 0 && customAmount >= balance,
+      belowIssuerMinimum:
+        customAmount != null &&
+        issuerMinimum > 0 &&
+        customAmount < issuerMinimum,
+      neverPaysOff,
+      projectedPayoffDate,
+    };
   },
 
   async getFundingAccountIdForLoan(loanId) {
@@ -5823,6 +5964,7 @@ export const dbHelpers = {
     try {
       validatePortableLoans(data);
       normalizePaycheckSettings(data);
+      normalizeCardPaymentOverrides(data);
 
       // Atomic full-replace import:
       // - Everything is cleared and written inside one IndexedDB transaction.
@@ -6500,19 +6642,18 @@ export const dbHelpers = {
    * @returns {Promise<{isBehindPace: true, projectedPayoffDate: string|null} | null>}
    */
   async getCardBehindPaceWarning(card, template) {
-    if (!card?.targetPayoffDate || !template) return null;
+    const override = card?.customPaymentAmount;
+    if (!card?.targetPayoffDate || override == null) return null;
 
     const effectiveRate = getEffectiveCardInterestRate(card);
     const calculatedCheck = calculateRequiredLoanPayment(
       card.balance,
       effectiveRate,
-      template.nextDueDate,
+      template?.nextDueDate ?? card.dueDate ?? DateUtils.today(),
       card.targetPayoffDate,
     );
     if (!calculatedCheck.success) return null;
-
-    const override = template.minimumPaymentOverride;
-    if (override == null || override >= calculatedCheck.payment) return null;
+    if (override >= calculatedCheck.payment) return null;
 
     const projection = await this.calculateDebtPayoff(
       card.balance,

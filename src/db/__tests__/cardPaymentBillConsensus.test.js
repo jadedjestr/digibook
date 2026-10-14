@@ -20,8 +20,9 @@ vi.mock('../../utils/logger', () => ({
  *      a materialized/virtual cycle costs,
  *   B. syncCreditCardAmountToExpenses — what the pending bill costs after
  *      the user edits the card,
- *   C. applyCalculatorPaymentToCard — what the pending bill costs after
- *      "Apply to my card".
+ *   C. setCardPaymentPlan — what the pending bill costs after the user picks
+ *      the calculated payment or a custom one (also what "Apply to my card"
+ *      does).
  *
  * They have diverged twice in practice (heuristic vs amortized pricing,
  * paidAmount guard drift), so this file pins the invariant: for the same
@@ -106,9 +107,10 @@ describe('card payment bill pricing — three-path consensus', () => {
     return expense.amount;
   };
 
-  // Path C: apply a payment amount and read back the pending row's amount.
-  const appliedRowAmount = async paymentAmount => {
-    await dbHelpers.applyCalculatorPaymentToCard('card-1', paymentAmount);
+  // Path C: choose a payment plan (null = calculated, a number = custom) and
+  // read back the pending row's amount.
+  const plannedRowAmount = async customAmount => {
+    await dbHelpers.setCardPaymentPlan('card-1', customAmount);
     const expense = await db.fixedExpenses.get('exp-1');
     return expense.amount;
   };
@@ -142,29 +144,63 @@ describe('card payment bill pricing — three-path consensus', () => {
     const pathA = await oracleEstimate();
     await seedPendingRow();
     const pathB = await syncedRowAmount();
-    const pathC = await appliedRowAmount(pathA);
+    const pathC = await plannedRowAmount(null);
 
     expect(pathA).toBeGreaterThan(25); // sanity: amortized, not the $25 floor
     expect(pathB).toBe(pathA);
     expect(pathC).toBe(pathA);
   });
 
-  it('all three paths agree when a minimumPaymentOverride is set', async () => {
+  it('all three paths agree when the card has a custom payment', async () => {
     await db.creditCards.bulkPut([
-      { ...baseCard, targetPayoffDate: '2027-09-14' },
-    ]);
-    await db.recurringExpenseTemplates.bulkPut([
-      { ...baseTemplate, minimumPaymentOverride: 99 },
+      {
+        ...baseCard,
+        targetPayoffDate: '2027-09-14',
+        customPaymentAmount: 99,
+      },
     ]);
 
     const pathA = await oracleEstimate();
     await seedPendingRow();
     const pathB = await syncedRowAmount();
-    const pathC = await appliedRowAmount(pathA);
+    const pathC = await plannedRowAmount(99);
 
     expect(pathA).toBe(99);
     expect(pathB).toBe(99);
     expect(pathC).toBe(99);
+  });
+
+  it('all three paths cap a custom payment at the balance', async () => {
+    await db.creditCards.bulkPut([
+      {
+        ...baseCard,
+        balance: 80,
+        targetPayoffDate: '2027-09-14',
+        customPaymentAmount: 500,
+      },
+    ]);
+
+    const pathA = await oracleEstimate();
+    await seedPendingRow();
+    const pathB = await syncedRowAmount();
+    const pathC = await plannedRowAmount(500);
+
+    expect([pathA, pathB, pathC]).toEqual([80, 80, 80]);
+  });
+
+  it('switching back to the calculated payment re-prices an unpaid bill', async () => {
+    await db.creditCards.bulkPut([
+      { ...baseCard, targetPayoffDate: '2027-09-14' },
+    ]);
+    await seedPendingRow();
+
+    const custom = await plannedRowAmount(60);
+    const calculated = await plannedRowAmount(null);
+
+    expect(custom).toBe(60);
+    expect(calculated).toBeGreaterThan(25);
+    expect(calculated).not.toBe(60);
+    expect((await db.creditCards.get('card-1')).customPaymentAmount).toBeNull();
   });
 
   it('a partially-paid row is untouched by BOTH the sync path and the apply path', async () => {
@@ -175,12 +211,12 @@ describe('card payment bill pricing — three-path consensus', () => {
     });
 
     await dbHelpers.updateCreditCard('card-1', { balance: 900 });
-    await dbHelpers.applyCalculatorPaymentToCard('card-1', 25);
+    await dbHelpers.setCardPaymentPlan('card-1', 25);
 
     const expense = await db.fixedExpenses.get('exp-partial');
     expect(expense.amount).toBe(100); // neither path rewrote settled money
-    const template = await db.recurringExpenseTemplates.get('tpl-card');
-    expect(template.minimumPaymentOverride).toBe(25);
+    const card = await db.creditCards.get('card-1');
+    expect(card.customPaymentAmount).toBe(25);
   });
 
   it('a manually shifted row due date does NOT change the priced amount', async () => {
