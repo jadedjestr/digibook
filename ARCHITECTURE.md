@@ -963,6 +963,14 @@ Also runs a separate async effect, keyed on `currentMonth`, that fetches last mo
 
 **Returns:** `{ nudge, dismiss }` — `nudge` is `null` or one of the `past_month` / `catch_up` / `promo_ended` shapes described in the Fixed Expenses view; `dismiss(dismissKey, dontShowAgainThisMonth)` records the dismissal and fires the optional `onNudgeDismissed` callback.
 
+### 6.3a `useBillForecast`
+
+**Path:** `src/hooks/useBillForecast.js`
+
+The one pay-period forecast for the Fixed Expenses page. Loads the predicted recurring cycles (`getVirtualLedger`, `virtual` state only, from today to the later of the viewed month's end and the last forecast payday) and the expected paycheck (learned amount, else the income source's `expectedAmount`), then builds bill facts and `buildPaycheckForecast` (`src/utils/categoryBreakdown.js`). Called once in `FixedExpenses.jsx`; `ProjectedBalanceCard` shows its first pay period and `CategoryBreakdownCard` shows all of it, so the two can't disagree.
+
+**Returns:** `{ bills, payDates, forecast, defaultAccount, paycheck }`
+
 ### 6.4 `usePersistedState`
 
 **Path:** `src/hooks/usePersistedState.js`
@@ -1112,8 +1120,8 @@ and inline "create an account" fallback are shared rather than duplicated —
 | Component | Path | Description |
 |---|---|---|
 | `PayDateCountdownCard` | `src/components/PayDateCountdownCard.jsx` | Countdown to next paycheck |
-| `ProjectedBalanceCard` | `src/components/ProjectedBalanceCard.jsx` | Discretionary balance after bills. Starts from `getDefaultAccount` / `getProjectedBalance` (`accountUtils.js`), the same starting point as `CategoryBreakdownCard`'s paycheck rows |
-| `CategoryBreakdownCard` | `src/components/CategoryBreakdownCard.jsx` | "Where your bills go", Fixed Expenses' middle tab (between Month View and All Future One-Offs, kept out of Month View so that view stays about what to act on). It shares the page's month with the calendar and has its own month arrows. A donut of that month's bills by category (paid part solid, the rest faded; tap a slice or row for its bills), then one row per upcoming pay period (four, following the pay schedule across month ends) with a bar of that period's bills by category and the money left in the default account. Next month's recurring bills come from the Virtual Ledger (`getVirtualLedger`, from today on only); the expected paycheck is the learned amount, else the income source's `expectedAmount`. The math is `categoryBreakdown.js`. Colors: a category's own color, else a `--category-fallback-*` token picked from its name |
+| `ProjectedBalanceCard` | `src/components/ProjectedBalanceCard.jsx` | "After This Week": money left in the default account once the bills due up to the next payday are paid. Displays the forecast's first pay period from `useBillForecast` and computes nothing itself, so it always equals the first "By paycheck" row; adds "Includes $X overdue" when overdue bills are part of the drop. Without a pay schedule it shows the starting balance and says why. (It used to subtract `payThisWeekTotal`, which left out overdue bills and subtracted bills charged to a card or paid from another account.) |
+| `CategoryBreakdownCard` | `src/components/CategoryBreakdownCard.jsx` | "Where your bills go", Fixed Expenses' middle tab (between Month View and All Future One-Offs, kept out of Month View so that view stays about what to act on). It shares the page's month with the calendar and has its own month arrows, and reads its data from `useBillForecast`. A donut of that month's bills by category (paid part solid, the rest faded; tap a slice or row for its bills), then one row per upcoming pay period (four, following the pay schedule across month ends) with a bar of that period's bills by category and the money left in the default account. Next month's recurring bills are the hook's predicted cycles. The math is `categoryBreakdown.js`. Colors: a category's own color, else a `--category-fallback-*` token picked from its name |
 | `BudgetVsActualDashboard` | `src/components/BudgetVsActualDashboard.jsx` | Budget vs. actual comparison |
 | `MonthlyTrends` | `src/components/MonthlyTrends.jsx` | 12-month trend visualization |
 | `CardPaymentModeField` | `src/components/CardPaymentModeField.jsx` | The card form's "how should the monthly payment be set?" choice: Calculated for me, or a typed Custom amount, with a live below-minimum warning, "pays off the card" note and projected payoff date (fed by `getCardPaymentPlan` on the unsaved form values). Exports `resolveCustomPayment(mode, text)`, the one place typed text becomes a custom amount (whole cents, `parseMoneyInput`, 0 and negatives rejected), used by both validation and save |
@@ -1317,7 +1325,7 @@ The math behind `CategoryBreakdownCard`. Pure; sums in whole cents.
 
 The donut and the forecast deliberately read different facts. Money already paid has left the balance, so the forecast subtracts only `owedCents`; subtracting `totalCents` would take every paid bill out twice. Other rules the forecast holds to:
 
-- Row 0 runs to the next payday inclusive and also carries overdue bills still owed. A bill due on a payday counts before that day's paycheck, as in the "This Week" bucket.
+- Row 0 runs to the next payday inclusive and also carries overdue bills still owed; `overdueFromAccountCents` is how much of its subtraction they are (for "After This Week"'s note). A bill due on a payday counts before that day's paycheck, as in the "This Week" bucket.
 - A paycheck is added only for paydays after today. `generateDueIncome` has already made earlier paydays pending rows, which the starting balance includes.
 - A bill charged to a card, or paid from another account, shows in the bar but doesn't lower money left. A bill with no funding source is assumed to come from the default account.
 

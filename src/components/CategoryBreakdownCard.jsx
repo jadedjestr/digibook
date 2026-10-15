@@ -5,30 +5,16 @@ import {
   CreditCard,
 } from 'lucide-react';
 import PropTypes from 'prop-types';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 
-import { dbHelpers } from '../db/database-clean';
 import { useCategories } from '../stores/useAppStore';
-import {
-  formatCurrency,
-  getDefaultAccount,
-  getProjectedBalance,
-} from '../utils/accountUtils';
-import {
-  buildCategoryBreakdown,
-  buildPaycheckForecast,
-  getUpcomingPayDates,
-  toBillFacts,
-} from '../utils/categoryBreakdown';
+import { formatCurrency } from '../utils/accountUtils';
+import { buildCategoryBreakdown } from '../utils/categoryBreakdown';
 import { DateUtils } from '../utils/dateUtils';
-import { logger } from '../utils/logger';
 
 import PrivacyWrapper from './PrivacyWrapper';
 import './CategoryBreakdownCard.css';
 
-// Pay periods shown. Four weekly periods reach about a month ahead, which
-// is the "this month and next" horizon this card is for.
-const PAY_PERIODS = 4;
 const FALLBACK_COLORS = 6;
 
 const money = cents => formatCurrency(cents / 100);
@@ -60,95 +46,6 @@ const shortDate = date =>
     month: 'short',
     day: 'numeric',
   }) ?? date;
-
-/**
- * Predicted cycles of recurring bills between two dates: the ones with no
- * real row yet (the app only creates a bill's row once it is due). The
- * same Virtual Ledger the calendar reads, but with the template's funding
- * and category id kept, which the forecast and grouping need.
- */
-const useForecastBills = (rangeStart, rangeEnd, fixedExpenses) => {
-  const [forecasts, setForecasts] = useState([]);
-
-  useEffect(() => {
-    if (!rangeStart || !rangeEnd || rangeStart > rangeEnd) {
-      setForecasts([]);
-      return undefined;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const templates = await dbHelpers.getRecurringExpenseTemplates();
-        const perTemplate = await Promise.all(
-          templates.map(template =>
-            dbHelpers.getVirtualLedger(template.id, rangeStart, rangeEnd),
-          ),
-        );
-        if (cancelled) return;
-        setForecasts(
-          perTemplate
-            .flat()
-            .filter(entry => entry.state === 'virtual')
-            .map(({ template, cycleDueDate, estimatedAmount }) => ({
-              templateId: template.id,
-              name: template.name,
-              dueDate: cycleDueDate,
-              amount: estimatedAmount ?? 0,
-              category: template.category,
-              categoryId: template.categoryId ?? null,
-              accountId: template.accountId ?? null,
-              creditCardId: template.creditCardId ?? null,
-              isVariableAmount: Boolean(template.isVariableAmount),
-            })),
-        );
-      } catch (error) {
-        logger.warn('Could not forecast recurring bills', error);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [rangeStart, rangeEnd, fixedExpenses]);
-
-  return forecasts;
-};
-
-/**
- * The expected paycheck: what has actually been arriving lately when there
- * is enough history, else the user's own figure - the same order
- * generateDueIncome uses. Re-read when pending transactions change, since
- * confirming a paycheck changes that history.
- */
-const useExpectedPaycheck = pendingTransactions => {
-  const [paycheck, setPaycheck] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const source = await dbHelpers.getPrimaryIncomeSource();
-        if (!source) {
-          if (!cancelled) setPaycheck(null);
-          return;
-        }
-        const learned = await dbHelpers.getLearnedIncomeAmount(source.id);
-        const amount = learned ?? Math.abs(Number(source.expectedAmount) || 0);
-        if (!cancelled) {
-          setPaycheck(
-            amount > 0 ? { amount, accountId: source.accountId } : null,
-          );
-        }
-      } catch (error) {
-        logger.warn('Could not read the expected paycheck', error);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [pendingTransactions]);
-
-  return paycheck;
-};
 
 const Donut = ({ breakdown, selectedKey, onSelect }) => {
   const size = 180;
@@ -300,16 +197,14 @@ BillList.propTypes = {
  * The month is the page's (shared with Month View's calendar, moved by the
  * arrows in this card's header); the paycheck rows always start from
  * today, because they answer "how am I doing now", not "how was the month
- * I'm looking at". The math lives in utils/categoryBreakdown.js.
+ * I'm looking at". The data comes from useBillForecast (shared with "After
+ * This Week"); the math lives in utils/categoryBreakdown.js.
  */
 const CategoryBreakdownCard = ({
   currentMonth,
-  fixedExpenses,
-  resolvedByExpenseId,
+  billForecast,
   accounts,
-  pendingTransactions,
   paycheckSettings,
-  paycheckDates,
   onPreviousMonth,
   onNextMonth,
   onToday,
@@ -318,30 +213,8 @@ const CategoryBreakdownCard = ({
   const [selectedKey, setSelectedKey] = useState(null);
   const [openRow, setOpenRow] = useState(null);
 
-  const today = DateUtils.today();
+  const { bills, payDates, forecast, defaultAccount, paycheck } = billForecast;
   const month = monthBounds(currentMonth);
-  const payDates = useMemo(
-    () =>
-      getUpcomingPayDates(
-        paycheckDates?.nextPayDate,
-        paycheckSettings?.frequency,
-        PAY_PERIODS,
-      ),
-    [paycheckDates?.nextPayDate, paycheckSettings?.frequency],
-  );
-
-  // Forecasts are only ever from today on: a cycle before today that never
-  // got a row is a gap in the records, not a bill that's coming.
-  const lastPayDate = payDates[payDates.length - 1] ?? '';
-  const forecastEnd = month.end > lastPayDate ? month.end : lastPayDate;
-  const forecasts = useForecastBills(today, forecastEnd, fixedExpenses);
-  const paycheck = useExpectedPaycheck(pendingTransactions);
-
-  const bills = useMemo(
-    () =>
-      toBillFacts({ expenses: fixedExpenses, forecasts, resolvedByExpenseId }),
-    [fixedExpenses, forecasts, resolvedByExpenseId],
-  );
 
   const breakdown = useMemo(
     () =>
@@ -354,25 +227,9 @@ const CategoryBreakdownCard = ({
     [bills, categories, month.start, month.end],
   );
 
-  const defaultAccount = getDefaultAccount(accounts);
   const accountsById = useMemo(
     () => new Map((accounts ?? []).map(account => [account.id, account])),
     [accounts],
-  );
-  const forecast = useMemo(
-    () =>
-      buildPaycheckForecast({
-        bills,
-        payDates,
-        today,
-        startingBalance: getProjectedBalance(
-          defaultAccount,
-          pendingTransactions,
-        ),
-        accountId: defaultAccount?.id ?? null,
-        paycheck,
-      }),
-    [bills, payDates, today, defaultAccount, pendingTransactions, paycheck],
   );
 
   // Rows color their bills by the same category colors as the donut, even
@@ -666,12 +523,15 @@ const CategoryBreakdownCard = ({
 
 CategoryBreakdownCard.propTypes = {
   currentMonth: PropTypes.instanceOf(Date).isRequired,
-  fixedExpenses: PropTypes.arrayOf(PropTypes.object).isRequired,
-  resolvedByExpenseId: PropTypes.instanceOf(Map).isRequired,
+  billForecast: PropTypes.shape({
+    bills: PropTypes.arrayOf(PropTypes.object).isRequired,
+    payDates: PropTypes.arrayOf(PropTypes.string).isRequired,
+    forecast: PropTypes.object.isRequired,
+    defaultAccount: PropTypes.object,
+    paycheck: PropTypes.object,
+  }).isRequired,
   accounts: PropTypes.arrayOf(PropTypes.object),
-  pendingTransactions: PropTypes.arrayOf(PropTypes.object),
   paycheckSettings: PropTypes.object,
-  paycheckDates: PropTypes.object,
   onPreviousMonth: PropTypes.func.isRequired,
   onNextMonth: PropTypes.func.isRequired,
   onToday: PropTypes.func.isRequired,

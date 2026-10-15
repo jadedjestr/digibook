@@ -1,46 +1,37 @@
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import PropTypes from 'prop-types';
 
-import {
-  formatCurrency,
-  getDefaultAccount,
-  getProjectedBalance,
-} from '../utils/accountUtils';
-import { logger } from '../utils/logger';
+import { formatCurrency } from '../utils/accountUtils';
 
 import PrivacyWrapper from './PrivacyWrapper';
 
+/**
+ * "After This Week": money left in the default account once the bills due
+ * up to the next payday are paid.
+ *
+ * Displays the first pay period of the forecast (buildPaycheckForecast, via
+ * useBillForecast) rather than computing anything itself. It used to do its
+ * own math, which left out overdue bills still owed and subtracted bills
+ * charged to a card or paid from another account, so it disagreed with the
+ * "Where your bills go" rows answering the same question. One source keeps
+ * them equal.
+ *
+ * Without a pay schedule there is no first period; the card then shows the
+ * starting balance and says why no bills came off it.
+ */
 const ProjectedBalanceCard = ({
-  accounts = [],
-  pendingTransactions = [],
-  summaryTotals = {},
+  firstPeriod = null,
+  startingCents = 0,
+  accountName = null,
   showAccountName = true,
 }) => {
-  const defaultAccount = getDefaultAccount(accounts);
+  const leftCents = firstPeriod ? firstPeriod.leftCents : startingCents;
+  const isPositive = leftCents >= 0;
+  const overdueCents = firstPeriod?.overdueFromAccountCents ?? 0;
 
-  // Start from the projected balance, not the raw one (see
-  // getProjectedBalance). Bills come from fixedExpenses, a separate table,
-  // so nothing double-counts.
-  const projectedBalance = getProjectedBalance(
-    defaultAccount,
-    pendingTransactions,
-  );
-
-  const { payThisWeekTotal = 0 } = summaryTotals;
-  const balanceAfterExpenses = projectedBalance - payThisWeekTotal;
-
-  logger.debug('ProjectedBalanceCard Debug:', {
-    defaultAccount: defaultAccount?.name ?? null,
-    projectedBalance,
-    payThisWeekTotal,
-    balanceAfterExpenses,
-  });
-  const isPositive = balanceAfterExpenses >= 0;
-
-  // Get the default account name
-  const defaultAccountName = defaultAccount
-    ? defaultAccount.name
-    : 'No Account';
+  let detail = 'After bills & pending';
+  if (!firstPeriod) detail = 'Set your pay schedule to subtract bills';
+  const prefix = showAccountName ? `${accountName ?? 'No Account'} • ` : '';
 
   return (
     <div className='glass-card'>
@@ -60,27 +51,36 @@ const ProjectedBalanceCard = ({
               isPositive ? 'text-green-300' : 'text-red-300'
             }`}
           >
-            <PrivacyWrapper>
-              {formatCurrency(balanceAfterExpenses)}
-            </PrivacyWrapper>
+            <PrivacyWrapper>{formatCurrency(leftCents / 100)}</PrivacyWrapper>
           </div>
           <div className='text-xs text-secondary'>Projected Balance</div>
         </div>
 
         <div className='text-xs text-secondary text-center'>
-          {showAccountName
-            ? `${defaultAccountName} • After bills & pending`
-            : 'After bills & pending'}
+          {prefix}
+          {detail}
         </div>
+        {overdueCents > 0 && (
+          <div className='text-xs text-secondary text-center'>
+            Includes{' '}
+            <PrivacyWrapper>
+              {formatCurrency(overdueCents / 100)}
+            </PrivacyWrapper>{' '}
+            overdue
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 ProjectedBalanceCard.propTypes = {
-  accounts: PropTypes.arrayOf(PropTypes.object),
-  pendingTransactions: PropTypes.arrayOf(PropTypes.object),
-  summaryTotals: PropTypes.object,
+  firstPeriod: PropTypes.shape({
+    leftCents: PropTypes.number.isRequired,
+    overdueFromAccountCents: PropTypes.number,
+  }),
+  startingCents: PropTypes.number,
+  accountName: PropTypes.string,
   showAccountName: PropTypes.bool,
 };
 

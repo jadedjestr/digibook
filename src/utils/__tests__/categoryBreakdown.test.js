@@ -256,6 +256,45 @@ describe('buildPaycheckForecast', () => {
     expect(rows[0]).toMatchObject({ billsCents: 7500, overdueCount: 1 });
   });
 
+  it('reports how much of the first row is overdue and from the account', () => {
+    // Matches the test data the card was checked with: Checking $480,
+    // Internet $60 overdue, Electric $110 due before payday.
+    const bills = facts([
+      expense({ id: 'internet', dueDate: '2026-10-10', amount: 60 }),
+      expense({ id: 'elec', dueDate: '2026-10-15', amount: 110 }),
+    ]);
+    const { rows } = buildPaycheckForecast({ ...base, bills });
+    expect(rows[0]).toMatchObject({
+      leftCents: 31000,
+      overdueFromAccountCents: 6000,
+    });
+  });
+
+  it('leaves an overdue card charge out of the overdue amount', () => {
+    const bills = facts([
+      expense({
+        dueDate: '2026-10-10',
+        amount: 60,
+        accountId: null,
+        creditCardId: 'card-1',
+      }),
+    ]);
+    const { rows } = buildPaycheckForecast({ ...base, bills });
+    expect(rows[0]).toMatchObject({
+      overdueCount: 1,
+      overdueFromAccountCents: 0,
+      leftCents: 48000,
+    });
+  });
+
+  it('reports no overdue amount on later rows', () => {
+    const bills = facts([expense({ dueDate: '2026-10-10', amount: 60 })]);
+    const { rows } = buildPaycheckForecast({ ...base, bills });
+    expect(rows.slice(1).every(r => r.overdueFromAccountCents === 0)).toBe(
+      true,
+    );
+  });
+
   it('subtracts only what is still owed on a partly paid bill', () => {
     const bills = facts([
       expense({ dueDate: '2026-10-15', amount: 200, paidAmount: 50 }),

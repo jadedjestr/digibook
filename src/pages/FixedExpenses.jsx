@@ -14,6 +14,7 @@ import PriorityExpenseList from '../components/PriorityExpenseList.jsx';
 import ProjectedBalanceCard from '../components/ProjectedBalanceCard.jsx';
 import ResolveExpenseModal from '../components/ResolveExpenseModal.jsx';
 import { dbHelpers } from '../db/database-clean';
+import { useBillForecast } from '../hooks/useBillForecast';
 import { useExpenseOperations } from '../hooks/useExpenseOperations';
 import { usePaycheckCalculations } from '../hooks/usePaycheckCalculations';
 import { usePayCycleNudge } from '../hooks/usePayCycleNudge';
@@ -260,6 +261,19 @@ const FixedExpenses = () => {
     ],
   );
 
+  // One forecast for the whole page: "After This Week" shows its first pay
+  // period and the Where Your Bills Go tab shows all of it, so the two can
+  // never disagree about the same money.
+  const billForecast = useBillForecast({
+    currentMonth,
+    fixedExpenses,
+    resolvedByExpenseId: resolutionLinkage.resolvedByExpenseId,
+    accounts,
+    pendingTransactions,
+    paycheckSettings,
+    paycheckDates,
+  });
+
   const handlePreviousMonth = () => {
     setCurrentMonth(prev => {
       const newDate = new Date(prev);
@@ -492,9 +506,9 @@ const FixedExpenses = () => {
                 daysUntilFollowingPay={paycheckDates.daysUntilFollowingPay}
               />
               <ProjectedBalanceCard
-                accounts={accounts}
-                pendingTransactions={pendingTransactions}
-                summaryTotals={summaryTotals}
+                firstPeriod={billForecast.forecast.rows[0] ?? null}
+                startingCents={billForecast.forecast.startingCents}
+                accountName={billForecast.defaultAccount?.name ?? null}
                 showAccountName={false}
               />
             </div>
@@ -568,12 +582,9 @@ const FixedExpenses = () => {
       {viewMode === 'categories' && (
         <CategoryBreakdownCard
           currentMonth={currentMonth}
-          fixedExpenses={fixedExpenses}
-          resolvedByExpenseId={resolutionLinkage.resolvedByExpenseId}
+          billForecast={billForecast}
           accounts={accounts}
-          pendingTransactions={pendingTransactions}
           paycheckSettings={paycheckSettings}
-          paycheckDates={paycheckDates}
           onPreviousMonth={handlePreviousMonth}
           onNextMonth={handleNextMonth}
           onToday={handleToday}

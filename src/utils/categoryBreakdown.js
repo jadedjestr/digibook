@@ -242,9 +242,15 @@ export const buildPaycheckForecast = ({
       startDate !== null && startDate > today ? paycheckCents : 0;
 
     const billsCents = inWindow.reduce((sum, bill) => sum + bill.owedCents, 0);
-    const fromAccountCents = inWindow
-      .filter(bill => drawsOnAccount(bill, accountId))
-      .reduce((sum, bill) => sum + bill.owedCents, 0);
+    const fromAccount = inWindow.filter(bill =>
+      drawsOnAccount(bill, accountId),
+    );
+    const fromAccountCents = fromAccount.reduce(
+      (sum, bill) => sum + bill.owedCents,
+      0,
+    );
+    const overdue =
+      startDate === null ? inWindow.filter(bill => bill.dueDate < today) : [];
 
     leftCents = leftCents + incomeCents - fromAccountCents;
 
@@ -255,10 +261,13 @@ export const buildPaycheckForecast = ({
       billsCents,
       fromAccountCents,
       leftCents,
-      overdueCount:
-        startDate === null
-          ? inWindow.filter(bill => bill.dueDate < today).length
-          : 0,
+      overdueCount: overdue.length,
+
+      // The part of fromAccountCents that is overdue, for a note explaining
+      // why the money left dropped.
+      overdueFromAccountCents: overdue
+        .filter(bill => fromAccount.includes(bill))
+        .reduce((sum, bill) => sum + bill.owedCents, 0),
       bills: [...inWindow].sort(
         (a, b) =>
           a.dueDate.localeCompare(b.dueDate) || b.owedCents - a.owedCents,
