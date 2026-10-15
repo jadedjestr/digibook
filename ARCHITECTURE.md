@@ -1112,7 +1112,8 @@ and inline "create an account" fallback are shared rather than duplicated —
 | Component | Path | Description |
 |---|---|---|
 | `PayDateCountdownCard` | `src/components/PayDateCountdownCard.jsx` | Countdown to next paycheck |
-| `ProjectedBalanceCard` | `src/components/ProjectedBalanceCard.jsx` | Discretionary balance after bills |
+| `ProjectedBalanceCard` | `src/components/ProjectedBalanceCard.jsx` | Discretionary balance after bills. Starts from `getDefaultAccount` / `getProjectedBalance` (`accountUtils.js`), the same starting point as `CategoryBreakdownCard`'s paycheck rows |
+| `CategoryBreakdownCard` | `src/components/CategoryBreakdownCard.jsx` | "Where your bills go", Fixed Expenses' middle tab (between Month View and All Future One-Offs, kept out of Month View so that view stays about what to act on). It shares the page's month with the calendar and has its own month arrows. A donut of that month's bills by category (paid part solid, the rest faded; tap a slice or row for its bills), then one row per upcoming pay period (four, following the pay schedule across month ends) with a bar of that period's bills by category and the money left in the default account. Next month's recurring bills come from the Virtual Ledger (`getVirtualLedger`, from today on only); the expected paycheck is the learned amount, else the income source's `expectedAmount`. The math is `categoryBreakdown.js`. Colors: a category's own color, else a `--category-fallback-*` token picked from its name |
 | `BudgetVsActualDashboard` | `src/components/BudgetVsActualDashboard.jsx` | Budget vs. actual comparison |
 | `MonthlyTrends` | `src/components/MonthlyTrends.jsx` | 12-month trend visualization |
 | `CardPaymentModeField` | `src/components/CardPaymentModeField.jsx` | The card form's "how should the monthly payment be set?" choice: Calculated for me, or a typed Custom amount, with a live below-minimum warning, "pays off the card" note and projected payoff date (fed by `getCardPaymentPlan` on the unsaved form values). Exports `resolveCustomPayment(mode, text)`, the one place typed text becomes a custom amount (whole cents, `parseMoneyInput`, 0 and negatives rejected), used by both validation and save |
@@ -1276,6 +1277,8 @@ Account-related display and lookup helpers.
 | Function | Description |
 |---|---|
 | `formatCurrency(amount)` | Formats number as `$1,234.56` |
+| `getDefaultAccount(accounts)` | The account marked default, else the first, else null |
+| `getProjectedBalance(account, pendingTransactions)` | Balance plus that account's signed pending transactions |
 | `createAccountMapping(accounts)` | Creates id→account Map |
 | `findSelectedAccount(accounts, id)` | Find account by ID |
 | `validateAccount(data)` | Validate account object |
@@ -1300,6 +1303,23 @@ Account-related display and lookup helpers.
 | `hexToRgb(hex)` | `'#EC4899'` to `'236, 72, 153'`; neutral for anything that isn't a six-digit hex color |
 
 A bill points at its category two ways, and neither is always usable, so this is more than a lookup. `categoryId` is null on older bills, on a bill whose category name had no match when it was created, and always on a recurring bill materialized from a template. The auto-created card and loan payment bills are labeled `'Credit Card Payment'` / `'Loan Payment'`, which are not rows in `categories`. A bill can also name a category that was deleted or never existed. Order: the id, then the name (ignoring case and spaces; a deleted category never matches), then the two built-ins (💳 *Card payment*, 🏦 *Loan payment*, neutral), then the bill's own text as an uncolored tag, then *No category*. A category's stored color is user data, so it is validated before use.
+
+### `categoryBreakdown.js`
+
+The math behind `CategoryBreakdownCard`. Pure; sums in whole cents.
+
+| Function | Description |
+|---|---|
+| `toBillFacts({ expenses, forecasts, resolvedByExpenseId })` | Reduces each bill to `totalCents` (what was paid once paid, else what was entered), `paidCents` and `owedCents` (what is still to pay). A resolved recurring cycle owes nothing: its shortfall is its Balance Due row or was forgiven |
+| `buildCategoryBreakdown(bills, categories)` | Groups by `getCategoryDisplay` (no category → *Uncategorized*), largest first, with paid and still-coming per group; $0 groups dropped |
+| `getUpcomingPayDates(nextPayDate, frequency, count)` | The next `count` paydays |
+| `buildPaycheckForecast({ bills, payDates, today, startingBalance, accountId, paycheck })` | One row per pay period with money left carried forward |
+
+The donut and the forecast deliberately read different facts. Money already paid has left the balance, so the forecast subtracts only `owedCents`; subtracting `totalCents` would take every paid bill out twice. Other rules the forecast holds to:
+
+- Row 0 runs to the next payday inclusive and also carries overdue bills still owed. A bill due on a payday counts before that day's paycheck, as in the "This Week" bucket.
+- A paycheck is added only for paydays after today. `generateDueIncome` has already made earlier paydays pending rows, which the starting balance includes.
+- A bill charged to a card, or paid from another account, shows in the bar but doesn't lower money left. A bill with no funding source is assumed to come from the default account.
 
 ### `expenseEditPolicy.js`
 
@@ -1614,6 +1634,7 @@ The `boxShadow` entries above are legacy: elevation now comes from the
 | Glass fill | `--glass-fill`, `--glass-tint` | Flat surface alpha, not a gradient. `--glass-tint` (0–1) is the user-facing transparency control; `--glass-fill` is the alpha it computes to, exposed so variants can sit further back — `.glass-table` takes roughly half, because tint that reads as glass on a 300px card is a wash across a 700px table |
 | Ambient ground | `--ambient-top`, `--ambient-middle`, `--ambient-bottom`, `--ambient-strength` | Three colours (bare `R, G, B` triples so each gradient stop can take its own alpha) driving the five radial gradients in `.app-ambient`. Without something behind it, `backdrop-filter` blurs flat near-black and the glass is invisible |
 | Safe areas | `.safe-area-padded`, `.app-shell` | `env(safe-area-inset-*)` padding on the scroll container, and `100dvh` rather than `100vh` — on iOS Safari `100vh` is the viewport with the toolbar collapsed, so a full-height shell sits partly behind it |
+| Category fallback | `--category-fallback-1` through `-6` | Bare `R, G, B` chart colours for a category the user never colored and the built-in card/loan payment groups. Pale tints, apart from the saturated default category colours and clear of ochre and the status colours |
 | Duration | `--duration-fast` (150ms), `--duration-snappy` (200ms), `--duration-normal` (300ms), `--duration-slow` (500ms) | Standard animation/transition durations |
 | Easing | `--easing-standard`, `--easing-decelerate`, `--easing-accelerate`, `--easing-bounce` / `--easing-spring` (same curve, `cubic-bezier(0.34, 1.56, 0.64, 1)`) | Standard easing curves; the spring curve is used for anything that should feel "alive" (page transitions, modal entrances, the sidebar drawer) |
 

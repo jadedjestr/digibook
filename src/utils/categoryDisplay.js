@@ -19,7 +19,7 @@
  * before use and an unusable one falls back to neutral.
  */
 
-const NEUTRAL_RGB = '162, 169, 180';
+export const NEUTRAL_RGB = '162, 169, 180';
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 // The auto-created payment bills. Neutral on purpose: they are not a

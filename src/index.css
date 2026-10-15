@@ -167,6 +167,19 @@
   --color-error: #ef4444;
   --color-info: #e0915c;
 
+  /* Chart colours for a category the user never colored (and for the
+     built-in card/loan payment groups), as bare "R, G, B" like
+     --category-rgb. Pale tints, so they sit apart from the saturated
+     default category colours they share a donut with, and clear of ochre
+     and the status colours so a slice can't read as "press this" or
+     "overdue". */
+  --category-fallback-1: 196, 181, 253;
+  --category-fallback-2: 125, 211, 252;
+  --category-fallback-3: 253, 164, 175;
+  --category-fallback-4: 153, 246, 228;
+  --category-fallback-5: 214, 196, 164;
+  --category-fallback-6: 148, 163, 184;
+
   /* Typography. Self-hosted; see src/main.jsx for why. */
   --font-display:
     'Bricolage Grotesque Variable', 'Bricolage Grotesque', 'Helvetica Neue',

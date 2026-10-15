@@ -1,7 +1,11 @@
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import PropTypes from 'prop-types';
 
-import { formatCurrency } from '../utils/accountUtils';
+import {
+  formatCurrency,
+  getDefaultAccount,
+  getProjectedBalance,
+} from '../utils/accountUtils';
 import { logger } from '../utils/logger';
 
 import PrivacyWrapper from './PrivacyWrapper';
@@ -12,36 +16,24 @@ const ProjectedBalanceCard = ({
   summaryTotals = {},
   showAccountName = true,
 }) => {
-  // Find the default account (the one marked as default or first account)
-  const defaultAccount =
-    accounts.find(account => account.isDefault === true) || accounts[0];
-  const defaultAccountBalance = defaultAccount
-    ? defaultAccount.currentBalance || defaultAccount.balance || 0
-    : 0;
+  const defaultAccount = getDefaultAccount(accounts);
 
-  // Start from the projected balance, not the raw one. Pending rows are
-  // signed - spending that hasn't cleared is negative, an expected paycheck
-  // is positive - so this corrects the figure in both directions at once.
-  // Bills come from fixedExpenses, a separate table, so nothing double-counts.
-  const pendingForAccount = defaultAccount
-    ? pendingTransactions
-        .filter(t => t.accountId === defaultAccount.id)
-        .reduce((sum, t) => sum + (t.amount || 0), 0)
-    : 0;
-  const projectedBalance = defaultAccountBalance + pendingForAccount;
+  // Start from the projected balance, not the raw one (see
+  // getProjectedBalance). Bills come from fixedExpenses, a separate table,
+  // so nothing double-counts.
+  const projectedBalance = getProjectedBalance(
+    defaultAccount,
+    pendingTransactions,
+  );
 
   const { payThisWeekTotal = 0 } = summaryTotals;
   const balanceAfterExpenses = projectedBalance - payThisWeekTotal;
 
-  // Debug logging
   logger.debug('ProjectedBalanceCard Debug:', {
-    defaultAccount: defaultAccount
-      ? { name: defaultAccount.name, balance: defaultAccountBalance }
-      : null,
-    pendingForAccount,
+    defaultAccount: defaultAccount?.name ?? null,
+    projectedBalance,
     payThisWeekTotal,
     balanceAfterExpenses,
-    calculation: `${defaultAccountBalance} + ${pendingForAccount} - ${payThisWeekTotal} = ${balanceAfterExpenses}`,
   });
   const isPositive = balanceAfterExpenses >= 0;
 

@@ -5,6 +5,7 @@ import AddExpensePanel from '../components/AddExpensePanel.jsx';
 import Calendar from '../components/Calendar/Calendar.jsx';
 import PayCycleNudgeBanner from '../components/Calendar/PayCycleNudgeBanner.jsx';
 import PayCycleNudgeToast from '../components/Calendar/PayCycleNudgeToast.jsx';
+import CategoryBreakdownCard from '../components/CategoryBreakdownCard.jsx';
 import EditExpenseModal from '../components/EditExpenseModal.jsx';
 import FixedExpensesHero from '../components/FixedExpensesHero.jsx';
 import OneOffExpensesView from '../components/OneOffExpensesView.jsx';
@@ -61,7 +62,7 @@ const FixedExpenses = () => {
   // straight onto its delete confirm, so there is one confirm UI, not two.
   const [editStep, setEditStep] = useState('edit');
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
-  const [viewMode, setViewMode] = useState('month'); // 'month' or 'oneoffs'
+  const [viewMode, setViewMode] = useState('month'); // 'month' | 'categories' | 'oneoffs'
   const expensesTableRef = useRef(null);
 
   // Derived from recurringResolutionLog: which expense ids are an already-
@@ -414,10 +415,12 @@ const FixedExpenses = () => {
           items squeezed onto one line at phone width forced "All Future
           One-Offs" to wrap its own text into three lines instead. */}
       <div className='flex flex-wrap items-center justify-between gap-2 pl-14 lg:pl-0'>
-        <div className='flex items-center space-x-2'>
+        {/* The tabs wrap as a group and never inside a label: with three
+            tabs, a phone squeezed each label onto three or four lines. */}
+        <div className='flex flex-wrap items-center gap-2'>
           <button
             onClick={() => setViewMode('month')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
+            className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
               viewMode === 'month'
                 ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                 : 'glass-button'
@@ -426,8 +429,18 @@ const FixedExpenses = () => {
             Month View
           </button>
           <button
+            onClick={() => setViewMode('categories')}
+            className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+              viewMode === 'categories'
+                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                : 'glass-button'
+            }`}
+          >
+            Where Your Bills Go
+          </button>
+          <button
             onClick={() => setViewMode('oneoffs')}
-            className={`px-4 py-2 rounded-lg transition-colors ${
+            className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
               viewMode === 'oneoffs'
                 ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                 : 'glass-button'
@@ -448,7 +461,7 @@ const FixedExpenses = () => {
         </button>
       </div>
 
-      {viewMode === 'month' ? (
+      {viewMode === 'month' && (
         <>
           {/* Pay cycle nudge - above layout (or as toast when USE_NUDGE_TOAST) */}
           {USE_NUDGE_TOAST ? (
@@ -542,22 +555,32 @@ const FixedExpenses = () => {
             </div>
           </div>
 
-          <AddExpensePanel
-            isOpen={isAddPanelOpen}
-            onClose={() => setAddPanelOpen(false)}
-            accounts={accounts}
-            creditCards={creditCards}
-            loans={loans}
-            onDataChange={handleAddPanelDataChange}
-          />
-
           <ResolveExpenseModal
             expense={payNowExpense}
             isOpen={!!payNowExpense}
             onClose={() => setPayNowExpense(null)}
           />
         </>
-      ) : (
+      )}
+
+      {/* Its own tab so Month View stays about what to act on. It shares
+          currentMonth with the calendar, so it brings its own month arrows. */}
+      {viewMode === 'categories' && (
+        <CategoryBreakdownCard
+          currentMonth={currentMonth}
+          fixedExpenses={fixedExpenses}
+          resolvedByExpenseId={resolutionLinkage.resolvedByExpenseId}
+          accounts={accounts}
+          pendingTransactions={pendingTransactions}
+          paycheckSettings={paycheckSettings}
+          paycheckDates={paycheckDates}
+          onPreviousMonth={handlePreviousMonth}
+          onNextMonth={handleNextMonth}
+          onToday={handleToday}
+        />
+      )}
+
+      {viewMode === 'oneoffs' && (
         <OneOffExpensesView
           expenses={fixedExpenses}
           paycheckService={paycheckService}
@@ -574,6 +597,18 @@ const FixedExpenses = () => {
           balanceDueExpenseIds={resolutionLinkage.balanceDueExpenseIds}
         />
       )}
+
+      {/* Outside the view switch: Add Expense sits above every tab, and the
+          panel used to render only inside Month View, so the button did
+          nothing on the other tabs. */}
+      <AddExpensePanel
+        isOpen={isAddPanelOpen}
+        onClose={() => setAddPanelOpen(false)}
+        accounts={accounts}
+        creditCards={creditCards}
+        loans={loans}
+        onDataChange={handleAddPanelDataChange}
+      />
 
       {/* Outside the view switch so both the priority list and the one-offs
           list open the same modal. */}

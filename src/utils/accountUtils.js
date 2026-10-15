@@ -123,6 +123,28 @@ export const formatAccountBalance = balance => {
 };
 
 /**
+ * The account the projected-balance figures follow: the one marked default,
+ * else the first. Shared so "After This Week" and the paycheck forecast can't
+ * drift onto different accounts.
+ */
+export const getDefaultAccount = (accounts = []) =>
+  accounts.find(account => account.isDefault === true) || accounts[0] || null;
+
+/**
+ * An account's balance corrected by its pending transactions. Pending rows
+ * are signed - spending that hasn't cleared is negative, an expected paycheck
+ * is positive - so this corrects the figure in both directions at once.
+ */
+export const getProjectedBalance = (account, pendingTransactions = []) => {
+  if (!account) return 0;
+  const balance = account.currentBalance || account.balance || 0;
+  const pending = pendingTransactions
+    .filter(t => t.accountId === account.id)
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+  return balance + pending;
+};
+
+/**
  * General currency formatter for all monetary values
  * @param {number|string} amount - The amount to format
  * @returns {string} Formatted currency string with thousands separators
