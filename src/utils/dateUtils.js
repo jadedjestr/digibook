@@ -29,6 +29,21 @@ export class DateUtils {
   }
 
   /**
+   * Local date and time for a filename: "2026-10-14_17-42".
+   *
+   * Local, not UTC: the export names used toISOString(), which dated an
+   * evening export in the Americas with tomorrow's date. Dashes, not
+   * colons: Mac and Windows filenames reject ':'.
+   * @param {Date} [date] - defaults to now
+   * @returns {string} YYYY-MM-DD_HH-mm
+   */
+  static formatFileTimestamp(date = new Date()) {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${this.formatDate(date)}_${hours}-${minutes}`;
+  }
+
+  /**
    * Format a date string for display (e.g., "Wednesday, Aug 6, 2025")
    * @param {string} dateString - Date in YYYY-MM-DD format
    * @returns {string} Formatted date string

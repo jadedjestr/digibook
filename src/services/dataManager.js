@@ -1,4 +1,5 @@
 import { dbHelpers } from '../db/database-clean';
+import { DateUtils } from '../utils/dateUtils';
 import {
   validatePaymentSource,
   validateCreditCardPayment,
@@ -513,30 +514,34 @@ class DataManager {
       data.version = CURRENT_DATA_VERSION;
       data.exportedAt = new Date().toISOString();
 
+      // One stamp per export, so the per-table CSVs from a single click
+      // can't straddle a minute and carry different times.
+      const stamp = DateUtils.formatFileTimestamp();
+
       onProgress('Creating file...');
       if (format === 'json') {
-        const result = this.createJSONExport(data);
+        const result = this.createJSONExport(data, stamp);
         await dbHelpers.updateLastExportDate(new Date().toISOString());
         return result;
       }
-      return this.createCSVExport(data);
+      return this.createCSVExport(data, stamp);
     } catch (error) {
       logger.error('Export failed:', error);
       throw new Error(`Export failed: ${error.message}`);
     }
   }
 
-  async createJSONExport(data) {
+  async createJSONExport(data, stamp = DateUtils.formatFileTimestamp()) {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: 'application/json',
     });
     return {
       blob,
-      filename: `digibook_backup_${new Date().toISOString().split('T')[0]}.json`,
+      filename: `digibook_backup_${stamp}.json`,
     };
   }
 
-  async createCSVExport(data) {
+  async createCSVExport(data, stamp = DateUtils.formatFileTimestamp()) {
     const Papa = await import('papaparse');
     const files = [];
 
@@ -547,7 +552,7 @@ class DataManager {
         const blob = new Blob([csv], { type: 'text/csv' });
         files.push({
           blob,
-          filename: `${table}_${new Date().toISOString().split('T')[0]}.csv`,
+          filename: `${table}_${stamp}.csv`,
         });
       }
     }
@@ -572,7 +577,7 @@ class DataManager {
 
       return {
         blob,
-        filename: `credit_cards_${new Date().toISOString().split('T')[0]}.csv`,
+        filename: `credit_cards_${DateUtils.formatFileTimestamp()}.csv`,
       };
     } catch (error) {
       logger.error('Credit card export failed:', error);

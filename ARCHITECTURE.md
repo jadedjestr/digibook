@@ -1190,6 +1190,7 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
 | `addDays(str, n)` | Add N days to a date string |
 | `daysBetween(start, end)` | Days between two date strings |
 | `today()` | Today as YYYY-MM-DD |
+| `formatFileTimestamp(date?)` | Local date and time for a filename, `YYYY-MM-DD_HH-mm` (dashes: `:` is illegal in Mac/Windows filenames). Used by every export's filename |
 | `isPast(str)` | Is the date before today? |
 | `isToday(str)` | Is the date today? |
 | `isValidDate(str)` | Validates YYYY-MM-DD format and round-trips correctly |
@@ -1726,11 +1727,17 @@ decoratively stops carrying meaning where it matters.
 
 ### Export Formats
 
-| Format | Scope | Method |
-|---|---|---|
-| JSON | Full database (all tables, `backups` excluded) | `exportJSONData()` or Cmd+E |
-| CSV | Per-table files | `dataManager.exportData('csv')` |
-| Credit Cards CSV | Credit cards table only | `dataManager.exportCreditCardsCSV()` |
+| Format | Scope | Method | Filename |
+|---|---|---|---|
+| JSON | Full database (all tables, `backups` excluded) | `exportJSONData()` or Cmd+E | `digibook_backup_<stamp>.json` |
+| CSV | Per-table files | `dataManager.exportData('csv')` | `<table>_<stamp>.csv` |
+| Credit Cards CSV | Credit cards table only | `dataManager.exportCreditCardsCSV()` | `credit_cards_<stamp>.csv` |
+
+`<stamp>` is `DateUtils.formatFileTimestamp()`: the **local** date and time,
+e.g. `2026-10-14_17-42`, taken once per export so one click's CSVs share it.
+It used to be the UTC date (`toISOString()`), which named an evening export
+in the Americas with tomorrow's date. The file's own `exportedAt` stays a UTC
+ISO timestamp.
 
 #### Export format version
 

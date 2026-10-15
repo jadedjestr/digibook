@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import { db } from '../../db/database-clean';
 import { dataManager } from '../dataManager';
@@ -62,6 +62,16 @@ function makeTextFile(content, filename, type) {
     file.text = () => Promise.resolve(content);
   }
   return file;
+}
+
+// Same jsdom gap in the other direction: read an exported Blob back.
+function readBlobText(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
 }
 
 async function seedBaseline() {
@@ -312,6 +322,58 @@ describe('dataManager', () => {
 
       // Full replace: the baseline fixedExpenses row is gone
       expect(await db.fixedExpenses.count()).toBe(0);
+    });
+  });
+
+  // A late-evening export: 23:30 local is already the next day in UTC
+  // anywhere west of Greenwich, which is how the old toISOString() names
+  // dated an evening export tomorrow.
+  describe('export filenames carry the local date and time', () => {
+    const evening = new Date(2026, 9, 14, 23, 30);
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'], now: evening });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('names the JSON backup with the local date and time', async () => {
+      const { filename, blob } = await dataManager.exportData('json');
+      expect(filename).toBe('digibook_backup_2026-10-14_23-30.json');
+
+      // The file's own timestamp stays UTC ISO - only the name changed.
+      const content = JSON.parse(await readBlobText(blob));
+      expect(content.exportedAt).toBe(evening.toISOString());
+    });
+
+    it('gives every CSV from one export the same local stamp', async () => {
+      const files = await dataManager.exportData('csv');
+      expect(files.length).toBeGreaterThan(1);
+      files.forEach(({ filename }) => {
+        expect(filename).toMatch(/^[A-Za-z]+_2026-10-14_23-30\.csv$/);
+      });
+      expect(files.map(f => f.filename)).toContain(
+        'accounts_2026-10-14_23-30.csv',
+      );
+    });
+
+    it('names the credit cards CSV with the local date and time', async () => {
+      await db.creditCards.add({
+        id: 'card-1',
+        name: 'Visa',
+        balance: 300,
+        creditLimit: 2000,
+        interestRate: 20,
+        minimumPayment: 35,
+        dueDate: '2026-10-25',
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      });
+      const { filename } = await dataManager.exportCreditCardsCSV();
+      expect(filename).toBe('credit_cards_2026-10-14_23-30.csv');
     });
   });
 });
