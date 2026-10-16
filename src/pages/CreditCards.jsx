@@ -172,9 +172,14 @@ const CreditCards = ({
           if (result.createdCount > 0) {
             notify.success(`Created ${result.createdCount} payment expense(s)`);
           }
-          if (result.repairedTemplates > 0 || result.repairedExpenses > 0) {
-            notify.success('Repaired funding source(s)');
-          }
+
+          // Say which card moved and to what: the repair guesses the default
+          // account, which may not be the one the user pays it from.
+          (result.repairedCards || []).forEach(({ cardName, accountName }) =>
+            notify.warning(
+              `${cardName} had no valid paying account, so it's now paid from ${accountName}. Change it if that's wrong.`,
+            ),
+          );
           if (result.duplicatesRemoved > 0) {
             notify.success(
               `Cleaned up ${result.duplicatesRemoved} duplicate payment record(s)`,
@@ -498,7 +503,11 @@ const CreditCards = ({
         onDataChange();
       } catch (error) {
         logger.error('Error creating payment expense:', error);
-        notify.error('Failed to create payment expense');
+        notify.error(
+          error.message?.includes('no longer exists')
+            ? error.message
+            : 'Failed to create payment expense',
+        );
       } finally {
         setIsFundingModalLoading(false);
       }
@@ -547,7 +556,11 @@ const CreditCards = ({
         setChangeFundingDefaultAccountId(null);
       } catch (error) {
         logger.error('Error updating funding source:', error);
-        notify.error('Failed to update funding source');
+        notify.error(
+          error.message?.includes('no longer exists')
+            ? error.message
+            : 'Failed to update funding source',
+        );
       } finally {
         setIsChangeFundingLoading(false);
       }

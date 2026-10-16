@@ -990,6 +990,26 @@ Rules, agreed with the user:
   resolved another way is refused, the same idea as the Balance Due guard in
   `getLastUndoableResolution`.
 
+### 5.10 Which account pays a card
+
+**Path:** `src/db/database-clean.js` (`updateFundingAccountForCard`,
+`createExpenseForCard`, `repairCreditCardPaymentFundingSource`)
+
+- **Checked before saving:** both setters require a real, non-deleted
+  account (`assertFundingAccount`) → otherwise "That account no longer
+  exists. Pick another." and nothing changes.
+- **Changing it switches only bills with nothing paid:** the card's payment
+  template plus its card bills with `paidAmount` 0, not `'paid'`, and not in
+  the resolution log, including a Balance Due with nothing paid. Paid,
+  half-paid and resolved bills keep the account they were paid from, so
+  history stays true and an Undo refunds the right account.
+- **Repair says what it did:** when Credit Cards opens,
+  `ensureCreditCardPaymentExpensesLinked` → `repairCreditCardPaymentFundingSource`
+  moves any card bill or template whose account is missing **or deleted** to
+  the default account, and returns `repairedCards` so the page names each card
+  and account ("Visa had no valid paying account, so it's now paid from
+  Checking. Change it if that's wrong.") instead of switching silently.
+
 ## 6. Custom Hooks
 
 ### 6.1 `useExpenseOperations`
@@ -1158,7 +1178,7 @@ re-deriving urgency itself.
 | `PayExtraModal` | `src/components/PayExtraModal.jsx` | The "Pay extra" form, also used to edit a sent payment. Only the amount must be typed: account defaults to the one last used for the card (else its funding account), "already cleared" to `card.paymentsPostInstantly`, date to today. Says what will happen before saving (`dbHelpers.previewCardPayment`) and blocks an amount over what the card owes |
 | `CardPaymentHistory` | `src/components/CardPaymentHistory.jsx` | A card's Payments list (`dbHelpers.getCardPaymentHistory`): extra payments and monthly bills, newest first. Cleared / Edit / Delete on a sent payment, Undo on a cleared one, each confirmed |
 | `CreditCardPaymentInput` | `src/components/CreditCardPaymentInput.jsx` | Specialized input for CC payment amounts |
-| `ChooseFundingAccountModal` | `src/components/ChooseFundingAccountModal.jsx` | Picks which account funds a card's payment expense — used both when auto-creating a new card's payment (with a "use default" shortcut) and when changing an existing card's funding source |
+| `ChooseFundingAccountModal` | `src/components/ChooseFundingAccountModal.jsx` | Picks which account funds a card's payment expense — used both when auto-creating a new card's payment (with a "use default" shortcut) and when changing an existing card's funding source. Keeps the picked id as a string: it once `parseInt`ed UUIDs, saving cards with no paying account (see §5.10) |
 | `CreateAccountModal` | `src/components/CreateAccountModal.jsx` | Inline "create an account" fallback inside the credit-card funding flow when no accounts exist yet |
 | `CreditCardDeletionModal` | `src/components/CreditCardDeletionModal.jsx` | Enhanced deletion with expense reassignment |
 

@@ -88,7 +88,7 @@ MissingExpensesModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   cards: PropTypes.arrayOf(
     PropTypes.shape({
-      id: PropTypes.number.isRequired,
+      id: PropTypes.string.isRequired,
       name: PropTypes.string.isRequired,
     }),
   ),

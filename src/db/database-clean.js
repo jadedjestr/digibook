@@ -1998,6 +1998,24 @@ const auditCardPayment = async (actionType, payment, details = {}) => {
   }
 };
 
+/**
+ * The account a card is paid from must be a real, non-deleted account.
+ * Checked before any write, so a bad id from the UI (e.g. the old picker's
+ * parseInt) fails with a clear message instead of saving a card with no
+ * paying account. Must not be called from inside a transaction that lacks
+ * db.accounts.
+ */
+async function assertFundingAccount(accountId) {
+  const account =
+    typeof accountId === 'string' && accountId
+      ? await db.accounts.get(accountId)
+      : null;
+  if (!account || account.deletedAt) {
+    throw new Error('That account no longer exists. Pick another.');
+  }
+  return account;
+}
+
 const loadExpenseValidators = async () => {
   const { validateExpense, sanitizeExpenseData } = await import(
     '../utils/expenseValidation'
@@ -2332,6 +2350,7 @@ export const dbHelpers = {
 
   async updateFundingAccountForCard(cardId, accountId) {
     try {
+      await assertFundingAccount(accountId);
       const templates = await db.recurringExpenseTemplates
         .filter(
           t =>
@@ -2353,11 +2372,28 @@ export const dbHelpers = {
         });
       }
 
+      // Only bills with nothing paid switch. A paid, half-paid or resolved
+      // bill keeps the account it was paid from: rewriting it would falsify
+      // its history and send an Undo's refund to the wrong account. Balance
+      // Due rows (one-off card bills) switch too when nothing is paid on them.
+      const resolvedIds = new Set(
+        (
+          await db.recurringResolutionLog
+            .filter(entry => !entry.deletedAt)
+            .toArray()
+        ).map(entry => entry.expenseId),
+      );
       const linkedExpenses = await db.fixedExpenses
         .filter(
           e =>
+            !e.deletedAt &&
             e.targetCreditCardId === cardId &&
-            templateIds.has(e.recurringTemplateId),
+            e.category === 'Credit Card Payment' &&
+            (templateIds.has(e.recurringTemplateId) ||
+              !e.recurringTemplateId) &&
+            Number(e.paidAmount || 0) === 0 &&
+            e.status !== 'paid' &&
+            !resolvedIds.has(e.id),
         )
         .toArray();
 
@@ -5262,6 +5298,8 @@ export const dbHelpers = {
 
   async createExpenseForCard(cardId, accountId) {
     try {
+      await assertFundingAccount(accountId);
+
       // The existence-check and template-insert must be atomic to prevent a
       // race (e.g. React StrictMode's double-invoked mount effect, or two
       // page visits close together) from both seeing "no template yet" and
@@ -5407,13 +5445,22 @@ export const dbHelpers = {
         logger.warn(
           'No checking/savings account found. Cannot repair credit card payment funding.',
         );
-        return { repairedTemplates: 0, repairedExpenses: 0 };
+        return { repairedTemplates: 0, repairedExpenses: 0, repairedCards: [] };
       }
 
+      // A deleted account is as broken as a missing one: its card can't be
+      // paid from it.
       const accounts = await db.accounts.toArray();
-      const validAccountIds = new Set(accounts.map(a => a.id));
+      const validAccountIds = new Set(
+        accounts.filter(a => !a.deletedAt).map(a => a.id),
+      );
       let repairedTemplates = 0;
       let repairedExpenses = 0;
+
+      // Which cards were moved to the default account, so the UI can say so:
+      // a silent switch could leave a card paid from an account the user
+      // never chose.
+      const repairedCardIds = new Set();
 
       const templates = await db.recurringExpenseTemplates.toArray();
       const ccTemplates = templates.filter(
@@ -5430,6 +5477,9 @@ export const dbHelpers = {
             updatedAt: ts,
           });
           repairedTemplates++;
+          if (template.targetCreditCardId) {
+            repairedCardIds.add(template.targetCreditCardId);
+          }
         }
       }
 
@@ -5446,6 +5496,19 @@ export const dbHelpers = {
           updatedAt: ts,
         });
         repairedExpenses++;
+        if (expense.targetCreditCardId) {
+          repairedCardIds.add(expense.targetCreditCardId);
+        }
+      }
+
+      const repairedCards = [];
+      for (const cardId of repairedCardIds) {
+        const repairedCard = await db.creditCards.get(cardId);
+        repairedCards.push({
+          cardId,
+          cardName: repairedCard?.name ?? 'A card',
+          accountName: defaultAccount.name,
+        });
       }
 
       if (repairedTemplates > 0 || repairedExpenses > 0) {
@@ -5453,10 +5516,10 @@ export const dbHelpers = {
           `Repaired funding source: ${repairedTemplates} template(s), ${repairedExpenses} expense(s)`,
         );
       }
-      return { repairedTemplates, repairedExpenses };
+      return { repairedTemplates, repairedExpenses, repairedCards };
     } catch (error) {
       logger.error('Error repairing credit card payment funding:', error);
-      return { repairedTemplates: 0, repairedExpenses: 0 };
+      return { repairedTemplates: 0, repairedExpenses: 0, repairedCards: [] };
     }
   },
 
@@ -5482,6 +5545,7 @@ export const dbHelpers = {
         createdCount,
         repairedTemplates: repair.repairedTemplates,
         repairedExpenses: repair.repairedExpenses,
+        repairedCards: repair.repairedCards,
         duplicatesRemoved: duplicateTemplates.length + duplicateExpenses.length,
       };
     })();

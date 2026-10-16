@@ -90,14 +90,12 @@ const ChooseFundingAccountModal = ({
           >
             Funding account
           </label>
+          {/* Ids are UUID strings: parseInt turned a picked account into NaN
+              (or a stray number) and saved the card with no paying account. */}
           <select
             id='funding-account-select'
             value={selectedAccountId ?? ''}
-            onChange={e =>
-              setSelectedAccountId(
-                e.target.value ? parseInt(e.target.value, 10) : null,
-              )
-            }
+            onChange={e => setSelectedAccountId(e.target.value || null)}
             disabled={isLoading}
             className='glass-input w-full'
             aria-label='Select account to pay this credit card'

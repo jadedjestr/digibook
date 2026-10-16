@@ -198,7 +198,7 @@ ExpenseBadge.propTypes = {
     name: PropTypes.string.isRequired,
     amount: PropTypes.number.isRequired,
     paidAmount: PropTypes.number,
-    recurringTemplateId: PropTypes.number,
+    recurringTemplateId: PropTypes.string,
     isVariableAmount: PropTypes.bool,
     isVirtual: PropTypes.bool,
     resolution: PropTypes.shape({
