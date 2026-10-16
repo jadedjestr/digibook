@@ -31,6 +31,7 @@ const PriorityExpenseRow = ({
   onPayNow,
   onEdit,
   isBalanceDue,
+  extraPaidCents,
 }) => {
   const source = findPaymentSource(expense, accounts, creditCards);
   const remaining = expense.amount - (expense.paidAmount || 0);
@@ -48,6 +49,14 @@ const PriorityExpenseRow = ({
           {source?.name || 'No source set'} ·{' '}
           {formatRelativeDueDate(expense.dueDate)}
         </p>
+        {extraPaidCents > 0 && (
+          <p className='priority-list-item-meta'>
+            <PrivacyWrapper>
+              {formatCurrency(extraPaidCents / 100)}
+            </PrivacyWrapper>{' '}
+            covered by extra payments
+          </p>
+        )}
       </div>
       <div className='priority-list-item-amount-group'>
         <span className='priority-list-item-amount'>
@@ -91,11 +100,13 @@ PriorityExpenseRow.propTypes = {
   onPayNow: PropTypes.func.isRequired,
   onEdit: PropTypes.func,
   isBalanceDue: PropTypes.bool,
+  extraPaidCents: PropTypes.number,
 };
 
 PriorityExpenseRow.defaultProps = {
   onEdit: undefined,
   isBalanceDue: false,
+  extraPaidCents: 0,
 };
 
 export default PriorityExpenseRow;

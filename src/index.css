@@ -2144,6 +2144,42 @@
   }
 
   /* Additional Info Section */
+  /* Pay extra and the card's payment history. Rows sit on hairlines rather
+     than cards of their own: it's a list inside a card. */
+  .card-payment-section {
+    @apply flex flex-col items-start gap-3;
+    @apply mb-4;
+  }
+
+  .card-payment-history {
+    @apply w-full;
+  }
+
+  .card-payment-list {
+    @apply w-full mb-2;
+  }
+
+  .card-payment-row {
+    @apply flex flex-wrap items-center justify-between gap-2;
+    @apply py-2 text-sm;
+    border-top: 1px solid var(--color-rule);
+  }
+
+  .card-payment-main {
+    @apply flex flex-wrap items-baseline gap-x-3 gap-y-1;
+    min-width: 0;
+  }
+
+  .card-payment-date,
+  .card-payment-status {
+    @apply text-xs;
+    color: var(--color-ink-soft);
+  }
+
+  .card-payment-actions {
+    @apply flex gap-2;
+  }
+
   .additional-info {
     @apply grid grid-cols-2 gap-3;
     @apply text-sm text-gray-400;

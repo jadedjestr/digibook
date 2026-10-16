@@ -86,6 +86,13 @@ const FixedExpenses = () => {
   // page (summary totals, the priority list) should ever see them.
   const [virtualExpenses, setVirtualExpenses] = useState([]);
 
+  // How much extra card payments took off each card bill, for the
+  // "covered by extra payments" note. Refetched with fixedExpenses, which
+  // changes whenever a payment shrinks or restores a bill.
+  const [extraPaidCentsByExpenseId, setExtraPaidCentsByExpenseId] = useState(
+    () => new Map(),
+  );
+
   // Use Zustand store for data
   const accounts = useAccounts();
   const creditCards = useCreditCards();
@@ -312,6 +319,21 @@ const FixedExpenses = () => {
       cancelled = true;
     };
   }, [currentMonthKey, reloadExpenses]);
+
+  useEffect(() => {
+    let cancelled = false;
+    dbHelpers
+      .getCardPaymentReductions()
+      .then(map => {
+        if (!cancelled) setExtraPaidCentsByExpenseId(map);
+      })
+      .catch(error =>
+        logger.warn('Could not load extra card payment reductions', error),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [fixedExpenses]);
 
   useEffect(() => {
     let cancelled = false;
@@ -548,6 +570,7 @@ const FixedExpenses = () => {
                 onEdit={handleEdit}
                 resolvedExpenseIds={resolutionLinkage.resolvedExpenseIds}
                 balanceDueExpenseIds={resolutionLinkage.balanceDueExpenseIds}
+                extraPaidCentsByExpenseId={extraPaidCentsByExpenseId}
               />
 
               <div className='fixed-expenses-new-cycle'>

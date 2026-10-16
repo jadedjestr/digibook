@@ -1,6 +1,6 @@
 import { Edit, Trash2, AlertTriangle, Plus, Minus } from 'lucide-react';
 import PropTypes from 'prop-types';
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import {
@@ -12,6 +12,8 @@ import {
 } from '../utils/creditCardUtils';
 import { DateUtils } from '../utils/dateUtils';
 
+import CardPaymentHistory from './CardPaymentHistory';
+import PayExtraModal from './PayExtraModal';
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
 
@@ -19,6 +21,9 @@ const EnhancedCreditCard = ({
   card,
   template = null,
   fundingSourceName = null,
+  fundingAccountId = null,
+  payAccounts = [],
+  onPaymentsChanged,
   onChangeFundingSource,
   onEdit,
   onDelete,
@@ -30,6 +35,36 @@ const EnhancedCreditCard = ({
   const [progressWidth, setProgressWidth] = useState(0);
   const [behindPaceWarning, setBehindPaceWarning] = useState(null);
   const [paymentPlan, setPaymentPlan] = useState(null);
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [isPayExtraOpen, setIsPayExtraOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
+
+  const loadPaymentHistory = useCallback(() => {
+    dbHelpers
+      .getCardPaymentHistory(card.id)
+      .then(setPaymentHistory)
+      .catch(() => setPaymentHistory([]));
+  }, [card.id]);
+
+  // card is a fresh object after every save, so this also refreshes the
+  // history whenever the page reloads its cards.
+  useEffect(() => {
+    loadPaymentHistory();
+  }, [loadPaymentHistory, card]);
+
+  const onTheirWay = paymentHistory
+    .filter(entry => entry.kind === 'extra' && entry.status === 'sent')
+    .reduce((sum, entry) => sum + entry.amount, 0);
+
+  const closePayExtra = () => {
+    setIsPayExtraOpen(false);
+    setEditingPayment(null);
+  };
+  const handlePaymentsChanged = () => {
+    closePayExtra();
+    loadPaymentHistory();
+    onPaymentsChanged?.();
+  };
 
   // Calculate derived values using new utilities
   const balanceInfo = formatCreditCardBalance(card.balance);
@@ -196,6 +231,12 @@ const EnhancedCreditCard = ({
                 })()}
               </span>
             </div>
+            {onTheirWay > 0 && (
+              <div className='text-xs text-secondary mt-1'>
+                <PrivacyWrapper>{formatCurrency(onTheirWay)}</PrivacyWrapper>{' '}
+                payment on its way
+              </div>
+            )}
           </div>
         </div>
 
@@ -381,6 +422,37 @@ const EnhancedCreditCard = ({
         </div>
       </div>
 
+      {payAccounts.length > 0 && (
+        <div className='card-payment-section'>
+          <button
+            type='button'
+            onClick={() => setIsPayExtraOpen(true)}
+            disabled={card.balance <= 0}
+            className='glass-button glass-button--secondary glass-button--sm'
+          >
+            Pay extra
+          </button>
+          <CardPaymentHistory
+            history={paymentHistory}
+            accounts={payAccounts}
+            onEdit={entry => setEditingPayment(entry)}
+            onChanged={handlePaymentsChanged}
+          />
+        </div>
+      )}
+
+      {payAccounts.length > 0 && (
+        <PayExtraModal
+          isOpen={isPayExtraOpen || editingPayment !== null}
+          card={card}
+          accounts={payAccounts}
+          defaultAccountId={fundingAccountId}
+          payment={editingPayment}
+          onClose={closePayExtra}
+          onSaved={handlePaymentsChanged}
+        />
+      )}
+
       {/* Additional Info Section */}
       <div className='additional-info'>
         <div className='additional-info-item'>
@@ -453,11 +525,15 @@ EnhancedCreditCard.propTypes = {
     introApr: PropTypes.number,
     introAprEndDate: PropTypes.string,
     customPaymentAmount: PropTypes.number,
+    paymentsPostInstantly: PropTypes.bool,
   }).isRequired,
   template: PropTypes.shape({
     nextDueDate: PropTypes.string,
   }),
   fundingSourceName: PropTypes.string,
+  fundingAccountId: PropTypes.string,
+  payAccounts: PropTypes.arrayOf(PropTypes.object),
+  onPaymentsChanged: PropTypes.func,
   onChangeFundingSource: PropTypes.func,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
@@ -468,6 +544,9 @@ EnhancedCreditCard.propTypes = {
 EnhancedCreditCard.defaultProps = {
   template: null,
   fundingSourceName: null,
+  fundingAccountId: null,
+  payAccounts: [],
+  onPaymentsChanged: undefined,
   onChangeFundingSource: undefined,
   index: 0,
   className: '',

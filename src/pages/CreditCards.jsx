@@ -66,6 +66,10 @@ const EMPTY_CARD_FORM = {
   introAprEndDate: '',
   fundingAccountId: '',
 
+  // Default for the Pay extra form's "already cleared" switch (Apple Card
+  // style cards where a payment lands at once).
+  paymentsPostInstantly: false,
+
   // 'calculated' = priced from balance and payoff goal; 'custom' = the
   // dollar amount typed in customPayment.
   paymentMode: 'calculated',
@@ -402,6 +406,7 @@ const CreditCards = ({
         introApr: formData.hasIntroApr ? parseFloat(formData.introApr) : null,
         introAprEndDate: formData.hasIntroApr ? formData.introAprEndDate : null,
         customPaymentAmount,
+        paymentsPostInstantly: formData.paymentsPostInstantly,
       };
 
       if (editingCard) {
@@ -646,6 +651,7 @@ const CreditCards = ({
         card.originalBalance != null ? card.originalBalance.toString() : '',
       targetPayoffDate: card.targetPayoffDate || '',
       hasIntroApr: card.hasIntroApr === true,
+      paymentsPostInstantly: card.paymentsPostInstantly === true,
       introApr: card.introApr != null ? card.introApr.toString() : '',
       introAprEndDate: card.introAprEndDate || '',
       fundingAccountId:
@@ -879,6 +885,12 @@ const CreditCards = ({
                 card={card}
                 template={templateByCardId.get(card.id) ?? null}
                 fundingSourceName={funding?.fundingSourceName ?? null}
+                fundingAccountId={funding?.fundingAccountId ?? null}
+                payAccounts={fundableAccounts}
+                onPaymentsChanged={() => {
+                  loadCreditCards();
+                  onDataChange();
+                }}
                 onChangeFundingSource={
                   fundableAccounts.length > 0
                     ? () => handleChangeFundingClick(card)
@@ -1154,6 +1166,39 @@ const CreditCards = ({
                   }
                   onChange={handleInputChange}
                 />
+
+                <div>
+                  <span className='block text-sm font-medium text-white mb-2'>
+                    Do payments to this card post instantly?
+                  </span>
+                  <div className='flex gap-2'>
+                    <button
+                      type='button'
+                      onClick={() =>
+                        handleInputChange('paymentsPostInstantly', true)
+                      }
+                      className={`glass-button glass-button--filter text-sm ${
+                        formData.paymentsPostInstantly ? 'active' : ''
+                      }`}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type='button'
+                      onClick={() =>
+                        handleInputChange('paymentsPostInstantly', false)
+                      }
+                      className={`glass-button glass-button--filter text-sm ${
+                        !formData.paymentsPostInstantly ? 'active' : ''
+                      }`}
+                    >
+                      No
+                    </button>
+                  </div>
+                  <p className='text-xs text-secondary mt-1'>
+                    Like Apple Card: Pay extra then starts as already cleared.
+                  </p>
+                </div>
 
                 <div>
                   <span className='block text-sm font-medium text-white mb-2'>

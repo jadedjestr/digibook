@@ -184,6 +184,7 @@ contract.
 | V9 | Added `incomeSources` table (expected paycheck: target account, expected amount, enabled flag, `lastGeneratedDate` high-water mark); added `incomeSourceId` on `pendingTransactions` so auto-generated payday rows can be traced back to their source |
 | V10 | Added `recurringResolutionLog` table. Records every time a recurring cycle is resolved (Pay Full / Partial / Skip) so the cadence can advance immediately without pre-generating rows, and so Undo has an exact prior state to reverse to rather than re-deriving one from frequency math |
 | V11 | Added `loans` table (installment-debt tracking, mirroring `creditCards`); added `targetLoanId` on `fixedExpenses` (indexed, like `targetCreditCardId`) for "Loan Payment" expenses; `recurringExpenseTemplates` also gets `targetLoanId`, unindexed like its existing `targetCreditCardId` |
+| V13 | Added `cardPayments` table (extra credit-card payments, "Pay extra") and an indexed `cardPaymentId` on `pendingTransactions` linking a not-yet-cleared one to its pending row. (V12 was a data move only: card custom payments onto `creditCards.customPaymentAmount`.) |
 
 Post-V11, `loans` gained four real-interest-tracking fields (`unpaidInterest`,
 `interestAccruedThrough`, `interestStateVersion`, `lastInterestOperation`) with
@@ -244,6 +245,7 @@ fields is in the Dexie index string — same unindexed-field rule as loans'
 | `originalBalance` | number | — | The balance when the card was added. Required on every new card. Powers `getOriginalCardProgress`'s percent-paid-off bar ([§9](#9-utilities)) |
 | `targetPayoffDate` | string \| null | — | Date the card should reach $0 by (YYYY-MM-DD). Required on every new card; `addCreditCard`/`updateCreditCard` reject a date less than one billing cycle away. Drives the amortized minimum payment |
 | `hasIntroApr` | boolean | — | Required on every new card — never left undefined. Gates whether `introApr`/`introAprEndDate` apply |
+| `paymentsPostInstantly` | boolean | — | Payments to this card land at once (e.g. Apple Card): the Pay extra form starts on "Already cleared". Unindexed |
 | `customPaymentAmount` | number \| null | — | The user's chosen fixed monthly payment, or `null`/absent for the calculated payment (balance, rate and payoff goal). Unindexed (no index bump). One field, so the mode and the amount can't disagree. Kept on the **card**, not its payment template: a template can be recreated (`createMissingCreditCardExpenses`) or de-duplicated (the oldest survives), which used to take the choice with it. Database version 12 moved existing template overrides here; `importData` does the same for older backups (`foldCardOverridesIntoCards`) |
 | `introApr` | number \| null | — | Promotional APR (%), required when `hasIntroApr` is `true`, must be `null` when `false`. Applies through and including `introAprEndDate` (`getEffectiveCardInterestRate`, [§9](#9-utilities)) |
 | `introAprEndDate` | string \| null | — | Last day the intro rate applies (YYYY-MM-DD), required when `hasIntroApr` is `true`, must be `null` when `false` |
@@ -347,6 +349,7 @@ Uncleared deposits, checks, and payments that affect projected balances.
 | `description` | string | Yes | Transaction description |
 | `incomeSourceId` | string \| null | Yes | Set when the row was generated on payday from an income source (V9) |
 | `completedAt` | ISO string \| null | No | When the user confirmed the money actually moved (V9) |
+| `cardPaymentId` | string \| null | Yes | Set when the row is a sent extra card payment (V13). Its Mark as Completed, edit and delete go through that payment (`clearCardPayment` / `updateCardPayment` / `deleteCardPayment`), so the card balance and the card bill move with it |
 | `createdAt` | ISO string | Yes | Creation timestamp |
 | `updatedAt` | ISO string | Yes | Last update timestamp (V8) |
 | `deletedAt` | ISO string \| null | Yes | Soft-delete timestamp; null when active (V8) |
@@ -491,6 +494,29 @@ from `paycheckSettings` rather than duplicated here.
 | `lastGeneratedDate` | YYYY-MM-DD \| null | Yes | High-water mark, and the **sole** duplicate guard. It cannot be inferred from existing rows: a confirmed paycheck is soft-deleted and would vanish from any "dates already generated" set, causing it to be generated again |
 | `createdAt` / `updatedAt` / `deletedAt` | ISO string | Yes | Standard timestamps |
 
+#### `cardPayments`
+Extra credit-card payments recorded from the card ("Pay extra", V13), rather
+than as a fake fixed expense. The source of truth for each one: what moved,
+from where, and which bill it shrank by how much, so every reversal puts
+things back exactly. Rules are in `dbHelpers.recordCardPayment` and its
+siblings (see [§5.9](#59-extra-credit-card-payments)).
+
+| Column | Type | Indexed | Description |
+|---|---|---|---|
+| `id` | UUID string | PK | Unique identifier |
+| `creditCardId` | UUID string | Yes | The card paid |
+| `accountId` | UUID string | Yes | Bank account it came from (Checking or Savings) |
+| `amount` | number | No | Dollars, > 0 |
+| `paymentDate` | YYYY-MM-DD | Yes | The date the user entered; picks which month's bill it shrinks |
+| `status` | `'sent'` \| `'cleared'` | Yes | Sent = still clearing (a pending row holds the money); cleared = both balances moved |
+| `clearedAt` | ISO string \| null | No | When it cleared |
+| `pendingTransactionId` | UUID string \| null | No | The pending row while sent |
+| `appliedExpenseId` | UUID string \| null | Yes | The card bill it shrank, or null (balance only) |
+| `appliedCents` | integer | No | How much it took off that bill; given back on delete/undo, and subtracted again if the bill is repriced |
+| `coveredResolutionLogId` | UUID string \| null | No | The `recurringResolutionLog` row it wrote when it settled the bill |
+| `undoneAt` | ISO string \| null | No | Set with `deletedAt` when a cleared payment is undone |
+| `createdAt` / `updatedAt` / `deletedAt` | ISO string | Yes | Standard timestamps; delete and undo soft-delete |
+
 #### `recurringResolutionLog`
 Records every time a recurring template's current cycle is resolved — Pay
 Full, Partial, or Skip (added V10). This is the source of truth for Undo and
@@ -525,7 +551,8 @@ before this existed, so display logic (`resolutionTypeOf` in
 | `resolvedAt` | ISO string | Yes | When the resolution happened |
 | `committedAmount` | number | No | The cycle's expected amount at resolution time |
 | `paidAmount` | number | No | Amount actually paid now (0 for Skip) |
-| `wasSkipped` | boolean | No | `paidAmount === 0` |
+| `wasSkipped` | boolean | No | `paidAmount === 0`, except a bill covered by extra card payments |
+| `coveredByCardPayments` | boolean | No | The cycle was settled by extra card payments shrinking the bill, not paid through it (no money moved here); the bill's `status` is `'paid'` |
 | `shortfallOutcome` | `'deferred'` \| `'forgiven'` \| null | No | What a shortfall means; null when there was no shortfall (Full, or a Partial capped at the full amount) |
 | `deferredDueDate` | string \| null | No | The Balance Due's actual due date, set only when `shortfallOutcome === 'deferred'` — denormalized here so display code doesn't need a second fetch |
 | `templatePausedOnForgive` | boolean | No | True only when the user chose to also pause the template while forgiving |
@@ -919,6 +946,50 @@ This replaces the anchor-drift protection the now-removed Reset Cycle flow used 
 
 ---
 
+### 5.9 Extra credit-card payments
+
+**Path:** `src/db/database-clean.js` (helpers on `dbHelpers`; private helpers
+just above it)
+
+A payment made from the card ("Pay extra") instead of through its monthly
+bill. Each helper is one Dexie transaction over the same table set, so a
+payment, its balances, its pending row and its bill change together or not
+at all.
+
+| Method | What it does |
+|---|---|
+| `recordCardPayment({ creditCardId, accountId, amount, paymentDate, cleared })` | Validates, shrinks the month's bill, then either moves both balances (cleared) or adds a pending row on the account (sent) |
+| `clearCardPayment(id)` | Sent → cleared: account and card balances move; the pending row is completed. `completePendingTransaction` delegates here for a linked row |
+| `updateCardPayment(id, changes)` | Sent only. Reverses the bill reduction and re-applies it from scratch with the new amount/account/date |
+| `deleteCardPayment(id)` | Sent only. The bill gets its amount back (and a covering resolution is undone) |
+| `undoCardPayment(id)` | Cleared only. Both balances and the bill go back; refused if the bill has since been paid another way |
+| `getCardPaymentHistory(cardId)` | Extra payments + the card's monthly bill resolutions + paid one-off card bills, newest first |
+| `previewCardPayment(cardId, date)` / `getCardPaymentReductions()` | Read-only, for the form's preview and Fixed Expenses' "covered by extra payments" note |
+
+Rules, agreed with the user:
+
+- **Which bill shrinks:** the card's bill due in the same calendar month as
+  the payment, if still unpaid; otherwise the payment only lowers the
+  balance (statement dates are out of scope). After a bill is resolved the
+  next cycle has no row until its due date, so a payment in that cycle's
+  month creates it early (`materializeCurrentCycle` with `allowFuture`),
+  outside the transaction like every other caller.
+- **When:** the bill shrinks when the payment is *sent*, the card balance only
+  when it *clears* (never automatically). Shrinking at send time keeps the
+  forecast from counting the pending payment and the full bill both.
+- **Covered:** when the bill is shrunk to what was already paid, the cycle is
+  resolved through `resolveLoanOrBillCycle` with `covered: true`
+  (`coveredByCardPayments` on the log row), so the schedule moves on.
+- **No credit balances:** a payment can't exceed the card balance minus
+  payments still on their way.
+- **Repricing:** `syncCreditCardAmountToExpenses` subtracts a bill's
+  `appliedCents` when it reprices, so editing the card can't put the full
+  amount back. Next month needs nothing special: the oracle prices from the
+  new balance (calculated) or the custom amount (custom).
+- **Undo is guarded:** a reversal that would rewrite a bill already paid or
+  resolved another way is refused, the same idea as the Balance Due guard in
+  `getLastUndoableResolution`.
+
 ## 6. Custom Hooks
 
 ### 6.1 `useExpenseOperations`
@@ -1083,7 +1154,9 @@ re-deriving urgency itself.
 
 | Component | Path | Description |
 |---|---|---|
-| `EnhancedCreditCard` | `src/components/EnhancedCreditCard.jsx` | Visual credit card component with stats; exposes a "change funding account" action alongside edit/delete. Shows the effective interest rate (with an "(intro)" label while a promotional rate is active), an original-balance payoff-progress bar (`getOriginalCardProgress`, hidden for a legacy card with no data), a "Pay to Reach 30%" utilization suggestion, and a "Monthly payment" line (`dbHelpers.getCardPaymentPlan`) with a Custom / From payoff goal badge, kept separate from the issuer's "Minimum Payment", and a "Vs. Target Payoff" behind-pace warning (`dbHelpers.getCardBehindPaceWarning`) when a custom payment won't hit `targetPayoffDate` in time |
+| `EnhancedCreditCard` | `src/components/EnhancedCreditCard.jsx` | Visual credit card component with stats; exposes a "change funding account" action alongside edit/delete. Shows the effective interest rate (with an "(intro)" label while a promotional rate is active), an original-balance payoff-progress bar (`getOriginalCardProgress`, hidden for a legacy card with no data), a "Pay to Reach 30%" utilization suggestion, and a "Monthly payment" line (`dbHelpers.getCardPaymentPlan`) with a Custom / From payoff goal badge, kept separate from the issuer's "Minimum Payment", and a "Vs. Target Payoff" behind-pace warning (`dbHelpers.getCardBehindPaceWarning`) when a custom payment won't hit `targetPayoffDate` in time. Also hosts **Pay extra** (`PayExtraModal`), a "$X payment on its way" line under the balance, and the card's `CardPaymentHistory` |
+| `PayExtraModal` | `src/components/PayExtraModal.jsx` | The "Pay extra" form, also used to edit a sent payment. Only the amount must be typed: account defaults to the one last used for the card (else its funding account), "already cleared" to `card.paymentsPostInstantly`, date to today. Says what will happen before saving (`dbHelpers.previewCardPayment`) and blocks an amount over what the card owes |
+| `CardPaymentHistory` | `src/components/CardPaymentHistory.jsx` | A card's Payments list (`dbHelpers.getCardPaymentHistory`): extra payments and monthly bills, newest first. Cleared / Edit / Delete on a sent payment, Undo on a cleared one, each confirmed |
 | `CreditCardPaymentInput` | `src/components/CreditCardPaymentInput.jsx` | Specialized input for CC payment amounts |
 | `ChooseFundingAccountModal` | `src/components/ChooseFundingAccountModal.jsx` | Picks which account funds a card's payment expense — used both when auto-creating a new card's payment (with a "use default" shortcut) and when changing an existing card's funding source |
 | `CreateAccountModal` | `src/components/CreateAccountModal.jsx` | Inline "create an account" fallback inside the credit-card funding flow when no accounts exist yet |
@@ -1741,15 +1814,18 @@ ISO timestamp.
 
 #### Export format version
 
-`CURRENT_DATA_VERSION` in `src/services/dataManager.js` gates the JSON file
+`CURRENT_DATA_VERSION` in `src/constants/dataVersion.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **13**
+looks like, the other what the database looks like — and it is currently **14**
 (5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was; 7 → 8 when
 `recurringResolutionLog` was added; 8 → 9 when `loans` was added; 9 → 10 when
 `loans` gained real-interest-tracking fields; 10 → 11 for safe version-2
 undo receipts and lossless snapshot backups — see §5.3.1; 11 → 12 when
 `loans` gained required original-loan-terms fields; 12 → 13 when `creditCards`
-gained the equivalent `originalBalance`/`targetPayoffDate`/intro-APR fields).
+gained the equivalent `originalBalance`/`targetPayoffDate`/intro-APR fields;
+13 → 14 when `cardPayments` was added). It lives in its own module so every
+gate reads the same number: `validatePortableLoans` once kept a hard-coded
+copy that would have rejected every newer backup.
 
 Because transfer between devices is by file rather than sync, this is a
 product-level compatibility requirement, not an implementation detail: a file
