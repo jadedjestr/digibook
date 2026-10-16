@@ -1,3 +1,5 @@
+import { CURRENT_DATA_VERSION } from '../constants/dataVersion';
+
 import { parseMoneyInput } from './validation';
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -146,7 +148,7 @@ export function computeLoanInterest(loan, asOfIso, payment) {
 
 /** Validate portable loan state before a replace-import clears any tables. */
 export function validatePortableLoans(data) {
-  if (data.version !== undefined && Number(data.version) > 13)
+  if (data.version !== undefined && Number(data.version) > CURRENT_DATA_VERSION)
     throw new Error('Unsupported backup version');
   if (data.loans != null && !Array.isArray(data.loans))
     throw new Error('Invalid loans array');

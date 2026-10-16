@@ -1,3 +1,4 @@
+import { CURRENT_DATA_VERSION } from '../constants/dataVersion';
 import { dbHelpers } from '../db/database-clean';
 import { DateUtils } from '../utils/dateUtils';
 import {
@@ -25,40 +26,6 @@ const CSV_MONEY_FIELDS = {
   ],
   creditCards: ['balance', 'creditLimit', 'minimumPayment', 'originalBalance'],
 };
-
-// Export/import data-format version - distinct from the Dexie schema version
-// in database-clean.js (this gates the JSON/backup file contract, not the
-// IndexedDB structure). Review this whenever a schema change alters that
-// contract (e.g. the V8 migration to UUID string ids, which this constant
-// was never bumped for).
-// 7 adds the `appearance` object (glass tint, ambient strength, ambient
-// colours). It is additive and optional: a version 6 file imports fine and
-// simply leaves the current theme alone.
-// 8 adds `recurringResolutionLog` (Undo / Payment History for the recurring
-// "resolve cycle" flow). It is additive and optional: a version 7 file
-// imports fine and simply starts with no resolution history.
-// 9 adds `loans` (installment-debt tracking, mirroring creditCards). It is
-// additive and optional: a version 8 file imports fine and simply starts
-// with no loans.
-// 10 adds real-interest-tracking fields to `loans` (unpaidInterest,
-// interestAccruedThrough, interestStateVersion, lastInterestOperation). It
-// is additive and optional: a version 9 file imports fine and its loans
-// simply stay untracked (interestAccruedThrough absent/null).
-// 11 versions safe loan undo receipts; older clients must not rewrite them.
-// 12 adds original-loan-terms fields to `loans` (originalLoanAmount,
-// originalTermMonths, originalScheduledPayment, originalMaturityDate) - the
-// contract actually signed, distinct from targetPayoffDate (a goal). It is
-// additive and optional on import: a version 11 file's loans simply import
-// without these fields, though the app requires them going forward for any
-// *new* loan created after this version.
-// 13 adds the credit-card equivalent to `creditCards`: `originalBalance`,
-// `targetPayoffDate`, and intro-APR fields (`hasIntroApr`, `introApr`,
-// `introAprEndDate`), driving a real amortized minimum payment the same way
-// loans' targetPayoffDate does. Additive and optional on import: a version
-// 12 file's credit cards simply import without these fields, though the app
-// requires `originalBalance`/`targetPayoffDate`/`hasIntroApr` going forward
-// for any *new* card created after this version.
-const CURRENT_DATA_VERSION = 13;
 
 /**
  * Normalize version to number for comparison
