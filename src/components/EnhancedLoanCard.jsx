@@ -1,6 +1,6 @@
 import { Edit, Trash2, AlertTriangle } from 'lucide-react';
 import PropTypes from 'prop-types';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { DateUtils } from '../utils/dateUtils';
@@ -13,12 +13,17 @@ import {
 import { notify } from '../utils/notifications';
 import { parseMoneyInput } from '../utils/validation';
 
+import CardPaymentHistory from './CardPaymentHistory';
+import PayExtraModal from './PayExtraModal';
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
 
 const EnhancedLoanCard = ({
   loan,
   fundingSourceName = null,
+  fundingAccountId = null,
+  payAccounts = [],
+  onPaymentsChanged,
   onChangeFundingSource,
   onEdit,
   onDelete,
@@ -34,6 +39,32 @@ const EnhancedLoanCard = ({
   const [shortfallOutcome, setShortfallOutcome] = useState('');
   const correctionRequest = useRef(null);
   const [correctionTarget, setCorrectionTarget] = useState(null);
+
+  // Pay extra and the loan's payment history, the same as on cards.
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [isPayExtraOpen, setIsPayExtraOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState(null);
+  const loadPaymentHistory = useCallback(() => {
+    dbHelpers
+      .getCardPaymentHistory(loan.id, 'loan')
+      .then(setPaymentHistory)
+      .catch(() => setPaymentHistory([]));
+  }, [loan.id]);
+  useEffect(() => {
+    loadPaymentHistory();
+  }, [loadPaymentHistory, loan]);
+  const onTheirWay = paymentHistory
+    .filter(entry => entry.kind === 'extra' && entry.status === 'sent')
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const closePayExtra = () => {
+    setIsPayExtraOpen(false);
+    setEditingPayment(null);
+  };
+  const handlePaymentsChanged = () => {
+    closePayExtra();
+    loadPaymentHistory();
+    onPaymentsChanged?.();
+  };
 
   const balanceInfo = formatLoanBalance(loan.balance);
   const progress = getLoanPayoffProgress(loan);
@@ -238,6 +269,12 @@ const EnhancedLoanCard = ({
               {balanceInfo.isPaidOff ? '' : 'Remaining'}
             </span>
           </div>
+          {onTheirWay > 0 && (
+            <div className='text-xs text-secondary mt-1'>
+              <PrivacyWrapper>{formatCurrency(onTheirWay)}</PrivacyWrapper>{' '}
+              payment on its way
+            </div>
+          )}
         </div>
 
         <div className='loan-card-actions'>
@@ -369,6 +406,38 @@ const EnhancedLoanCard = ({
           </div>
         </div>
       </div>
+
+      {payAccounts.length > 0 && (
+        <div className='card-payment-section'>
+          <button
+            type='button'
+            onClick={() => setIsPayExtraOpen(true)}
+            disabled={loan.balance <= 0}
+            className='glass-button glass-button--secondary glass-button--sm'
+          >
+            Pay extra
+          </button>
+          <CardPaymentHistory
+            history={paymentHistory}
+            accounts={payAccounts}
+            onEdit={entry => setEditingPayment(entry)}
+            onChanged={handlePaymentsChanged}
+          />
+        </div>
+      )}
+
+      {payAccounts.length > 0 && (
+        <PayExtraModal
+          isOpen={isPayExtraOpen || editingPayment !== null}
+          card={loan}
+          kind='loan'
+          accounts={payAccounts}
+          defaultAccountId={fundingAccountId}
+          payment={editingPayment}
+          onClose={closePayExtra}
+          onSaved={handlePaymentsChanged}
+        />
+      )}
 
       {/* Additional Info Section */}
       <div className='additional-info'>
@@ -572,6 +641,9 @@ EnhancedLoanCard.propTypes = {
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   onInterestOperationComplete: PropTypes.func,
+  fundingAccountId: PropTypes.string,
+  payAccounts: PropTypes.arrayOf(PropTypes.object),
+  onPaymentsChanged: PropTypes.func,
   index: PropTypes.number,
   className: PropTypes.string,
 };
@@ -580,6 +652,9 @@ EnhancedLoanCard.defaultProps = {
   fundingSourceName: null,
   onChangeFundingSource: undefined,
   onInterestOperationComplete: undefined,
+  fundingAccountId: null,
+  payAccounts: [],
+  onPaymentsChanged: undefined,
   index: 0,
   className: '',
 };

@@ -1537,7 +1537,9 @@ async function assertUndoableLoan(loanId, operationId, expectedVersion) {
     loan.interestStateVersion !== receipt.versionAfter ||
     !matches(loanState(loan), receipt.after)
   ) {
-    throw new Error('Loan has changed since this payment; undo refused');
+    throw new Error(
+      'There is newer activity on this loan (such as an extra payment), so this payment cannot be undone.',
+    );
   }
   const expense = requireRow(
     await db.fixedExpenses.get(receipt.affectedExpenseId),
@@ -1885,21 +1887,25 @@ async function resolveLoanOrBillCycle(
 }
 
 // ---------------------------------------------------------------------------
-// Extra credit-card payments ("Pay extra")
+// Extra payments on cards and loans ("Pay extra")
 //
-// A payment made from the card rather than through its monthly bill. The
-// cardPayments row is the source of truth: what moved, from where, and which
-// bill it shrank by how much, so every reversal puts things back exactly.
+// A payment made from the card or loan rather than through its monthly bill.
+// The cardPayments row (the name predates loans) is the source of truth: what
+// moved, from where, and which bill it shrank by how much, so every reversal
+// puts things back exactly. A row has exactly one of creditCardId / loanId.
 //
-// Rules (agreed with the user, see ARCHITECTURE.md):
-// - Cleared: the bank account and the card balance move now.
-// - Sent: a pending transaction holds the money on the bank account; the card
+// Rules (agreed with the user, see ARCHITECTURE.md §5.9):
+// - Cleared: the bank account and the card/loan balance move now.
+// - Sent: a pending transaction holds the money on the bank account; the
 //   balance only moves when the user marks it cleared (never on its own).
-// - Either way the card's bill due in the payment's calendar month shrinks at
-//   once, if it is still unpaid; otherwise the payment only lowers the
-//   balance. Shrinking at send time is what keeps the forecast from counting
-//   the pending payment and the full bill both.
-// - No payment may leave the card with a credit balance.
+// - Either way the bill due in the payment's calendar month shrinks at once,
+//   if it is still unpaid; otherwise the payment only lowers the balance.
+//   Shrinking at send time keeps the forecast from counting the pending
+//   payment and the full bill both.
+// - No payment may exceed what is owed (no credit balances).
+// - Interest-tracked loans: interest first, then principal (computeLoanInterest,
+//   the same math a bill payment posts with). This is newer activity on the
+//   loan, so undo of an older tracked payment is refused with a plain reason.
 // ---------------------------------------------------------------------------
 
 const cardPaymentTables = () => [
@@ -1919,27 +1925,57 @@ const cardPaymentTables = () => [
 const toCents = value => Math.round(Number(value || 0) * 100);
 
 const BILL_CHANGED_MESSAGE =
-  'The card bill this payment shrank has been paid or changed since. Undo that first.';
+  'The bill this payment shrank has been paid or changed since. Undo that first.';
+const NEWER_LOAN_ACTIVITY_MESSAGE =
+  'There is newer activity on this loan, so this payment cannot be undone.';
 
-const findCardPaymentTemplate = async cardId =>
-  (
-    await db.recurringExpenseTemplates
-      .filter(
-        t =>
-          !t.deletedAt &&
-          t.isActive &&
-          t.category === 'Credit Card Payment' &&
-          t.targetCreditCardId === cardId,
-      )
-      .toArray()
-  )[0] ?? null;
+const DEBTS = {
+  card: {
+    table: () => db.creditCards,
+    category: 'Credit Card Payment',
+    targetField: 'targetCreditCardId',
+    paymentField: 'creditCardId',
+    noun: 'card',
+  },
+  loan: {
+    table: () => db.loans,
+    category: 'Loan Payment',
+    targetField: 'targetLoanId',
+    paymentField: 'loanId',
+    noun: 'loan',
+  },
+};
+
+/** { kind, id } for a payment row or a { creditCardId | loanId } input. */
+const debtOf = ({ creditCardId, loanId }) => {
+  if (loanId && !creditCardId) return { kind: 'loan', id: loanId };
+  if (creditCardId && !loanId) return { kind: 'card', id: creditCardId };
+  throw new Error('A payment is for exactly one card or loan');
+};
+
+const findDebtPaymentTemplate = async ({ kind, id }) => {
+  const { category, targetField } = DEBTS[kind];
+  return (
+    (
+      await db.recurringExpenseTemplates
+        .filter(
+          t =>
+            !t.deletedAt &&
+            t.isActive &&
+            t.category === category &&
+            t[targetField] === id,
+        )
+        .toArray()
+    )[0] ?? null
+  );
+};
 
 /**
- * The card's monthly bill due in the payment's calendar month that still has
- * something owed, or null (no bill that month, or it's already settled).
+ * The card/loan's monthly bill due in the payment's calendar month that still
+ * has something owed, or null (no bill that month, or it's already settled).
  */
-async function findMonthBill(cardId, paymentDate) {
-  const template = await findCardPaymentTemplate(cardId);
+async function findMonthBill(debt, paymentDate) {
+  const template = await findDebtPaymentTemplate(debt);
   if (!template) return null;
   const month = paymentDate.slice(0, 7);
   const resolvedIds = new Set(
@@ -1969,16 +2005,16 @@ async function findMonthBill(cardId, paymentDate) {
 }
 
 /**
- * Mid-month the card's next bill usually has no row yet: after a bill is
- * resolved, the next cycle is only created on its due date. If the cycle
- * due in the payment's month is that not-yet-created one, create it now (as
- * a new card's first bill is) so there is a real bill to shrink. Runs
- * outside the payment's transaction, like every materializeCurrentCycle
- * caller; it is idempotent, so a payment that then fails validation leaves
- * at most a bill that would have appeared on its due date anyway.
+ * Mid-month the next bill usually has no row yet: after a bill is resolved,
+ * the next cycle is only created on its due date. If the cycle due in the
+ * payment's month is that not-yet-created one, create it now (as a new
+ * card's first bill is) so there is a real bill to shrink. Runs outside the
+ * payment's transaction, like every materializeCurrentCycle caller; it is
+ * idempotent, so a payment that then fails validation leaves at most a bill
+ * that would have appeared on its due date anyway.
  */
-async function ensureMonthBillExists(cardId, paymentDate) {
-  const template = await findCardPaymentTemplate(cardId);
+async function ensureMonthBillExists(debt, paymentDate) {
+  const template = await findDebtPaymentTemplate(debt);
   if (
     !template?.nextDueDate ||
     template.nextDueDate.slice(0, 7) !== paymentDate.slice(0, 7)
@@ -1988,43 +2024,53 @@ async function ensureMonthBillExists(cardId, paymentDate) {
   try {
     await dbHelpers.materializeCurrentCycle(template.id, { allowFuture: true });
   } catch (error) {
-    logger.warn('Could not create the card bill for an extra payment', error);
+    logger.warn('Could not create the bill for an extra payment', error);
   }
 }
 
+/** What is owed on the card or loan, in cents (a loan's includes interest). */
+const owedCentsOf = (kind, row, asOf) =>
+  kind === 'loan'
+    ? toCents(getLoanPayoffAmount(row, asOf))
+    : toCents(row.balance);
+
 /** Must run inside a cardPaymentTables() transaction. */
-async function validateCardPayment({
-  creditCardId,
+async function validateDebtPayment({
+  debt,
   accountId,
   amount,
+  paymentDate,
   excludePaymentId = null,
 }) {
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('Enter an amount greater than $0');
   }
-  const card = await db.creditCards.get(creditCardId);
-  if (!card || card.deletedAt) throw new Error('Credit card not found');
+  const { table, paymentField, noun } = DEBTS[debt.kind];
+  const row = await table().get(debt.id);
+  if (!row || row.deletedAt) throw new Error(`That ${noun} was not found`);
   const account = await db.accounts.get(accountId);
   if (!account || account.deletedAt) throw new Error('Account not found');
 
   const onTheirWayCents = (
     await db.cardPayments
-      .where('creditCardId')
-      .equals(creditCardId)
       .filter(
-        p => !p.deletedAt && p.status === 'sent' && p.id !== excludePaymentId,
+        p =>
+          !p.deletedAt &&
+          p[paymentField] === debt.id &&
+          p.status === 'sent' &&
+          p.id !== excludePaymentId,
       )
       .toArray()
   ).reduce((sum, p) => sum + toCents(p.amount), 0);
-  const owedCents = toCents(card.balance) - onTheirWayCents;
+  const owedCents = owedCentsOf(debt.kind, row, paymentDate) - onTheirWayCents;
   if (toCents(amount) > owedCents) {
     throw new Error(
-      `That's more than ${card.name} owes ($${(Math.max(owedCents, 0) / 100).toFixed(2)}${
+      `That's more than ${row.name} owes ($${(Math.max(owedCents, 0) / 100).toFixed(2)}${
         onTheirWayCents > 0 ? ' after payments on their way' : ''
       })`,
     );
   }
-  return { card, account };
+  return { row, account };
 }
 
 /**
@@ -2032,8 +2078,9 @@ async function validateCardPayment({
  * cycle as covered so the schedule moves on. Must run inside a
  * cardPaymentTables() transaction.
  */
-async function applyCardPaymentToBill(
-  { creditCardId, amount, paymentDate },
+async function applyPaymentToBill(
+  debt,
+  { amount, paymentDate },
   ts,
   validators,
 ) {
@@ -2042,7 +2089,7 @@ async function applyCardPaymentToBill(
     appliedCents: 0,
     coveredResolutionLogId: null,
   };
-  const bill = await findMonthBill(creditCardId, paymentDate);
+  const bill = await findMonthBill(debt, paymentDate);
   if (!bill) return none;
 
   const amountCents = toCents(bill.amount);
@@ -2072,7 +2119,7 @@ async function applyCardPaymentToBill(
  * paid or resolved some other way: restoring its amount then would rewrite a
  * settled bill. Must run inside a cardPaymentTables() transaction.
  */
-async function reverseCardPaymentOnBill(payment, ts) {
+async function reversePaymentOnBill(payment, ts) {
   if (!payment.appliedExpenseId || !payment.appliedCents) return;
 
   if (payment.coveredResolutionLogId) {
@@ -2104,31 +2151,121 @@ async function reverseCardPaymentOnBill(payment, ts) {
   });
 }
 
-/** Move both balances by the payment (sign -1 to reverse). In-transaction. */
-async function moveCardPaymentBalances(payment, sign, ts) {
-  const account = await db.accounts.get(payment.accountId);
-  const card = await db.creditCards.get(payment.creditCardId);
-  if (!account || !card) throw new Error('Account or card not found');
-  const amountCents = toCents(payment.amount) * sign;
-  if (toCents(card.balance) - amountCents < 0) {
+const trackedLoanState = loan => ({
+  balance: Number(loan.balance || 0),
+  unpaidInterest: Number(loan.unpaidInterest || 0),
+  interestAccruedThrough: loan.interestAccruedThrough,
+  interestStateVersion: loan.interestStateVersion || 0,
+});
+
+/**
+ * Post the payment to the loan (sign 1) or take it back (sign -1).
+ * Untracked: principal only. Tracked: interest first, then principal, as of
+ * today (or the balance date, if later); the loan's version moves on, so an
+ * older payment's undo receipt no longer matches and is refused. Taking it
+ * back requires the loan to be exactly as this payment left it.
+ * @returns {Object|null} { loanBefore, loanAfter } for a tracked loan
+ */
+async function moveLoanForPayment(payment, sign, ts) {
+  const loan = await db.loans.get(payment.loanId);
+  if (!loan || loan.deletedAt) throw new Error('That loan was not found');
+
+  if (!loan.interestAccruedThrough) {
+    const changeCents = toCents(payment.amount) * sign;
+    const newCents = toCents(loan.balance) - changeCents;
+    if (newCents < 0) {
+      throw new Error(
+        `That's more than ${loan.name} owes. Edit the amount first.`,
+      );
+    }
+    await updateRequired(db.loans, loan.id, {
+      balance: newCents / 100,
+      updatedAt: ts,
+    });
+    return null;
+  }
+
+  if (sign < 0) {
+    if (
+      !payment.loanAfter ||
+      !matches(trackedLoanState(loan), payment.loanAfter)
+    ) {
+      throw new Error(NEWER_LOAN_ACTIVITY_MESSAGE);
+    }
+    const { interestStateVersion: _v, ...restored } = payment.loanBefore;
+    await updateRequired(db.loans, loan.id, {
+      ...restored,
+      interestStateVersion: (loan.interestStateVersion || 0) + 1,
+      updatedAt: ts,
+    });
+    return null;
+  }
+
+  const today = DateUtils.today();
+  const asOf =
+    loan.interestAccruedThrough > today ? loan.interestAccruedThrough : today;
+  let posted;
+  try {
+    posted = computeLoanInterest(loan, asOf, payment.amount);
+  } catch {
     throw new Error(
-      `That would leave ${card.name} with a credit balance. Edit the amount first.`,
+      `That's more than ${loan.name} owes. Edit the amount first.`,
     );
+  }
+  const loanBefore = trackedLoanState(loan);
+  const loanAfter = {
+    balance: posted.principalAfter,
+    unpaidInterest: posted.interestAfter,
+    interestAccruedThrough: asOf,
+    interestStateVersion: loanBefore.interestStateVersion + 1,
+  };
+  await updateRequired(db.loans, loan.id, { ...loanAfter, updatedAt: ts });
+  return {
+    loanBefore,
+    loanAfter,
+    interestPaid: posted.interestPaid,
+    principalPaid: posted.principalPaid,
+  };
+}
+
+/**
+ * Move both balances by the payment (sign -1 to reverse). In-transaction.
+ * @returns {Object|null} a tracked loan's before/after state, to store on
+ *   the payment for its undo
+ */
+async function movePaymentBalances(payment, sign, ts) {
+  const account = await db.accounts.get(payment.accountId);
+  if (!account) throw new Error('Account not found');
+  const amountCents = toCents(payment.amount) * sign;
+
+  let loanStates = null;
+  if (payment.loanId) {
+    loanStates = await moveLoanForPayment(payment, sign, ts);
+  } else {
+    const card = await db.creditCards.get(payment.creditCardId);
+    if (!card) throw new Error('That card was not found');
+    if (toCents(card.balance) - amountCents < 0) {
+      throw new Error(
+        `That would leave ${card.name} with a credit balance. Edit the amount first.`,
+      );
+    }
+    await db.creditCards.update(card.id, {
+      balance: (toCents(card.balance) - amountCents) / 100,
+      updatedAt: ts,
+    });
   }
   await db.accounts.update(account.id, {
     currentBalance: (toCents(account.currentBalance) - amountCents) / 100,
     updatedAt: ts,
   });
-  await db.creditCards.update(card.id, {
-    balance: (toCents(card.balance) - amountCents) / 100,
-    updatedAt: ts,
-  });
+  return loanStates;
 }
 
 const auditCardPayment = async (actionType, payment, details = {}) => {
   try {
     await addAuditLogEntry(actionType, 'cardPayment', payment.id, {
-      creditCardId: payment.creditCardId,
+      creditCardId: payment.creditCardId ?? null,
+      loanId: payment.loanId ?? null,
       accountId: payment.accountId,
       amount: payment.amount,
       ...details,
@@ -3096,10 +3233,21 @@ export const dbHelpers = {
         );
       }
 
-      const newAmount = calculateLoanPaymentBillAmount(updatedLoan, template, {
+      const priced = calculateLoanPaymentBillAmount(updatedLoan, template, {
         dueDate: anchor,
       });
-      if (newAmount == null) continue; // defensive: updateLoan validates first
+      if (priced == null) continue; // defensive: updateLoan validates first
+      // Keep what extra payments already took off this bill (as cards do);
+      // untouched otherwise so all pricing paths stay equal.
+      const extraCents = (
+        await db.cardPayments
+          .filter(p => !p.deletedAt && p.appliedExpenseId === expense.id)
+          .toArray()
+      ).reduce((sum, p) => sum + (p.appliedCents || 0), 0);
+      const newAmount =
+        extraCents === 0
+          ? priced
+          : Math.max(0, toCents(priced) - extraCents) / 100;
       await db.fixedExpenses.update(expense.id, {
         amount: newAmount,
         updatedAt: ts,
@@ -3117,6 +3265,9 @@ export const dbHelpers = {
         db.loans,
         db.fixedExpenses,
         db.recurringExpenseTemplates,
+
+        // Read by the reprice, which keeps extra payments' reductions.
+        db.cardPayments,
         async () => {
           const current = await db.loans.get(id);
           if (!current || current.deletedAt) {
@@ -6960,8 +7111,21 @@ export const dbHelpers = {
       for (const [idx, payment] of (data.cardPayments || []).entries()) {
         const id = toRefId(payment?.id);
         if (id) cardPaymentIds.add(id);
+
+        // Exactly one of a real card or a real loan.
         const cardId = toRefId(payment?.creditCardId);
-        if (!cardId || !creditCardIds.has(cardId)) {
+        const paidLoanId = toRefId(payment?.loanId);
+        if (cardId && paidLoanId) {
+          errors.push(
+            `cardPayments[${idx}]: cannot have both creditCardId and loanId`,
+          );
+        } else if (paidLoanId) {
+          if (!loanIds.has(paidLoanId)) {
+            errors.push(
+              `cardPayments[${idx}]: invalid loanId (${payment?.loanId})`,
+            );
+          }
+        } else if (!cardId || !creditCardIds.has(cardId)) {
           errors.push(
             `cardPayments[${idx}]: invalid creditCardId (${payment?.creditCardId})`,
           );
@@ -7942,7 +8106,12 @@ export const dbHelpers = {
             expense.category === 'Loan Payment' && expense.targetLoanId
               ? await db.loans.get(expense.targetLoanId)
               : null;
-          const tracked = !!targetLoan?.interestAccruedThrough;
+
+          // A cycle covered by extra payments moved no money and has no
+          // loan receipt; it undoes like any other bill.
+          const tracked =
+            !!targetLoan?.interestAccruedThrough &&
+            !candidate.coveredByCardPayments;
 
           if (tracked) {
             const receipt = targetLoan.lastInterestOperation;
@@ -8019,12 +8188,14 @@ export const dbHelpers = {
     );
   },
 
-  // --- Extra credit-card payments (see the block above dbHelpers) ---
+  // --- Extra payments on cards and loans (see the block above dbHelpers) ---
 
   /**
-   * Record an extra payment on a credit card.
+   * Record an extra payment on a credit card or a loan.
    * @param {Object} payment
-   * @param {string} payment.creditCardId
+   * @param {string} [payment.creditCardId] - exactly one of creditCardId /
+   *   loanId
+   * @param {string} [payment.loanId]
    * @param {string} payment.accountId - bank account it comes from
    * @param {number} payment.amount - dollars, already parsed (parseMoneyInput)
    * @param {string} [payment.paymentDate] - YYYY-MM-DD, defaults to today
@@ -8032,33 +8203,38 @@ export const dbHelpers = {
    * @returns {Promise<string>} the cardPayments id
    */
   async recordCardPayment({
-    creditCardId,
+    creditCardId = null,
+    loanId = null,
     accountId,
     amount,
     paymentDate = DateUtils.today(),
     cleared,
   }) {
+    const debt = debtOf({ creditCardId, loanId });
     const validators = await loadExpenseValidators();
-    await ensureMonthBillExists(creditCardId, paymentDate);
+    await ensureMonthBillExists(debt, paymentDate);
 
     return db.transaction('rw', cardPaymentTables(), async () => {
-      const { card } = await validateCardPayment({
-        creditCardId,
+      const { row } = await validateDebtPayment({
+        debt,
         accountId,
         amount,
+        paymentDate,
       });
       const ts = nowIso();
       const id = generateId();
-      const applied = await applyCardPaymentToBill(
-        { creditCardId, amount, paymentDate },
+      const applied = await applyPaymentToBill(
+        debt,
+        { amount, paymentDate },
         ts,
         validators,
       );
 
       let pendingTransactionId = null;
+      let loanStates = null;
       if (cleared) {
-        await moveCardPaymentBalances(
-          { id, creditCardId, accountId, amount },
+        loanStates = await movePaymentBalances(
+          { id, creditCardId, loanId, accountId, amount },
           1,
           ts,
         );
@@ -8068,9 +8244,9 @@ export const dbHelpers = {
           id: pendingTransactionId,
           accountId,
           amount: -amount,
-          category: 'Credit Card Payment',
+          category: DEBTS[debt.kind].category,
           categoryId: null,
-          description: `${card.name} payment (extra)`,
+          description: `${row.name} payment (extra)`,
           date: paymentDate,
           type: 'expense',
           cardPaymentId: id,
@@ -8083,6 +8259,7 @@ export const dbHelpers = {
       const payment = {
         id,
         creditCardId,
+        loanId,
         accountId,
         amount,
         paymentDate,
@@ -8090,6 +8267,8 @@ export const dbHelpers = {
         clearedAt: cleared ? ts : null,
         pendingTransactionId,
         ...applied,
+        loanBefore: loanStates?.loanBefore ?? null,
+        loanAfter: loanStates?.loanAfter ?? null,
         createdAt: ts,
         updatedAt: ts,
         deletedAt: null,
@@ -8099,6 +8278,8 @@ export const dbHelpers = {
         status: payment.status,
         appliedExpenseId: applied.appliedExpenseId,
         appliedCents: applied.appliedCents,
+        interestPaid: loanStates?.interestPaid,
+        principalPaid: loanStates?.principalPaid,
       });
       return id;
     });
@@ -8113,7 +8294,7 @@ export const dbHelpers = {
         throw new Error('This payment has already cleared');
       }
       const ts = nowIso();
-      await moveCardPaymentBalances(payment, 1, ts);
+      const loanStates = await movePaymentBalances(payment, 1, ts);
       if (payment.pendingTransactionId) {
         await db.pendingTransactions.update(payment.pendingTransactionId, {
           completedAt: ts,
@@ -8124,9 +8305,14 @@ export const dbHelpers = {
       await db.cardPayments.update(id, {
         status: 'cleared',
         clearedAt: ts,
+        loanBefore: loanStates?.loanBefore ?? null,
+        loanAfter: loanStates?.loanAfter ?? null,
         updatedAt: ts,
       });
-      await auditCardPayment('CLEAR_CARD_PAYMENT', payment);
+      await auditCardPayment('CLEAR_CARD_PAYMENT', payment, {
+        interestPaid: loanStates?.interestPaid,
+        principalPaid: loanStates?.principalPaid,
+      });
     });
   },
 
@@ -8138,13 +8324,14 @@ export const dbHelpers = {
   async updateCardPayment(id, changes) {
     const existing = await db.cardPayments.get(id);
     if (!existing || existing.deletedAt) throw new Error('Payment not found');
+    const debt = debtOf(existing);
     const next = {
       accountId: changes.accountId ?? existing.accountId,
       amount: changes.amount ?? existing.amount,
       paymentDate: changes.paymentDate ?? existing.paymentDate,
     };
     const validators = await loadExpenseValidators();
-    await ensureMonthBillExists(existing.creditCardId, next.paymentDate);
+    await ensureMonthBillExists(debt, next.paymentDate);
 
     return db.transaction('rw', cardPaymentTables(), async () => {
       const payment = await db.cardPayments.get(id);
@@ -8155,18 +8342,15 @@ export const dbHelpers = {
         );
       }
       const ts = nowIso();
-      await reverseCardPaymentOnBill(payment, ts);
-      await validateCardPayment({
-        creditCardId: payment.creditCardId,
+      await reversePaymentOnBill(payment, ts);
+      await validateDebtPayment({
+        debt,
         accountId: next.accountId,
         amount: next.amount,
+        paymentDate: next.paymentDate,
         excludePaymentId: id,
       });
-      const applied = await applyCardPaymentToBill(
-        { creditCardId: payment.creditCardId, ...next },
-        ts,
-        validators,
-      );
+      const applied = await applyPaymentToBill(debt, next, ts, validators);
       if (payment.pendingTransactionId) {
         await db.pendingTransactions.update(payment.pendingTransactionId, {
           accountId: next.accountId,
@@ -8189,7 +8373,7 @@ export const dbHelpers = {
         throw new Error('A cleared payment can only be undone');
       }
       const ts = nowIso();
-      await reverseCardPaymentOnBill(payment, ts);
+      await reversePaymentOnBill(payment, ts);
       if (payment.pendingTransactionId) {
         await db.pendingTransactions.update(payment.pendingTransactionId, {
           deletedAt: ts,
@@ -8203,7 +8387,8 @@ export const dbHelpers = {
 
   /**
    * Undo a cleared payment: both balances and the bill go back. Refused if
-   * the bill it shrank has since been paid some other way.
+   * the bill it shrank has since been paid some other way, or, on a tracked
+   * loan, if anything has posted to the loan since.
    */
   async undoCardPayment(id) {
     return db.transaction('rw', cardPaymentTables(), async () => {
@@ -8213,8 +8398,8 @@ export const dbHelpers = {
         throw new Error('This payment has not cleared; delete it instead');
       }
       const ts = nowIso();
-      await reverseCardPaymentOnBill(payment, ts);
-      await moveCardPaymentBalances(payment, -1, ts);
+      await movePaymentBalances(payment, -1, ts);
+      await reversePaymentOnBill(payment, ts);
       await db.cardPayments.update(id, {
         deletedAt: ts,
         undoneAt: ts,
@@ -8226,27 +8411,31 @@ export const dbHelpers = {
 
   /**
    * What a payment on this date would do, for the form to say before saving.
-   * Read-only. `bill` is the bill it would shrink (a not-yet-created one is
-   * priced the way it will be created), or null when it would only lower the
-   * balance.
+   * Read-only. `balance` is what is owed (a loan's includes interest); `bill`
+   * is the bill it would shrink (a not-yet-created one is priced the way it
+   * will be created), or null when it would only lower the balance.
+   * @param {string} debtId
+   * @param {string} paymentDate
+   * @param {'card'|'loan'} [kind]
    * @returns {Promise<{balance: number, onTheirWay: number,
    *   bill: {dueDate: string, owed: number}|null}>}
    */
-  async previewCardPayment(creditCardId, paymentDate) {
-    const card = await db.creditCards.get(creditCardId);
-    const onTheirWay = (await this.getCardPayments(creditCardId))
+  async previewCardPayment(debtId, paymentDate, kind = 'card') {
+    const debt = { kind, id: debtId };
+    const row = await DEBTS[kind].table().get(debtId);
+    const onTheirWay = (await this.getCardPayments(debtId, kind))
       .filter(p => p.status === 'sent')
       .reduce((sum, p) => sum + toCents(p.amount), 0);
 
     let bill = null;
-    const existing = await findMonthBill(creditCardId, paymentDate);
+    const existing = await findMonthBill(debt, paymentDate);
     if (existing) {
       bill = {
         dueDate: existing.dueDate,
         owed: (toCents(existing.amount) - toCents(existing.paidAmount)) / 100,
       };
     } else {
-      const template = await findCardPaymentTemplate(creditCardId);
+      const template = await findDebtPaymentTemplate(debt);
       const due = template?.nextDueDate;
       const created =
         due &&
@@ -8263,13 +8452,13 @@ export const dbHelpers = {
       }
     }
     return {
-      balance: Number(card?.balance || 0),
+      balance: row ? owedCentsOf(kind, row, paymentDate) / 100 : 0,
       onTheirWay: onTheirWay / 100,
       bill,
     };
   },
 
-  /** For each card bill, how much extra payments took off it (in cents). */
+  /** For each bill, how much extra payments took off it (in cents). */
   async getCardPaymentReductions() {
     const reductions = new Map();
     (await db.cardPayments.filter(p => !p.deletedAt).toArray()).forEach(p => {
@@ -8282,30 +8471,32 @@ export const dbHelpers = {
     return reductions;
   },
 
-  /** Extra payments on a card that haven't been deleted or undone. */
-  async getCardPayments(creditCardId) {
+  /** Extra payments on a card (or loan) that haven't been deleted or undone. */
+  async getCardPayments(debtId, kind = 'card') {
+    const { paymentField } = DEBTS[kind];
     return db.cardPayments
-      .where('creditCardId')
-      .equals(creditCardId)
-      .filter(p => !p.deletedAt)
+      .filter(p => !p.deletedAt && p[paymentField] === debtId)
       .toArray();
   },
 
   /**
-   * Everything paid toward a card, newest first: extra payments plus the
-   * card's monthly bill resolutions and paid one-off card bills (e.g. a
-   * Balance Due). Read-only; each entry points back at its source row.
+   * Everything paid toward a card or loan, newest first: extra payments plus
+   * its monthly bill resolutions and paid one-off bills (e.g. a Balance Due).
+   * Read-only; each entry points back at its source row.
+   * @param {string} debtId
+   * @param {'card'|'loan'} [kind]
    * @returns {Promise<Array<{kind: 'extra'|'bill', id: string, date: string,
    *   amount: number, accountId: string|null, status: string,
    *   appliedCents?: number, committedAmount?: number}>>}
    */
-  async getCardPaymentHistory(creditCardId) {
+  async getCardPaymentHistory(debtId, kind = 'card') {
+    const { category, targetField } = DEBTS[kind];
     const [extras, bills, log] = await Promise.all([
-      this.getCardPayments(creditCardId),
+      this.getCardPayments(debtId, kind),
       db.fixedExpenses
-        .where('targetCreditCardId')
-        .equals(creditCardId)
-        .filter(e => e.category === 'Credit Card Payment')
+        .where(targetField)
+        .equals(debtId)
+        .filter(e => e.category === category)
         .toArray(),
       db.recurringResolutionLog.filter(e => !e.deletedAt).toArray(),
     ]);

@@ -17,7 +17,8 @@ const shortDate = date =>
   }) ?? date;
 
 /**
- * Record an extra payment on a card, or edit one that hasn't cleared.
+ * Record an extra payment on a card or a loan (`kind`), or edit one that
+ * hasn't cleared. `card` is the card or loan row.
  *
  * Only the amount must be typed: the account defaults to the one last used
  * for this card (else the card's funding account, else the first), "already
@@ -29,6 +30,7 @@ const shortDate = date =>
 const PayExtraModal = ({
   isOpen,
   card,
+  kind = 'card',
   accounts,
   defaultAccountId = null,
   payment = null,
@@ -62,7 +64,7 @@ const PayExtraModal = ({
       setPaymentDate(DateUtils.today());
       setAccountId(defaultAccountId ?? accounts[0]?.id ?? '');
       dbHelpers
-        .getCardPayments(card.id)
+        .getCardPayments(card.id, kind)
         .then(previous => {
           const last = [...previous].sort((a, b) =>
             b.createdAt.localeCompare(a.createdAt),
@@ -76,13 +78,13 @@ const PayExtraModal = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, payment, card, accounts, defaultAccountId]);
+  }, [isOpen, payment, card, kind, accounts, defaultAccountId]);
 
   useEffect(() => {
     if (!isOpen || !DateUtils.isValidDate(paymentDate)) return undefined;
     let cancelled = false;
     dbHelpers
-      .previewCardPayment(card.id, paymentDate)
+      .previewCardPayment(card.id, paymentDate, kind)
       .then(result => {
         if (!cancelled) setPreview(result);
       })
@@ -92,7 +94,7 @@ const PayExtraModal = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, card.id, paymentDate]);
+  }, [isOpen, card.id, kind, paymentDate]);
 
   if (!isOpen) return null;
 
@@ -115,8 +117,7 @@ const PayExtraModal = ({
   if (preview && value > 0) {
     const newBalance = preview.balance - value;
     const when = cleared ? 'now' : 'when it clears';
-    let billLine =
-      ' The card bill is already paid this month, so only the balance drops.';
+    let billLine = ` The ${kind} bill is already paid this month, so only the balance drops.`;
     if (billOwed !== null) {
       const left = Math.max(0, billOwed - value);
       billLine =
@@ -158,7 +159,7 @@ const PayExtraModal = ({
         notify.success('Payment updated');
       } else {
         await dbHelpers.recordCardPayment({
-          creditCardId: card.id,
+          [kind === 'loan' ? 'loanId' : 'creditCardId']: card.id,
           accountId,
           amount: parsed.value,
           paymentDate,
@@ -325,6 +326,7 @@ const PayExtraModal = ({
 
 PayExtraModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
+  kind: PropTypes.oneOf(['card', 'loan']),
   card: PropTypes.shape({
     id: PropTypes.string.isRequired,
     name: PropTypes.string,

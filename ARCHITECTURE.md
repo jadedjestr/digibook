@@ -506,7 +506,8 @@ siblings (see [§5.9](#59-extra-credit-card-payments)).
 | Column | Type | Indexed | Description |
 |---|---|---|---|
 | `id` | UUID string | PK | Unique identifier |
-| `creditCardId` | UUID string | Yes | The card paid |
+| `creditCardId` | UUID string \| null | Yes | The card paid; exactly one of this and `loanId` |
+| `loanId` | UUID string \| null | No | The loan paid (data format 16). Matched with `.filter()`, so no index |
 | `accountId` | UUID string | Yes | Bank account it came from (Checking or Savings) |
 | `amount` | number | No | Dollars, > 0 |
 | `paymentDate` | YYYY-MM-DD | Yes | The date the user entered; picks which month's bill it shrinks |
@@ -516,6 +517,7 @@ siblings (see [§5.9](#59-extra-credit-card-payments)).
 | `appliedExpenseId` | UUID string \| null | Yes | The card bill it shrank, or null (balance only) |
 | `appliedCents` | integer | No | How much it took off that bill; given back on delete/undo, and subtracted again if the bill is repriced |
 | `coveredResolutionLogId` | UUID string \| null | No | The `recurringResolutionLog` row it wrote when it settled the bill |
+| `loanBefore` / `loanAfter` | object \| null | No | Interest-tracked loans only: `{ balance, unpaidInterest, interestAccruedThrough, interestStateVersion }` around the posting; undo requires the loan to still equal `loanAfter` |
 | `undoneAt` | ISO string \| null | No | Set with `deletedAt` when a cleared payment is undone |
 | `createdAt` / `updatedAt` / `deletedAt` | ISO string | Yes | Standard timestamps; delete and undo soft-delete |
 
@@ -965,13 +967,16 @@ This replaces the anchor-drift protection the now-removed Reset Cycle flow used 
 
 ---
 
-### 5.9 Extra credit-card payments
+### 5.9 Extra payments on cards and loans
 
 **Path:** `src/db/database-clean.js` (helpers on `dbHelpers`; private helpers
 just above it)
 
-A payment made from the card ("Pay extra") instead of through its monthly
-bill. Each helper is one Dexie transaction over the same table set, so a
+A payment made from the card or loan ("Pay extra") instead of through its
+monthly bill. The functions keep their card names but take either
+`creditCardId` or `loanId` (previews, lists and history take `(id, 'loan')`);
+`DEBTS` in the helper block holds what differs (table, bill category, target
+field). Each helper is one Dexie transaction over the same table set, so a
 payment, its balances, its pending row and its bill change together or not
 at all.
 
@@ -999,8 +1004,17 @@ Rules, agreed with the user:
 - **Covered:** when the bill is shrunk to what was already paid, the cycle is
   resolved through `resolveLoanOrBillCycle` with `covered: true`
   (`coveredByCardPayments` on the log row), so the schedule moves on.
-- **No credit balances:** a payment can't exceed the card balance minus
-  payments still on their way.
+- **No credit balances:** a payment can't exceed what is owed minus payments
+  still on their way (a loan's payoff amount, interest included on a tracked
+  loan).
+- **Loans:** untracked → principal only. Interest-tracked → interest first,
+  then principal, via `computeLoanInterest` as of today (or the balance date
+  if later), the same math a bill payment posts with; the loan's
+  `interestStateVersion` moves on, so an older payment's undo receipt is
+  refused with "There is newer activity on this loan…" (the user's choice,
+  D1). Undoing the extra payment itself requires the loan to be exactly as it
+  left it. A bill covered by extra payments on a tracked loan undoes through
+  the plain path (`coveredByCardPayments`), since it moved no money.
 - **Repricing:** `syncCreditCardAmountToExpenses` subtracts a bill's
   `appliedCents` when it reprices, so editing the card can't put the full
   amount back. Next month needs nothing special: the oracle prices from the
@@ -1209,7 +1223,7 @@ and inline "create an account" fallback are shared rather than duplicated —
 
 | Component | Path | Description |
 |---|---|---|
-| `EnhancedLoanCard` | `src/components/EnhancedLoanCard.jsx` | Visual loan card mirroring `EnhancedCreditCard`: balance, payoff-progress bar, the calculated payment shown live via `dbHelpers.calculateRequiredLoanPayment`, and a "Monthly payment" line (`dbHelpers.getLoanPaymentPlan`) with a Custom / From payoff goal badge; exposes a "change funding account" action alongside edit/delete. For a tracked loan (§5.3.1), also shows live Unpaid Interest / Total Owed Today stats via `dbHelpers.computeLoanInterest`, and, whenever the loan has an active `lastInterestOperation`, "Undo last payment" / "Correct latest payment" actions calling `undoLastLoanInterestOperation`/`correctLatestLoanPayment`. Also shows the original-terms reconciliation via `getOriginalScheduleComparison` — original maturity date, and "N mo ahead/behind" / a "±$X/mo vs. original payment" line whenever the target-driven numbers diverge from what the loan actually calls for |
+| `EnhancedLoanCard` | `src/components/EnhancedLoanCard.jsx` | Visual loan card mirroring `EnhancedCreditCard`: balance, payoff-progress bar, the calculated payment shown live via `dbHelpers.calculateRequiredLoanPayment`, and a "Monthly payment" line (`dbHelpers.getLoanPaymentPlan`) with a Custom / From payoff goal badge; **Pay extra**, a "$X payment on its way" line and the loan's `CardPaymentHistory`, as on cards; exposes a "change funding account" action alongside edit/delete. For a tracked loan (§5.3.1), also shows live Unpaid Interest / Total Owed Today stats via `dbHelpers.computeLoanInterest`, and, whenever the loan has an active `lastInterestOperation`, "Undo last payment" / "Correct latest payment" actions calling `undoLastLoanInterestOperation`/`correctLatestLoanPayment`. Also shows the original-terms reconciliation via `getOriginalScheduleComparison` — original maturity date, and "N mo ahead/behind" / a "±$X/mo vs. original payment" line whenever the target-driven numbers diverge from what the loan actually calls for |
 | `LoanDeletionModal` | `src/components/LoanDeletionModal.jsx` | Deletion flow offering only two options — Unlink or Delete Anyway — not the three `CreditCardDeletionModal` offers, since a loan is never a spendable funding source and "reassign to another loan" isn't a meaningful default |
 
 ### Category System
@@ -1855,7 +1869,7 @@ ISO timestamp.
 
 `CURRENT_DATA_VERSION` in `src/constants/dataVersion.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **15**
+looks like, the other what the database looks like — and it is currently **16**
 (5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was; 7 → 8 when
 `recurringResolutionLog` was added; 8 → 9 when `loans` was added; 9 → 10 when
 `loans` gained real-interest-tracking fields; 10 → 11 for safe version-2
@@ -1863,7 +1877,7 @@ undo receipts and lossless snapshot backups — see §5.3.1; 11 → 12 when
 `loans` gained required original-loan-terms fields; 12 → 13 when `creditCards`
 gained the equivalent `originalBalance`/`targetPayoffDate`/intro-APR fields;
 13 → 14 when `cardPayments` was added; 14 → 15 when `loans` gained
-`customPaymentAmount`). It lives in its own module so every
+`customPaymentAmount`; 15 → 16 when `cardPayments` could pay a loan). It lives in its own module so every
 gate reads the same number: `validatePortableLoans` once kept a hard-coded
 copy that would have rejected every newer backup.
 

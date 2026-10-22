@@ -806,6 +806,12 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                 key={loan.id}
                 loan={loan}
                 fundingSourceName={funding?.fundingSourceName ?? null}
+                fundingAccountId={funding?.fundingAccountId ?? null}
+                payAccounts={fundableAccounts}
+                onPaymentsChanged={() => {
+                  loadLoans();
+                  onDataChange();
+                }}
                 onChangeFundingSource={
                   fundableAccounts.length > 0
                     ? () => handleChangeFundingClick(loan)

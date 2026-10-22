@@ -42,4 +42,7 @@
 // replacing the never-exposed template minimumPaymentOverride). Bumped so an
 // older client refuses the file rather than importing it and silently
 // dropping the custom amounts.
-export const CURRENT_DATA_VERSION = 15;
+// 16 lets `cardPayments` rows pay a loan (`loanId`, with tracked-loan
+// `loanBefore`/`loanAfter` snapshots for undo). Bumped so an older client
+// refuses the file rather than failing on a row it can't read.
+export const CURRENT_DATA_VERSION = 16;
