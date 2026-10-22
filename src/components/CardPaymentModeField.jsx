@@ -27,12 +27,14 @@ export const resolveCustomPayment = (mode, text) => {
 };
 
 /**
- * The card form's "how should the monthly payment be set?" choice:
+ * The card and loan forms' "how should the monthly payment be set?" choice:
  * Calculated (from balance and payoff goal) or Custom (a typed dollar amount).
  *
  * Presentational: the page owns the form state and passes in `plan`, the
- * live read of what the typed amount would do (from getCardPaymentPlan), so
- * the promises made here are the same ones the bill keeps.
+ * live read of what the typed amount would do (getCardPaymentPlan, or
+ * getLoanPaymentPlan mapped to the same flags), so the promises made here
+ * are the same ones the bill keeps. `noun` and `minimumLabel` word it for a
+ * card or a loan.
  */
 const CardPaymentModeField = ({
   mode,
@@ -42,10 +44,13 @@ const CardPaymentModeField = ({
   issuerMinimum,
   calculatedPayment,
   onChange,
+  noun,
+  minimumLabel,
+  idPrefix,
 }) => (
   <div>
     <span
-      id='credit-card-payment-mode-label'
+      id={`${idPrefix}-payment-mode-label`}
       className='block text-sm font-medium text-white mb-2'
     >
       How should the monthly payment be set?
@@ -53,7 +58,7 @@ const CardPaymentModeField = ({
     <div
       className='flex gap-2'
       role='group'
-      aria-labelledby='credit-card-payment-mode-label'
+      aria-labelledby={`${idPrefix}-payment-mode-label`}
     >
       <button
         type='button'
@@ -80,13 +85,13 @@ const CardPaymentModeField = ({
     {mode === 'custom' ? (
       <div className='mt-3'>
         <label
-          htmlFor='credit-card-custom-payment'
+          htmlFor={`${idPrefix}-custom-payment`}
           className='block text-sm font-medium text-white mb-2'
         >
           Custom payment per month
         </label>
         <input
-          id='credit-card-custom-payment'
+          id={`${idPrefix}-custom-payment`}
           type='text'
           inputMode='decimal'
           value={customPayment}
@@ -97,32 +102,32 @@ const CardPaymentModeField = ({
         {error && <p className='text-red-400 text-sm mt-1'>{error}</p>}
         {plan?.belowIssuerMinimum && (
           <p className='text-yellow-400 text-sm mt-1'>
-            This is below the card’s minimum payment of{' '}
-            {formatCurrency(issuerMinimum)}, so you may be charged a late fee.
+            This is below the {minimumLabel} of {formatCurrency(issuerMinimum)},
+            so you may be charged a late fee.
           </p>
         )}
         {plan?.neverPaysOff && (
           <p className='text-yellow-400 text-sm mt-1'>
-            This is less than the card’s monthly interest, so the balance won’t
-            go down.
+            This is less than the {noun}’s monthly interest, so the balance
+            won’t go down.
           </p>
         )}
         {plan?.paysOffCard ? (
           <p className='text-white/50 text-xs mt-1'>
-            This pays off the card. The bill will be just the remaining balance.
+            This pays off the {noun}. The bill will be just what’s left.
           </p>
         ) : (
           plan?.projectedPayoffDate && (
             <p className='text-white/50 text-xs mt-1'>
-              At this payment the card is paid off by{' '}
+              At this payment the {noun} is paid off by{' '}
               {DateUtils.formatShortDate(plan.projectedPayoffDate.slice(0, 10))}
               .
             </p>
           )
         )}
         <p className='text-white/50 text-xs mt-1'>
-          You’ll pay this amount every month until the card is paid off. Switch
-          back to “Calculated for me” any time.
+          You’ll pay this amount every month until the {noun} is paid off.
+          Switch back to “Calculated for me” any time.
         </p>
       </div>
     ) : (
@@ -148,6 +153,9 @@ CardPaymentModeField.propTypes = {
   issuerMinimum: PropTypes.number,
   calculatedPayment: PropTypes.number,
   onChange: PropTypes.func.isRequired,
+  noun: PropTypes.string,
+  minimumLabel: PropTypes.string,
+  idPrefix: PropTypes.string,
 };
 
 CardPaymentModeField.defaultProps = {
@@ -155,6 +163,9 @@ CardPaymentModeField.defaultProps = {
   plan: null,
   issuerMinimum: 0,
   calculatedPayment: undefined,
+  noun: 'card',
+  minimumLabel: 'card’s minimum payment',
+  idPrefix: 'credit-card',
 };
 
 export default CardPaymentModeField;

@@ -249,7 +249,11 @@ describe('dbHelpers.updateLoan (concurrency check + amount sync)', () => {
     expect(expense.amount).toBe(180);
   });
 
-  it('respects a template minimumPaymentOverride instead of the default calculation', async () => {
+  // The custom payment moved from the template (minimumPaymentOverride,
+  // never exposed in the UI) onto the loan (customPaymentAmount), the same
+  // move cards made: templates can be recreated and take it with them.
+  it('respects the loan customPaymentAmount instead of the default calculation', async () => {
+    await db.loans.update('1', { customPaymentAmount: 500 });
     await db.recurringExpenseTemplates.bulkPut([
       {
         id: 'tpl-1',
@@ -265,7 +269,6 @@ describe('dbHelpers.updateLoan (concurrency check + amount sync)', () => {
         targetLoanId: '1',
         isActive: true,
         isVariableAmount: true,
-        minimumPaymentOverride: 500,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
@@ -371,10 +374,8 @@ describe('dbHelpers.updateLoan (concurrency check + amount sync)', () => {
       expect(updatedTemplate.baseAmount).toBe(120);
     });
 
-    it('settles override-priced bills and template state to zero without reachability validation', async () => {
-      await db.recurringExpenseTemplates.update('tpl-a', {
-        minimumPaymentOverride: 500,
-      });
+    it('settles custom-priced bills and template state to zero without reachability validation', async () => {
+      await db.loans.update('1', { customPaymentAmount: 500 });
       await db.loans.update('1', { targetPayoffDate: '2026-03-06' });
 
       await dbHelpers.updateLoan('1', { balance: 0 });

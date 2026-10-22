@@ -10,13 +10,14 @@ import { useState, useEffect } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
 import { logger } from '../utils/logger';
+import { notify } from '../utils/notifications';
 import { parseMoneyInput } from '../utils/validation';
 
 import EmptyState from './EmptyState';
 import LoansEmptyIllustration from './illustrations/LoansEmptyIllustration';
 import PrivacyWrapper from './PrivacyWrapper';
 
-const LoanPayoffCalculator = ({ loans = [] }) => {
+const LoanPayoffCalculator = ({ loans = [], onDataChange }) => {
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [calculatorData, setCalculatorData] = useState({
     balance: 0,
@@ -26,6 +27,8 @@ const LoanPayoffCalculator = ({ loans = [] }) => {
   });
   const [payoffResult, setPayoffResult] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isConfirmingApply, setIsConfirmingApply] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
 
   useEffect(() => {
     if (loans.length > 0 && !selectedLoan) {
@@ -49,14 +52,42 @@ const LoanPayoffCalculator = ({ loans = [] }) => {
         ? paymentResult.payment
         : (selectedLoan.balance || 0) / 12;
 
+      // Start from the payment the loan is on now: its custom amount when it
+      // has one, otherwise the calculated payment.
       setCalculatorData({
         balance: selectedLoan.balance || 0,
-        payment: seededPayment,
+        payment: selectedLoan.customPaymentAmount ?? seededPayment,
         interestRate: selectedLoan.interestRate || 0,
         calculatedPayment: seededPayment,
       });
+      setIsConfirmingApply(false);
     }
   }, [selectedLoan]);
+
+  const currentPayment =
+    selectedLoan?.customPaymentAmount ?? calculatorData.calculatedPayment;
+  const lenderPayment = Number(selectedLoan?.originalScheduledPayment) || null;
+
+  // The only calculator field written back: the payment. Balance and rate
+  // stay what-if inputs.
+  const handleApplyToLoan = async () => {
+    setIsApplying(true);
+    try {
+      const payment = Math.round(calculatorData.payment * 100) / 100;
+      await dbHelpers.applyCalculatorPaymentToLoan(selectedLoan.id, payment);
+      notify.success(
+        `${selectedLoan.name} now has a custom payment of ${formatCurrency(payment)}/month`,
+      );
+      setSelectedLoan(prev => ({ ...prev, customPaymentAmount: payment }));
+      setIsConfirmingApply(false);
+      if (onDataChange) onDataChange();
+    } catch (error) {
+      logger.error('Error applying calculator payment to loan:', error);
+      notify.error(error.message || 'Failed to apply payment');
+    } finally {
+      setIsApplying(false);
+    }
+  };
 
   useEffect(() => {
     const calculatePayoff = async () => {
@@ -103,13 +134,18 @@ const LoanPayoffCalculator = ({ loans = [] }) => {
     }).format(amount);
   };
 
+  // Takes a YYYY-MM-DD date or a full ISO timestamp (calculateDebtPayoff's
+  // payoffDate). Appending a time to the latter read "Invalid Date".
   const formatDate = dateString => {
     if (!dateString) return 'N/A';
-    return new Date(`${dateString}T00:00:00`).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    return new Date(`${dateString.slice(0, 10)}T00:00:00`).toLocaleDateString(
+      'en-US',
+      {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      },
+    );
   };
 
   const getPayoffColor = () => {
@@ -291,6 +327,54 @@ const LoanPayoffCalculator = ({ loans = [] }) => {
               <p className='text-sm text-white/50 mt-1'>
                 Calculated: {formatCurrency(calculatorData.calculatedPayment)}
               </p>
+              {calculatorData.payment !== currentPayment &&
+                calculatorData.payment > 0 &&
+                (isConfirmingApply ? (
+                  <div className='mt-2 space-y-2'>
+                    <p className='text-sm text-yellow-400'>
+                      Switch {selectedLoan.name} to a custom payment of{' '}
+                      {formatCurrency(calculatorData.payment)}/month? (now{' '}
+                      {formatCurrency(currentPayment)}/month)
+                    </p>
+                    {lenderPayment != null &&
+                      calculatorData.payment < lenderPayment && (
+                        <p className='text-sm text-yellow-400'>
+                          This is below the lender’s required payment of{' '}
+                          {formatCurrency(lenderPayment)}.
+                        </p>
+                      )}
+                    <p className='text-xs text-white/50'>
+                      You can switch back to the calculated payment any time in
+                      the loan’s settings.
+                    </p>
+                    <div className='flex gap-2'>
+                      <button
+                        type='button'
+                        onClick={handleApplyToLoan}
+                        disabled={isApplying}
+                        className='glass-button glass-button--primary text-sm px-3 py-1.5'
+                      >
+                        {isApplying ? 'Applying…' : 'Confirm'}
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => setIsConfirmingApply(false)}
+                        disabled={isApplying}
+                        className='glass-button text-sm px-3 py-1.5'
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type='button'
+                    onClick={() => setIsConfirmingApply(true)}
+                    className='text-sm text-blue-400 hover:text-blue-300 underline focus:outline-none focus:ring-0 mt-1'
+                  >
+                    Apply to my loan
+                  </button>
+                ))}
             </div>
           </div>
 
@@ -448,10 +532,12 @@ const LoanPayoffCalculator = ({ loans = [] }) => {
 
 LoanPayoffCalculator.propTypes = {
   loans: PropTypes.arrayOf(PropTypes.object),
+  onDataChange: PropTypes.func,
 };
 
 LoanPayoffCalculator.defaultProps = {
   loans: [],
+  onDataChange: undefined,
 };
 
 export default LoanPayoffCalculator;

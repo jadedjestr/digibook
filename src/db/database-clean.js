@@ -373,6 +373,21 @@ export class DigibookDBClean extends Dexie {
           'id, creditCardId, accountId, status, paymentDate, appliedExpenseId, createdAt, updatedAt, deletedAt',
       })
       .upgrade(() => {});
+
+    // Version 14: a loan's custom payment lives on the loan
+    // (customPaymentAmount, not indexed), the same move version 12 made for
+    // cards. Data move only; see foldLoanOverridesIntoLoans for why the
+    // template's old field is left in place.
+    this.version(14)
+      .stores({})
+      .upgrade(async tx => {
+        const loansTable = tx.table('loans');
+        const loans = await loansTable.toArray();
+        const templates = await tx.table('recurringExpenseTemplates').toArray();
+        const folded = foldLoanOverridesIntoLoans(loans, templates);
+        const changed = folded.filter((loan, i) => loan !== loans[i]);
+        if (changed.length > 0) await loansTable.bulkPut(changed);
+      });
   }
 }
 
@@ -507,6 +522,47 @@ export function foldCardOverridesIntoCards(cards = [], templates = []) {
 }
 
 /**
+ * Loans' twin of foldCardOverridesIntoCards: a loan payment template's
+ * minimumPaymentOverride becomes the loan's customPaymentAmount (pricing now
+ * reads only the loan). Unlike the card fold, the template's field is left
+ * as it is: an interest-tracked loan's undo receipt snapshots its template,
+ * and changing the template would make undo of the latest payment refuse.
+ * It is simply no longer read. A loan that already has a custom amount keeps
+ * it. Pure; unchanged loans keep their references.
+ * @param {Array} loans
+ * @param {Array} templates
+ * @returns {Array} loans
+ */
+export function foldLoanOverridesIntoLoans(loans = [], templates = []) {
+  const isUsableAmount = value =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0;
+  const amountByLoan = new Map();
+  [...templates]
+    .filter(
+      t =>
+        !t.deletedAt &&
+        t.category === 'Loan Payment' &&
+        t.targetLoanId &&
+        isUsableAmount(t.minimumPaymentOverride),
+    )
+    .sort(
+      (a, b) =>
+        Number(Boolean(b.isActive)) - Number(Boolean(a.isActive)) ||
+        new Date(a.createdAt) - new Date(b.createdAt),
+    )
+    .forEach(t => {
+      if (!amountByLoan.has(t.targetLoanId)) {
+        amountByLoan.set(t.targetLoanId, t.minimumPaymentOverride);
+      }
+    });
+  return loans.map(loan =>
+    loan.customPaymentAmount != null || !amountByLoan.has(loan.id)
+      ? loan
+      : { ...loan, customPaymentAmount: amountByLoan.get(loan.id) },
+  );
+}
+
+/**
  * Apply foldCardOverridesIntoCards to an import payload so a backup taken
  * before customPaymentAmount existed doesn't silently lose its custom
  * payments on restore. Mutates data.creditCards / data.recurringExpenseTemplates.
@@ -524,6 +580,20 @@ function normalizeCardPaymentOverrides(data) {
   );
   data.creditCards = folded.cards;
   data.recurringExpenseTemplates = folded.templates;
+}
+
+/** Same for loans, so an older backup's loan overrides survive a restore. */
+function normalizeLoanPaymentOverrides(data) {
+  if (
+    !Array.isArray(data.loans) ||
+    !Array.isArray(data.recurringExpenseTemplates)
+  ) {
+    return;
+  }
+  data.loans = foldLoanOverridesIntoLoans(
+    data.loans,
+    data.recurringExpenseTemplates,
+  );
 }
 
 /**
@@ -1101,7 +1171,6 @@ async function resolveLoanBillPricing(expense, updates, loanDueDate) {
   return {
     template,
     missingTemplate: Boolean(expense.recurringTemplateId) && !template,
-    override: template?.minimumPaymentOverride ?? null,
     anchor: template
       ? (updates.dueDate ?? template.nextDueDate)
       : (updates.dueDate ?? loanDueDate),
@@ -1212,6 +1281,83 @@ function calculateCardPaymentBillAmount(card, template, { dueDate } = {}) {
   return result.success ? result.payment : getDefaultMinimumPaymentAmount(card);
 }
 
+/** A loan's custom payment is null (calculated) or a positive amount. */
+function assertValidLoanCustomPayment(loan) {
+  if (!('customPaymentAmount' in loan) || loan.customPaymentAmount == null) {
+    return;
+  }
+  if (
+    !Number.isFinite(loan.customPaymentAmount) ||
+    loan.customPaymentAmount <= 0
+  ) {
+    throw new Error('Custom payment must be a finite number greater than 0');
+  }
+}
+
+/**
+ * What it takes to pay a loan off on `asOf`: principal plus interest owed.
+ * An untracked loan only knows its principal. A tracked loan includes the
+ * interest accrued up to that date (computeLoanInterest), so a capped last
+ * payment really finishes the loan instead of leaving a few cents of
+ * interest behind; before its balance date it falls back to the stored
+ * unpaid interest.
+ */
+function getLoanPayoffAmount(loan, asOf) {
+  const balance = Math.max(0, Number(loan.balance) || 0);
+  if (!loan.interestAccruedThrough) return roundToCents(balance);
+  try {
+    return computeLoanInterest(loan, asOf ?? DateUtils.today()).totalOwedToday;
+  } catch {
+    return roundToCents(
+      balance + Math.max(0, Number(loan.unpaidInterest) || 0),
+    );
+  }
+}
+
+/**
+ * THE one answer to "what should this loan's payment bill be?", the loan
+ * twin of calculateCardPaymentBillAmount. Used by cycle materialization and
+ * virtual forecasts (computeTemplateCycleAmount), the post-edit reprice
+ * (syncLoanAmountToExpenses) and the screens (getLoanPaymentPlan). Before
+ * this, materialization and reprice each priced loans their own way, and a
+ * custom amount added to only one of them would make the bill and the screen
+ * disagree.
+ *
+ * Decision order: nothing owed → 0; a custom amount the user chose
+ * (loan.customPaymentAmount), but never more than the payoff amount, so the
+ * last bill asks only for what's left; otherwise the payment that reaches
+ * targetPayoffDate.
+ *
+ * The custom amount lives on the loan, not its payment template - templates
+ * can be recreated, which is how cards once lost theirs. A template's
+ * minimumPaymentOverride is legacy and no longer read (database version 14
+ * copied any onto the loan).
+ *
+ * Pure apart from the date default; no DB I/O, safe inside a transaction.
+ * @returns {number|null} null when the payment can't be priced (unreachable
+ *   payoff goal); callers keep their own fallback
+ */
+function calculateLoanPaymentBillAmount(loan, template, { dueDate } = {}) {
+  if (!loan) return null;
+  if (Number(loan.balance) <= 0) return 0;
+  const anchor = dueDate ?? template?.nextDueDate ?? loan.dueDate;
+  if (loan.customPaymentAmount != null) {
+    return roundToCents(
+      Math.min(
+        Number(loan.customPaymentAmount),
+        getLoanPayoffAmount(loan, anchor),
+      ),
+    );
+  }
+  const result = calculateRequiredLoanPayment(
+    loan.balance,
+    loan.interestRate,
+    anchor,
+    loan.targetPayoffDate,
+  );
+  return result.success ? result.payment : null;
+}
+
 /**
  * Compute what a recurring template's current cycle amount actually is
  * right now - the fixed baseAmount for most templates, or (for a
@@ -1227,17 +1373,11 @@ async function computeTemplateCycleAmount(template) {
   if (template.targetLoanId) {
     const loan = await db.loans.get(template.targetLoanId);
     if (!loan) return template.baseAmount;
-    if (loan.balance <= 0) return 0;
-    if (template.minimumPaymentOverride != null) {
-      return template.minimumPaymentOverride;
-    }
-    const result = calculateRequiredLoanPayment(
-      loan.balance,
-      loan.interestRate,
-      template.nextDueDate,
-      loan.targetPayoffDate,
+    return (
+      calculateLoanPaymentBillAmount(loan, template, {
+        dueDate: template.nextDueDate,
+      }) ?? template.baseAmount
     );
-    return result.success ? result.payment : template.baseAmount;
   }
   if (!template.targetCreditCardId) return template.baseAmount;
   const card = await db.creditCards.get(template.targetCreditCardId);
@@ -2735,6 +2875,7 @@ export const dbHelpers = {
           'Original loan amount must be a finite number greater than 0',
         );
       }
+      assertValidLoanCustomPayment(loan);
       if (
         !Number.isInteger(loan.originalTermMonths) ||
         loan.originalTermMonths <= 0
@@ -2929,7 +3070,8 @@ export const dbHelpers = {
       updates.balance === undefined &&
       updates.interestRate === undefined &&
       updates.targetPayoffDate === undefined &&
-      updates.dueDate === undefined
+      updates.dueDate === undefined &&
+      updates.customPaymentAmount === undefined
     ) {
       return;
     }
@@ -2946,7 +3088,7 @@ export const dbHelpers = {
 
     const ts = nowIso();
     for (const expense of linked) {
-      const { override, anchor, missingTemplate } =
+      const { template, anchor, missingTemplate } =
         await resolveLoanBillPricing(expense, updates, updatedLoan.dueDate);
       if (missingTemplate) {
         logger.warn(
@@ -2954,21 +3096,10 @@ export const dbHelpers = {
         );
       }
 
-      let newAmount;
-      if (Number(updatedLoan.balance) <= 0) {
-        newAmount = 0;
-      } else if (override != null) {
-        newAmount = override;
-      } else {
-        const result = calculateRequiredLoanPayment(
-          updatedLoan.balance,
-          updatedLoan.interestRate,
-          anchor,
-          updatedLoan.targetPayoffDate,
-        );
-        if (!result.success) continue; // defensive: updateLoan validates first
-        newAmount = result.payment;
-      }
+      const newAmount = calculateLoanPaymentBillAmount(updatedLoan, template, {
+        dueDate: anchor,
+      });
+      if (newAmount == null) continue; // defensive: updateLoan validates first
       await db.fixedExpenses.update(expense.id, {
         amount: newAmount,
         updatedAt: ts,
@@ -3039,6 +3170,7 @@ export const dbHelpers = {
           ) {
             throw new Error('Original maturity date must be a valid date');
           }
+          assertValidLoanCustomPayment(updates);
 
           if (
             'dueDate' in updates &&
@@ -3123,13 +3255,16 @@ export const dbHelpers = {
               .equals(id)
               .filter(isEligibleLoanBill)
               .toArray();
-            for (const expense of eligibleBills) {
-              const { override, anchor } = await resolveLoanBillPricing(
-                expense,
-                updates,
-                updates.dueDate ?? merged.dueDate,
-              );
-              if (override == null) {
+
+            // A custom payment doesn't depend on the payoff goal being
+            // reachable from each bill's date; the calculated one does.
+            if (merged.customPaymentAmount == null) {
+              for (const expense of eligibleBills) {
+                const { anchor } = await resolveLoanBillPricing(
+                  expense,
+                  updates,
+                  updates.dueDate ?? merged.dueDate,
+                );
                 validateReachable(anchor, `linked loan bill "${expense.name}"`);
               }
             }
@@ -3166,7 +3301,8 @@ export const dbHelpers = {
             updates.balance !== undefined ||
             updates.interestRate !== undefined ||
             updates.targetPayoffDate !== undefined ||
-            updates.dueDate !== undefined
+            updates.dueDate !== undefined ||
+            updates.customPaymentAmount !== undefined
           ) {
             await this.syncLoanAmountToExpenses(id, updates);
           }
@@ -5065,6 +5201,101 @@ export const dbHelpers = {
     };
   },
 
+  /**
+   * Choose how a loan's monthly payment is set: a custom amount, or null for
+   * the calculated payment. An ordinary loan update, so the loan write and
+   * the reprice of its unpaid bills happen together under the stale-write
+   * guard (the card twin is setCardPaymentPlan). It never touches the loan's
+   * financial state or its payment template, so on an interest-tracked loan
+   * it can't block undo of the latest payment.
+   * @param {string} loanId
+   * @param {number|null} customAmount - null restores the calculated payment
+   * @param {string} [expectedUpdatedAt]
+   */
+  async setLoanPaymentPlan(loanId, customAmount, expectedUpdatedAt) {
+    await this.updateLoan(
+      loanId,
+      { customPaymentAmount: customAmount },
+      expectedUpdatedAt,
+    );
+  },
+
+  /** The Loan Payoff Calculator's "Apply to my loan". */
+  async applyCalculatorPaymentToLoan(loanId, paymentAmount) {
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+      throw new Error('Payment amount must be a finite number greater than 0');
+    }
+    await this.setLoanPaymentPlan(loanId, paymentAmount);
+    try {
+      await addAuditLogEntry('CALCULATOR_PAYMENT_APPLY', 'loan', loanId, {
+        paymentAmount,
+      });
+    } catch (auditErr) {
+      logger.warn('Audit log (calculator payment apply) failed:', auditErr);
+    }
+  },
+
+  /**
+   * Read-only: what a loan's payment will be and why, for the loan card, the
+   * form preview and the calculator. Built on calculateLoanPaymentBillAmount,
+   * so a screen can never disagree with the bill. Pass a draft loan (unsaved
+   * form values) to preview a choice.
+   * @returns {Promise<{
+   *   mode: 'custom'|'calculated',
+   *   billAmount: number|null,
+   *   calculatedAmount: number|null,
+   *   customAmount: number|null,
+   *   paysOffLoan: boolean,
+   *   belowLenderPayment: boolean,
+   *   lenderPayment: number|null,
+   *   belowMonthlyInterest: boolean,
+   *   monthlyInterest: number,
+   *   projectedPayoffDate: string|null,
+   * }>}
+   */
+  async getLoanPaymentPlan(loan, template = null) {
+    const dueDate = template?.nextDueDate ?? loan.dueDate ?? undefined;
+    const customAmount = loan.customPaymentAmount ?? null;
+    const balance = Math.max(0, Number(loan.balance) || 0);
+    const rate = Number(loan.interestRate) || 0;
+    const lenderPayment = Number(loan.originalScheduledPayment) || null;
+    const monthlyInterest = roundToCents((balance * (rate / 100)) / 12);
+
+    let projectedPayoffDate = null;
+    if (customAmount != null && balance > 0 && customAmount > monthlyInterest) {
+      const projection = await this.calculateDebtPayoff(
+        balance,
+        customAmount,
+        rate,
+      );
+      projectedPayoffDate = projection.success ? projection.payoffDate : null;
+    }
+
+    return {
+      mode: customAmount != null ? 'custom' : 'calculated',
+      billAmount: calculateLoanPaymentBillAmount(loan, template, { dueDate }),
+      calculatedAmount: calculateLoanPaymentBillAmount(
+        { ...loan, customPaymentAmount: null },
+        template,
+        { dueDate },
+      ),
+      customAmount,
+      paysOffLoan:
+        customAmount != null &&
+        balance > 0 &&
+        customAmount >= getLoanPayoffAmount(loan, dueDate),
+      belowLenderPayment:
+        customAmount != null &&
+        lenderPayment != null &&
+        customAmount < lenderPayment,
+      lenderPayment,
+      belowMonthlyInterest:
+        customAmount != null && balance > 0 && customAmount <= monthlyInterest,
+      monthlyInterest,
+      projectedPayoffDate,
+    };
+  },
+
   async getFundingAccountIdForLoan(loanId) {
     try {
       const templates = await db.recurringExpenseTemplates
@@ -5700,16 +5931,13 @@ export const dbHelpers = {
           }
 
           const startDate = loan.dueDate || DateUtils.today();
-          const initial = calculateRequiredLoanPayment(
-            loan.balance,
-            loan.interestRate,
-            startDate,
-            loan.targetPayoffDate,
-          );
+          const initial = calculateLoanPaymentBillAmount(loan, null, {
+            dueDate: startDate,
+          });
 
           const templateId = await this.addRecurringExpenseTemplate({
             name: `${loan.name} Payment`,
-            baseAmount: initial.success ? initial.payment : loan.balance,
+            baseAmount: initial || loan.balance,
             frequency: 'monthly',
             intervalValue: 1,
             intervalUnit: 'months',
@@ -6371,6 +6599,7 @@ export const dbHelpers = {
       validatePortableLoans(data);
       normalizePaycheckSettings(data);
       normalizeCardPaymentOverrides(data);
+      normalizeLoanPaymentOverrides(data);
 
       // Atomic full-replace import:
       // - Everything is cleared and written inside one IndexedDB transaction.

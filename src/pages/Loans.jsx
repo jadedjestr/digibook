@@ -3,6 +3,9 @@ import PropTypes from 'prop-types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
+import CardPaymentModeField, {
+  resolveCustomPayment,
+} from '../components/CardPaymentModeField';
 import ChooseFundingAccountModal from '../components/ChooseFundingAccountModal';
 import CreateAccountModal from '../components/CreateAccountModal';
 import DatePicker from '../components/DatePicker';
@@ -44,6 +47,11 @@ const emptyFormData = {
   originalTermMonths: '',
   originalScheduledPayment: '',
   originalMaturityDate: '',
+
+  // 'calculated' = priced to reach targetPayoffDate; 'custom' = the dollar
+  // amount typed in customPayment (same choice as the card form).
+  paymentMode: 'calculated',
+  customPayment: '',
 
   // Real-interest tracking opt-in (see PRD/TIP §3): both blank means "not
   // tracked" - nothing about the existing flow changes. Filling in an "as
@@ -195,6 +203,61 @@ const Loans = ({ onDataChange, accounts = [] }) => {
     formData.targetPayoffDate,
   ]);
 
+  // What the typed custom payment would do, from the same pricing the bills
+  // use (getLoanPaymentPlan on the unsaved values). On a tracked loan the
+  // saved interest state is kept, so "covers the interest" is judged on it.
+  const [customPlan, setCustomPlan] = useState(null);
+
+  // "Below the lender's required payment" confirm, shown inside the form: a
+  // toast would sit behind the form's backdrop where it can't be clicked.
+  const [lowPaymentWarning, setLowPaymentWarning] = useState(null);
+  useEffect(() => {
+    setLowPaymentWarning(null);
+  }, [formData.paymentMode, formData.customPayment]);
+  useEffect(() => {
+    const { amount } = resolveCustomPayment(
+      formData.paymentMode,
+      formData.customPayment,
+    );
+    const balance = parseMoneyInput(formData.balance).value;
+    if (amount == null || !Number.isFinite(balance)) {
+      setCustomPlan(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const draft = {
+      ...(editingLoan ?? {}),
+      balance,
+      interestRate: parseMoneyInput(formData.interestRate).value || 0,
+      dueDate: formData.dueDate || DateUtils.today(),
+      targetPayoffDate: formData.targetPayoffDate,
+      originalScheduledPayment: parseMoneyInput(
+        formData.originalScheduledPayment,
+      ).value,
+      customPaymentAmount: amount,
+    };
+    dbHelpers
+      .getLoanPaymentPlan(draft)
+      .then(plan => {
+        if (!cancelled) setCustomPlan(plan);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomPlan(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    formData.paymentMode,
+    formData.customPayment,
+    formData.balance,
+    formData.interestRate,
+    formData.dueDate,
+    formData.targetPayoffDate,
+    formData.originalScheduledPayment,
+    editingLoan,
+  ]);
+
   const validateForm = useCallback(() => {
     const newErrors = {};
 
@@ -280,6 +343,12 @@ const Loans = ({ onDataChange, accounts = [] }) => {
         'This loan already tracks interest - clearing this would turn tracking off, which isn’t supported yet';
     }
 
+    const customPaymentError = resolveCustomPayment(
+      formData.paymentMode,
+      formData.customPayment,
+    ).error;
+    if (customPaymentError) newErrors.customPayment = customPaymentError;
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }, [formData, paymentPreview, editingLoan]);
@@ -290,143 +359,170 @@ const Loans = ({ onDataChange, accounts = [] }) => {
     setFormData(emptyFormData);
     setInitialFundingAccountId(null);
     setErrors({});
+    setLowPaymentWarning(null);
   }, []);
 
-  const handleSave = useCallback(async () => {
-    if (!validateForm()) {
-      notify.error('Please fix the errors before saving');
-      return;
-    }
-
-    try {
-      const loanData = {
-        name: formData.name,
-        lender: formData.lender || '',
-        balance: parseMoneyInput(formData.balance).value,
-        originalLoanAmount: parseMoneyInput(formData.originalLoanAmount).value,
-        interestRate: parseMoneyInput(formData.interestRate).value,
-        dueDate: formData.dueDate,
-        targetPayoffDate: formData.targetPayoffDate,
-        originalTermMonths: parseInt(formData.originalTermMonths, 10),
-        originalScheduledPayment: parseMoneyInput(
-          formData.originalScheduledPayment,
-        ).value,
-        originalMaturityDate: formData.originalMaturityDate,
-      };
-
-      if (
-        formData.unpaidInterest !== '' &&
-        formData.interestAccruedThrough !== ''
-      ) {
-        loanData.unpaidInterest = parseMoneyInput(
-          formData.unpaidInterest,
-        ).value;
-        loanData.interestAccruedThrough = formData.interestAccruedThrough;
+  const handleSave = useCallback(
+    async ({ confirmedLowPayment = false } = {}) => {
+      if (!validateForm()) {
+        notify.error('Please fix the errors before saving');
+        return;
       }
 
-      if (editingLoan) {
+      // validateForm has already accepted this. null = the calculated payment.
+      const { amount: customPaymentAmount } = resolveCustomPayment(
+        formData.paymentMode,
+        formData.customPayment,
+      );
+      const lenderPayment = parseMoneyInput(
+        formData.originalScheduledPayment,
+      ).value;
+      if (
+        !confirmedLowPayment &&
+        customPaymentAmount != null &&
+        Number.isFinite(lenderPayment) &&
+        customPaymentAmount < lenderPayment
+      ) {
+        setLowPaymentWarning(
+          `${formatCurrency(customPaymentAmount)} is below the lender's required ${formatCurrency(lenderPayment)}. Save anyway?`,
+        );
+        return;
+      }
+      setLowPaymentWarning(null);
+
+      try {
+        const loanData = {
+          name: formData.name,
+          lender: formData.lender || '',
+          balance: parseMoneyInput(formData.balance).value,
+          originalLoanAmount: parseMoneyInput(formData.originalLoanAmount)
+            .value,
+          interestRate: parseMoneyInput(formData.interestRate).value,
+          dueDate: formData.dueDate,
+          targetPayoffDate: formData.targetPayoffDate,
+          originalTermMonths: parseInt(formData.originalTermMonths, 10),
+          originalScheduledPayment: parseMoneyInput(
+            formData.originalScheduledPayment,
+          ).value,
+          originalMaturityDate: formData.originalMaturityDate,
+          customPaymentAmount,
+        };
+
         if (
-          editingLoan.interestAccruedThrough &&
-          !formData.correctFinancialSnapshot
+          formData.unpaidInterest !== '' &&
+          formData.interestAccruedThrough !== ''
         ) {
-          for (const key of [
+          loanData.unpaidInterest = parseMoneyInput(
+            formData.unpaidInterest,
+          ).value;
+          loanData.interestAccruedThrough = formData.interestAccruedThrough;
+        }
+
+        if (editingLoan) {
+          if (
+            editingLoan.interestAccruedThrough &&
+            !formData.correctFinancialSnapshot
+          ) {
+            for (const key of [
+              'balance',
+              'interestRate',
+              'unpaidInterest',
+              'interestAccruedThrough',
+            ])
+              delete loanData[key];
+          }
+          const snapshotKeys = [
             'balance',
             'interestRate',
             'unpaidInterest',
             'interestAccruedThrough',
-          ])
-            delete loanData[key];
-        }
-        const snapshotKeys = [
-          'balance',
-          'interestRate',
-          'unpaidInterest',
-          'interestAccruedThrough',
-        ];
-        for (const key of Object.keys(loanData)) {
-          if (
-            loanData[key] === editingLoan[key] &&
-            !(formData.correctFinancialSnapshot && snapshotKeys.includes(key))
-          )
-            delete loanData[key];
-        }
-        await dbHelpers.updateLoan(
-          editingLoan.id,
-          loanData,
-          editingLoan.updatedAt,
-        );
-        if (
-          formData.fundingAccountId !== '' &&
-          formData.fundingAccountId !== initialFundingAccountId
-        ) {
-          await dbHelpers.updateFundingAccountForLoan(
+          ];
+          for (const key of Object.keys(loanData)) {
+            if (
+              loanData[key] === (editingLoan[key] ?? null) &&
+              !(formData.correctFinancialSnapshot && snapshotKeys.includes(key))
+            )
+              delete loanData[key];
+          }
+          await dbHelpers.updateLoan(
             editingLoan.id,
-            formData.fundingAccountId,
+            loanData,
+            editingLoan.updatedAt,
           );
+          if (
+            formData.fundingAccountId !== '' &&
+            formData.fundingAccountId !== initialFundingAccountId
+          ) {
+            await dbHelpers.updateFundingAccountForLoan(
+              editingLoan.id,
+              formData.fundingAccountId,
+            );
+          }
+          notify.success('Loan updated successfully');
+          closeAddModalAndReset();
+          loadLoans();
+          onDataChange();
+          return;
         }
-        notify.success('Loan updated successfully');
-        closeAddModalAndReset();
-        loadLoans();
-        onDataChange();
-        return;
-      }
 
-      if (accounts.length === 0) {
-        setPendingLoanData(loanData);
-        setIsAccountModalOpen(true);
-        return;
-      }
+        if (accounts.length === 0) {
+          setPendingLoanData(loanData);
+          setIsAccountModalOpen(true);
+          return;
+        }
 
-      const newId = await dbHelpers.addLoan(loanData);
-      notify.success('Loan added successfully');
+        const newId = await dbHelpers.addLoan(loanData);
+        notify.success('Loan added successfully');
 
-      if (fundableAccounts.length === 1) {
-        await dbHelpers.createExpenseForLoan(newId, fundableAccounts[0].id);
-        notify.success('Created payment expense');
-        closeAddModalAndReset();
-        loadLoans();
-        onDataChange();
-        return;
-      }
+        if (fundableAccounts.length === 1) {
+          await dbHelpers.createExpenseForLoan(newId, fundableAccounts[0].id);
+          notify.success('Created payment expense');
+          closeAddModalAndReset();
+          loadLoans();
+          onDataChange();
+          return;
+        }
 
-      const defaultAcct = await dbHelpers.getDefaultAccount();
-      setDefaultAccountIdForModal(
-        defaultAcct?.id ??
-          fundableAccounts.find(a => a.type === 'checking')?.id ??
-          fundableAccounts[0]?.id ??
-          null,
-      );
-      setFundingModalLoanId(newId);
-      setFundingModalLoanName(loanData.name);
-      setShowFundingModal(true);
-      closeAddModalAndReset();
-      loadLoans();
-      onDataChange();
-    } catch (error) {
-      logger.error('Error saving loan:', error);
-      if (error.message?.startsWith('STALE_WRITE')) {
-        notify.error(
-          'This loan was changed elsewhere. Please close and reopen the edit form.',
+        const defaultAcct = await dbHelpers.getDefaultAccount();
+        setDefaultAccountIdForModal(
+          defaultAcct?.id ??
+            fundableAccounts.find(a => a.type === 'checking')?.id ??
+            fundableAccounts[0]?.id ??
+            null,
         );
-      } else if (
-        new RegExp('valid date|billing cycle').test(error.message ?? '')
-      ) {
-        notify.error(error.message);
-      } else {
-        notify.error('Failed to save loan');
+        setFundingModalLoanId(newId);
+        setFundingModalLoanName(loanData.name);
+        setShowFundingModal(true);
+        closeAddModalAndReset();
+        loadLoans();
+        onDataChange();
+      } catch (error) {
+        logger.error('Error saving loan:', error);
+        if (error.message?.startsWith('STALE_WRITE')) {
+          notify.error(
+            'This loan was changed elsewhere. Please close and reopen the edit form.',
+          );
+        } else if (
+          new RegExp('valid date|billing cycle').test(error.message ?? '')
+        ) {
+          notify.error(error.message);
+        } else {
+          notify.error('Failed to save loan');
+        }
       }
-    }
-  }, [
-    validateForm,
-    formData,
-    editingLoan,
-    accounts.length,
-    fundableAccounts,
-    initialFundingAccountId,
-    closeAddModalAndReset,
-    loadLoans,
-    onDataChange,
-  ]);
+    },
+    [
+      validateForm,
+      formData,
+      editingLoan,
+      accounts.length,
+      fundableAccounts,
+      initialFundingAccountId,
+      closeAddModalAndReset,
+      loadLoans,
+      onDataChange,
+    ],
+  );
 
   const handleFundingConfirm = useCallback(
     async accountId => {
@@ -575,6 +671,11 @@ const Loans = ({ onDataChange, accounts = [] }) => {
           ? loan.originalScheduledPayment.toString()
           : '',
       originalMaturityDate: loan.originalMaturityDate || '',
+      paymentMode: loan.customPaymentAmount != null ? 'custom' : 'calculated',
+      customPayment:
+        loan.customPaymentAmount != null
+          ? String(loan.customPaymentAmount)
+          : '',
       unpaidInterest:
         loan.interestAccruedThrough != null
           ? Math.max(0, loan.unpaidInterest ?? 0).toFixed(2)
@@ -1140,6 +1241,28 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                   )}
                 </div>
 
+                <CardPaymentModeField
+                  mode={formData.paymentMode}
+                  customPayment={formData.customPayment}
+                  error={errors.customPayment}
+                  plan={
+                    customPlan && {
+                      belowIssuerMinimum: customPlan.belowLenderPayment,
+                      neverPaysOff: customPlan.belowMonthlyInterest,
+                      paysOffCard: customPlan.paysOffLoan,
+                      projectedPayoffDate: customPlan.projectedPayoffDate,
+                    }
+                  }
+                  issuerMinimum={customPlan?.lenderPayment ?? 0}
+                  calculatedPayment={
+                    paymentPreview?.success ? paymentPreview.payment : undefined
+                  }
+                  onChange={handleInputChange}
+                  noun='loan'
+                  minimumLabel='lender’s required payment'
+                  idPrefix='loan'
+                />
+
                 {editingLoan && (
                   <div>
                     <label
@@ -1174,9 +1297,31 @@ const Loans = ({ onDataChange, accounts = [] }) => {
                 )}
               </div>
 
+              {lowPaymentWarning && (
+                <div className='mb-3 space-y-2' role='alert'>
+                  <p className='text-yellow-400 text-sm'>{lowPaymentWarning}</p>
+                  <div className='flex gap-2'>
+                    <button
+                      type='button'
+                      onClick={() => handleSave({ confirmedLowPayment: true })}
+                      className='glass-button glass-button--primary text-sm'
+                    >
+                      Save anyway
+                    </button>
+                    <button
+                      type='button'
+                      onClick={() => setLowPaymentWarning(null)}
+                      className='glass-button glass-button--secondary text-sm'
+                    >
+                      Go back
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className='flex space-x-3'>
                 <button
-                  onClick={handleSave}
+                  onClick={() => handleSave()}
                   className='flex-1 px-4 py-3 glass-button glass-button--primary'
                 >
                   {editingLoan ? 'Update' : 'Add'} Loan

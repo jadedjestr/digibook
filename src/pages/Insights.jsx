@@ -115,7 +115,7 @@ const Insights = ({
           sharing the credit-card ones, since a loan has no credit limit or
           utilization concept. */}
       <LoanDebtTable loans={loans} />
-      <LoanPayoffCalculator loans={loans} />
+      <LoanPayoffCalculator loans={loans} onDataChange={handleDataRefresh} />
 
       {/* Row 2: Monthly Trends */}
       <MonthlyTrends history={monthlyHistory} />

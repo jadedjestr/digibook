@@ -135,6 +135,24 @@ const EnhancedLoanCard = ({
     loan.targetPayoffDate,
   );
 
+  // What the loan will actually bill each month and why (custom or from
+  // the payoff goal), from the same pricing the bills use.
+  const [paymentPlan, setPaymentPlan] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    dbHelpers
+      .getLoanPaymentPlan(loan)
+      .then(plan => {
+        if (!cancelled) setPaymentPlan(plan);
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentPlan(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loan]);
+
   // Reconciles the target-driven payment above against the loan's actual
   // original contract terms - purely informational, never fed back into
   // paymentResult itself.
@@ -319,13 +337,20 @@ const EnhancedLoanCard = ({
           </div>
         </div>
         <div className='payment-item'>
-          <div className='loan-info-label'>Calculated Payment</div>
-          <div className='payment-amount'>
+          <div className='loan-info-label'>Monthly payment</div>
+          <div className='payment-amount flex items-center gap-2'>
             <PrivacyWrapper>
-              {paymentResult.success
-                ? formatCurrency(paymentResult.payment)
+              {paymentPlan?.billAmount != null
+                ? formatCurrency(paymentPlan.billAmount)
                 : '—'}
             </PrivacyWrapper>
+            {paymentPlan && (
+              <StatusBadge
+                status={
+                  paymentPlan.mode === 'custom' ? 'Custom' : 'From payoff goal'
+                }
+              />
+            )}
           </div>
         </div>
         <div className='payment-item'>

@@ -184,6 +184,7 @@ contract.
 | V9 | Added `incomeSources` table (expected paycheck: target account, expected amount, enabled flag, `lastGeneratedDate` high-water mark); added `incomeSourceId` on `pendingTransactions` so auto-generated payday rows can be traced back to their source |
 | V10 | Added `recurringResolutionLog` table. Records every time a recurring cycle is resolved (Pay Full / Partial / Skip) so the cadence can advance immediately without pre-generating rows, and so Undo has an exact prior state to reverse to rather than re-deriving one from frequency math |
 | V11 | Added `loans` table (installment-debt tracking, mirroring `creditCards`); added `targetLoanId` on `fixedExpenses` (indexed, like `targetCreditCardId`) for "Loan Payment" expenses; `recurringExpenseTemplates` also gets `targetLoanId`, unindexed like its existing `targetCreditCardId` |
+| V14 | Data move only: a loan payment template's `minimumPaymentOverride` copied onto `loans.customPaymentAmount` (`foldLoanOverridesIntoLoans`); the template field is left in place, no longer read |
 | V13 | Added `cardPayments` table (extra credit-card payments, "Pay extra") and an indexed `cardPaymentId` on `pendingTransactions` linking a not-yet-cleared one to its pending row. (V12 was a data move only: card custom payments onto `creditCards.customPaymentAmount`.) |
 
 Post-V11, `loans` gained four real-interest-tracking fields (`unpaidInterest`,
@@ -281,7 +282,8 @@ blank.
 | `interestRate` | number | Yes | Annual interest rate (APR, %) |
 | `targetPayoffDate` | string | Yes | Date the loan must reach $0 by (YYYY-MM-DD). Required at creation — `addLoan` rejects a date less than one billing cycle away. Drives the amortized payment calculation ([§5.3](#53-recurringexpenseservice)) |
 | `dueDate` | string | Yes | Next payment due date (YYYY-MM-DD); also the amortization `fromDate` used to price a payment before any cycle-specific date exists |
-| `minimumPaymentOverride` | number \| null | Yes | Present in the schema, mirroring the override field recurring templates already carry (see `recurringExpenseTemplates` below) — but unlike that field, nothing in the app currently reads or writes this column on the loan record itself; only the same-named field on the *template* is consulted |
+| `minimumPaymentOverride` | number \| null | Yes | Unused column, kept in the index string; the custom payment is `customPaymentAmount` below |
+| `customPaymentAmount` | number \| null | — | The user's chosen monthly payment, or `null`/absent for the calculated one. Unindexed. Database version 14 moved any template override here (see the loan note in [§5.3](#53-recurringexpenseservice)) |
 | `originalLoanAmount` | number | — | The amount actually borrowed at origination. Required on every new loan (`addLoan` rejects a missing/non-positive value) — not part of the Dexie index string, same as `notes` on `recurringExpenseTemplates`. Powers `getLoanPayoffProgress`'s percent-paid-off bar ([Section 9](#9-utilities)) |
 | `originalTermMonths` | number | — | Original loan terms. Whole months the lender's schedule was to run — descriptive only, never used to derive a date. Required on every new loan |
 | `originalScheduledPayment` | number | — | Original loan terms. The lender's own fixed required payment, independent of the live target-date-driven calculation ([§5.3](#53-recurringexpenseservice)). Required on every new loan; compared against the calculated payment for the "vs. original payment" display ([§9](#9-utilities)) |
@@ -755,10 +757,27 @@ tile, the form preview and the bill can't disagree (pass a draft card to
 preview unsaved values). A custom amount below the card's own `minimumPayment`
 is allowed, with a warning. `getCardBehindPaceWarning` compares a custom
 payment against the calculated one to flag one that won't hit
-`targetPayoffDate` in time. **Loans are different:** a loan's override still
-lives on its recurring template (`template.minimumPaymentOverride`, read by
-`computeTemplateCycleAmount` and the loan sync); the `loans` table's
-same-named column is unused.
+`targetPayoffDate` in time.
+
+**Loans work the same way (database version 14).** `calculateLoanPaymentBillAmount`
+is the loan oracle, used by `computeTemplateCycleAmount`, `syncLoanAmountToExpenses`,
+`createExpenseForLoan` and `getLoanPaymentPlan`: nothing owed → 0; else
+`loan.customPaymentAmount` capped at the payoff amount (`getLoanPayoffAmount`:
+principal, plus interest accrued to the due date on a tracked loan, so the last
+bill really finishes the loan); else the payment that reaches
+`targetPayoffDate`. Before it, materialization and the reprice priced loans
+separately. `setLoanPaymentPlan` / `applyCalculatorPaymentToLoan` set it;
+changing it reprices the unpaid bill at once and never touches the loan's
+interest state or its template, so on a tracked loan undo of the latest
+payment still works. `getLoanPaymentPlan` returns `{ mode, billAmount,
+calculatedAmount, customAmount, paysOffLoan, belowLenderPayment,
+lenderPayment, belowMonthlyInterest, monthlyInterest, projectedPayoffDate }`.
+Below the lender's `originalScheduledPayment` the form asks "Save anyway / Go
+back" (inline, not a toast, which would sit behind the form's backdrop); below
+the month's interest it only warns. A template's `minimumPaymentOverride` is
+legacy for loans and no longer read: version 14 (and `importData`, via
+`foldLoanOverridesIntoLoans`) copied any onto the loan, leaving the template
+as it was because a tracked loan's undo receipt snapshots it.
 
 **Loan schedule anchor.** Loan bill rewrites deliberately ignore a bill row's
 displayed `dueDate`: an existing template-linked bill is priced from
@@ -1190,7 +1209,7 @@ and inline "create an account" fallback are shared rather than duplicated —
 
 | Component | Path | Description |
 |---|---|---|
-| `EnhancedLoanCard` | `src/components/EnhancedLoanCard.jsx` | Visual loan card mirroring `EnhancedCreditCard`: balance, payoff-progress bar, and the required payment shown live via `dbHelpers.calculateRequiredLoanPayment` rather than read from a stored field; exposes a "change funding account" action alongside edit/delete. For a tracked loan (§5.3.1), also shows live Unpaid Interest / Total Owed Today stats via `dbHelpers.computeLoanInterest`, and, whenever the loan has an active `lastInterestOperation`, "Undo last payment" / "Correct latest payment" actions calling `undoLastLoanInterestOperation`/`correctLatestLoanPayment`. Also shows the original-terms reconciliation via `getOriginalScheduleComparison` — original maturity date, and "N mo ahead/behind" / a "±$X/mo vs. original payment" line whenever the target-driven numbers diverge from what the loan actually calls for |
+| `EnhancedLoanCard` | `src/components/EnhancedLoanCard.jsx` | Visual loan card mirroring `EnhancedCreditCard`: balance, payoff-progress bar, the calculated payment shown live via `dbHelpers.calculateRequiredLoanPayment`, and a "Monthly payment" line (`dbHelpers.getLoanPaymentPlan`) with a Custom / From payoff goal badge; exposes a "change funding account" action alongside edit/delete. For a tracked loan (§5.3.1), also shows live Unpaid Interest / Total Owed Today stats via `dbHelpers.computeLoanInterest`, and, whenever the loan has an active `lastInterestOperation`, "Undo last payment" / "Correct latest payment" actions calling `undoLastLoanInterestOperation`/`correctLatestLoanPayment`. Also shows the original-terms reconciliation via `getOriginalScheduleComparison` — original maturity date, and "N mo ahead/behind" / a "±$X/mo vs. original payment" line whenever the target-driven numbers diverge from what the loan actually calls for |
 | `LoanDeletionModal` | `src/components/LoanDeletionModal.jsx` | Deletion flow offering only two options — Unlink or Delete Anyway — not the three `CreditCardDeletionModal` offers, since a loan is never a spendable funding source and "reassign to another loan" isn't a meaningful default |
 
 ### Category System
@@ -1222,7 +1241,7 @@ and inline "create an account" fallback are shared rather than duplicated —
 | `OverpaymentAnalysis` | `src/components/OverpaymentAnalysis.jsx` | Where spending exceeds budget |
 | `CreditCardDebtTable` | `src/components/CreditCardDebtTable.jsx` | Credit card debt overview table |
 | `LoanDebtTable` | `src/components/LoanDebtTable.jsx` | Sortable loan overview table mirroring `CreditCardDebtTable`, sortable by `originalLoanAmount` among other columns |
-| `LoanPayoffCalculator` | `src/components/LoanPayoffCalculator.jsx` | Payoff calculator mirroring `DebtPayoffCalculator`; seeds its payment field from the loan's own calculated payment (`dbHelpers.calculateRequiredLoanPayment`) rather than a rough estimate, when that formula succeeds. The projection amortizes principal alone and is labeled "results may differ from your lender" (daily-simple, fixed 365-day year); for a tracked loan (§5.3.1) it also notes `unpaidInterest` as due before payments land fully on the shown schedule |
+| `LoanPayoffCalculator` | `src/components/LoanPayoffCalculator.jsx` | Payoff calculator mirroring `DebtPayoffCalculator`; seeds its payment field from the loan's custom payment, else its calculated payment (`dbHelpers.calculateRequiredLoanPayment`), and offers "Apply to my loan" (`applyCalculatorPaymentToLoan`) behind an inline confirm, warning when the amount is below the lender's required payment. The projection amortizes principal alone and is labeled "results may differ from your lender" (daily-simple, fixed 365-day year); for a tracked loan (§5.3.1) it also notes `unpaidInterest` as due before payments land fully on the shown schedule |
 
 Both are rendered on the Insights page in their own section, separate from
 the credit-card debt views above — a loan has no credit limit or utilization
@@ -1836,14 +1855,15 @@ ISO timestamp.
 
 `CURRENT_DATA_VERSION` in `src/constants/dataVersion.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **14**
+looks like, the other what the database looks like — and it is currently **15**
 (5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was; 7 → 8 when
 `recurringResolutionLog` was added; 8 → 9 when `loans` was added; 9 → 10 when
 `loans` gained real-interest-tracking fields; 10 → 11 for safe version-2
 undo receipts and lossless snapshot backups — see §5.3.1; 11 → 12 when
 `loans` gained required original-loan-terms fields; 12 → 13 when `creditCards`
 gained the equivalent `originalBalance`/`targetPayoffDate`/intro-APR fields;
-13 → 14 when `cardPayments` was added). It lives in its own module so every
+13 → 14 when `cardPayments` was added; 14 → 15 when `loans` gained
+`customPaymentAmount`). It lives in its own module so every
 gate reads the same number: `validatePortableLoans` once kept a hard-coded
 copy that would have rejected every newer backup.
 

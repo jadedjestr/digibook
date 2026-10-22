@@ -38,4 +38,8 @@
 // and `pendingTransactions.cardPaymentId` linking a not-yet-cleared one to its
 // pending row. Additive and optional: a version 13 file imports fine and
 // simply starts with no extra payments.
-export const CURRENT_DATA_VERSION = 14;
+// 15 adds `loans[].customPaymentAmount` (a custom monthly loan payment,
+// replacing the never-exposed template minimumPaymentOverride). Bumped so an
+// older client refuses the file rather than importing it and silently
+// dropping the custom amounts.
+export const CURRENT_DATA_VERSION = 15;
