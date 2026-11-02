@@ -1571,7 +1571,9 @@ async function assertUndoableLoan(loanId, operationId, expectedVersion) {
     if (cycle.adjustmentAfter) {
       const adjustment = await db.fixedExpenses.get(cycle.adjustmentAfter.id);
       if (!matches(adjustment, cycle.adjustmentAfter))
-        throw new Error('The catch-up bill changed; undo refused');
+        throw new Error(
+          'The leftover bill from this payment has changed (for example, it was added to the next month), so this payment cannot be undone.',
+        );
     }
     const laterBills = await db.fixedExpenses
       .where('recurringTemplateId')
@@ -1926,6 +1928,8 @@ const toCents = value => Math.round(Number(value || 0) * 100);
 
 const BILL_CHANGED_MESSAGE =
   'The bill this payment shrank has been paid or changed since. Undo that first.';
+const ROLLED_INTO_PAID_BILL_MESSAGE =
+  'The leftover from this payment was added to a later bill that has been paid since. Undo that payment first.';
 const NEWER_LOAN_ACTIVITY_MESSAGE =
   'There is newer activity on this loan, so this payment cannot be undone.';
 
@@ -2259,6 +2263,25 @@ async function movePaymentBalances(payment, sign, ts) {
     updatedAt: ts,
   });
   return loanStates;
+}
+
+/**
+ * What changed a bill's amount after it was priced: extra payments took
+ * extraCents off it, rolled-over Balance Dues added rolledCents. A reprice
+ * re-applies both so neither is lost.
+ */
+async function billAdjustmentsCents(expenseId) {
+  const extraCents = (
+    await db.cardPayments
+      .filter(p => !p.deletedAt && p.appliedExpenseId === expenseId)
+      .toArray()
+  ).reduce((sum, p) => sum + (p.appliedCents || 0), 0);
+  const rolledCents = (
+    await db.fixedExpenses
+      .filter(e => !e.deletedAt && e.rolledIntoExpenseId === expenseId)
+      .toArray()
+  ).reduce((sum, e) => sum + (e.rolledCents || 0), 0);
+  return { extraCents, rolledCents };
 }
 
 const auditCardPayment = async (actionType, payment, details = {}) => {
@@ -2746,18 +2769,16 @@ export const dbHelpers = {
       // Extra payments already took their share off this bill; a reprice
       // must keep that, or editing the card would quietly put the full
       // amount back.
-      const extraCents = (
-        await db.cardPayments
-          .filter(p => !p.deletedAt && p.appliedExpenseId === expense.id)
-          .toArray()
-      ).reduce((sum, p) => sum + (p.appliedCents || 0), 0);
+      const { extraCents, rolledCents } = await billAdjustmentsCents(
+        expense.id,
+      );
 
-      // Untouched when no extra payment applies, so this path stays equal
-      // to materialization and the calculator (cardPaymentBillConsensus).
+      // Untouched when nothing adjusts it, so this path stays equal to
+      // materialization and the calculator (cardPaymentBillConsensus).
       const newAmount =
-        extraCents === 0
+        extraCents === 0 && rolledCents === 0
           ? priced
-          : Math.max(0, toCents(priced) - extraCents) / 100;
+          : Math.max(0, toCents(priced) - extraCents + rolledCents) / 100;
       await db.fixedExpenses.update(expense.id, {
         amount: newAmount,
         updatedAt: ts,
@@ -3237,17 +3258,15 @@ export const dbHelpers = {
         dueDate: anchor,
       });
       if (priced == null) continue; // defensive: updateLoan validates first
-      // Keep what extra payments already took off this bill (as cards do);
-      // untouched otherwise so all pricing paths stay equal.
-      const extraCents = (
-        await db.cardPayments
-          .filter(p => !p.deletedAt && p.appliedExpenseId === expense.id)
-          .toArray()
-      ).reduce((sum, p) => sum + (p.appliedCents || 0), 0);
+      // Keep what extra payments took off this bill and what rolled into it
+      // (as cards do); untouched otherwise so all pricing paths stay equal.
+      const { extraCents, rolledCents } = await billAdjustmentsCents(
+        expense.id,
+      );
       const newAmount =
-        extraCents === 0
+        extraCents === 0 && rolledCents === 0
           ? priced
-          : Math.max(0, toCents(priced) - extraCents) / 100;
+          : Math.max(0, toCents(priced) - extraCents + rolledCents) / 100;
       await db.fixedExpenses.update(expense.id, {
         amount: newAmount,
         updatedAt: ts,
@@ -8149,6 +8168,34 @@ export const dbHelpers = {
         }
 
         if (candidate.adjustmentExpenseId) {
+          // A Balance Due rolled into a later month's bill: take its share
+          // back off that bill, unless that bill is settled by now.
+          const adjustment = await db.fixedExpenses.get(
+            candidate.adjustmentExpenseId,
+          );
+          if (adjustment?.rolledIntoExpenseId) {
+            const target = await db.fixedExpenses.get(
+              adjustment.rolledIntoExpenseId,
+            );
+            const targetResolved =
+              target &&
+              (await db.recurringResolutionLog
+                .where('expenseId')
+                .equals(target.id)
+                .filter(e => !e.deletedAt)
+                .count()) > 0;
+            if (target && !target.deletedAt) {
+              if (targetResolved || target.status === 'paid') {
+                throw new Error(ROLLED_INTO_PAID_BILL_MESSAGE);
+              }
+              await db.fixedExpenses.update(target.id, {
+                amount:
+                  (toCents(target.amount) - (adjustment.rolledCents || 0)) /
+                  100,
+                updatedAt: ts,
+              });
+            }
+          }
           await db.fixedExpenses.update(candidate.adjustmentExpenseId, {
             deletedAt: ts,
             updatedAt: ts,
@@ -8186,6 +8233,128 @@ export const dbHelpers = {
         return { undone: candidate.id };
       },
     );
+  },
+
+  /**
+   * Roll a card's or loan's unpaid Balance Due into the next month's bill.
+   *
+   * A short payment's leftover becomes a separate Balance Due bill. While
+   * it's still the month the bill was due, it stays separate. From the 1st
+   * of a later month, whatever is still unpaid is added to that month's bill
+   * for the same card/loan ("$860 · includes $180 from September") and the
+   * Balance Due is closed at what was paid on it, so the money is owed once.
+   * Card and loan payment bills only (agreed with the user); other Balance
+   * Dues stay as they are.
+   *
+   * Runs on app load and on Fixed Expenses; idempotent (a rolled Balance Due
+   * carries rolledIntoExpenseId). If that month's bill has no row yet it is
+   * created early, as Pay extra does; if it's already settled, the Balance
+   * Due stays separate. Undoing the original payment un-rolls it
+   * (undoLastResolution).
+   * @param {string} [today] - YYYY-MM-DD
+   * @returns {Promise<number>} how many were rolled
+   */
+  async rollOverBalanceDues(today = DateUtils.today()) {
+    const month = today.slice(0, 7);
+    const entries = await db.recurringResolutionLog
+      .filter(e => !e.deletedAt && e.adjustmentExpenseId && e.cycleDueDate)
+      .toArray();
+    let rolled = 0;
+    for (const entry of entries) {
+      const balanceDue = await db.fixedExpenses.get(entry.adjustmentExpenseId);
+      const originMonth = entry.cycleDueDate.slice(0, 7);
+      if (
+        !balanceDue ||
+        balanceDue.deletedAt ||
+        balanceDue.rolledIntoExpenseId ||
+        originMonth >= month ||
+        toCents(balanceDue.amount) - toCents(balanceDue.paidAmount) <= 0
+      ) {
+        continue;
+      }
+      let debt = null;
+      if (
+        balanceDue.category === 'Credit Card Payment' &&
+        balanceDue.targetCreditCardId
+      ) {
+        debt = { kind: 'card', id: balanceDue.targetCreditCardId };
+      } else if (
+        balanceDue.category === 'Loan Payment' &&
+        balanceDue.targetLoanId
+      ) {
+        debt = { kind: 'loan', id: balanceDue.targetLoanId };
+      }
+      if (!debt) continue;
+
+      try {
+        await ensureMonthBillExists(debt, today);
+        const didRoll = await db.transaction(
+          'rw',
+          cardPaymentTables(),
+          async () => {
+            const fresh = await db.fixedExpenses.get(balanceDue.id);
+            const remainingCents =
+              toCents(fresh.amount) - toCents(fresh.paidAmount);
+            if (fresh.rolledIntoExpenseId || remainingCents <= 0) return false;
+            const target = await findMonthBill(debt, today);
+            if (!target) return false;
+            const ts = nowIso();
+            await db.fixedExpenses.update(target.id, {
+              amount: (toCents(target.amount) + remainingCents) / 100,
+              updatedAt: ts,
+            });
+            await db.fixedExpenses.update(fresh.id, {
+              amount: toCents(fresh.paidAmount) / 100,
+              status: 'paid',
+              rolledIntoExpenseId: target.id,
+              rolledCents: remainingCents,
+              rolledFromMonth: originMonth,
+              updatedAt: ts,
+            });
+            try {
+              await addAuditLogEntry(
+                'ROLL_OVER_BALANCE_DUE',
+                'fixedExpense',
+                fresh.id,
+                {
+                  rolledIntoExpenseId: target.id,
+                  rolledCents: remainingCents,
+                  fromMonth: originMonth,
+                },
+              );
+            } catch (auditErr) {
+              logger.warn(
+                'Audit log (roll over balance due) failed:',
+                auditErr,
+              );
+            }
+            return true;
+          },
+        );
+        if (didRoll) rolled += 1;
+      } catch (error) {
+        logger.warn(`Could not roll over Balance Due ${balanceDue.id}`, error);
+      }
+    }
+    return rolled;
+  },
+
+  /**
+   * For each bill, what was rolled into it from earlier months:
+   * expenseId → [{ cents, fromMonth }]. Read-only, for the bill's note.
+   */
+  async getRolledBalanceDues() {
+    const additions = new Map();
+    (
+      await db.fixedExpenses
+        .filter(e => !e.deletedAt && e.rolledIntoExpenseId && e.rolledCents)
+        .toArray()
+    ).forEach(e => {
+      const list = additions.get(e.rolledIntoExpenseId) ?? [];
+      list.push({ cents: e.rolledCents, fromMonth: e.rolledFromMonth });
+      additions.set(e.rolledIntoExpenseId, list);
+    });
+    return additions;
   },
 
   // --- Extra payments on cards and loans (see the block above dbHelpers) ---

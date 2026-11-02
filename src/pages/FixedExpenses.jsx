@@ -93,6 +93,10 @@ const FixedExpenses = () => {
     () => new Map(),
   );
 
+  // What rolled into each bill from earlier months' Balance Dues, for its
+  // "includes $180 from September" note.
+  const [rolledByExpenseId, setRolledByExpenseId] = useState(() => new Map());
+
   // Use Zustand store for data
   const accounts = useAccounts();
   const creditCards = useCreditCards();
@@ -141,8 +145,13 @@ const FixedExpenses = () => {
     const cache = months.reduce((acc, monthDate) => {
       const key = formatMonthKey(monthDate);
       const { start, end } = getMonthRange(monthDate);
-      acc[key] = fixedExpenses.filter(expense =>
-        isInRange(expense.dueDate, start, end),
+
+      // A Balance Due rolled into a later bill is closed and owes nothing
+      // on its own; that bill carries it, so it's left off the calendar.
+      acc[key] = fixedExpenses.filter(
+        expense =>
+          !expense.rolledIntoExpenseId &&
+          isInRange(expense.dueDate, start, end),
       );
       return acc;
     }, {});
@@ -307,6 +316,7 @@ const FixedExpenses = () => {
     (async () => {
       try {
         await dbHelpers.materializeDueTemplates();
+        await dbHelpers.rollOverBalanceDues();
         if (!cancelled) {
           await reloadExpenses();
         }
@@ -322,14 +332,16 @@ const FixedExpenses = () => {
 
   useEffect(() => {
     let cancelled = false;
-    dbHelpers
-      .getCardPaymentReductions()
-      .then(map => {
-        if (!cancelled) setExtraPaidCentsByExpenseId(map);
+    Promise.all([
+      dbHelpers.getCardPaymentReductions(),
+      dbHelpers.getRolledBalanceDues(),
+    ])
+      .then(([reductions, rolled]) => {
+        if (cancelled) return;
+        setExtraPaidCentsByExpenseId(reductions);
+        setRolledByExpenseId(rolled);
       })
-      .catch(error =>
-        logger.warn('Could not load extra card payment reductions', error),
-      );
+      .catch(error => logger.warn('Could not load bill adjustments', error));
     return () => {
       cancelled = true;
     };
@@ -571,6 +583,7 @@ const FixedExpenses = () => {
                 resolvedExpenseIds={resolutionLinkage.resolvedExpenseIds}
                 balanceDueExpenseIds={resolutionLinkage.balanceDueExpenseIds}
                 extraPaidCentsByExpenseId={extraPaidCentsByExpenseId}
+                rolledByExpenseId={rolledByExpenseId}
               />
 
               <div className='fixed-expenses-new-cycle'>

@@ -556,6 +556,7 @@ before this existed, so display logic (`resolutionTypeOf` in
 | `committedAmount` | number | No | The cycle's expected amount at resolution time |
 | `paidAmount` | number | No | Amount actually paid now (0 for Skip) |
 | `wasSkipped` | boolean | No | `paidAmount === 0`, except a bill covered by extra card payments |
+| *(Balance Due row)* `rolledIntoExpenseId` / `rolledCents` / `rolledFromMonth` | on `fixedExpenses` | No | Set when a card/loan Balance Due rolled into a later month's bill (§5.11; data format 17) |
 | `coveredByCardPayments` | boolean | No | The cycle was settled by extra card payments shrinking the bill, not paid through it (no money moved here); the bill's `status` is `'paid'` |
 | `shortfallOutcome` | `'deferred'` \| `'forgiven'` \| null | No | What a shortfall means; null when there was no shortfall (Full, or a Partial capped at the full amount) |
 | `deferredDueDate` | string \| null | No | The Balance Due's actual due date, set only when `shortfallOutcome === 'deferred'` — denormalized here so display code doesn't need a second fetch |
@@ -1042,6 +1043,35 @@ Rules, agreed with the user:
   the default account, and returns `repairedCards` so the page names each card
   and account ("Visa had no valid paying account, so it's now paid from
   Checking. Change it if that's wrong.") instead of switching silently.
+
+### 5.11 Balance Due roll-over (cards and loans)
+
+**Path:** `src/db/database-clean.js` (`dbHelpers.rollOverBalanceDues`)
+
+A skipped or short card/loan payment deferred with "pay it later" leaves a
+Balance Due bill. Rule (agreed with the user):
+
+- **Same month as the original bill** (from the log row's `cycleDueDate`) →
+  it stays a separate bill.
+- **From the 1st of a later month**, still unpaid → the unpaid part is added
+  to that month's bill for the same card/loan, and the Balance Due is closed
+  at what was paid on it (`status: 'paid'`, `rolledIntoExpenseId`,
+  `rolledCents`, `rolledFromMonth`). The bill row says "Includes $180 from
+  September" (`getRolledBalanceDues`); the closed row is left off the
+  calendar. Only card and loan payment bills roll.
+- Runs on app load and on Fixed Expenses, after `materializeDueTemplates`;
+  idempotent. That month's bill is created early if needed (as Pay extra
+  does); if it's already settled, the Balance Due stays separate.
+- **Repricing keeps it:** the card and loan reprices add rolled cents back
+  (`billAdjustmentsCents`, alongside extra-payment reductions).
+- **Undo:** `undoLastResolution` on the original cycle takes the rolled share
+  back off the later bill, refusing if that bill is paid by now. On an
+  interest-tracked loan the receipt's catch-up snapshot no longer matches, so
+  that undo is refused with a plain reason (the agreed choice, D1).
+
+Card and loan bills are paid in full or skipped through Pay now (partial is
+off for variable-amount bills), so in practice a card/loan Balance Due comes
+from a deferred Skip or a corrected tracked-loan payment.
 
 ## 6. Custom Hooks
 
@@ -1869,7 +1899,7 @@ ISO timestamp.
 
 `CURRENT_DATA_VERSION` in `src/constants/dataVersion.js` gates the JSON file
 contract. It is **not** the Dexie schema version — one governs what a file
-looks like, the other what the database looks like — and it is currently **16**
+looks like, the other what the database looks like — and it is currently **17**
 (5 → 6 when `incomeSources` was added; 6 → 7 when `appearance` was; 7 → 8 when
 `recurringResolutionLog` was added; 8 → 9 when `loans` was added; 9 → 10 when
 `loans` gained real-interest-tracking fields; 10 → 11 for safe version-2
@@ -1877,7 +1907,8 @@ undo receipts and lossless snapshot backups — see §5.3.1; 11 → 12 when
 `loans` gained required original-loan-terms fields; 12 → 13 when `creditCards`
 gained the equivalent `originalBalance`/`targetPayoffDate`/intro-APR fields;
 13 → 14 when `cardPayments` was added; 14 → 15 when `loans` gained
-`customPaymentAmount`; 15 → 16 when `cardPayments` could pay a loan). It lives in its own module so every
+`customPaymentAmount`; 15 → 16 when `cardPayments` could pay a loan; 16 → 17 when Balance Due rows
+gained roll-over fields). It lives in its own module so every
 gate reads the same number: `validatePortableLoans` once kept a hard-coded
 copy that would have rejected every newer backup.
 

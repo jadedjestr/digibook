@@ -135,6 +135,10 @@ export const useAppStore = create(
             try {
               await dbHelpers.materializeDueTemplates();
 
+              // Then move last month's unpaid card/loan Balance Dues into
+              // this month's bills (a no-op until the 1st comes round).
+              await dbHelpers.rollOverBalanceDues();
+
               // Reload expenses to show anything newly materialized
               const [updatedExpensesData] = await Promise.all([
                 dbHelpers.getFixedExpenses(),

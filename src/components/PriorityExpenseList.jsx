@@ -32,6 +32,7 @@ const PriorityExpenseList = ({
   resolvedExpenseIds,
   balanceDueExpenseIds,
   extraPaidCentsByExpenseId,
+  rolledByExpenseId,
 }) => {
   const { overdue, thisWeek, later } = useMemo(() => {
     const sections = { overdue: [], thisWeek: [], later: [] };
@@ -89,6 +90,7 @@ const PriorityExpenseList = ({
       onEdit={onEdit}
       isBalanceDue={balanceDueExpenseIds.has(expense.id)}
       extraPaidCents={extraPaidCentsByExpenseId.get(expense.id) ?? 0}
+      rolledIn={rolledByExpenseId.get(expense.id) ?? []}
     />
   );
 
@@ -144,6 +146,7 @@ PriorityExpenseList.propTypes = {
   resolvedExpenseIds: PropTypes.instanceOf(Set),
   balanceDueExpenseIds: PropTypes.instanceOf(Set),
   extraPaidCentsByExpenseId: PropTypes.instanceOf(Map),
+  rolledByExpenseId: PropTypes.instanceOf(Map),
 };
 
 PriorityExpenseList.defaultProps = {
@@ -151,6 +154,7 @@ PriorityExpenseList.defaultProps = {
   resolvedExpenseIds: new Set(),
   balanceDueExpenseIds: new Set(),
   extraPaidCentsByExpenseId: new Map(),
+  rolledByExpenseId: new Map(),
 };
 
 export default PriorityExpenseList;

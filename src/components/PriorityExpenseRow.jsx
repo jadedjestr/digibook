@@ -24,6 +24,12 @@ import StatusBadge from './StatusBadge';
  * different bill's cycle, not a bill in its own right), so it gets a small
  * badge of its own.
  */
+// '2026-09' → 'September'
+const monthName = yearMonth =>
+  new Date(`${yearMonth}-01T00:00:00`).toLocaleDateString('en-US', {
+    month: 'long',
+  });
+
 const PriorityExpenseRow = ({
   expense,
   accounts,
@@ -32,6 +38,7 @@ const PriorityExpenseRow = ({
   onEdit,
   isBalanceDue,
   extraPaidCents,
+  rolledIn,
 }) => {
   const source = findPaymentSource(expense, accounts, creditCards);
   const remaining = expense.amount - (expense.paidAmount || 0);
@@ -49,6 +56,13 @@ const PriorityExpenseRow = ({
           {source?.name || 'No source set'} ·{' '}
           {formatRelativeDueDate(expense.dueDate)}
         </p>
+        {rolledIn.map(({ cents, fromMonth }) => (
+          <p key={fromMonth} className='priority-list-item-meta'>
+            Includes{' '}
+            <PrivacyWrapper>{formatCurrency(cents / 100)}</PrivacyWrapper> from{' '}
+            {monthName(fromMonth)}
+          </p>
+        ))}
         {extraPaidCents > 0 && (
           <p className='priority-list-item-meta'>
             <PrivacyWrapper>
@@ -101,12 +115,16 @@ PriorityExpenseRow.propTypes = {
   onEdit: PropTypes.func,
   isBalanceDue: PropTypes.bool,
   extraPaidCents: PropTypes.number,
+  rolledIn: PropTypes.arrayOf(
+    PropTypes.shape({ cents: PropTypes.number, fromMonth: PropTypes.string }),
+  ),
 };
 
 PriorityExpenseRow.defaultProps = {
   onEdit: undefined,
   isBalanceDue: false,
   extraPaidCents: 0,
+  rolledIn: [],
 };
 
 export default PriorityExpenseRow;

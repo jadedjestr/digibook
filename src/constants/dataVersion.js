@@ -45,4 +45,7 @@
 // 16 lets `cardPayments` rows pay a loan (`loanId`, with tracked-loan
 // `loanBefore`/`loanAfter` snapshots for undo). Bumped so an older client
 // refuses the file rather than failing on a row it can't read.
-export const CURRENT_DATA_VERSION = 16;
+// 17 adds roll-over fields on Balance Due rows in `fixedExpenses`
+// (rolledIntoExpenseId, rolledCents, rolledFromMonth). Bumped so an older
+// client, which can't un-roll on undo, refuses the file.
+export const CURRENT_DATA_VERSION = 17;

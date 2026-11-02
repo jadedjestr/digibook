@@ -382,7 +382,7 @@ describe('Loan interest tracking: undo and correction', () => {
     });
     await expect(
       dbHelpers.undoLastLoanInterestOperation('loan-1', receipt.operationId),
-    ).rejects.toThrow(/catch-up/);
+    ).rejects.toThrow(/leftover bill from this payment has changed/);
     await db.fixedExpenses.update(receipt.cycle.adjustmentAfter.id, {
       amount: 100,
     });
