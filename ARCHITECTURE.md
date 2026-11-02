@@ -1344,12 +1344,36 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
 | `formatDisplayDate(str)` | → "Wednesday, Aug 6, 2025" |
 | `formatShortDate(str)` | → "Aug 6, 2025" |
 | `addDays(str, n)` | Add N days to a date string |
-| `daysBetween(start, end)` | Days between two date strings |
+| `daysBetween(start, end)` | Whole days between two date strings. Rounds, not ceils: the day clocks go back is 25 hours, and ceil counted the extra hour as a day (fixed `fe7d2f1`) |
 | `today()` | Today as YYYY-MM-DD |
 | `formatFileTimestamp(date?)` | Local date and time for a filename, `YYYY-MM-DD_HH-mm` (dashes: `:` is illegal in Mac/Windows filenames). Used by every export's filename |
 | `isPast(str)` | Is the date before today? |
 | `isToday(str)` | Is the date today? |
 | `isValidDate(str)` | Validates YYYY-MM-DD format and round-trips correctly |
+
+**Rules for new code**
+
+- The app follows the device's time zone; there is no time-zone setting.
+- A `YYYY-MM-DD` string is a calendar day, not an instant. **Never** pass it
+  to `new Date(str)` — that reads it as midnight UTC, which is the previous
+  evening west of Greenwich (`new Date('2026-11-01').getMonth()` is October
+  in Los Angeles). Use `DateUtils.parseDate`, or `` new Date(`${str}T00:00:00`) ``.
+- Never turn "today" into a string with `toISOString().split('T')[0]`; it
+  is the UTC date. Use `DateUtils.today()` / `formatDate`.
+- Count days with `DateUtils.daysBetween`, never `ms / 86400000` with
+  `Math.ceil`. A day is not always 24 hours (clocks change twice a year).
+- Timestamps (`createdAt`, `updatedAt`) are real instants and stay ISO/UTC.
+- Loan interest (`loanInterest.js`) deliberately counts days in UTC; it never
+  touches local time, so it is consistent.
+
+**Known gaps (audited 2026-11-02, not yet fixed)**
+
+| Gap | Where | Effect |
+|---|---|---|
+| Due date read as UTC midnight, then `getMonth()` | `database-clean.js`: `getBudgetVsActualSummary`, `getBudgetVsActualSummaryForMonth`, `getCurrentCycleMonth`, `getMonthlyExpenseHistory` | West of UTC, a bill due on the 1st is counted in the previous month. Insights month totals and history are wrong for those bills (`getBudgetVsActualSummary` and `getMonthlyExpenseHistory` feed `Insights.jsx`) |
+| Own `Math.ceil(ms / day)` instead of `daysBetween` | `CreditCards.jsx`, `LoanDebtTable.jsx`, `CreditCardDebtTable.jsx`, `Calendar/Calendar.jsx`, `payFrequency.js` (`calculateNextPayDates`), `payCycleNudgeLogic.js` | "Due in N days" is one day too long when the span crosses the clocks going back (1 Nov 2026; next in Oct 2027) |
+| UTC date as "today" | `database-clean.js` (card template start date fallback when a card has no due date) | Evening in the Americas gives tomorrow's date |
+| Dates round-tripped through UTC | `dataManager.js` import conversion, `validation.js` `validateDate` | Only legacy-format backups and `Date` objects; low risk |
 
 ### `payFrequency.js`
 
