@@ -121,6 +121,13 @@ const AuditLogCard = () => {
         now.getMonth(),
         now.getDate(),
       );
+
+      // The next midnight, not +24h: a day is 23 or 25 hours when the clocks change.
+      const tomorrowStart = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+      );
       const oneDayMs = 24 * 60 * 60 * 1000;
       const sevenDaysMs = 7 * oneDayMs;
       const thirtyDaysMs = 30 * oneDayMs;
@@ -130,9 +137,7 @@ const AuditLogCard = () => {
         const d = new Date(log.timestamp);
         if (Number.isNaN(d.getTime())) return false;
         if (timeRangeFilter === 'Today')
-          return (
-            d >= todayStart && d < new Date(todayStart.getTime() + oneDayMs)
-          );
+          return d >= todayStart && d < tomorrowStart;
         if (timeRangeFilter === 'Last 7 Days')
           return d >= new Date(sevenDaysAgo);
         if (timeRangeFilter === 'Last 30 Days')

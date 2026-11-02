@@ -8,6 +8,7 @@ import {
   formatCreditCardBalance,
   getEffectiveCardInterestRate,
 } from '../utils/creditCardUtils';
+import { DateUtils } from '../utils/dateUtils';
 
 import CollapsibleCard from './CollapsibleCard';
 import PrivacyWrapper from './PrivacyWrapper';
@@ -149,16 +150,6 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
     });
   };
 
-  // Get days until due
-  const getDaysUntilDue = dueDate => {
-    if (!dueDate) return null;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const due = new Date(`${dueDate}T00:00:00`);
-    const diffTime = due - today;
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-
   // Get utilization color
   const getUtilizationColor = utilization => {
     if (utilization >= 90) return 'text-red-400';
@@ -169,7 +160,7 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
 
   // Get status for a card
   const getCardStatus = card => {
-    const daysUntilDue = getDaysUntilDue(card.dueDate);
+    const daysUntilDue = DateUtils.daysUntil(card.dueDate);
     const creditInfo = calculateAvailableCredit(
       card.balance || 0,
       card.creditLimit || 0,

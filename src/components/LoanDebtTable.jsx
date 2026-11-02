@@ -3,21 +3,12 @@ import PropTypes from 'prop-types';
 import { useMemo, useState } from 'react';
 
 import { formatCurrency } from '../utils/accountUtils';
+import { DateUtils } from '../utils/dateUtils';
 import { formatLoanBalance } from '../utils/loanUtils';
 
 import CollapsibleCard from './CollapsibleCard';
 import PrivacyWrapper from './PrivacyWrapper';
 import StatusBadge from './StatusBadge';
-
-// Days until a date (local, midnight-normalized) - null when there's no date.
-const getDaysUntilDue = dueDate => {
-  if (!dueDate) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(`${dueDate}T00:00:00`);
-  const diffTime = due - today;
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-};
 
 const LoanDebtTable = ({ loans = [] }) => {
   // Sorting state
@@ -138,7 +129,7 @@ const LoanDebtTable = ({ loans = [] }) => {
   const getLoanStatus = loan => {
     if ((loan.balance || 0) <= 0) return 'Paid Off';
 
-    const daysUntilDue = getDaysUntilDue(loan.dueDate);
+    const daysUntilDue = DateUtils.daysUntil(loan.dueDate);
     if (daysUntilDue !== null && daysUntilDue < 0) return 'Overdue';
     if (daysUntilDue !== null && daysUntilDue <= 7) return 'Due Soon';
     if (daysUntilDue !== null && daysUntilDue <= 14) return 'Payment Due';

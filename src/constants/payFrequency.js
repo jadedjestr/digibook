@@ -155,10 +155,14 @@ export function calculateNextPayDates(
     followingPayDate.setDate(followingPayDate.getDate() + intervalDays);
   }
 
-  const msPerDay = 1000 * 60 * 60 * 24;
-  const daysUntilNextPay = Math.ceil((nextPayDate - today) / msPerDay);
-  const daysUntilFollowingPay = Math.ceil(
-    (followingPayDate - today) / msPerDay,
+  const todayString = DateUtils.formatDate(today);
+  const daysUntilNextPay = DateUtils.daysBetween(
+    todayString,
+    DateUtils.formatDate(nextPayDate),
+  );
+  const daysUntilFollowingPay = DateUtils.daysBetween(
+    todayString,
+    DateUtils.formatDate(followingPayDate),
   );
 
   return {

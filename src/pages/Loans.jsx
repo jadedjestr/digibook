@@ -22,15 +22,6 @@ import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 import { parseMoneyInput } from '../utils/validation';
 
-const getDaysUntilDue = dueDate => {
-  if (!dueDate) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(`${dueDate}T00:00:00`);
-  const diffTime = due - today;
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-};
-
 const emptyFormData = {
   name: '',
   lender: '',
@@ -711,7 +702,7 @@ const Loans = ({ onDataChange, accounts = [] }) => {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(loan => ({
         ...loan,
-        daysUntilDue: getDaysUntilDue(loan.dueDate),
+        daysUntilDue: DateUtils.daysUntil(loan.dueDate),
       }));
   }, [loans]);
 

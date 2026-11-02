@@ -69,7 +69,10 @@ export function isNearEndOfMonth(
   const viewYear = currentMonth.getFullYear();
   if (todayMonth !== viewMonth || todayYear !== viewYear) return false;
   const lastDay = new Date(viewYear, viewMonth + 1, 0);
-  const daysFromEnd = Math.ceil((lastDay - today) / (1000 * 60 * 60 * 24));
+  const daysFromEnd = DateUtils.daysBetween(
+    DateUtils.formatDate(today),
+    DateUtils.formatDate(lastDay),
+  );
   return daysFromEnd >= 0 && daysFromEnd <= days;
 }
 

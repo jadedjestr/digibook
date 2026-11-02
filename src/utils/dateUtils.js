@@ -115,6 +115,15 @@ export class DateUtils {
   }
 
   /**
+   * Whole days from today to a date: 0 today, negative once it has passed.
+   * @param {string} dateString - Date in YYYY-MM-DD format
+   * @returns {number|null} null when there is no date
+   */
+  static daysUntil(dateString) {
+    return this.daysBetween(this.today(), dateString);
+  }
+
+  /**
    * Get today's date as YYYY-MM-DD string
    * @returns {string} Today's date
    */

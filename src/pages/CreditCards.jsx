@@ -18,6 +18,7 @@ import PrivacyWrapper from '../components/PrivacyWrapper';
 import { dbHelpers } from '../db/database-clean';
 import { useFixedExpenses } from '../stores/useAppStore';
 import { formatCurrency } from '../utils/accountUtils';
+import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 import { parseMoneyInput } from '../utils/validation';
@@ -25,21 +26,6 @@ import { parseMoneyInput } from '../utils/validation';
 const calculateUtilization = (balance, limit) => {
   if (!limit || limit === 0) return 0;
   return (balance / limit) * 100;
-};
-
-const getDaysUntilDue = dueDate => {
-  if (!dueDate) return null;
-
-  // Create dates in local timezone to avoid timezone shifts
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // Reset to start of day
-
-  // Parse the due date as a local date (not UTC)
-  const due = new Date(`${dueDate}T00:00:00`);
-
-  const diffTime = due - today;
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
 };
 
 const getUtilizationColor = utilization => {
@@ -736,7 +722,7 @@ const CreditCards = ({
     return sorted.map(card => ({
       ...card,
       utilization: calculateUtilization(card.balance, card.creditLimit),
-      daysUntilDue: getDaysUntilDue(card.dueDate),
+      daysUntilDue: DateUtils.daysUntil(card.dueDate),
     }));
   }, [creditCards, sortBy]);
 

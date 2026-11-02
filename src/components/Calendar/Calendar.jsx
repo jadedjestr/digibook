@@ -51,7 +51,10 @@ const Calendar = ({
 
     // Total days needed
     const totalDays =
-      Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+      DateUtils.daysBetween(
+        DateUtils.formatDate(startDate),
+        DateUtils.formatDate(endDate),
+      ) + 1;
 
     // Generate days we need (usually 35 for 5 weeks, sometimes 42 for 6)
     const days = [];

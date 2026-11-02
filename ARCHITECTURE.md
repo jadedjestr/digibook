@@ -1345,6 +1345,7 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
 | `formatShortDate(str)` | → "Aug 6, 2025" |
 | `addDays(str, n)` | Add N days to a date string |
 | `daysBetween(start, end)` | Whole days between two date strings. Rounds, not ceils: the day clocks go back is 25 hours, and ceil counted the extra hour as a day (fixed `fe7d2f1`) |
+| `daysUntil(str)` | Whole days from today to a date (0 today, negative once past, null with no date). The one place for "due in N days" |
 | `today()` | Today as YYYY-MM-DD |
 | `formatFileTimestamp(date?)` | Local date and time for a filename, `YYYY-MM-DD_HH-mm` (dashes: `:` is illegal in Mac/Windows filenames). Used by every export's filename |
 | `isPast(str)` | Is the date before today? |
@@ -1368,11 +1369,12 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
 
 **Known gaps (audited 2026-11-02, not yet fixed)**
 
+(The "due in N days" gap — each screen counted days as `ms / 86,400,000` with `Math.ceil`, one day too long across the clocks going back — is fixed: they all use `DateUtils.daysUntil` / `daysBetween`, as do the calendar grid length, paycheck countdowns and the end-of-month nudge, and the audit log's "Today" filter ends at the next midnight, not +24h.)
+
 (The Insights month totals gap — due date read as UTC, so a bill due on the 1st landed in the previous month — is fixed: `monthOfDueDate` in `database-clean.js` reads the calendar day, and an undated bill is left out of the totals.)
 
 | Gap | Where | Effect |
 |---|---|---|
-| Own `Math.ceil(ms / day)` instead of `daysBetween` | `CreditCards.jsx`, `LoanDebtTable.jsx`, `CreditCardDebtTable.jsx`, `Calendar/Calendar.jsx`, `payFrequency.js` (`calculateNextPayDates`), `payCycleNudgeLogic.js` | "Due in N days" is one day too long when the span crosses the clocks going back (1 Nov 2026; next in Oct 2027) |
 | UTC date as "today" | `database-clean.js` (card template start date fallback when a card has no due date) | Evening in the Americas gives tomorrow's date |
 | Dates round-tripped through UTC | `dataManager.js` import conversion, `validation.js` `validateDate` | Only legacy-format backups and `Date` objects; low risk |
 
