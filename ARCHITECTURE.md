@@ -1368,9 +1368,10 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
 
 **Known gaps (audited 2026-11-02, not yet fixed)**
 
+(The Insights month totals gap — due date read as UTC, so a bill due on the 1st landed in the previous month — is fixed: `monthOfDueDate` in `database-clean.js` reads the calendar day, and an undated bill is left out of the totals.)
+
 | Gap | Where | Effect |
 |---|---|---|
-| Due date read as UTC midnight, then `getMonth()` | `database-clean.js`: `getBudgetVsActualSummary`, `getBudgetVsActualSummaryForMonth`, `getCurrentCycleMonth`, `getMonthlyExpenseHistory` | West of UTC, a bill due on the 1st is counted in the previous month. Insights month totals and history are wrong for those bills (`getBudgetVsActualSummary` and `getMonthlyExpenseHistory` feed `Insights.jsx`) |
 | Own `Math.ceil(ms / day)` instead of `daysBetween` | `CreditCards.jsx`, `LoanDebtTable.jsx`, `CreditCardDebtTable.jsx`, `Calendar/Calendar.jsx`, `payFrequency.js` (`calculateNextPayDates`), `payCycleNudgeLogic.js` | "Due in N days" is one day too long when the span crosses the clocks going back (1 Nov 2026; next in Oct 2027) |
 | UTC date as "today" | `database-clean.js` (card template start date fallback when a card has no due date) | Evening in the Americas gives tomorrow's date |
 | Dates round-tripped through UTC | `dataManager.js` import conversion, `validation.js` `validateDate` | Only legacy-format backups and `Date` objects; low risk |

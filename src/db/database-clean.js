@@ -1974,6 +1974,19 @@ const findDebtPaymentTemplate = async ({ kind, id }) => {
   );
 };
 
+// The month a YYYY-MM-DD due date falls in. Not `new Date(dueDate)`: that
+// reads the string as midnight UTC, the evening before in the Americas, so a
+// bill due on the 1st was counted in the month before.
+const monthOfDueDate = dueDate => {
+  const d = DateUtils.parseDate(dueDate);
+
+  // No date: NaN never equals a month, so the bill falls out of every total
+  // instead of throwing and zeroing the whole summary.
+  return d
+    ? { month: d.getMonth() + 1, year: d.getFullYear() }
+    : { month: NaN, year: NaN };
+};
+
 // Cycle creation per template, one at a time: "is there a bill yet?" then
 // "create it" is two steps, so two callers at once (app load and a page
 // mounting, or a double-run effect) would each create the same bill.
@@ -6325,8 +6338,8 @@ export const dbHelpers = {
         e => !e.deletedAt,
       );
       const expenses = allExpenses.filter(e => {
-        const d = new Date(e.dueDate);
-        return d.getMonth() + 1 === month && d.getFullYear() === year;
+        const due = monthOfDueDate(e.dueDate);
+        return due.month === month && due.year === year;
       });
 
       // Calculate totals for current cycle
@@ -6386,9 +6399,8 @@ export const dbHelpers = {
       const countByKey = {};
       const keysWithCounts = [];
       for (const expense of expenses) {
-        const d = new Date(expense.dueDate);
-        const m = d.getMonth() + 1;
-        const y = d.getFullYear();
+        const { month: m, year: y } = monthOfDueDate(expense.dueDate);
+        if (Number.isNaN(m)) continue; // no due date
         const key = `${y}-${m}`;
         countByKey[key] = (countByKey[key] || 0) + 1;
         if (!keysWithCounts.some(([k]) => k === key)) {
@@ -6428,9 +6440,8 @@ export const dbHelpers = {
         const countByKey = {};
         const keysWithCounts = [];
         for (const expense of expenses) {
-          const d = new Date(expense.dueDate);
-          const m = d.getMonth() + 1;
-          const y = d.getFullYear();
+          const { month: m, year: y } = monthOfDueDate(expense.dueDate);
+          if (Number.isNaN(m)) continue; // no due date
           const key = `${y}-${m}`;
           countByKey[key] = (countByKey[key] || 0) + 1;
           if (!keysWithCounts.some(([k]) => k === key)) {
@@ -6584,9 +6595,8 @@ export const dbHelpers = {
         const countByKey = {};
         const keysWithCounts = [];
         for (const expense of expenses) {
-          const d = new Date(expense.dueDate);
-          const m = d.getMonth() + 1;
-          const y = d.getFullYear();
+          const { month: m, year: y } = monthOfDueDate(expense.dueDate);
+          if (Number.isNaN(m)) continue; // no due date
           const key = `${y}-${m}`;
           countByKey[key] = (countByKey[key] || 0) + 1;
           if (!keysWithCounts.some(([k]) => k === key)) {
@@ -6628,8 +6638,8 @@ export const dbHelpers = {
 
         if (isCurrentCycle) {
           const inMonth = expenses.filter(e => {
-            const d = new Date(e.dueDate);
-            return d.getMonth() + 1 === month && d.getFullYear() === year;
+            const due = monthOfDueDate(e.dueDate);
+            return due.month === month && due.year === year;
           });
           let budgetAmount = 0;
           let actualAmount = 0;
