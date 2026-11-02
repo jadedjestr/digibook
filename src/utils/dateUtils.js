@@ -108,8 +108,10 @@ export class DateUtils {
     start.setHours(0, 0, 0, 0);
     end.setHours(0, 0, 0, 0);
 
+    // Round, don't ceil: the day the clocks go back is 25 hours long, and
+    // ceil counted that extra hour as a whole extra day.
     const diffTime = end - start;
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
   }
 
   /**

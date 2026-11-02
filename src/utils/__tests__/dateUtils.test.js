@@ -38,3 +38,20 @@ describe('DateUtils.formatFileTimestamp', () => {
     expect(DateUtils.formatFileTimestamp()).toBe('2026-10-14_08-15');
   });
 });
+
+// Clocks go back on 2026-11-01 (US), so that day has 25 hours, and forward on
+// 2026-03-08, so that day has 23. Neither may change a count of whole days.
+describe('DateUtils.daysBetween', () => {
+  it('counts whole days across the clocks going back', () => {
+    expect(DateUtils.daysBetween('2026-10-16', '2026-11-02')).toBe(17);
+    expect(DateUtils.daysBetween('2026-10-25', '2026-11-02')).toBe(8);
+  });
+
+  it('counts whole days across the clocks going forward', () => {
+    expect(DateUtils.daysBetween('2026-03-01', '2026-03-10')).toBe(9);
+  });
+
+  it('is negative when the dates are the other way round', () => {
+    expect(DateUtils.daysBetween('2026-11-02', '2026-10-16')).toBe(-17);
+  });
+});
