@@ -1367,16 +1367,24 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
 - Loan interest (`loanInterest.js`) deliberately counts days in UTC; it never
   touches local time, so it is consistent.
 
-**Known gaps (audited 2026-11-02, not yet fixed)**
+**Date audit (2026-11-02)**
 
-(The "due in N days" gap — each screen counted days as `ms / 86,400,000` with `Math.ceil`, one day too long across the clocks going back — is fixed: they all use `DateUtils.daysUntil` / `daysBetween`, as do the calendar grid length, paycheck countdowns and the end-of-month nudge, and the audit log's "Today" filter ends at the next midnight, not +24h.)
+Fixed, each with a regression test that runs in `America/Los_Angeles`:
 
-(The Insights month totals gap — due date read as UTC, so a bill due on the 1st landed in the previous month — is fixed: `monthOfDueDate` in `database-clean.js` reads the calendar day, and an undated bill is left out of the totals.)
+- Month totals read a due date as UTC, so a bill due on the 1st landed in the
+  previous month (`monthOfDueDate` in `database-clean.js`; an undated bill is
+  left out of the totals).
+- "Due in N days" was `ms / 86,400,000` with `Math.ceil` in seven places, one
+  day too long across the clocks going back. They all use `DateUtils.daysUntil`
+  / `daysBetween` now, as do the calendar grid length, the paycheck countdowns
+  and the end-of-month nudge. The audit log's "Today" filter ends at the next
+  midnight, not +24h.
+- A card with no due date started its payment bill on the UTC date, which is
+  tomorrow on an evening in the Americas. It uses `DateUtils.today()`.
 
-| Gap | Where | Effect |
-|---|---|---|
-| UTC date as "today" | `database-clean.js` (card template start date fallback when a card has no due date) | Evening in the Americas gives tomorrow's date |
-| Dates round-tripped through UTC | `dataManager.js` import conversion, `validation.js` `validateDate` | Only legacy-format backups and `Date` objects; low risk |
+Left as is (low risk, only legacy input): `dataManager.js` import conversion
+and `validation.js` `validateDate` round-trip dates through UTC, so they can
+shift a legacy-format backup or a `Date` object near midnight.
 
 ### `payFrequency.js`
 

@@ -5768,8 +5768,7 @@ export const dbHelpers = {
             throw new Error(`Credit card not found: ${cardId}`);
           }
 
-          const startDate =
-            card.dueDate || new Date().toISOString().split('T')[0];
+          const startDate = card.dueDate || DateUtils.today();
 
           const templateId = await this.addRecurringExpenseTemplate({
             name: `${card.name} Payment`,
