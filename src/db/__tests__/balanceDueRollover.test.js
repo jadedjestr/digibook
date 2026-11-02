@@ -183,6 +183,19 @@ describe('Balance Due roll-over', () => {
     expect((await billDue('2026-10-25')).amount).toBe(400);
   });
 
+  it('two runs at once make one October bill, not two', async () => {
+    setToday(2026, 10, 1);
+    await Promise.all([
+      dbHelpers.rollOverBalanceDues('2026-10-01'),
+      dbHelpers.rollOverBalanceDues('2026-10-01'),
+    ]);
+    const octBills = await db.fixedExpenses
+      .filter(e => !e.deletedAt && e.dueDate === '2026-10-25')
+      .toArray();
+    expect(octBills).toHaveLength(1);
+    expect(octBills[0].amount).toBe(400);
+  });
+
   it('stays separate if October’s bill is already settled', async () => {
     setToday(2026, 10, 1);
     await dbHelpers.materializeCurrentCycle('tpl-visa', { allowFuture: true });

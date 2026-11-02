@@ -1974,6 +1974,24 @@ const findDebtPaymentTemplate = async ({ kind, id }) => {
   );
 };
 
+// Cycle creation per template, one at a time: "is there a bill yet?" then
+// "create it" is two steps, so two callers at once (app load and a page
+// mounting, or a double-run effect) would each create the same bill.
+const materializeQueues = new Map();
+const runOnePerTemplate = (templateId, task) => {
+  const run = (materializeQueues.get(templateId) ?? Promise.resolve()).then(
+    task,
+  );
+  const tail = run.catch(() => {});
+  materializeQueues.set(templateId, tail);
+  tail.then(() => {
+    if (materializeQueues.get(templateId) === tail) {
+      materializeQueues.delete(templateId);
+    }
+  });
+  return run;
+};
+
 /**
  * The card/loan's monthly bill due in the payment's calendar month that still
  * has something owed, or null (no bill that month, or it's already settled).
@@ -4064,35 +4082,38 @@ export const dbHelpers = {
       return null; // not due yet
     }
 
-    const existing = await db.fixedExpenses
-      .where('recurringTemplateId')
-      .equals(templateId)
-      .filter(e => !e.deletedAt && e.dueDate === template.nextDueDate)
-      .first();
-    if (existing) return existing.id; // already materialized - idempotent
+    return runOnePerTemplate(templateId, async () => {
+      const existing = await db.fixedExpenses
+        .where('recurringTemplateId')
+        .equals(templateId)
+        .filter(e => !e.deletedAt && e.dueDate === template.nextDueDate)
+        .first();
+      if (existing) return existing.id; // already materialized - idempotent
 
-    const normalizedTemplate = {
-      ...template,
-      intervalUnit: template.intervalUnit || 'months',
-    };
-    const expenseAmount = await computeTemplateCycleAmount(normalizedTemplate);
+      const normalizedTemplate = {
+        ...template,
+        intervalUnit: template.intervalUnit || 'months',
+      };
+      const expenseAmount =
+        await computeTemplateCycleAmount(normalizedTemplate);
 
-    const newExpense = {
-      name: normalizedTemplate.name,
-      dueDate: normalizedTemplate.nextDueDate,
-      amount: expenseAmount,
-      accountId: normalizedTemplate.accountId || null,
-      creditCardId: normalizedTemplate.creditCardId || null,
-      targetCreditCardId: normalizedTemplate.targetCreditCardId || null,
-      targetLoanId: normalizedTemplate.targetLoanId || null,
-      category: normalizedTemplate.category,
-      paidAmount: 0,
-      status: 'pending',
-      recurringTemplateId: templateId,
-      isAutoCreated: normalizedTemplate.isAutoCreated || false,
-    };
+      const newExpense = {
+        name: normalizedTemplate.name,
+        dueDate: normalizedTemplate.nextDueDate,
+        amount: expenseAmount,
+        accountId: normalizedTemplate.accountId || null,
+        creditCardId: normalizedTemplate.creditCardId || null,
+        targetCreditCardId: normalizedTemplate.targetCreditCardId || null,
+        targetLoanId: normalizedTemplate.targetLoanId || null,
+        category: normalizedTemplate.category,
+        paidAmount: 0,
+        status: 'pending',
+        recurringTemplateId: templateId,
+        isAutoCreated: normalizedTemplate.isAutoCreated || false,
+      };
 
-    return this.addFixedExpenseV4(newExpense);
+      return this.addFixedExpenseV4(newExpense);
+    });
   },
 
   /**
