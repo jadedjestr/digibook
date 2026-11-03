@@ -6704,7 +6704,14 @@ export const dbHelpers = {
 
   /**
    * Snapshot paid expense data into monthlyExpenseHistory (for pay cycle reset).
-   * Reads fresh from db.fixedExpenses; only expenses with paidAmount > 0 are written.
+   * Reads fresh from db.fixedExpenses; only expenses with paidAmount > 0 are
+   * written. Runs after every payment, and brings every row up to date, so a
+   * row that is missing or out of date is repaired.
+   *
+   * Only rows that DIFFER from what is stored are written. It used to rewrite
+   * a row for every paid bill on every payment, about 1 ms each: 1.9 s to pay
+   * at ten years of data and 29.5 s at 30,000 bills. Now a payment writes one
+   * row (see readBudgets.test.js).
    * Non-blocking: on failure logs and returns; never throws.
    */
   async snapshotExpensesForMonth() {
@@ -6714,10 +6721,19 @@ export const dbHelpers = {
         db.fixedExpenses,
         db.monthlyExpenseHistory,
         async () => {
-          const expenses = (await db.fixedExpenses.toArray()).filter(
-            e => !e.deletedAt,
+          const [allExpenses, stored] = await Promise.all([
+            db.fixedExpenses.toArray(),
+            db.monthlyExpenseHistory.toArray(),
+          ]);
+          const storedByKey = new Map(
+            stored.map(row => [
+              `${row.expenseId}|${row.month}|${row.year}`,
+              row,
+            ]),
           );
-          for (const expense of expenses) {
+          const changed = [];
+          for (const expense of allExpenses) {
+            if (expense.deletedAt) continue;
             if ((expense.paidAmount || 0) <= 0) continue;
             const parsed = DateUtils.parseDate(expense.dueDate);
             if (!parsed) {
@@ -6729,19 +6745,32 @@ export const dbHelpers = {
             const month = parsed.getMonth() + 1;
             const year = parsed.getFullYear();
             const paid = expense.paidAmount || 0;
+            const overpaymentAmount = Math.max(0, paid - expense.amount);
+            const before = storedByKey.get(`${expense.id}|${month}|${year}`);
+            if (
+              before &&
+              !before.deletedAt &&
+              before.budgetAmount === expense.amount &&
+              before.actualAmount === paid &&
+              before.overpaymentAmount === overpaymentAmount
+            ) {
+              continue;
+            }
             const snapTs = nowIso();
-            const record = {
+            changed.push({
               expenseId: expense.id,
               month,
               year,
               budgetAmount: expense.amount,
               actualAmount: paid,
-              overpaymentAmount: Math.max(0, paid - expense.amount),
+              overpaymentAmount,
               createdAt: snapTs,
               updatedAt: snapTs,
               deletedAt: null,
-            };
-            await db.monthlyExpenseHistory.put(record);
+            });
+          }
+          if (changed.length > 0) {
+            await db.monthlyExpenseHistory.bulkPut(changed);
           }
         },
       );

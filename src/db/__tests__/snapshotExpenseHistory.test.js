@@ -245,15 +245,137 @@ describe('dbHelpers.snapshotExpensesForMonth', () => {
       },
     ]);
 
-    const originalPut = db.monthlyExpenseHistory.put.bind(
+    const originalBulkPut = db.monthlyExpenseHistory.bulkPut.bind(
       db.monthlyExpenseHistory,
     );
-    db.monthlyExpenseHistory.put = async () => {
+    db.monthlyExpenseHistory.bulkPut = async () => {
       throw new Error('Injected failure');
     };
 
     await expect(dbHelpers.snapshotExpensesForMonth()).resolves.not.toThrow();
 
-    db.monthlyExpenseHistory.put = originalPut;
+    db.monthlyExpenseHistory.bulkPut = originalBulkPut;
+  });
+
+  // Only rows that differ are written, so a payment costs one row however
+  // many bills were paid before (it used to rewrite every paid bill's row).
+  describe('writes only what changed', () => {
+    const bill = (id, paidAmount, overrides = {}) => ({
+      id,
+      name: `Bill ${id}`,
+      dueDate: '2026-02-05',
+      amount: 100,
+      accountId: 1,
+      creditCardId: null,
+      targetCreditCardId: null,
+      category: 'Housing',
+      paidAmount,
+      status: 'paid',
+      recurringTemplateId: null,
+      createdAt: now,
+      ...overrides,
+    });
+    const rowsWrittenBy = async run => {
+      const spy = vi.spyOn(db.monthlyExpenseHistory, 'bulkPut');
+      await run();
+      const written = spy.mock.calls.flatMap(([rows]) => rows);
+      spy.mockRestore();
+      return written;
+    };
+
+    it('writes nothing when every row is already correct', async () => {
+      await db.fixedExpenses.bulkPut([bill(1, 100), bill(2, 100)]);
+      await dbHelpers.snapshotExpensesForMonth();
+
+      const written = await rowsWrittenBy(() =>
+        dbHelpers.snapshotExpensesForMonth(),
+      );
+      expect(written).toEqual([]);
+    });
+
+    it('leaves a correct row exactly as it was', async () => {
+      await db.fixedExpenses.bulkPut([bill(1, 100)]);
+      await dbHelpers.snapshotExpensesForMonth();
+      const [before] = await db.monthlyExpenseHistory.toArray();
+
+      await dbHelpers.snapshotExpensesForMonth();
+
+      const [after] = await db.monthlyExpenseHistory.toArray();
+      expect(after).toEqual(before);
+    });
+
+    it('writes just the bill that was newly paid', async () => {
+      await db.fixedExpenses.bulkPut([bill(1, 100), bill(2, 100), bill(3, 0)]);
+      await dbHelpers.snapshotExpensesForMonth();
+
+      await db.fixedExpenses.update(3, { paidAmount: 100 });
+      const written = await rowsWrittenBy(() =>
+        dbHelpers.snapshotExpensesForMonth(),
+      );
+
+      expect(written.map(r => r.expenseId)).toEqual([3]);
+    });
+
+    // The snapshot has always repaired every row on each run; that stays.
+    it('still repairs a row that is out of date', async () => {
+      await db.fixedExpenses.bulkPut([bill(1, 100), bill(2, 100)]);
+      await dbHelpers.snapshotExpensesForMonth();
+      await db.fixedExpenses.update(2, { paidAmount: 130 }); // changed elsewhere
+
+      const written = await rowsWrittenBy(() =>
+        dbHelpers.snapshotExpensesForMonth(),
+      );
+
+      expect(written.map(r => r.expenseId)).toEqual([2]);
+      const row = await db.monthlyExpenseHistory
+        .where('expenseId')
+        .equals(2)
+        .first();
+      expect(row).toMatchObject({ actualAmount: 130, overpaymentAmount: 30 });
+    });
+
+    it('still repairs a row whose budget was edited after it was paid', async () => {
+      await db.fixedExpenses.bulkPut([bill(1, 100), bill(2, 100)]);
+      await dbHelpers.snapshotExpensesForMonth();
+      await db.fixedExpenses.update(2, { amount: 120 }); // paid 100 of 120
+
+      const written = await rowsWrittenBy(() =>
+        dbHelpers.snapshotExpensesForMonth(),
+      );
+
+      expect(written.map(r => r.expenseId)).toEqual([2]);
+      const row = await db.monthlyExpenseHistory
+        .where('expenseId')
+        .equals(2)
+        .first();
+      expect(row).toMatchObject({ budgetAmount: 120, actualAmount: 100 });
+    });
+
+    it('still writes a row that is missing', async () => {
+      await db.fixedExpenses.bulkPut([bill(1, 100), bill(2, 100)]);
+      await dbHelpers.snapshotExpensesForMonth();
+      await db.monthlyExpenseHistory.where('expenseId').equals(1).delete();
+
+      const written = await rowsWrittenBy(() =>
+        dbHelpers.snapshotExpensesForMonth(),
+      );
+
+      expect(written.map(r => r.expenseId)).toEqual([1]);
+      expect(await db.monthlyExpenseHistory.count()).toBe(2);
+    });
+
+    it('brings back a row that was marked deleted', async () => {
+      await db.fixedExpenses.bulkPut([bill(1, 100)]);
+      await dbHelpers.snapshotExpensesForMonth();
+      await db.monthlyExpenseHistory
+        .where('expenseId')
+        .equals(1)
+        .modify({ deletedAt: now });
+
+      await dbHelpers.snapshotExpensesForMonth();
+
+      const [row] = await db.monthlyExpenseHistory.toArray();
+      expect(row.deletedAt).toBeNull();
+    });
   });
 });

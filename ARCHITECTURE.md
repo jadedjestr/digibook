@@ -2132,17 +2132,25 @@ log is capped at 500). Tier A = 325 bills (1 year), B = 1,525 (5), C = 3,025
 | App load, later in the day | 48 | 64 | 82 | 234 | 449 |
 | Open Fixed Expenses | 60 | 60 | 64 | 139 | 142 |
 | Next month | 41 | 65 | 42 | 207 | 75 |
-| **Pay a bill** (until its dialog closes) | **212** | **1,192** | **1,860** | **3,076** | **29,515** |
+| Pay a bill (until its dialog closes), before the fix | 212 | 1,192 | 1,860 | 3,076 | 29,515 |
+| **Pay a bill, after the fix** | **133** | **211** | **278** | **709** | **3,047** |
 | Open Insights | 111 | 118 | 123 | 328 | 900 |
 | Export everything (JSON) | 69 | 96 | 111 | 270 | 620 |
 | Stored data, MB / peak heap, MB | 5 / 28 | 9 / 44 | 14 / 74 | | 120 / 204 |
 
 **What it says**
 
-- **One thing breaks, and it is paying a bill.** It grows with every paid bill
-  ever (about 1 ms each), and was the only action past a 200 ms interaction
-  budget at 10 years. The main thread is not blocked (the worst long task was about 100 ms, on the slowed CPU); it is storage writes. Cause proved by removing the
-  snapshot step: 1,860 ms became 260 ms. See the table below.
+- **One thing broke, and it was paying a bill.** It grew with every paid bill
+  ever (about 1 ms each) and was the only action past a 200 ms interaction
+  budget at 10 years: 1.9 s at 10 years, 29.5 s at 30,000 bills. The main
+  thread was not blocked; it was storage writes. Cause proved by removing the
+  step: 1,860 ms became 260 ms. **Fixed:** the snapshot after each payment
+  (`snapshotExpensesForMonth`) now writes only rows that differ, so a payment
+  writes one row. At 10 years paying takes 0.28 s (6.7x faster, 0.71 s on the
+  slowed CPU); at 30,000 bills 3.0 s (9.7x). It still creeps up with data,
+  because the snapshot reads two whole tables to find what differs, and the
+  rest of a payment was not profiled: 0.13 s at 1 year to 0.28 s at 10, still
+  past the 200 ms budget at 10 years and on the slowed CPU.
 - **Everything else is flat through 10 years** and fine on a slower CPU: loads
   under 0.2 s (0.5 s slowed), screens under 0.15 s. Only at 10x the bills do
   loads (0.4 to 1.2 s), Insights (0.9 s) and export (0.6 s, 204 MB heap) start to
@@ -2207,20 +2215,19 @@ the way `CalendarDayRedraws.test.jsx` does (which keeps the real `memo` wrapper)
 | `src/components/__tests__/AccountSelector.performance.test.jsx` | The option list is built once and reused; a closed selector draws none of its options; opening draws each option once; a changed value costs at most three commits |
 | `src/stores/__tests__/useAppStore.rerenders.test.jsx` | Each store action and reload redraws only the readers of the slices it changes, once; editing one expense leaves the others the same objects |
 | `src/components/__tests__/CalendarDayRedraws.test.jsx` | No day cell redraws when nothing it shows changed; one changed bill redraws one day; selecting a day redraws just that cell |
-| `src/db/__tests__/readBudgets.test.js` | Database reads, via `countStoreReads`: the Insights load reads the same on 5 bills as on 200; an idle roll-over reads the log once, never scans the bills table, and reads one row per past entry; creating due bills with nothing due scans no bills |
+| `src/db/__tests__/readBudgets.test.js` | Database reads, via `countStoreReads`: the Insights load reads the same on 5 bills as on 200; an idle roll-over reads the log once, never scans the bills table, and reads one row per past entry; creating due bills with nothing due scans no bills; paying a bill writes one history row however many were paid before (`snapshotExpenseHistory.test.js` covers what it still repairs) |
 
 **Known inefficiencies (measured, not fixed)**
 
 | Where | What | Why it is left |
 |---|---|---|
-| `resolveCycle` → `snapshotExpensesForMonth` | After every payment, a history row is rewritten for **every paid bill the app has ever had**, in one transaction. About 1 ms per paid bill: paying takes 0.2 s at 1 year, 1.9 s at 10 years, 29.5 s at 30,000 bills. Removing the step cut a 10-year payment from 1,860 ms to 260 ms | Not fixed: the snapshot feeds Insights' monthly history, so it needs a deliberate change (snapshot only the bill just paid). Pinned in `readBudgets.test.js`; `it.fails` flags the day it is fixed |
 | `AccountSelector` | A changed `value` costs three commits, not one: an effect copies `value` into state, so it draws the old selection, the new one, then settles | Invisible to a user today; pinned at three so it cannot grow |
 | `AccountSelector` | Opening the dropdown takes two commits. The second was observed but not traced to a cause | Pinned at two; trace it before changing the component |
 | Insights load (`getBudgetVsActualSummary`, `getOverpaymentByCategory`, `getMonthlyExpenseHistory`) | Scans the whole bills table four times per load, where one shared read would do. The count does not grow with the number of bills, but each scan reads all of them | Pinned at four; `it.fails` in `readBudgets.test.js` flags the day it is one |
 | `rollOverBalanceDues` | Each balance due that actually rolls costs four scans of the bills table, so the work is (balance dues waiting) x (bills). Usually none or a few are waiting; an idle load costs one log scan plus one row read per past entry | Pinned at four per balance due; `it.fails` flags the day it stops scaling with how many roll |
 | `useAppStore` reloads | A reload redraws its readers even when the content is unchanged, because the database returns fresh arrays. After a payment the accounts, cards and loans screens all redraw | By design; comparing contents before replacing would be the fix if it ever feels slow |
 
-**Not yet done:** fixing the payment snapshot (above), timing the roll-over with
+**Not yet done:** profiling what is left in a payment, timing the roll-over with
 many balance dues waiting, and measuring smoothness on a real device.
 
 ---

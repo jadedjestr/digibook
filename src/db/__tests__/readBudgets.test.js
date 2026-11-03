@@ -262,32 +262,37 @@ describe('paying a bill', () => {
         ...stamp,
       })),
     ]);
+
+    // Their history rows are already in place, as after earlier payments.
+    await db.monthlyExpenseHistory.bulkPut(
+      Array.from({ length: paidBills }, (_, i) => ({
+        expenseId: `old${i}`,
+        month: (i % 12) + 1,
+        year: 2025,
+        budgetAmount: 10,
+        actualAmount: 10,
+        overpaymentAmount: 0,
+        ...stamp,
+      })),
+    );
   };
-  const historyWritesWhenPaying = async () => {
-    const puts = vi.spyOn(db.monthlyExpenseHistory, 'put');
+  const historyRowsWrittenWhenPaying = async () => {
+    const bulk = vi.spyOn(db.monthlyExpenseHistory, 'bulkPut');
     await dbHelpers.resolveCycle('due', { paidAmount: 100 });
-    const count = puts.mock.calls.length;
-    puts.mockRestore();
-    return count;
+    const rows = bulk.mock.calls.flatMap(([written]) => written).length;
+    bulk.mockRestore();
+    return rows;
   };
 
-  // KNOWN INEFFICIENCY, measured 2026-11-02 in the browser: after every
-  // payment the app rewrites a history row for EVERY paid bill it has ever
-  // had (snapshotExpensesForMonth). That cost ~1 ms per paid bill: 0.2 s to
-  // pay at one year of data, 1.9 s at ten, 29.5 s at 30,000 bills, and 86% of
-  // it disappeared when the step was removed. Pinned as "one row per paid
-  // bill, plus this one" so it cannot get worse. When it is fixed this test
-  // fails too: delete it, and remove `.fails` from the test below.
-  it('writes one history row per paid bill, plus the one just paid', async () => {
-    await seedHistoryAndPay(40);
-    expect(await historyWritesWhenPaying()).toBe(41);
-  });
-
-  // The behaviour we want: paying one bill writes one history row, however
-  // many bills were paid before. Fails the day it is fixed; remove `.fails`.
-  it.fails('writes one history row when one bill is paid', async () => {
-    await seedHistoryAndPay(40);
-    expect(await historyWritesWhenPaying()).toBe(1);
+  // Measured 2026-11-02 in the browser: the app used to rewrite a history row
+  // for EVERY paid bill after every payment (snapshotExpensesForMonth), about
+  // 1 ms each: 1.9 s to pay at ten years of data, 29.5 s at 30,000 bills.
+  // It now writes only rows that differ, so a payment costs one row.
+  it('writes one history row when one bill is paid, however many were paid before', async () => {
+    for (const paidBills of [5, 60]) {
+      await seedHistoryAndPay(paidBills);
+      expect(await historyRowsWrittenWhenPaying()).toBe(1);
+    }
   });
 });
 
