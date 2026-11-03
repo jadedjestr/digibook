@@ -53,6 +53,9 @@ and the reasoning: [ARCHITECTURE.md](ARCHITECTURE.md) §9.
 - **No wall-clock performance assertions.** Under a parallel suite they measure
   how busy the machine is. Count renders or operations instead.
   What is worth measuring in this app, and how: [ARCHITECTURE.md](ARCHITECTURE.md) §14.
+- **Test performance by counting.** `src/test/perfCounters.js` counts redraws
+  and database reads. Before trusting a count test, break the code on purpose
+  and watch it fail; a count that passes against a breakage proves nothing.
 - Prove a regression test fails against the old behaviour before trusting it.
 
 ## Working on the live app

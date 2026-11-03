@@ -2090,14 +2090,14 @@ All user inputs are sanitized before storage:
 
 Digibook runs entirely in the browser on local storage (Dexie/IndexedDB), so
 the server-side measures (network latency, API response time, load capacity)
-do not apply. Five do. **None of them has been measured yet**, and the repo
-has no automated performance check beyond the render-count idea below; treat
-this list as what to look at, not as results.
+do not apply. Five do. **None has been measured at scale or by hand yet**.
+Redraw counts have automated checks (see [Counting in tests](#counting-in-tests));
+the rest are a list of what to look at, not results.
 
 | Measure | Why it matters here | How to check | Status |
 |---|---|---|---|
 | **Data speed at scale** | `database-clean.js` reads whole tables with `toArray()` and filters in memory, and some lookups use `.filter()` after a table scan rather than an index (e.g. `recurringExpenseTemplates`, per the note at Dexie version 11). Fine with a year of data; unknown with ten | Seed a large history (years of bills, payments, log rows) in a scratch profile and time the Insights page, Fixed Expenses load and the app-load roll-over | Not measured |
-| **Render counts** | A store change can redraw a whole page. Counting is stable where timing is not | A test that asserts a page or row renders at most N times for a given change (`usePerformanceMonitor`, §6.5, tracks render counts in dev) | Idea only; the one existing perf test uses wall-clock time and is flaky |
+| **Render counts** | A store change can redraw a whole page. Counting is stable where timing is not | Count-based tests with `src/test/perfCounters.js` (below). `usePerformanceMonitor` (§6.5) is a dev-only overlay for `PerformanceDashboard`, not a test tool | Counted for the account selector, the store and the calendar; not for whole pages |
 | **Smoothness** | The glass look uses `backdrop-filter` blur, which is costly on phones and older laptops | Browser performance panel while scrolling the calendar and opening modals; by hand, not a test | Not measured |
 | **Bundle size and load time** | Recharts is heavy, and the PWA precaches the shell, so growth hits every first load | Check the `vite build` output size; Lighthouse for load | Not measured |
 | **Memory over a long session** | The app can stay open all day | Browser memory panel: take a snapshot, use the app, snapshot again | Not measured |
@@ -2105,14 +2105,66 @@ this list as what to look at, not as results.
 **Rules**
 
 - **Count, don't time, in tests.** Renders, queries and table reads are the
-  same on every machine; milliseconds depend on how busy it is. The existing
-  `AccountSelector.performance.test.jsx` asserts milliseconds and has failed
-  once under a full run, then passed alone and on rerun. Convert it to counts.
+  same on every machine; milliseconds depend on how busy it is.
+  `AccountSelector.performance.test.jsx` used to assert milliseconds and failed
+  once under a full run, then passed alone and on rerun; it now counts.
 - **Measure before optimizing.** The `toArray()` pattern is only a risk once
   the data is large enough to feel; do not restructure queries on a guess.
 - Large-data and smoothness checks run by hand or as a script, never in the
   normal `npm run test:run`, and never against the live database (see
   [AGENTS.md](AGENTS.md)).
+
+### Counting in tests
+
+**Helpers:** `src/test/perfCounters.js` (tested by `src/test/perfCounters.test.jsx`).
+
+| Helper | Counts | Use it for |
+|---|---|---|
+| `createCommitCounter()` | React commits of a wrapped tree: `mounts`, `updates`, `commits`, `reset()` | Cascades: one click should be one commit, not a state change whose effect sets more state |
+| `countStoreReads(task)` | The real reads a task makes against each table, as `{ stores: { table: { scans, gets } }, scans, gets }`. Sees `toArray()`, `where()`, `filter()` and `get()` alike, because it counts at the fake IndexedDB, not at Dexie | Read budgets (e.g. "this load reads each table at most N times"). Reads only; writes are not counted |
+
+**The limit of the commit counter.** It counts a commit whenever the wrapper
+itself is re-rendered by its parent, even if every child then skips (`memo`).
+It cannot tell whether one child skipped. For that, count renders of the child
+itself: a `vi.fn()` in its body, or wrap the real component's render function
+the way `CalendarDayRedraws.test.jsx` does (which keeps the real `memo` wrapper).
+
+**Method.**
+
+- **Break the code on purpose** before trusting a count test: remove the
+  `memo`/`useMemo`, add an inline handler, make an action touch an extra slice,
+  and watch the test fail. Several first attempts passed against a breakage
+  they should have caught (a batched extra update adds no commit; ignoring one
+  of two flags that always change together is masked by the other) and were
+  tightened only because of this.
+- **Pin a known inefficiency, don't hide it.** Where the code is wasteful
+  today, assert today's cost as a ceiling with a comment saying so, or use
+  `it.fails` for the behaviour you want: it passes while the problem exists and
+  fails the day it is fixed, telling you to remove `.fails`.
+- **Guard the cost of an optimization.** An optimization that skips work can
+  show stale data. `CalendarDayRedraws.test.jsx` pairs "only the changed day
+  redraws" with tests that a moved, added, renamed, resolved or paycheck-marked
+  day still updates.
+
+**What is counted today**
+
+| Test file | What it pins |
+|---|---|
+| `src/components/__tests__/AccountSelector.performance.test.jsx` | The option list is built once and reused; a closed selector draws none of its options; opening draws each option once; a changed value costs at most three commits |
+| `src/stores/__tests__/useAppStore.rerenders.test.jsx` | Each store action and reload redraws only the readers of the slices it changes, once; editing one expense leaves the others the same objects |
+| `src/components/__tests__/CalendarDayRedraws.test.jsx` | No day cell redraws when nothing it shows changed; one changed bill redraws one day; selecting a day redraws just that cell |
+
+**Known inefficiencies (measured, not fixed)**
+
+| Where | What | Why it is left |
+|---|---|---|
+| `AccountSelector` | A changed `value` costs three commits, not one: an effect copies `value` into state, so it draws the old selection, the new one, then settles | Invisible to a user today; pinned at three so it cannot grow |
+| `AccountSelector` | Opening the dropdown takes two commits. The second was observed but not traced to a cause | Pinned at two; trace it before changing the component |
+| `useAppStore` reloads | A reload redraws its readers even when the content is unchanged, because the database returns fresh arrays. After a payment the accounts, cards and loans screens all redraw | By design; comparing contents before replacing would be the fix if it ever feels slow |
+
+**Not yet done:** read budgets using `countStoreReads` (the roll-over on app load,
+the Insights data load) and the large-data timing check. No test uses
+`countStoreReads` outside its own tests yet.
 
 ---
 
@@ -2169,7 +2221,16 @@ commit which added it.
   how busy the machine is, not how fast the code is, and can only be tuned to
   fail less often. Count renders or operations instead.
 - **Prove a regression test fails against the old behaviour** before trusting
-  it.
+  it. For a count-based performance test that means breaking the code on
+  purpose and watching it fail ([§14](#counting-in-tests)).
+- **Pin the time zone in a date test** (`process.env.TZ = ...`) and assert it
+  took effect, or the bug cannot show and the test passes for nothing.
+
+### Performance Tests (counting)
+
+Redraw and database-read counts, not milliseconds: see
+[§14, Counting in tests](#counting-in-tests) for the helpers
+(`src/test/perfCounters.js`), the method and what is covered.
 
 ### Commands
 
