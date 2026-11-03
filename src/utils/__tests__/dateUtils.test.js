@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DateUtils } from '../dateUtils';
 
+// The daysBetween tests below are about the clocks changing, so they need a
+// zone that has the change; in UTC they pass with or without the fix.
+process.env.TZ = 'America/Los_Angeles';
+
 describe('DateUtils.formatFileTimestamp', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -42,6 +46,12 @@ describe('DateUtils.formatFileTimestamp', () => {
 // Clocks go back on 2026-11-01 (US), so that day has 25 hours, and forward on
 // 2026-03-08, so that day has 23. Neither may change a count of whole days.
 describe('DateUtils.daysBetween', () => {
+  it('runs in a zone with the change, or these tests prove nothing', () => {
+    const hours =
+      (new Date(2026, 10, 2) - new Date(2026, 10, 1)) / (60 * 60 * 1000);
+    expect(hours).toBe(25);
+  });
+
   it('counts whole days across the clocks going back', () => {
     expect(DateUtils.daysBetween('2026-10-16', '2026-11-02')).toBe(17);
     expect(DateUtils.daysBetween('2026-10-25', '2026-11-02')).toBe(8);

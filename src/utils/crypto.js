@@ -283,6 +283,7 @@ export const dataIntegrity = {
       errors.push('Expense amount must be a positive number');
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- validity check only
     if (!expense.dueDate || isNaN(new Date(expense.dueDate).getTime())) {
       errors.push('Expense due date must be a valid date');
     }

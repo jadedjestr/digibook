@@ -111,6 +111,7 @@ export class DateUtils {
     // Round, don't ceil: the day the clocks go back is 25 hours long, and
     // ceil counted that extra hour as a whole extra day.
     const diffTime = end - start;
+    // eslint-disable-next-line no-restricted-syntax -- the day counter; rounds, so DST-safe
     return Math.round(diffTime / (1000 * 60 * 60 * 24));
   }
 

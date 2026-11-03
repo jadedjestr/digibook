@@ -113,4 +113,15 @@ describe('Insights month totals', () => {
       totalBudget: 1500,
     });
   });
+
+  it('counts a due date that carries a time on the day it is written', async () => {
+    await db.fixedExpenses.bulkPut([
+      bill('rent', '2026-11-01T00:00:00.000Z', 1500),
+      bill('power', '2026-11-12', 100),
+    ]);
+
+    expect(await dbHelpers.getBudgetVsActualSummary()).toMatchObject({
+      totalBudget: 1600,
+    });
+  });
 });

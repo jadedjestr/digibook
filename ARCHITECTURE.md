@@ -1364,6 +1364,11 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
   is the UTC date. Use `DateUtils.today()` / `formatDate`.
 - Count days with `DateUtils.daysBetween`, never `ms / 86400000` with
   `Math.ceil`. A day is not always 24 hours (clocks change twice a year).
+- **Lint enforces these** (`.eslintrc.cjs`, `no-restricted-syntax`):
+  `new Date(<something named ...Date>)`, `toISOString().split/slice`, and
+  `ms / 86,400,000` all fail the commit. When one is genuinely right (copying
+  a `Date`, an elapsed-time window, a timer), say why on the line:
+  `// eslint-disable-next-line no-restricted-syntax -- elapsed time`.
 - Timestamps (`createdAt`, `updatedAt`) are real instants and stay ISO/UTC.
 - Loan interest (`loanInterest.js`) deliberately counts days in UTC; it never
   touches local time, so it is consistent.

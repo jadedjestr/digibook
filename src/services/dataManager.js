@@ -306,6 +306,7 @@ class DataManager {
         return;
       }
 
+      /* eslint-disable no-restricted-syntax -- legacy CSV import, ARCHITECTURE §9 */
       switch (dataType) {
         case 'accounts':
           converted.isDefault =
@@ -400,6 +401,7 @@ class DataManager {
           }
           break;
       }
+      /* eslint-enable no-restricted-syntax */
 
       rows.push(converted);
     });
@@ -807,6 +809,7 @@ class BackupManager {
             logger.error('Scheduled daily backup failed:', error);
           }
         },
+        // eslint-disable-next-line no-restricted-syntax -- a 24-hour timer
         24 * 60 * 60 * 1000,
       ); // 24 hours
 

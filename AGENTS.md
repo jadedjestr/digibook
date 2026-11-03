@@ -34,6 +34,17 @@ of these being ignored.
   rules fire against fields the patch never mentioned. Sanitize the merged
   record, then persist only the touched keys (`pickSanitizedUpdates`).
 
+## Dates
+
+A `YYYY-MM-DD` string is a calendar day, not a moment. Read as a moment it is
+midnight UTC, the evening before in the Americas, and every date bug found so
+far came from that. Use `DateUtils`; lint blocks the usual shortcuts. Rules
+and the reasoning: [ARCHITECTURE.md](ARCHITECTURE.md) §9.
+
+- A test about dates or clock changes **sets its own zone**
+  (`process.env.TZ = 'America/Los_Angeles'`) and asserts that it took effect;
+  in UTC the bug can't show and the test passes for nothing.
+
 ## Tests
 
 - **Assert what a write left alone, not just what it changed.** A suite of 261

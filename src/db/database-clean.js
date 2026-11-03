@@ -1978,7 +1978,11 @@ const findDebtPaymentTemplate = async ({ kind, id }) => {
 // reads the string as midnight UTC, the evening before in the Americas, so a
 // bill due on the 1st was counted in the month before.
 const monthOfDueDate = dueDate => {
-  const d = DateUtils.parseDate(dueDate);
+  // slice: a due date that carries a time ("2026-11-01T00:00:00") still means
+  // the day it is written as.
+  const d = DateUtils.parseDate(
+    typeof dueDate === 'string' ? dueDate.slice(0, 10) : dueDate,
+  );
 
   // No date: NaN never equals a month, so the bill falls out of every total
   // instead of throwing and zeroing the whole summary.
@@ -3724,7 +3728,10 @@ export const dbHelpers = {
       const expenses = (await db.fixedExpenses.toArray()).filter(
         e => !e.deletedAt,
       );
-      return expenses.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+      return expenses.sort(
+        (a, b) =>
+          DateUtils.parseDate(a.dueDate) - DateUtils.parseDate(b.dueDate),
+      );
     } catch (error) {
       logger.error('Error getting fixed expenses:', error);
       throw new Error('Failed to get fixed expenses');
@@ -7503,6 +7510,7 @@ export const dbHelpers = {
       }
 
       // Calculate payoff date
+      // eslint-disable-next-line no-restricted-syntax -- copies a Date, not a day string
       const payoffDate = new Date(startDate);
       payoffDate.setMonth(payoffDate.getMonth() + months);
 

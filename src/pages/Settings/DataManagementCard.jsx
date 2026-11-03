@@ -37,7 +37,9 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
   const showNudge =
     !nudgeDismissed &&
     (lastExportDate === null ||
+      // eslint-disable-next-line no-restricted-syntax -- elapsed time, not calendar days
       (Date.now() - new Date(lastExportDate).getTime()) /
+        // eslint-disable-next-line no-restricted-syntax -- elapsed time, not calendar days
         (24 * 60 * 60 * 1000) >
         30);
   const lastExportLabel =
@@ -45,7 +47,9 @@ const DataManagementCard = ({ onDataChange, globalCategories }) => {
       ? 'never'
       : (() => {
           const days = Math.floor(
+            // eslint-disable-next-line no-restricted-syntax -- elapsed time, not calendar days
             (Date.now() - new Date(lastExportDate).getTime()) /
+              // eslint-disable-next-line no-restricted-syntax -- elapsed time, not calendar days
               (24 * 60 * 60 * 1000),
           );
           return days === 0 ? 'today' : `${days} days ago`;

@@ -6,6 +6,7 @@ import { DateUtils } from '../utils/dateUtils';
  * (e.g. Jan 31 -> Feb 28/29).
  */
 function addOneCalendarMonth(date) {
+  // eslint-disable-next-line no-restricted-syntax -- copies a Date, not a day string
   const next = new Date(date);
   next.setMonth(next.getMonth() + 1);
   return next;
@@ -144,13 +145,16 @@ export function calculateNextPayDates(
     while (nextPayDate < today) {
       nextPayDate = addOneCalendarMonth(nextPayDate);
     }
+    // eslint-disable-next-line no-restricted-syntax -- copies a Date, not a day string
     followingPayDate = addOneCalendarMonth(new Date(nextPayDate));
   } else {
+    // eslint-disable-next-line no-restricted-syntax -- copies a Date, not a day string
     nextPayDate = new Date(lastPayDate);
     nextPayDate.setDate(nextPayDate.getDate() + intervalDays);
     while (nextPayDate < today) {
       nextPayDate.setDate(nextPayDate.getDate() + intervalDays);
     }
+    // eslint-disable-next-line no-restricted-syntax -- copies a Date, not a day string
     followingPayDate = new Date(nextPayDate);
     followingPayDate.setDate(followingPayDate.getDate() + intervalDays);
   }

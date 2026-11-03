@@ -59,6 +59,7 @@ describe('a card with no due date', () => {
   it('starts its payment bill on the local day, even in the evening', async () => {
     // 9 pm on 2 Nov in Los Angeles is already 3 Nov in UTC.
     vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 10, 2, 21, 0) });
+    // eslint-disable-next-line no-restricted-syntax -- shows the UTC date is already tomorrow
     expect(new Date().toISOString().slice(0, 10)).toBe('2026-11-03');
 
     await dbHelpers.createExpenseForCard('visa', 'checking');

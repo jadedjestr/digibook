@@ -128,6 +128,7 @@ const AuditLogCard = () => {
         now.getMonth(),
         now.getDate() + 1,
       );
+      // eslint-disable-next-line no-restricted-syntax -- elapsed time, not calendar days
       const oneDayMs = 24 * 60 * 60 * 1000;
       const sevenDaysMs = 7 * oneDayMs;
       const thirtyDaysMs = 30 * oneDayMs;

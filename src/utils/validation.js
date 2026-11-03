@@ -225,6 +225,7 @@ export const validateDate = date => {
     return { isValid: false, error: 'Date is required' };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- legacy input, see ARCHITECTURE §9
   const dateObj = new Date(date);
 
   if (isNaN(dateObj.getTime())) {
@@ -253,6 +254,7 @@ export const validateDate = date => {
     };
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- legacy input, see ARCHITECTURE §9
   return { isValid: true, value: dateObj.toISOString().split('T')[0] };
 };
 

@@ -19,6 +19,7 @@ export function civilDay(value) {
     date.getUTCDate() !== day
   )
     throw new Error('Invalid loan date');
+  // eslint-disable-next-line no-restricted-syntax -- loan interest counts days in UTC
   return date.getTime() / 86400000;
 }
 

@@ -63,6 +63,34 @@ module.exports = {
         message:
           'parseFloat(x) || fallback silently turns unreadable input into the fallback, which has zeroed real balances. Use parseMoneyInput() from utils/validation and handle the failure case.',
       },
+
+      // A YYYY-MM-DD string is a calendar day, not a moment. These three
+      // idioms treat it as a moment and put it a day out in the Americas
+      // (see ARCHITECTURE.md §9, "Rules for new code").
+      {
+        selector:
+          'NewExpression[callee.name="Date"][arguments.length=1] > MemberExpression.arguments[property.name=/[dD]ate$/]',
+        message:
+          "new Date(someDate) reads a YYYY-MM-DD string as midnight UTC, the evening before in the Americas. Use DateUtils.parseDate(), or new Date(`${day}T00:00:00`). A timestamp is fine: say so with an eslint-disable comment.",
+      },
+      {
+        selector:
+          'NewExpression[callee.name="Date"][arguments.length=1] > Identifier.arguments[name=/[dD]ate$/]',
+        message:
+          "new Date(someDate) reads a YYYY-MM-DD string as midnight UTC, the evening before in the Americas. Use DateUtils.parseDate(), or new Date(`${day}T00:00:00`). A Date or timestamp is fine: say so with an eslint-disable comment.",
+      },
+      {
+        selector:
+          'CallExpression[callee.property.name=/^(split|slice|substring)$/][callee.object.type="CallExpression"][callee.object.callee.property.name="toISOString"]',
+        message:
+          "toISOString() is the UTC date, which is tomorrow on an evening in the Americas. Use DateUtils.formatDate() / DateUtils.today() for a calendar day.",
+      },
+      {
+        selector:
+          'Literal[value=86400000], BinaryExpression[operator="*"][right.value=24][left.right.value=60][left.left.right.value=60][left.left.left.value=1000], BinaryExpression[operator="*"][right.value=1000][left.right.value=60][left.left.right.value=60][left.left.left.value=24]',
+        message:
+          'Counting days as milliseconds / 86,400,000 is a day out when the clocks change (25-hour day). Use DateUtils.daysBetween() / daysUntil().',
+      },
     ],
 
     // React specific rules

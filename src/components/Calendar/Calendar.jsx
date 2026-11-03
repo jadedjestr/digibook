@@ -59,6 +59,7 @@ const Calendar = ({
     // Generate days we need (usually 35 for 5 weeks, sometimes 42 for 6)
     const days = [];
     for (let i = 0; i < totalDays; i++) {
+      // eslint-disable-next-line no-restricted-syntax -- copies a Date, not a day string
       const date = new Date(startDate);
       date.setDate(startDate.getDate() + i);
 
