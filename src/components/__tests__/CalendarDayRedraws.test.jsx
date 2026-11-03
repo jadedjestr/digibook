@@ -122,20 +122,180 @@ describe('calendar day cells', () => {
     expect(redrawn).toHaveLength(2);
   });
 
-  // KNOWN INEFFICIENCY, measured 2026-11-02: changing ONE bill rebuilds the
-  // data for all 35 days, so all 35 redraw (and so does a store reload that
-  // returns the same bills in a new array). `it.fails` passes while that is
-  // true. When the calendar is fixed so only the changed day redraws, this
-  // starts failing: delete `.fails` and keep it as the guard.
-  it.fails('redraws only the day of a bill that changed', () => {
+  const changePower = list =>
+    list.map(b => (b.id === 'power' ? { ...b, paidAmount: 10 } : b));
+
+  it('redraws only the day of a bill that changed', () => {
     const { rerender } = render(calendar(bills));
     redrawn.length = 0;
 
-    rerender(
-      calendar(
-        bills.map(b => (b.id === 'power' ? { ...b, paidAmount: 10 } : b)),
-      ),
-    );
+    rerender(calendar(changePower(bills)));
     expect(redrawn).toEqual(['2026-11-12']);
+  });
+
+  it('redraws no cell when a reload returns the same bills in a new array', () => {
+    const { rerender } = render(calendar(bills));
+    redrawn.length = 0;
+
+    rerender(calendar(bills.map(b => ({ ...b }))));
+    expect(redrawn).toEqual([]);
+  });
+
+  // The cost of reusing a day is showing stale data, which is worse than an
+  // extra redraw. Each of these must change what is on screen.
+  describe('never shows a day that is out of date', () => {
+    const cell = day =>
+      screen
+        .getAllByRole('gridcell')
+        .find(c => c.getAttribute('aria-label').includes(day));
+
+    it('moves a bill to its new day, and updates both counts', () => {
+      const { rerender } = render(calendar(bills));
+      expect(cell('November 12').getAttribute('aria-label')).toMatch(
+        /1 expense/,
+      );
+      expect(cell('November 13').getAttribute('aria-label')).toMatch(
+        /0 expenses/,
+      );
+
+      rerender(
+        calendar(
+          bills.map(b =>
+            b.id === 'power' ? { ...b, dueDate: '2026-11-13' } : b,
+          ),
+        ),
+      );
+
+      expect(cell('November 12').getAttribute('aria-label')).toMatch(
+        /0 expenses/,
+      );
+      expect(cell('November 13').getAttribute('aria-label')).toMatch(
+        /1 expense/,
+      );
+    });
+
+    it('shows a bill added to an empty day', () => {
+      const { rerender } = render(calendar(bills));
+      rerender(calendar([...bills, bill('gym', '2026-11-25')]));
+
+      expect(cell('November 25').getAttribute('aria-label')).toMatch(
+        /1 expense/,
+      );
+      expect(screen.getByText('gym')).toBeTruthy();
+    });
+
+    it('shows a renamed bill', () => {
+      const { rerender } = render(calendar(bills));
+      expect(screen.getByText('power')).toBeTruthy();
+
+      rerender(
+        calendar(
+          bills.map(b => (b.id === 'power' ? { ...b, name: 'electric' } : b)),
+        ),
+      );
+
+      expect(screen.getByText('electric')).toBeTruthy();
+      expect(screen.queryByText('power')).toBeNull();
+    });
+
+    it('moves the paycheck marker when the pay dates change', () => {
+      const { rerender } = render(calendar(bills));
+      expect(cell('November 20').getAttribute('aria-label')).toMatch(
+        /Next Paycheck/,
+      );
+
+      rerender(
+        calendar(bills, {
+          paycheckDates: {
+            nextPayDate: '2026-11-27',
+            followingPayDate: '2026-12-11',
+          },
+        }),
+      );
+
+      expect(cell('November 20').getAttribute('aria-label')).not.toMatch(
+        /Paycheck/,
+      );
+      expect(cell('November 27').getAttribute('aria-label')).toMatch(
+        /Next Paycheck/,
+      );
+    });
+
+    // Both days stay paycheck days; only which one is "next" changes.
+    it('swaps the next and following paycheck labels', () => {
+      const { rerender } = render(calendar(bills));
+      expect(cell('November 20').getAttribute('aria-label')).toMatch(
+        /Next Paycheck/,
+      );
+      expect(cell('December 4').getAttribute('aria-label')).toMatch(
+        /Following Paycheck/,
+      );
+
+      rerender(
+        calendar(bills, {
+          paycheckDates: {
+            nextPayDate: '2026-12-04',
+            followingPayDate: '2026-11-20',
+          },
+        }),
+      );
+
+      expect(cell('November 20').getAttribute('aria-label')).toMatch(
+        /Following Paycheck/,
+      );
+      expect(cell('December 4').getAttribute('aria-label')).toMatch(
+        /Next Paycheck/,
+      );
+    });
+
+    // Same fields, different value inside the resolution record.
+    it('redraws a day whose resolution changes from paid to skipped', () => {
+      const resolved = type =>
+        new Map([
+          [
+            'power',
+            {
+              type,
+              resolvedAt: '2026-11-12T10:00:00.000Z',
+              committedAmount: 10,
+              paidAmount: type === 'paid' ? 10 : 0,
+            },
+          ],
+        ]);
+      const { rerender, container } = render(
+        calendar(bills, { resolutionByExpenseId: resolved('paid') }),
+      );
+      expect(container.querySelector('.expense-badge--paid')).not.toBeNull();
+      redrawn.length = 0;
+
+      rerender(calendar(bills, { resolutionByExpenseId: resolved('skipped') }));
+
+      expect(redrawn).toEqual(['2026-11-12']);
+      expect(container.querySelector('.expense-badge--skipped')).not.toBeNull();
+      expect(container.querySelector('.expense-badge--paid')).toBeNull();
+    });
+
+    it('redraws a day whose bill gets resolved', () => {
+      const { rerender } = render(calendar(bills));
+      redrawn.length = 0;
+
+      rerender(
+        calendar(bills, {
+          resolutionByExpenseId: new Map([
+            [
+              'power',
+              {
+                type: 'paid',
+                resolvedAt: '2026-11-12T10:00:00.000Z',
+                committedAmount: 10,
+                paidAmount: 10,
+              },
+            ],
+          ]),
+        }),
+      );
+
+      expect(redrawn).toEqual(['2026-11-12']);
+    });
   });
 });

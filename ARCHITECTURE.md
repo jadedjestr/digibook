@@ -2082,6 +2082,7 @@ All user inputs are sanitized before storage:
 | Category caching | `categoryCache.js` | 30s TTL with stale-while-revalidate |
 | Optimistic updates | `useExpenseOperations` | UI updates immediately; DB writes async with rollback |
 | Background pre-generation | `useAppStore.loadData()` | Recurring expense generation is non-blocking after initial load |
+| Stable day objects | `Calendar.jsx` (`isSameDay`) | `calendarData` is rebuilt whenever the month's bills change; each day whose content is unchanged gets its previous object back, so the cell's `memo()` skips it and only the changed day redraws. Compares every field, so a stale day cannot slip through. Pinned by `CalendarDayRedraws.test.jsx` |
 | Pending transaction Map | `Accounts.jsx` | Pre-computed `pendingByAccount` Map for O(1) per-account lookups |
 | Offline asset caching | `vite-plugin-pwa` (Workbox) | Precaches the app shell so repeat loads (and offline loads) skip the network entirely |
 

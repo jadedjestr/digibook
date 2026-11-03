@@ -11,6 +11,46 @@ import './calendar.css';
 // per render (which would invalidate the calendarData memo every time).
 const EMPTY_RESOLUTION_MAP = new Map();
 
+// Whether two plain objects hold the same values, one level deep. Used to
+// tell that a day's expense is unchanged even though the calendar built a
+// fresh copy of it, and that a nested `resolution` is the same too.
+const sameFields = (a, b) => {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every(key => {
+    const x = a[key];
+    const y = b[key];
+    if (x === y) return true;
+    const bothObjects =
+      x && y && typeof x === 'object' && typeof y === 'object';
+    if (!bothObjects || Array.isArray(x) || x instanceof Date) return false;
+    const inner = Object.keys(x);
+    return (
+      inner.length === Object.keys(y).length && inner.every(k => x[k] === y[k])
+    );
+  });
+};
+
+// Whether a day would draw exactly what it drew before. Every field is
+// compared, so a field added to a day later falls back to "changed" (an extra
+// redraw) rather than "unchanged" (a stale cell).
+const isSameDay = (before, after) => {
+  const keys = Object.keys(after);
+  if (keys.length !== Object.keys(before).length) return false;
+  return keys.every(key => {
+    if (key === 'date') return before.date.getTime() === after.date.getTime();
+    if (key === 'expenses') {
+      return (
+        before.expenses.length === after.expenses.length &&
+        after.expenses.every((expense, i) =>
+          sameFields(before.expenses[i], expense),
+        )
+      );
+    }
+    return before[key] === after[key];
+  });
+};
+
 /**
  * Main Calendar component for Fixed Expenses
  * Displays monthly view of expenses with status indicators
@@ -31,6 +71,9 @@ const Calendar = ({
   const [selectedDay, setSelectedDay] = useState(null);
   const [focusedDayIndex, setFocusedDayIndex] = useState(null);
   const calendarRef = useRef(null);
+
+  // The days drawn last time, to hand back unchanged ones as the same object.
+  const previousDays = useRef(new Map());
 
   // Generate calendar data
   const calendarData = useMemo(() => {
@@ -98,7 +141,15 @@ const Calendar = ({
       });
     }
 
-    return days;
+    // Editing one bill rebuilds every day, which would defeat the cell's
+    // memo() and redraw all 35. Hand back the previous object for any day
+    // that would draw the same, so only the days that changed redraw.
+    const reused = days.map(day => {
+      const before = previousDays.current.get(day.dateString);
+      return before && isSameDay(before, day) ? before : day;
+    });
+    previousDays.current = new Map(reused.map(day => [day.dateString, day]));
+    return reused;
   }, [
     currentMonth,
     monthExpenses,
