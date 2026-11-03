@@ -2096,11 +2096,11 @@ the rest are a list of what to look at, not results.
 
 | Measure | Why it matters here | How to check | Status |
 |---|---|---|---|
-| **Data speed at scale** | `database-clean.js` reads whole tables with `toArray()` and filters in memory, and some lookups use `.filter()` after a table scan rather than an index (e.g. `recurringExpenseTemplates`, per the note at Dexie version 11). Fine with a year of data; unknown with ten | Read counts are pinned (below). The time a read takes at scale is not: seed a large history (years of bills, payments, log rows) in a scratch profile and time the Insights page, Fixed Expenses load and the app-load roll-over | Reads counted for Insights, the roll-over and bill creation; timing at scale not measured |
+| **Data speed at scale** | `database-clean.js` reads whole tables with `toArray()` and filters in memory, and some lookups use `.filter()` after a table scan rather than an index (e.g. `recurringExpenseTemplates`, per the note at Dexie version 11). Fine with a year of data; unknown with ten | Read counts are pinned (below). The time a read takes at scale is not: seed a large history (years of bills, payments, log rows) in a scratch profile and time the Insights page, Fixed Expenses load and the app-load roll-over | Timed at 1, 5 and 10 years and a 10x stress case (see [Large-data timing check](#large-data-timing-check)); reads also counted for Insights, the roll-over and bill creation |
 | **Render counts** | A store change can redraw a whole page. Counting is stable where timing is not | Count-based tests with `src/test/perfCounters.js` (below). `usePerformanceMonitor` (§6.5) is a dev-only overlay for `PerformanceDashboard`, not a test tool | Counted for the account selector, the store and the calendar; not for whole pages |
 | **Smoothness** | The glass look uses `backdrop-filter` blur, which is costly on phones and older laptops | Browser performance panel while scrolling the calendar and opening modals; by hand, not a test | Not measured |
 | **Bundle size and load time** | Recharts is heavy, and the PWA precaches the shell, so growth hits every first load | Check the `vite build` output size; Lighthouse for load | Not measured |
-| **Memory over a long session** | The app can stay open all day | Browser memory panel: take a snapshot, use the app, snapshot again | Not measured |
+| **Memory over a long session** | The app can stay open all day | Browser memory panel: take a snapshot, use the app, snapshot again | Heap measured per data size in the timing check; a long session and leaks not measured |
 
 **Rules**
 
@@ -2113,6 +2113,60 @@ the rest are a list of what to look at, not results.
 - Large-data and smoothness checks run by hand or as a script, never in the
   normal `npm run test:run`, and never against the live database (see
   [AGENTS.md](AGENTS.md)).
+
+### Large-data timing check
+
+`scripts/perf/` (see its README) times the real production build against seeded
+history, in a fresh browser profile that is not yours. Run 2026-11-02 on an
+Apple M5 (10 cores, 16 GB), headless Chromium via Playwright 1.55; medians of 3
+runs (tier D: 2). "x4" slows the CPU 4x, standing in for an older phone.
+
+Data: 25 recurring bills paid monthly through "Pay now" (so each paid bill also
+has a resolution-log and a monthly-history row), 4 cards, 500 audit rows (the
+log is capped at 500). Tier A = 325 bills (1 year), B = 1,525 (5), C = 3,025
+(10), D = 30,250 (stress: 250 recurring bills for 10 years).
+
+| Milliseconds, median | A | B | C | C, CPU x4 | D (stress) |
+|---|---|---|---|---|---|
+| App load, first of the day (includes the daily backup) | 55 | 106 | 166 | 522 | 1,175 |
+| App load, later in the day | 48 | 64 | 82 | 234 | 449 |
+| Open Fixed Expenses | 60 | 60 | 64 | 139 | 142 |
+| Next month | 41 | 65 | 42 | 207 | 75 |
+| **Pay a bill** (until its dialog closes) | **212** | **1,192** | **1,860** | **3,076** | **29,515** |
+| Open Insights | 111 | 118 | 123 | 328 | 900 |
+| Export everything (JSON) | 69 | 96 | 111 | 270 | 620 |
+| Stored data, MB / peak heap, MB | 5 / 28 | 9 / 44 | 14 / 74 | | 120 / 204 |
+
+**What it says**
+
+- **One thing breaks, and it is paying a bill.** It grows with every paid bill
+  ever (about 1 ms each), and was the only action past a 200 ms interaction
+  budget at 10 years. The main thread is not blocked (the worst long task was about 100 ms, on the slowed CPU); it is storage writes. Cause proved by removing the
+  snapshot step: 1,860 ms became 260 ms. See the table below.
+- **Everything else is flat through 10 years** and fine on a slower CPU: loads
+  under 0.2 s (0.5 s slowed), screens under 0.15 s. Only at 10x the bills do
+  loads (0.4 to 1.2 s), Insights (0.9 s) and export (0.6 s, 204 MB heap) start to
+  show.
+- **The daily backup is cheap here**: about 0.1 s extra on the first load of the
+  day at 10 years, 0.7 s at 10x.
+- **The hunches that did not hold:** Insights' four table scans (flat at about
+  120 ms through 10 years), keeping every bill in memory, and the audit log
+  (capped at 500, so never a factor).
+
+**Not covered**
+
+- Frame rate and the glass blur on a real phone; a long session and leaks.
+- The roll-over with many balance dues waiting (only its read counts are
+  pinned), loans, and one-off bills.
+- One machine and synthetic data. Treat the shape as reliable and the
+  milliseconds as that machine's.
+
+**A lesson from the run.** An early version reported Insights taking 1 to 2.6 s
+after a payment. It was the payment: clicking "Insights" waited for the open
+payment dialog to close, and that wait was charged to Insights. A CPU profile
+showed the page 90% idle, which is what exposed it. Time an action until what
+the person waits for has finished, and check a surprising number by changing one
+thing.
 
 ### Counting in tests
 
@@ -2159,15 +2213,15 @@ the way `CalendarDayRedraws.test.jsx` does (which keeps the real `memo` wrapper)
 
 | Where | What | Why it is left |
 |---|---|---|
+| `resolveCycle` → `snapshotExpensesForMonth` | After every payment, a history row is rewritten for **every paid bill the app has ever had**, in one transaction. About 1 ms per paid bill: paying takes 0.2 s at 1 year, 1.9 s at 10 years, 29.5 s at 30,000 bills. Removing the step cut a 10-year payment from 1,860 ms to 260 ms | Not fixed: the snapshot feeds Insights' monthly history, so it needs a deliberate change (snapshot only the bill just paid). Pinned in `readBudgets.test.js`; `it.fails` flags the day it is fixed |
 | `AccountSelector` | A changed `value` costs three commits, not one: an effect copies `value` into state, so it draws the old selection, the new one, then settles | Invisible to a user today; pinned at three so it cannot grow |
 | `AccountSelector` | Opening the dropdown takes two commits. The second was observed but not traced to a cause | Pinned at two; trace it before changing the component |
 | Insights load (`getBudgetVsActualSummary`, `getOverpaymentByCategory`, `getMonthlyExpenseHistory`) | Scans the whole bills table four times per load, where one shared read would do. The count does not grow with the number of bills, but each scan reads all of them | Pinned at four; `it.fails` in `readBudgets.test.js` flags the day it is one |
 | `rollOverBalanceDues` | Each balance due that actually rolls costs four scans of the bills table, so the work is (balance dues waiting) x (bills). Usually none or a few are waiting; an idle load costs one log scan plus one row read per past entry | Pinned at four per balance due; `it.fails` flags the day it stops scaling with how many roll |
 | `useAppStore` reloads | A reload redraws its readers even when the content is unchanged, because the database returns fresh arrays. After a payment the accounts, cards and loans screens all redraw | By design; comparing contents before replacing would be the fix if it ever feels slow |
 
-**Not yet done:** the large-data timing check. Read counts show the shape
-(what stays flat, what grows with how many balance dues wait) but not how long
-a scan of ten years of bills takes; that needs a seeded scratch profile.
+**Not yet done:** fixing the payment snapshot (above), timing the roll-over with
+many balance dues waiting, and measuring smoothness on a real device.
 
 ---
 

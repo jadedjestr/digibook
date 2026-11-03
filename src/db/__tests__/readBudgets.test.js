@@ -210,6 +210,87 @@ describe('the balance due roll-over', () => {
   });
 });
 
+describe('paying a bill', () => {
+  // `paidBills` already-paid bills sit in the history; then one more is paid.
+  const seedHistoryAndPay = async paidBills => {
+    setToday(2026, 11, 2);
+    await clearAll();
+    await db.accounts.put({
+      id: 'checking',
+      name: 'Checking',
+      type: 'checking',
+      currentBalance: 99999,
+      isDefault: true,
+      ...stamp,
+    });
+    await db.recurringExpenseTemplates.put({
+      id: 'tpl',
+      name: 'Rent',
+      baseAmount: 100,
+      frequency: 'monthly',
+      intervalValue: 1,
+      intervalUnit: 'months',
+      startDate: '2026-01-05',
+      nextDueDate: '2026-11-05',
+      category: 'Housing',
+      accountId: 'checking',
+      isActive: true,
+      ...stamp,
+    });
+    await db.fixedExpenses.bulkPut([
+      {
+        id: 'due',
+        name: 'Rent',
+        dueDate: '2026-11-05',
+        amount: 100,
+        paidAmount: 0,
+        status: 'pending',
+        category: 'Housing',
+        accountId: 'checking',
+        recurringTemplateId: 'tpl',
+        ...stamp,
+      },
+      ...Array.from({ length: paidBills }, (_, i) => ({
+        id: `old${i}`,
+        name: `Old ${i}`,
+        dueDate: `2025-${String((i % 12) + 1).padStart(2, '0')}-10`,
+        amount: 10,
+        paidAmount: 10,
+        status: 'paid',
+        category: 'Housing',
+        accountId: 'checking',
+        ...stamp,
+      })),
+    ]);
+  };
+  const historyWritesWhenPaying = async () => {
+    const puts = vi.spyOn(db.monthlyExpenseHistory, 'put');
+    await dbHelpers.resolveCycle('due', { paidAmount: 100 });
+    const count = puts.mock.calls.length;
+    puts.mockRestore();
+    return count;
+  };
+
+  // KNOWN INEFFICIENCY, measured 2026-11-02 in the browser: after every
+  // payment the app rewrites a history row for EVERY paid bill it has ever
+  // had (snapshotExpensesForMonth). That cost ~1 ms per paid bill: 0.2 s to
+  // pay at one year of data, 1.9 s at ten, 29.5 s at 30,000 bills, and 86% of
+  // it disappeared when the step was removed. Pinned as "one row per paid
+  // bill, plus this one" so it cannot get worse. When it is fixed this test
+  // fails too: delete it, and remove `.fails` from the test below.
+  it('writes one history row per paid bill, plus the one just paid', async () => {
+    await seedHistoryAndPay(40);
+    expect(await historyWritesWhenPaying()).toBe(41);
+  });
+
+  // The behaviour we want: paying one bill writes one history row, however
+  // many bills were paid before. Fails the day it is fixed; remove `.fails`.
+  it.fails('writes one history row when one bill is paid', async () => {
+    await seedHistoryAndPay(40);
+    expect(await historyWritesWhenPaying()).toBe(1);
+  });
+});
+
 describe('creating the due bills on app load', () => {
   const seedTemplates = async count => {
     setToday(2026, 10, 1);
