@@ -38,11 +38,11 @@ contract.
 
 | Package | Version | Purpose |
 |---|---|---|
-| `react` | 18.x | UI framework |
+| `react` | 18.x | UI framework (a React 19 preparation plan is in [REACT_19_UPGRADE_PLAN.md](REACT_19_UPGRADE_PLAN.md); not started) |
 | `react-dom` | 18.x | DOM rendering |
 | `dexie` | 3.x | IndexedDB wrapper (database ORM) |
 | `zustand` | 5.x | Lightweight global state management |
-| `lucide-react` | latest | Icon library |
+| `lucide-react` | 0.263 | Icon library (an old release, and one of the two blockers for React 19) |
 | `papaparse` | 5.x | CSV import/export parsing |
 | `react-toastify` | 11.x | Toast notification system |
 | `recharts` | 2.x | Chart library (Insights page trends and breakdowns) |
