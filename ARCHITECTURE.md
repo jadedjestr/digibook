@@ -2172,11 +2172,27 @@ log is capped at 500). Tier A = 325 bills (1 year), B = 1,525 (5), C = 3,025
   dialog (the page re-reading the resolution log) is unchanged, so the dialog
   closes sooner but the database is not quiet any sooner; the "until the
   database is free again" step rose to 49 ms at 10 years for that reason.
-- **What is left:** about 60 ms is the history snapshot reading two whole
-  tables to find what changed. Scoping it to the bill just paid (and
-  reconciling the rest at app load) would remove that read from every payment,
-  at the cost of repairing stale history rows at the next load and not at the
-  next payment. Not done: that is a behavior change to decide, not a bug fix.
+- **What is left, and what did not help.** A payment at 10 years is now about
+  230 ms, down from 1,860 ms. The remaining time looked like it belonged to the
+  history snapshot (63 ms in the timeline), so three things were tried, each
+  timed in the real app and then reverted:
+
+  | Tried | Payment at 10 years |
+  |---|---|
+  | Scope the snapshot to the bill just paid (reconcile the rest at app load) | 231 ms, no change |
+  | Skip the history write entirely | 231 ms, no change |
+  | Switch off the page's two re-reads of the resolution log | 204 ms, about 25 ms less |
+
+  With the history write skipped the snapshot step fell to 1 ms, but the
+  reloads that follow took about 55 ms longer, so the cost was not the
+  snapshot's work: it is storage work (a write transaction committing, and
+  reads queuing behind it) that lands on whichever step comes next. So the
+  scoped snapshot, which would also have moved the history repair from "next
+  payment" to "next app load", was not worth its behavior change and was not
+  kept. What remains is mostly the storage backend's own serialized work, plus
+  about 25 ms from the page re-reading the resolution log after each change.
+  **Lesson:** a step's measured time can be waiting on something else; confirm a
+  fix by the end-to-end time, not by the step's own number.
 - **Everything else is flat through 10 years** and fine on a slower CPU: loads
   under 0.2 s (0.5 s slowed), screens under 0.15 s. Only at 10x the bills do
   loads (0.4 to 1.2 s), Insights (0.9 s) and export (0.6 s, 204 MB heap) start to
@@ -2253,9 +2269,9 @@ the way `CalendarDayRedraws.test.jsx` does (which keeps the real `memo` wrapper)
 | `rollOverBalanceDues` | Each balance due that actually rolls costs four scans of the bills table, so the work is (balance dues waiting) x (bills). Usually none or a few are waiting; an idle load costs one log scan plus one row read per past entry | Pinned at four per balance due; `it.fails` flags the day it stops scaling with how many roll |
 | `useAppStore` reloads | A reload redraws its readers even when the content is unchanged, because the database returns fresh arrays. After a payment the accounts, cards and loans screens all redraw | By design; comparing contents before replacing would be the fix if it ever feels slow |
 
-**Not yet done:** scoping the history snapshot to the bill just paid (see above),
-timing the roll-over with many balance dues waiting, and measuring smoothness
-on a real device.
+**Not yet done:** timing the roll-over with many balance dues waiting, measuring
+smoothness on a real device, and (optional, about 25 ms) making the page's
+resolution-log re-reads incremental.
 
 ---
 
