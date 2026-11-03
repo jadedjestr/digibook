@@ -89,4 +89,7 @@ Thumbs.db
 # IDE specific
 *.swp
 *.swo
-```scripts/perf/results/
+```
+
+# Large-data timing check output
+scripts/perf/results/
