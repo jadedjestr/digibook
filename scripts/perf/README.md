@@ -24,6 +24,12 @@ a brand-new browser context every run: an empty database that is not yours, and
 a throwaway PIN. Your real data (port 5173, your own browser) is never touched.
 Results are written to `scripts/perf/results/` (git-ignored).
 
+**Timed inside the page.** The tool's own clicks wait for moving buttons to hold
+still, which once added about 900 ms to a first click and about 60 ms to each
+payment. The tool now waits for animations to finish, and the
+"confirm a payment" row is timed inside the page. Read that row, not the
+tool-timed one, for what a person waits.
+
 **Read the numbers carefully.** They are one machine, synthetic data and a
 handful of repeats. Time an action until what a person waits for has finished,
 not until the screen first changes: an early version charged a payment's wait

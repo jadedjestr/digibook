@@ -2128,16 +2128,23 @@ log is capped at 500). Tier A = 325 bills (1 year), B = 1,525 (5), C = 3,025
 
 | Milliseconds, median | A | B | C | C, CPU x4 | D (stress) |
 |---|---|---|---|---|---|
-| App load, first of the day (includes the daily backup) | 55 | 106 | 166 | 522 | 1,175 |
-| App load, later in the day | 48 | 64 | 82 | 234 | 449 |
-| Open Fixed Expenses | 60 | 60 | 64 | 139 | 142 |
-| Next month | 41 | 65 | 42 | 207 | 75 |
-| Pay a bill (until its dialog closes), before the fix | 212 | 1,192 | 1,860 | 3,076 | 29,515 |
-| Pay a bill, after the snapshot fix | 133 | 211 | 278 | 709 | 3,047 |
-| **Pay a bill, after the reload fix (now)** | **138** | **185** | **228** | **582** | **2,497** |
-| Open Insights | 111 | 118 | 123 | 328 | 900 |
-| Export everything (JSON) | 69 | 96 | 111 | 270 | 620 |
+| App load, first of the day (includes the daily backup) | 55 | 111 | 155 | 514 | 1,158 |
+| App load, later in the day | 48 | 66 | 80 | 238 | 448 |
+| Open Fixed Expenses | 65 | 80 | 81 | 137 | 118 |
+| Next month | 43 | 30 | 30 | 104 | 77 |
+| Pay a bill, tool-timed, before the fix | 212 | 1,192 | 1,860 | 3,076 | 29,515 |
+| Pay a bill, tool-timed, after the snapshot fix | 133 | 211 | 278 | 709 | 3,047 |
+| Pay a bill, tool-timed, after the reload fix | 143 | 179 | 239 | 556 | 2,315 |
+| **Confirm a payment, timed in the page (now)** | **64** | **117** | **180** | **452** | **1,391** |
+| Open Insights | 122 | 120 | 136 | 315 | 928 |
+| Export everything (JSON) | 63 | 84 | 103 | 227 | 682 |
 | Stored data, MB / peak heap, MB | 5 / 28 | 9 / 44 | 14 / 74 | | 120 / 204 |
+
+The "tool-timed" payment rows run from clicking "Pay now" to the dialog
+closing, and include the test tool's own click handling (about 60 to 70 ms). The
+in-page row times only what a person waits after tapping "Pay full", inside the
+page, and is the one to read for the experience. Use the tool-timed rows for
+before and after comparisons: the tool adds a fixed amount, so the ratios hold.
 
 **What it says**
 
@@ -2148,10 +2155,10 @@ log is capped at 500). Tier A = 325 bills (1 year), B = 1,525 (5), C = 3,025
   step: 1,860 ms became 260 ms. **Fixed:** the snapshot after each payment
   (`snapshotExpensesForMonth`) now writes only rows that differ, so a payment
   writes one row. At 10 years paying takes 0.28 s (6.7x faster, 0.71 s on the
-  slowed CPU); at 30,000 bills 3.0 s (9.7x). It still creeps up with data,
-  because the snapshot reads two whole tables to find what differs, and the
-  rest of a payment was not profiled: 0.13 s at 1 year to 0.28 s at 10, still
-  past the 200 ms budget at 10 years and on the slowed CPU.
+  slowed CPU); at 30,000 bills 3.0 s (9.7x), by the tool-timed measure. The
+  wait after tapping "Pay full", timed in the page, is now 64 ms at 1 year,
+  180 ms at 10 years (inside the 200 ms budget) and 452 ms on the slowed CPU.
+  It still creeps up with data; see "What is left" below.
 - **Where the rest of a payment goes** (timed step by step in the real app,
   `--marks true`; milliseconds after clicking "Pay full"):
 
@@ -2173,7 +2180,7 @@ log is capped at 500). Tier A = 325 bills (1 year), B = 1,525 (5), C = 3,025
   closes sooner but the database is not quiet any sooner; the "until the
   database is free again" step rose to 49 ms at 10 years for that reason.
 - **What is left, and what did not help.** A payment at 10 years is now about
-  230 ms, down from 1,860 ms. The remaining time looked like it belonged to the
+  230 ms tool-timed (180 ms in the page), down from 1,860 ms. The remaining time looked like it belonged to the
   history snapshot (63 ms in the timeline), so three things were tried, each
   timed in the real app and then reverted:
 
@@ -2193,6 +2200,13 @@ log is capped at 500). Tier A = 325 bills (1 year), B = 1,525 (5), C = 3,025
   about 25 ms from the page re-reading the resolution log after each change.
   **Lesson:** a step's measured time can be waiting on something else; confirm a
   fix by the end-to-end time, not by the step's own number.
+- **A delay that was never there.** Early runs showed the first "next month"
+  taking about 950 ms at every data size. It was the test tool: it waits for a
+  moving button to hold still before clicking, and the page's entrance animation
+  keeps things moving for about a second. Clicked by script and timed inside the
+  page it took 9 ms. The tool now waits for animations to finish, and payments
+  are timed inside the page. **Lesson:** if a delay is the same at every data
+  size, suspect the measuring, and time inside the page before blaming the app.
 - **Everything else is flat through 10 years** and fine on a slower CPU: loads
   under 0.2 s (0.5 s slowed), screens under 0.15 s. Only at 10x the bills do
   loads (0.4 to 1.2 s), Insights (0.9 s) and export (0.6 s, 204 MB heap) start to

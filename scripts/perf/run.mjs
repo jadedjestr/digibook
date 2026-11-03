@@ -206,6 +206,39 @@ const run = async (browser, tierKey, throttle) => {
     );
   const goTo = async label =>
     page.getByText(label, { exact: true }).first().click();
+
+  // Wait for the page's finite animations (entrance, dialogs) to finish. A
+  // tool click waits for a moving button to hold still, which once added
+  // ~900 ms to the first "next month" and ~50 ms to each payment; the app
+  // itself answered in 9 ms.
+  const settle = async () => {
+    await page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          .filter(a => Number.isFinite(a.effect.getComputedTiming().endTime))
+          .map(a => a.finished.catch(() => {})),
+      ),
+    );
+    await wait(300);
+  };
+  // The first "Pay now" that is a plain bill (card and loan payments use a
+  // different dialog); climbs to the row holding only that one button.
+  const plainBillIndex = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('button')]
+        .filter(b => /^pay now$/i.test(b.textContent.trim()))
+        .findIndex(b => {
+          let el = b;
+          while (
+            el.parentElement &&
+            (el.parentElement.innerText.match(/Pay now/gi) || []).length === 1
+          ) {
+            el = el.parentElement;
+          }
+          return !/Card payment|Loan payment/i.test(el.innerText);
+        }),
+    );
   const backupCount = () =>
     page.evaluate(async () => {
       const [info] = (await indexedDB.databases()).filter(d =>
@@ -288,6 +321,7 @@ const run = async (browser, tierKey, throttle) => {
   );
   memory['Fixed Expenses open'] = await heapMb();
 
+  await settle();
   for (let i = 0; i < (skip.has('month') ? 0 : repeat); i++) {
     const before = await page
       .locator('[role=gridcell]')
@@ -397,6 +431,39 @@ const run = async (browser, tierKey, throttle) => {
         results,
       );
     await wait(500);
+  }
+  // The same payment, timed inside the page from tapping "Pay full" until the
+  // dialog is gone: no tool click handling in the number.
+  for (let i = 0; i < (skip.has('pay') ? 0 : repeat); i++) {
+    let status = 'ok';
+    let ms = null;
+    try {
+      const plain = await plainBillIndex();
+      if (plain < 0) throw new Error('no plain bill left to pay');
+      await page.getByRole('button', { name: 'Pay now' }).nth(plain).click();
+      await page.getByRole('button', { name: /pay full/i }).waitFor();
+      await settle();
+      ms = await page.evaluate(
+        () =>
+          new Promise(resolve => {
+            const btn = [...document.querySelectorAll('button')].find(b =>
+              /pay full/i.test(b.textContent),
+            );
+            const t0 = performance.now();
+            btn.click();
+            const tick = () =>
+              document.querySelector('[role=dialog]')
+                ? requestAnimationFrame(tick)
+                : resolve(Math.round(performance.now() - t0));
+            tick();
+          }),
+      );
+    } catch (e) {
+      status = String(e.message).split('\n')[0].slice(0, 80);
+    }
+    (results['confirm a payment (tap Pay full to closed, in the page)'] ||=
+      []).push({ ms: ms ?? 0, status, blockedMs: 0, worstBlockMs: 0 });
+    await wait(1500);
   }
   memory['after paying bills'] = await heapMb();
 
