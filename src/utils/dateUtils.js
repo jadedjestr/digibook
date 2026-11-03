@@ -115,6 +115,18 @@ export class DateUtils {
   }
 
   /**
+   * The local calendar day of either kind of date value: a YYYY-MM-DD string
+   * stays as it is, and a full ISO timestamp becomes the day it falls on
+   * here, not the UTC day (which is tomorrow on an evening in the Americas).
+   * @param {string} value - YYYY-MM-DD or an ISO timestamp
+   * @returns {string|null} YYYY-MM-DD, null when there is no value
+   */
+  static toLocalDay(value) {
+    if (!value) return null;
+    return value.length > 10 ? this.formatDate(new Date(value)) : value;
+  }
+
+  /**
    * Whole days from today to a date: 0 today, negative once it has passed.
    * @param {string} dateString - Date in YYYY-MM-DD format
    * @returns {number|null} null when there is no date

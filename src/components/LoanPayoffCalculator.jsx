@@ -9,6 +9,7 @@ import PropTypes from 'prop-types';
 import { useState, useEffect } from 'react';
 
 import { dbHelpers } from '../db/database-clean';
+import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 import { parseMoneyInput } from '../utils/validation';
@@ -138,14 +139,13 @@ const LoanPayoffCalculator = ({ loans = [], onDataChange }) => {
   // payoffDate). Appending a time to the latter read "Invalid Date".
   const formatDate = dateString => {
     if (!dateString) return 'N/A';
-    return new Date(`${dateString.slice(0, 10)}T00:00:00`).toLocaleDateString(
-      'en-US',
-      {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      },
-    );
+    return DateUtils.parseDate(
+      DateUtils.toLocalDay(dateString),
+    ).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
   };
 
   const getPayoffColor = () => {

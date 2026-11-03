@@ -1346,6 +1346,7 @@ All dates in Digibook are stored and compared as `YYYY-MM-DD` strings, parsed in
 | `addDays(str, n)` | Add N days to a date string |
 | `daysBetween(start, end)` | Whole days between two date strings. Rounds, not ceils: the day clocks go back is 25 hours, and ceil counted the extra hour as a day (fixed `fe7d2f1`) |
 | `daysUntil(str)` | Whole days from today to a date (0 today, negative once past, null with no date). The one place for "due in N days" |
+| `toLocalDay(value)` | The local calendar day of a `YYYY-MM-DD` string (unchanged) or a full ISO timestamp (the day it falls on here, not the UTC day). Use before showing a payoff date |
 | `today()` | Today as YYYY-MM-DD |
 | `formatFileTimestamp(date?)` | Local date and time for a filename, `YYYY-MM-DD_HH-mm` (dashes: `:` is illegal in Mac/Windows filenames). Used by every export's filename |
 | `isPast(str)` | Is the date before today? |
@@ -1379,6 +1380,13 @@ Fixed, each with a regression test that runs in `America/Los_Angeles`:
   / `daysBetween` now, as do the calendar grid length, the paycheck countdowns
   and the end-of-month nudge. The audit log's "Today" filter ends at the next
   midnight, not +24h.
+- Dates shown on screen read a `YYYY-MM-DD` string as UTC, so a day came out
+  early or late: the Insights card table showed a Nov 5 due date as "Nov 4",
+  the unpaid-last-month nudge named the month before, and the loan payoff date
+  used the UTC day of its timestamp. They use `DateUtils.parseDate` /
+  `toLocalDay` now. Found by looking at the running app, not by searching: a
+  grep for `new Date(` with a date-like argument misses display formatters, so
+  check any new `toLocaleDateString` call's input.
 - A card with no due date started its payment bill on the UTC date, which is
   tomorrow on an evening in the Americas. It uses `DateUtils.today()`.
 

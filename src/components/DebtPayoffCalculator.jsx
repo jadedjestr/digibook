@@ -13,6 +13,7 @@ import {
   getDefaultMinimumPaymentAmount,
   getEffectiveCardInterestRate,
 } from '../utils/creditCardUtils';
+import { DateUtils } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
 import { notify } from '../utils/notifications';
 import { parseMoneyInput } from '../utils/validation';
@@ -134,7 +135,9 @@ const DebtPayoffCalculator = ({ creditCards = [], onDataChange }) => {
 
   const formatDate = dateString => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return DateUtils.parseDate(
+      DateUtils.toLocalDay(dateString),
+    ).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',

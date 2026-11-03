@@ -141,7 +141,7 @@ export function getPayCycleNudge({
     ];
     const dismissKey = `past_month_${lastMonthKey}`;
     if (unpaid.length > 0 && !dismissedSet.has(dismissKey)) {
-      const lastMonthDate = new Date(`${lastMonthKey}-01`);
+      const lastMonthDate = DateUtils.parseDate(`${lastMonthKey}-01`);
       const lastMonthLabel = lastMonthDate.toLocaleDateString('en-US', {
         month: 'long',
         year: 'numeric',

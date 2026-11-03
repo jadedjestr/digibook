@@ -144,7 +144,7 @@ const CreditCardDebtTable = ({ creditCards = [] }) => {
   // Format date helper
   const formatDate = dateString => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return DateUtils.parseDate(dateString).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
     });
