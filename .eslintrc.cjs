@@ -71,19 +71,19 @@ module.exports = {
         selector:
           'NewExpression[callee.name="Date"][arguments.length=1] > MemberExpression.arguments[property.name=/[dD]ate$/]',
         message:
-          "new Date(someDate) reads a YYYY-MM-DD string as midnight UTC, the evening before in the Americas. Use DateUtils.parseDate(), or new Date(`${day}T00:00:00`). A timestamp is fine: say so with an eslint-disable comment.",
+          'new Date(someDate) reads a YYYY-MM-DD string as midnight UTC, the evening before in the Americas. Use DateUtils.parseDate(), or new Date(`${day}T00:00:00`). A timestamp is fine: say so with an eslint-disable comment.',
       },
       {
         selector:
           'NewExpression[callee.name="Date"][arguments.length=1] > Identifier.arguments[name=/[dD]ate$/]',
         message:
-          "new Date(someDate) reads a YYYY-MM-DD string as midnight UTC, the evening before in the Americas. Use DateUtils.parseDate(), or new Date(`${day}T00:00:00`). A Date or timestamp is fine: say so with an eslint-disable comment.",
+          'new Date(someDate) reads a YYYY-MM-DD string as midnight UTC, the evening before in the Americas. Use DateUtils.parseDate(), or new Date(`${day}T00:00:00`). A Date or timestamp is fine: say so with an eslint-disable comment.',
       },
       {
         selector:
           'CallExpression[callee.property.name=/^(split|slice|substring)$/][callee.object.type="CallExpression"][callee.object.callee.property.name="toISOString"]',
         message:
-          "toISOString() is the UTC date, which is tomorrow on an evening in the Americas. Use DateUtils.formatDate() / DateUtils.today() for a calendar day.",
+          'toISOString() is the UTC date, which is tomorrow on an evening in the Americas. Use DateUtils.formatDate() / DateUtils.today() for a calendar day.',
       },
       {
         selector:
