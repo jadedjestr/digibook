@@ -52,6 +52,7 @@ and the reasoning: [ARCHITECTURE.md](ARCHITECTURE.md) §9.
   card, because every assertion checked the fields that were supposed to move.
 - **No wall-clock performance assertions.** Under a parallel suite they measure
   how busy the machine is. Count renders or operations instead.
+  What is worth measuring in this app, and how: [ARCHITECTURE.md](ARCHITECTURE.md) §14.
 - Prove a regression test fails against the old behaviour before trusting it.
 
 ## Working on the live app

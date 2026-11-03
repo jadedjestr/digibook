@@ -2085,6 +2085,34 @@ All user inputs are sanitized before storage:
 | Pending transaction Map | `Accounts.jsx` | Pre-computed `pendingByAccount` Map for O(1) per-account lookups |
 | Offline asset caching | `vite-plugin-pwa` (Workbox) | Precaches the app shell so repeat loads (and offline loads) skip the network entirely |
 
+### What to measure here
+
+Digibook runs entirely in the browser on local storage (Dexie/IndexedDB), so
+the server-side measures (network latency, API response time, load capacity)
+do not apply. Five do. **None of them has been measured yet**, and the repo
+has no automated performance check beyond the render-count idea below; treat
+this list as what to look at, not as results.
+
+| Measure | Why it matters here | How to check | Status |
+|---|---|---|---|
+| **Data speed at scale** | `database-clean.js` reads whole tables with `toArray()` and filters in memory, and some lookups use `.filter()` after a table scan rather than an index (e.g. `recurringExpenseTemplates`, per the note at Dexie version 11). Fine with a year of data; unknown with ten | Seed a large history (years of bills, payments, log rows) in a scratch profile and time the Insights page, Fixed Expenses load and the app-load roll-over | Not measured |
+| **Render counts** | A store change can redraw a whole page. Counting is stable where timing is not | A test that asserts a page or row renders at most N times for a given change (`usePerformanceMonitor`, §6.5, tracks render counts in dev) | Idea only; the one existing perf test uses wall-clock time and is flaky |
+| **Smoothness** | The glass look uses `backdrop-filter` blur, which is costly on phones and older laptops | Browser performance panel while scrolling the calendar and opening modals; by hand, not a test | Not measured |
+| **Bundle size and load time** | Recharts is heavy, and the PWA precaches the shell, so growth hits every first load | Check the `vite build` output size; Lighthouse for load | Not measured |
+| **Memory over a long session** | The app can stay open all day | Browser memory panel: take a snapshot, use the app, snapshot again | Not measured |
+
+**Rules**
+
+- **Count, don't time, in tests.** Renders, queries and table reads are the
+  same on every machine; milliseconds depend on how busy it is. The existing
+  `AccountSelector.performance.test.jsx` asserts milliseconds and has failed
+  once under a full run, then passed alone and on rerun. Convert it to counts.
+- **Measure before optimizing.** The `toArray()` pattern is only a risk once
+  the data is large enough to feel; do not restructure queries on a guess.
+- Large-data and smoothness checks run by hand or as a script, never in the
+  normal `npm run test:run`, and never against the live database (see
+  [AGENTS.md](AGENTS.md)).
+
 ---
 
 ## 15. Testing Strategy
