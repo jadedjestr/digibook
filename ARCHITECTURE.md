@@ -2096,7 +2096,7 @@ the rest are a list of what to look at, not results.
 
 | Measure | Why it matters here | How to check | Status |
 |---|---|---|---|
-| **Data speed at scale** | `database-clean.js` reads whole tables with `toArray()` and filters in memory, and some lookups use `.filter()` after a table scan rather than an index (e.g. `recurringExpenseTemplates`, per the note at Dexie version 11). Fine with a year of data; unknown with ten | Seed a large history (years of bills, payments, log rows) in a scratch profile and time the Insights page, Fixed Expenses load and the app-load roll-over | Not measured |
+| **Data speed at scale** | `database-clean.js` reads whole tables with `toArray()` and filters in memory, and some lookups use `.filter()` after a table scan rather than an index (e.g. `recurringExpenseTemplates`, per the note at Dexie version 11). Fine with a year of data; unknown with ten | Read counts are pinned (below). The time a read takes at scale is not: seed a large history (years of bills, payments, log rows) in a scratch profile and time the Insights page, Fixed Expenses load and the app-load roll-over | Reads counted for Insights, the roll-over and bill creation; timing at scale not measured |
 | **Render counts** | A store change can redraw a whole page. Counting is stable where timing is not | Count-based tests with `src/test/perfCounters.js` (below). `usePerformanceMonitor` (§6.5) is a dev-only overlay for `PerformanceDashboard`, not a test tool | Counted for the account selector, the store and the calendar; not for whole pages |
 | **Smoothness** | The glass look uses `backdrop-filter` blur, which is costly on phones and older laptops | Browser performance panel while scrolling the calendar and opening modals; by hand, not a test | Not measured |
 | **Bundle size and load time** | Recharts is heavy, and the PWA precaches the shell, so growth hits every first load | Check the `vite build` output size; Lighthouse for load | Not measured |
@@ -2153,6 +2153,7 @@ the way `CalendarDayRedraws.test.jsx` does (which keeps the real `memo` wrapper)
 | `src/components/__tests__/AccountSelector.performance.test.jsx` | The option list is built once and reused; a closed selector draws none of its options; opening draws each option once; a changed value costs at most three commits |
 | `src/stores/__tests__/useAppStore.rerenders.test.jsx` | Each store action and reload redraws only the readers of the slices it changes, once; editing one expense leaves the others the same objects |
 | `src/components/__tests__/CalendarDayRedraws.test.jsx` | No day cell redraws when nothing it shows changed; one changed bill redraws one day; selecting a day redraws just that cell |
+| `src/db/__tests__/readBudgets.test.js` | Database reads, via `countStoreReads`: the Insights load reads the same on 5 bills as on 200; an idle roll-over reads the log once, never scans the bills table, and reads one row per past entry; creating due bills with nothing due scans no bills |
 
 **Known inefficiencies (measured, not fixed)**
 
@@ -2160,11 +2161,13 @@ the way `CalendarDayRedraws.test.jsx` does (which keeps the real `memo` wrapper)
 |---|---|---|
 | `AccountSelector` | A changed `value` costs three commits, not one: an effect copies `value` into state, so it draws the old selection, the new one, then settles | Invisible to a user today; pinned at three so it cannot grow |
 | `AccountSelector` | Opening the dropdown takes two commits. The second was observed but not traced to a cause | Pinned at two; trace it before changing the component |
+| Insights load (`getBudgetVsActualSummary`, `getOverpaymentByCategory`, `getMonthlyExpenseHistory`) | Scans the whole bills table four times per load, where one shared read would do. The count does not grow with the number of bills, but each scan reads all of them | Pinned at four; `it.fails` in `readBudgets.test.js` flags the day it is one |
+| `rollOverBalanceDues` | Each balance due that actually rolls costs four scans of the bills table, so the work is (balance dues waiting) x (bills). Usually none or a few are waiting; an idle load costs one log scan plus one row read per past entry | Pinned at four per balance due; `it.fails` flags the day it stops scaling with how many roll |
 | `useAppStore` reloads | A reload redraws its readers even when the content is unchanged, because the database returns fresh arrays. After a payment the accounts, cards and loans screens all redraw | By design; comparing contents before replacing would be the fix if it ever feels slow |
 
-**Not yet done:** read budgets using `countStoreReads` (the roll-over on app load,
-the Insights data load) and the large-data timing check. No test uses
-`countStoreReads` outside its own tests yet.
+**Not yet done:** the large-data timing check. Read counts show the shape
+(what stays flat, what grows with how many balance dues wait) but not how long
+a scan of ten years of bills takes; that needs a seeded scratch profile.
 
 ---
 
