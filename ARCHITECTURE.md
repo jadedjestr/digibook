@@ -2133,7 +2133,8 @@ log is capped at 500). Tier A = 325 bills (1 year), B = 1,525 (5), C = 3,025
 | Open Fixed Expenses | 60 | 60 | 64 | 139 | 142 |
 | Next month | 41 | 65 | 42 | 207 | 75 |
 | Pay a bill (until its dialog closes), before the fix | 212 | 1,192 | 1,860 | 3,076 | 29,515 |
-| **Pay a bill, after the fix** | **133** | **211** | **278** | **709** | **3,047** |
+| Pay a bill, after the snapshot fix | 133 | 211 | 278 | 709 | 3,047 |
+| **Pay a bill, after the reload fix (now)** | **138** | **185** | **228** | **582** | **2,497** |
 | Open Insights | 111 | 118 | 123 | 328 | 900 |
 | Export everything (JSON) | 69 | 96 | 111 | 270 | 620 |
 | Stored data, MB / peak heap, MB | 5 / 28 | 9 / 44 | 14 / 74 | | 120 / 204 |
@@ -2151,6 +2152,31 @@ log is capped at 500). Tier A = 325 bills (1 year), B = 1,525 (5), C = 3,025
   because the snapshot reads two whole tables to find what differs, and the
   rest of a payment was not profiled: 0.13 s at 1 year to 0.28 s at 10, still
   past the 200 ms budget at 10 years and on the slowed CPU.
+- **Where the rest of a payment goes** (timed step by step in the real app,
+  `--marks true`; milliseconds after clicking "Pay full"):
+
+  | Step | 1 year | 10 years, before | 10 years, now |
+  |---|---|---|---|
+  | Click to handler, then validation and setup | 54 | 54 | 52 |
+  | The database transaction | 14 | 33 | 45 |
+  | History snapshot (reads two whole tables) | 14 | 72 | 63 |
+  | Reload accounts and expenses | 18 | 87 | 39 |
+  | **Dialog closes** | **101** | **246** | **199** |
+
+  The reloads were the surprise. Started together, the expenses read (every
+  bill) queued ahead of the accounts reload's many small reads, so the accounts
+  reload took 85 ms at 10 years instead of 3 ms: nothing in its tables had
+  grown. Running them one after the other (`reloadAccountsThenExpenses` in
+  `useExpenseOperations.js`) cut that step from 87 to 39 ms and the whole
+  payment from 278 to 228 ms. Caveat: the database work that follows the
+  dialog (the page re-reading the resolution log) is unchanged, so the dialog
+  closes sooner but the database is not quiet any sooner; the "until the
+  database is free again" step rose to 49 ms at 10 years for that reason.
+- **What is left:** about 60 ms is the history snapshot reading two whole
+  tables to find what changed. Scoping it to the bill just paid (and
+  reconciling the rest at app load) would remove that read from every payment,
+  at the cost of repairing stale history rows at the next load and not at the
+  next payment. Not done: that is a behavior change to decide, not a bug fix.
 - **Everything else is flat through 10 years** and fine on a slower CPU: loads
   under 0.2 s (0.5 s slowed), screens under 0.15 s. Only at 10x the bills do
   loads (0.4 to 1.2 s), Insights (0.9 s) and export (0.6 s, 204 MB heap) start to
@@ -2227,8 +2253,9 @@ the way `CalendarDayRedraws.test.jsx` does (which keeps the real `memo` wrapper)
 | `rollOverBalanceDues` | Each balance due that actually rolls costs four scans of the bills table, so the work is (balance dues waiting) x (bills). Usually none or a few are waiting; an idle load costs one log scan plus one row read per past entry | Pinned at four per balance due; `it.fails` flags the day it stops scaling with how many roll |
 | `useAppStore` reloads | A reload redraws its readers even when the content is unchanged, because the database returns fresh arrays. After a payment the accounts, cards and loans screens all redraw | By design; comparing contents before replacing would be the fix if it ever feels slow |
 
-**Not yet done:** profiling what is left in a payment, timing the roll-over with
-many balance dues waiting, and measuring smoothness on a real device.
+**Not yet done:** scoping the history snapshot to the bill just paid (see above),
+timing the roll-over with many balance dues waiting, and measuring smoothness
+on a real device.
 
 ---
 

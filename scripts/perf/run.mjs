@@ -226,6 +226,7 @@ const run = async (browser, tierKey, throttle) => {
 
   const results = {};
   const memory = {};
+  const marksLog = [];
 
   // 1. First load of the day: the app also creates its daily backup. The
   // backup clock starts at the reload, because it runs on its own after load.
@@ -335,6 +336,11 @@ const run = async (browser, tierKey, throttle) => {
         );
         if (plain < 0) throw new Error('no plain bill left to pay');
         await payNow.nth(plain).click();
+        if (args.marks === 'true')
+          await page.evaluate(() => {
+            performance.clearMarks();
+            performance.mark('click');
+          });
         await page.getByRole('button', { name: /pay full/i }).click();
         // Done when the dialog has closed and the bill has left the list: what
         // the person waits for. (The list can update before the dialog closes.)
@@ -349,6 +355,18 @@ const run = async (browser, tierKey, throttle) => {
       },
       results,
     );
+    if (args.marks === 'true') {
+      await wait(2500);
+      const marks = await page.evaluate(() =>
+        performance.getEntriesByType('mark').map(m => [m.name, m.startTime]),
+      );
+      const click = marks.find(m => m[0] === 'click')?.[1] ?? 0;
+      marksLog.push(
+        marks
+          .filter(m => m[0] !== 'click')
+          .map(([n, t]) => [n, Math.round(t - click)]),
+      );
+    }
     // The screen updates first; the database may still be busy. Time a
     // read-only transaction on the same tables: it cannot start until the
     // payment's writes have finished.
@@ -449,6 +467,18 @@ const run = async (browser, tierKey, throttle) => {
       },
     ]),
   );
+  if (marksLog.length) {
+    const byName = {};
+    marksLog.forEach(run =>
+      run.forEach(([n, t]) => (byName[n] ||= []).push(t)),
+    );
+    const med = Object.entries(byName)
+      .map(([n, ts]) => [n, median(ts)])
+      .sort((a, b) => a[1] - b[1]);
+    process.stderr.write(
+      `\nPayment timeline, ms after clicking "Pay full" (median of ${marksLog.length}):\n${med.map(([n, t]) => `${String(t).padStart(7)}  ${n}`).join('\n')}\n\n`,
+    );
+  }
   return {
     tier: tierKey,
     label: tier.label,

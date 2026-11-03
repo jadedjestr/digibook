@@ -16,6 +16,7 @@ node scripts/perf/run.mjs --tier A,B,C --throttle 1,4 --repeat 3
 | `--timeout` | Per-action timeout in ms (default 180000) |
 | `--dev true` | Serve the unminified dev build on port 5174 (readable names for `--profile`) |
 | `--profile true` | Print a CPU profile around opening Insights (use with `--dev true`) |
+| `--marks true` | Print a step-by-step timeline of a payment. It needs `performance.mark(...)` calls in the code, which are not committed; add them temporarily around the steps you want to see |
 | `--skip a,b` | Skip `reload`, `month`, `pay` or `dbfree` steps, to bisect a result |
 
 **Safe by design.** It serves the production build on port 4173 and drives it in
