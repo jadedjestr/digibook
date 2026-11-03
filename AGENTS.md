@@ -62,6 +62,11 @@ and the reasoning: [ARCHITECTURE.md](ARCHITECTURE.md) §9.
 
 - `npm run dev` serves the real database on port 5173. **That is the user's
   data.** Snapshot it before anything destructive.
+- To time the app against years of data, use `scripts/perf/` (see its README
+  and [ARCHITECTURE.md](ARCHITECTURE.md) §14). It drives the production build in
+  a brand-new browser profile, so your own data is never touched. Confirm a
+  speed-up by the end-to-end time, not one step's number: a removed step's
+  cost can simply reappear in the next one.
 - For anything risky, use a scratch profile — a different port is a different
   origin and therefore a different, empty database:
   ```bash

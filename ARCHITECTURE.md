@@ -2257,6 +2257,7 @@ the way `CalendarDayRedraws.test.jsx` does (which keeps the real `memo` wrapper)
 | `src/components/__tests__/AccountSelector.performance.test.jsx` | The option list is built once and reused; a closed selector draws none of its options; opening draws each option once; a changed value costs at most three commits |
 | `src/stores/__tests__/useAppStore.rerenders.test.jsx` | Each store action and reload redraws only the readers of the slices it changes, once; editing one expense leaves the others the same objects |
 | `src/components/__tests__/CalendarDayRedraws.test.jsx` | No day cell redraws when nothing it shows changed; one changed bill redraws one day; selecting a day redraws just that cell |
+| `src/hooks/__tests__/useExpenseOperations.reloadOrder.test.jsx` | After a payment the hook reloads accounts, then expenses (not at once, which made the accounts reload 85 ms instead of 3 ms at ten years); both are still attempted when the payment fails or the accounts reload itself fails |
 | `src/db/__tests__/readBudgets.test.js` | Database reads, via `countStoreReads`: the Insights load reads the same on 5 bills as on 200; an idle roll-over reads the log once, never scans the bills table, and reads one row per past entry; creating due bills with nothing due scans no bills; paying a bill writes one history row however many were paid before (`snapshotExpenseHistory.test.js` covers what it still repairs) |
 
 **Known inefficiencies (measured, not fixed)**
