@@ -93,3 +93,4 @@ Thumbs.db
 
 # Large-data timing check output
 scripts/perf/results/
+scripts/ux/results/

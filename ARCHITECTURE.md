@@ -590,6 +590,9 @@ monthlyExpenseHistory ──► fixedExpenses (expenseId)
 
 ## 4. Application Shell & Navigation
 
+A touch, navigation and accessibility audit of every main screen, with ranked
+findings that are not yet fixed, is in [UX_AUDIT.md](UX_AUDIT.md).
+
 ### Entry Point
 
 `src/main.jsx` → `ReactDOM.createRoot` with `React.StrictMode` → `<App />`.
@@ -2398,7 +2401,8 @@ declares `display: standalone`, which together with the Apple meta tags in
 `index.html` is what makes home-screen installation work on iOS.
 
 Navigation is React state rather than URL routing — the path never leaves `/` —
-so no SPA rewrite rules are required.
+so no SPA rewrite rules are required. The cost is that the browser's back swipe
+leaves the app and screens cannot be bookmarked ([UX_AUDIT.md](UX_AUDIT.md)).
 
 ---
 
